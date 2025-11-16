@@ -6,6 +6,63 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Acclaimed Games is a video game ranking and aggregation website that combines data from multiple sources to create comprehensive rankings. The application uses Django backend with a Vue.js 3 frontend and integrates with the IGDB (Internet Game Database) API.
 
+## Quick Start
+
+**Prerequisites:** Python 3, Node.js, and Git installed.
+
+**First time setup:**
+```bash
+# Create Python virtual environment
+python3 -m venv venv
+
+# Install Python dependencies (use psycopg2-binary for local development)
+source venv/bin/activate
+pip install django django-debug-toolbar django-environ django-extensions django-crispy-forms djangorestframework crispy-bulma gunicorn ipython markdown requests sentry-sdk unidecode whitenoise django-cors-headers psycopg2-binary
+
+# Run database migrations
+# Note: Requires .env file with DATABASE_URL, CACHE_URL, etc.
+python manage.py migrate
+
+# Install frontend dependencies
+cd frontend
+npm install
+cd ..
+```
+
+**Start development servers:**
+
+Use the provided helper scripts:
+```bash
+./start-backend.sh   # Django on http://localhost:8000
+./start-frontend.sh  # Vite on http://localhost:5173
+```
+
+Or manually:
+```bash
+# Terminal 1 - Backend
+source venv/bin/activate
+export $(cat .env | xargs)
+python manage.py runserver
+
+# Terminal 2 - Frontend
+cd frontend
+npm run dev
+```
+
+**Required `.env` file in project root:**
+```
+DEBUG=True
+DATABASE_URL=sqlite:///db.sqlite3
+SECRET_KEY=dev-secret-key-change-this-in-production
+CACHE_URL=locmemcache://
+CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+```
+
+**Required `frontend/.env` file:**
+```
+VITE_API_URL=/api/
+```
+
 ## Development Commands
 
 ### Backend (Django)

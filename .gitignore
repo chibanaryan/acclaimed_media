@@ -17,3 +17,9 @@ node_modules
 static/*
 staticfiles/*
 venv/*
+
+# Local development files
+*.backup.*
+heroku_data*.json
+start-*.sh
+export_*.sh
