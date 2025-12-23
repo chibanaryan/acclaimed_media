@@ -143,10 +143,10 @@ def send_subscription_confirmation_email(subscriber) -> bool:
     site_url = getattr(settings, "SITE_URL", "https://www.acclaimedvideogames.com")
     confirmation_url = f"{site_url}/subscribe/confirm/{subscriber.confirmation_token}/"
 
-    subject = "Confirm your subscription to Acclaimed Games"
+    subject = "Confirm your subscription to Acclaimed Video Games"
 
     email_body = f"""
-Thank you for subscribing to Acclaimed Games!
+Thank you for subscribing to Acclaimed Video Games!
 
 Please confirm your subscription by clicking the link below:
 
@@ -155,7 +155,7 @@ Please confirm your subscription by clicking the link below:
 If you didn't request this subscription, you can safely ignore this email.
 
 ---
-Acclaimed Games
+Acclaimed Video Games
 {site_url}
 """
 
@@ -201,7 +201,7 @@ def send_post_notification_email(post, subscriber) -> bool:
     if post.author:
         author_name = post.author.get_full_name() or post.author.username
     else:
-        author_name = "Acclaimed Games"
+        author_name = "Acclaimed Video Games"
 
     # Get HTML version (full post with links intact)
     post_html = post.text_rendered
@@ -211,7 +211,7 @@ def send_post_notification_email(post, subscriber) -> bool:
 
     # Plain text version
     text_body = f"""
-New post on Acclaimed Games!
+New post on Acclaimed Video Games!
 
 {post.title or 'Latest Update'}
 By {author_name}
@@ -221,10 +221,10 @@ By {author_name}
 Read more: {post_url}
 
 ---
-You're receiving this because you subscribed to Acclaimed Games
+You're receiving this because you subscribed to Acclaimed Video Games
 post notifications. To unsubscribe, visit: {unsubscribe_url}
 
-Acclaimed Games
+Acclaimed Video Games
 {site_url}
 """
 
@@ -294,10 +294,10 @@ Acclaimed Games
 
     <div class="footer">
         <p>You're receiving this because you subscribed to
-        Acclaimed Games post notifications.</p>
+        Acclaimed Video Games post notifications.</p>
         <p>
             <a href="{unsubscribe_url}">Unsubscribe</a> |
-            <a href="{site_url}">Acclaimed Games</a>
+            <a href="{site_url}">Acclaimed Video Games</a>
         </p>
     </div>
 </body>

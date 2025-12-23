@@ -895,8 +895,11 @@ class CompanyDetailView(DetailView):
             Prefetch("studios__games", queryset=games_queryset),
         )
 
-    def flatten_studios(self, studios_data, parent_id=None, level=0):
-        """Flatten recursive studio structure for checkbox tree."""
+    def flatten_studios(self, studios_data, parent_id=None, level=1):
+        """
+        Flatten recursive studio structure for checkbox tree.
+        Note: Starts at level 1 (was 0) to accommodate parent company at level 0.
+        """
         flat = []
         for studio_data in studios_data:
             child_ids = [s["studio"].id for s in studio_data["sub_studios"]]
@@ -1049,7 +1052,6 @@ class CompanyDetailView(DetailView):
 
         # Add flattened studio data for filter UI
         studios_flat = self.flatten_studios(studios_with_games)
-        context["studios_flat"] = studios_flat
 
         # Collect all unique games for filter view
         all_game_ids = collect_unique_game_ids(studios_with_games)
@@ -1067,8 +1069,30 @@ class CompanyDetailView(DetailView):
         for studio in studios_flat:
             studio_game_map[studio["id"]] = studio["game_ids"]
 
+        # Add parent company as first item in flattened structure (level 0)
+        # with all direct studios as children
+        direct_studio_ids = [s["id"] for s in studios_flat if s["level"] == 1]
+        company_item = {
+            "id": f"company-{company.id}",  # Use string ID to avoid conflicts
+            "name": company.name,
+            "game_ids": list(all_game_ids),  # All games from all studios
+            "parent_id": None,
+            "level": 0,  # Parent company at level 0
+            "child_ids": direct_studio_ids,
+            "is_company": True,  # Flag to identify this as the parent company
+        }
+
+        # Prepend parent company to studios_flat
+        context["studios_flat"] = [company_item] + studios_flat
+
+        # Add parent company to studio_game_map
+        studio_game_map[company_item["id"]] = company_item["game_ids"]
+
         # Build studio -> child IDs mapping for Alpine.js
-        studio_child_map = {s["id"]: s["child_ids"] for s in studios_flat}
+        # Include both parent company and all studios
+        studio_child_map = {
+            s["id"]: s["child_ids"] for s in [company_item] + studios_flat
+        }
 
         # Serialize to JSON for Alpine.js
         import json

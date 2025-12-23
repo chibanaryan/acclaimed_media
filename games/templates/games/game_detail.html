@@ -1,14 +1,14 @@
 {% extends 'base.html' %}
 {% load game_filters %}
 
-{% block title %}{{ game.name }} - Acclaimed Games{% endblock %}
+{% block title %}{{ game.name }} | Acclaimed Video Games{% endblock %}
 
 {% block meta_description %}{{ game.name }} ({{ game.year_of_release }}) - Ranked #{{ game.rank }} among the most critically acclaimed video games of all time. View critic list appearances and rankings.{% endblock %}
 
-{% block og_title %}{{ game.name }} - Acclaimed Games{% endblock %}
+{% block og_title %}{{ game.name }} | Acclaimed Video Games{% endblock %}
 {% block og_description %}{{ game.name }} ({{ game.year_of_release }}) is ranked #{{ game.rank }} among the most critically acclaimed games of all time.{% endblock %}
 {% block og_image %}{{ game.image }}{% endblock %}
-{% block twitter_title %}{{ game.name }} - Acclaimed Games{% endblock %}
+{% block twitter_title %}{{ game.name }} | Acclaimed Video Games{% endblock %}
 {% block twitter_description %}{{ game.name }} ({{ game.year_of_release }}) is ranked #{{ game.rank }} all-time.{% endblock %}
 
 {% block structured_data %}{
@@ -29,8 +29,12 @@
 
 {% block content %}
 {% if game %}
-    <div class="flex items-center gap-3 mb-4">
+    <div class="flex items-center gap-3 mb-4 flex-wrap">
         <h1 class="text-3xl font-bold">{{ game.name }}</h1>
+        <button class="btn btn-sm btn-outline gap-1 contact-modal-trigger" data-category="data" data-game="{{ game.name }}" aria-label="Report incorrect data">
+            <span class="mdi mdi-alert-circle-outline"></span>
+            <span>Report incorrect data</span>
+        </button>
     </div>
     {% block extra_head %}
         {% if game.image %}

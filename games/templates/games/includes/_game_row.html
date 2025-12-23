@@ -24,7 +24,7 @@
                 <a href="{% url 'game-detail' slug=game.slug %}" class="font-bold text-lg link link-hover">
                     {{ game.name }}
                 </a>
-                <a href="{% url 'games-list' %}?start={{ game.year_of_release }}&end={{ game.year_of_release }}&highlight={{ game.id }}" class="text-base-content/60 ml-1" data-year="{{ game.year_of_release }}">
+                <a href="{% url 'games-list' %}?start={{ game.year_of_release }}&end={{ game.year_of_release }}" class="text-base-content/60 ml-1" data-year="{{ game.year_of_release }}">
                     ({{ game.year_of_release }})
                 </a>
             </div>
@@ -76,13 +76,22 @@
     </div>
 
     {# Game Info #}
-    <div class="flex-1 min-w-0">
-        <h3 class="font-bold text-base">{{ game.name }}</h3>
-        <div class="flex items-center flex-wrap gap-1 text-sm text-base-content/60">
-            <span class="mr-1" data-year="{{ game.year_of_release }}">{{ game.year_of_release }}</span>
-            {# Platform codes (top 4) #}
-            {% for platform in game.platforms.all|slice:":4" %}<button type="button" class="badge badge-xs badge-outline hover:badge-primary cursor-pointer transition-colors" onclick="event.stopPropagation(); event.preventDefault(); document.dispatchEvent(new CustomEvent('add-platform', {detail: {platformId: '{{ platform.id }}', gameId: '{{ game.id }}'} }))" title="Filter by {{ platform.name }}">{{ platform.code }}</button>{% endfor %}{% if game.platforms.count > 4 %}<span class="text-xs text-base-content/50">+{{ game.platforms.count|add:"-4" }}</span>{% endif %}
+    <div class="flex-1 min-w-0 flex items-center justify-between gap-2">
+        <div class="flex-1 min-w-0">
+            <h3 class="font-bold text-base">{{ game.name }}</h3>
+            <div class="flex items-center flex-wrap gap-1 text-sm text-base-content/60">
+                <span class="mr-1" data-year="{{ game.year_of_release }}">{{ game.year_of_release }}</span>
+                {# Platform codes (top 4) #}
+                {% for platform in game.platforms.all|slice:":4" %}<button type="button" class="badge badge-xs badge-outline hover:badge-primary cursor-pointer transition-colors" onclick="event.stopPropagation(); event.preventDefault(); document.dispatchEvent(new CustomEvent('add-platform', {detail: {platformId: '{{ platform.id }}', gameId: '{{ game.id }}'} }))" title="Filter by {{ platform.name }}">{{ platform.code }}</button>{% endfor %}{% if game.platforms.count > 4 %}<span class="text-xs text-base-content/50">+{{ game.platforms.count|add:"-4" }}</span>{% endif %}
+            </div>
         </div>
+        {# Always show global rank on mobile when displaying filtered rank #}
+        {% if show_rank == 'filtered' %}
+        <div class="shrink-0 text-right text-xs text-base-content/60 leading-tight">
+            <div class="whitespace-nowrap">Global</div>
+            <div class="font-bold text-base-content text-sm">{{ game.rank }}</div>
+        </div>
+        {% endif %}
     </div>
 
     {# Chevron indicator #}

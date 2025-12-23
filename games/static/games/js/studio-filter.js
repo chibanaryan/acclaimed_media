@@ -87,6 +87,7 @@ function studioFilter() {
 
         /**
          * Toggle studio selection (with hierarchical child handling)
+         * Supports both numeric studio IDs and string company IDs (e.g., "company-123")
          */
         toggleStudio(studioId, childIds) {
             // Create a new Set to trigger Alpine reactivity
