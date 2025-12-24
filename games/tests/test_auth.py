@@ -197,3 +197,85 @@ class NavigationAuthLinksTest(TestCase):
         # Profile now uses modal trigger with dropdown
         self.assertContains(response, "profile-modal-trigger")
         self.assertContains(response, 'href="/accounts/logout/"')
+
+
+class ToggleSubscriptionTest(TestCase):
+    """Test newsletter subscription toggle."""
+
+    def setUp(self):
+        """Create a test user."""
+        self.user = User.objects.create_user(
+            username="testuser",
+            email="test@example.com",
+            password="testpass123",
+        )
+
+    def test_toggle_requires_login(self):
+        """Test toggle subscription requires authentication."""
+        response = self.client.post(reverse("toggle_subscription"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/accounts/login/", response.url)
+
+    def test_toggle_creates_subscription(self):
+        """Test toggle creates subscription for new user."""
+        from games.models import Subscriber
+
+        self.client.login(username="testuser", password="testpass123")
+        response = self.client.post(reverse("toggle_subscription"))
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        self.assertTrue(data["subscribed"])
+
+        # Check subscriber was created
+        subscriber = Subscriber.objects.get(email="test@example.com")
+        self.assertTrue(subscriber.is_confirmed)
+        self.assertTrue(subscriber.is_active)
+
+    def test_toggle_unsubscribes(self):
+        """Test toggle unsubscribes existing subscriber."""
+        from games.models import Subscriber
+
+        # Create active subscriber
+        Subscriber.objects.create(
+            email="test@example.com",
+            is_confirmed=True,
+            is_active=True,
+            confirmation_token="test123",
+            unsubscribe_token="test456",
+        )
+
+        self.client.login(username="testuser", password="testpass123")
+        response = self.client.post(reverse("toggle_subscription"))
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        self.assertFalse(data["subscribed"])
+
+        # Check subscriber was deactivated
+        subscriber = Subscriber.objects.get(email="test@example.com")
+        self.assertFalse(subscriber.is_active)
+
+    def test_toggle_resubscribes(self):
+        """Test toggle resubscribes inactive subscriber."""
+        from games.models import Subscriber
+
+        # Create inactive subscriber
+        Subscriber.objects.create(
+            email="test@example.com",
+            is_confirmed=True,
+            is_active=False,
+            confirmation_token="test123",
+            unsubscribe_token="test456",
+        )
+
+        self.client.login(username="testuser", password="testpass123")
+        response = self.client.post(reverse("toggle_subscription"))
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        self.assertTrue(data["subscribed"])
+
+        # Check subscriber was reactivated
+        subscriber = Subscriber.objects.get(email="test@example.com")
+        self.assertTrue(subscriber.is_active)

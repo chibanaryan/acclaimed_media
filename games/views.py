@@ -1,4 +1,5 @@
 import csv
+import secrets
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlencode
@@ -10,7 +11,7 @@ from django.core.cache import cache
 from django.db.models import Count, Min, Max, Prefetch, Q
 from django.db.models.functions import Lower
 from django.forms import Form
-from django.http import HttpResponse, StreamingHttpResponse
+from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import redirect, get_object_or_404
 from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
@@ -247,6 +248,45 @@ class ProfileView(LoginRequiredMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         context["user"] = self.request.user
         return context
+
+
+class ToggleSubscriptionView(LoginRequiredMixin, View):
+    """Toggle newsletter subscription for authenticated users."""
+
+    def post(self, request):
+        """Toggle subscription status."""
+        email = request.user.email
+        if not email:
+            return JsonResponse({"error": "No email address"}, status=400)
+
+        # Get or create subscriber
+        subscriber, created = models.Subscriber.objects.get_or_create(
+            email=email,
+            defaults={
+                "confirmation_token": secrets.token_urlsafe(32),
+                "unsubscribe_token": secrets.token_urlsafe(32),
+            },
+        )
+
+        if created:
+            # New subscriber - auto-confirm since user is authenticated
+            subscriber.is_confirmed = True
+            subscriber.is_active = True
+            subscriber.save()
+            return JsonResponse({"subscribed": True})
+
+        # Toggle existing subscription
+        if subscriber.is_confirmed and subscriber.is_active:
+            # Currently subscribed - unsubscribe
+            subscriber.is_active = False
+            subscriber.save()
+            return JsonResponse({"subscribed": False})
+        else:
+            # Not subscribed or inactive - subscribe
+            subscriber.is_confirmed = True
+            subscriber.is_active = True
+            subscriber.save()
+            return JsonResponse({"subscribed": True})
 
 
 def download_games_csv(request):

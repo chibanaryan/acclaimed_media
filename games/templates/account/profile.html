@@ -22,6 +22,46 @@
 
         <div class="divider"></div>
 
+        {# Newsletter Subscription #}
+        <div class="form-control"
+             x-data="{
+                 subscribed: {{ is_subscribed|yesno:'true,false' }},
+                 loading: false
+             }">
+            <label class="label cursor-pointer justify-start gap-3">
+                <input type="checkbox"
+                       class="checkbox checkbox-primary"
+                       :checked="subscribed"
+                       :disabled="loading"
+                       @change="
+                           loading = true;
+                           fetch('{% url 'toggle_subscription' %}', {
+                               method: 'POST',
+                               credentials: 'same-origin',
+                               headers: {
+                                   'X-CSRFToken': '{{ csrf_token }}',
+                                   'Content-Type': 'application/json'
+                               }
+                           }).then(r => r.json()).then(data => {
+                               subscribed = data.subscribed;
+                               loading = false;
+                           }).catch(() => {
+                               loading = false;
+                               $el.checked = subscribed;
+                           });
+                       ">
+                <div>
+                    <span class="label-text font-medium">Subscribe to newsletter</span>
+                    <p class="text-xs text-base-content/60">
+                        Get notified when we publish new content
+                    </p>
+                </div>
+                <span x-show="loading" class="loading loading-spinner loading-sm ml-auto"></span>
+            </label>
+        </div>
+
+        <div class="divider"></div>
+
         {# Coming soon section #}
         <div class="bg-base-200 rounded-lg p-4 mb-4">
             <h2 class="font-semibold mb-2">
@@ -36,10 +76,6 @@
         <div class="divider"></div>
 
         <div class="space-y-2">
-            <a href="{% url 'account_email' %}" class="btn btn-outline w-full">
-                <span class="mdi mdi-email mr-2"></span>
-                Manage Email Addresses
-            </a>
             <a href="{% url 'account_change_password' %}" class="btn btn-outline w-full">
                 <span class="mdi mdi-lock mr-2"></span>
                 Change Password

@@ -40,6 +40,11 @@ urlpatterns = [
     ),
     # django-allauth authentication
     path("accounts/profile/", views.ProfileView.as_view(), name="account_profile"),
+    path(
+        "accounts/toggle-subscription/",
+        views.ToggleSubscriptionView.as_view(),
+        name="toggle_subscription",
+    ),
     path("accounts/", include("allauth.urls")),
     # Main site routes (Django + HTMX + Alpine.js)
     path("", views.HomePageView.as_view(), name="home"),
