@@ -1,0 +1,95 @@
+{% extends "account/base_auth.html" %}
+
+{% block title %} - Sign Up{% endblock %}
+
+{% block auth_content %}
+    <h1 class="text-3xl font-bold mb-4 text-center">Create Account</h1>
+
+    <p class="text-base-content/85 text-center mb-6">
+        Sign up to track which games you've played and create your personal backlog.
+    </p>
+
+    {% if form.non_field_errors %}
+        <div class="alert alert-error mb-4">
+            {% for error in form.non_field_errors %}
+                <span>{{ error }}</span>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <form method="post" action="{% url 'account_signup' %}" class="space-y-4">
+        {% csrf_token %}
+
+        <div class="form-control">
+            <label class="label" for="id_email">
+                <span class="label-text">Email</span>
+            </label>
+            <input class="input input-bordered w-full{% if form.email.errors %} input-error{% endif %}"
+                   type="email"
+                   name="email"
+                   id="id_email"
+                   placeholder="your@email.com"
+                   autocomplete="email"
+                   required>
+            {% if form.email.errors %}
+                <label class="label">
+                    <span class="label-text-alt text-error">{{ form.email.errors.0 }}</span>
+                </label>
+            {% endif %}
+        </div>
+
+        <div class="form-control">
+            <label class="label" for="id_password1">
+                <span class="label-text">Password</span>
+            </label>
+            <input class="input input-bordered w-full{% if form.password1.errors %} input-error{% endif %}"
+                   type="password"
+                   name="password1"
+                   id="id_password1"
+                   autocomplete="new-password"
+                   required>
+            {% if form.password1.errors %}
+                <label class="label">
+                    <span class="label-text-alt text-error">{{ form.password1.errors.0 }}</span>
+                </label>
+            {% endif %}
+        </div>
+
+        <div class="form-control">
+            <label class="label" for="id_password2">
+                <span class="label-text">Confirm Password</span>
+            </label>
+            <input class="input input-bordered w-full{% if form.password2.errors %} input-error{% endif %}"
+                   type="password"
+                   name="password2"
+                   id="id_password2"
+                   autocomplete="new-password"
+                   required>
+            {% if form.password2.errors %}
+                <label class="label">
+                    <span class="label-text-alt text-error">{{ form.password2.errors.0 }}</span>
+                </label>
+            {% endif %}
+        </div>
+
+        <div class="form-control mt-6">
+            <button type="submit" class="btn btn-primary w-full">
+                <span class="mdi mdi-account-plus mr-2"></span>
+                Sign Up
+            </button>
+        </div>
+
+        {% if redirect_field_value %}
+            <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
+        {% endif %}
+    </form>
+
+    <div class="divider">OR</div>
+
+    <div class="text-center">
+        <p class="text-base-content/85">
+            Already have an account?
+            <a href="{% url 'account_login' %}" class="link link-primary">Login</a>
+        </p>
+    </div>
+{% endblock %}

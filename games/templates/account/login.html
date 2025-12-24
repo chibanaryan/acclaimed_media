@@ -1,0 +1,92 @@
+{% extends "account/base_auth.html" %}
+
+{% block title %} - Login{% endblock %}
+
+{% block auth_content %}
+    <h1 class="text-3xl font-bold mb-6 text-center">Login</h1>
+
+    {% if form.non_field_errors %}
+        <div class="alert alert-error mb-4">
+            {% for error in form.non_field_errors %}
+                <span>{{ error }}</span>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    {% if redirect_field_value %}
+        <div class="alert alert-info mb-4">
+            <span>Please login to continue.</span>
+        </div>
+    {% endif %}
+
+    <form method="post" action="{% url 'account_login' %}" class="space-y-4">
+        {% csrf_token %}
+
+        <div class="form-control">
+            <label class="label" for="id_login">
+                <span class="label-text">Email</span>
+            </label>
+            <input class="input input-bordered w-full{% if form.login.errors %} input-error{% endif %}"
+                   type="email"
+                   name="login"
+                   id="id_login"
+                   placeholder="your@email.com"
+                   autocomplete="email"
+                   required>
+            {% if form.login.errors %}
+                <label class="label">
+                    <span class="label-text-alt text-error">{{ form.login.errors.0 }}</span>
+                </label>
+            {% endif %}
+        </div>
+
+        <div class="form-control">
+            <label class="label" for="id_password">
+                <span class="label-text">Password</span>
+            </label>
+            <input class="input input-bordered w-full{% if form.password.errors %} input-error{% endif %}"
+                   type="password"
+                   name="password"
+                   id="id_password"
+                   autocomplete="current-password"
+                   required>
+            {% if form.password.errors %}
+                <label class="label">
+                    <span class="label-text-alt text-error">{{ form.password.errors.0 }}</span>
+                </label>
+            {% endif %}
+        </div>
+
+        <div class="form-control">
+            <label class="label cursor-pointer justify-start gap-2">
+                <input type="checkbox" name="remember" class="checkbox checkbox-sm">
+                <span class="label-text">Remember me</span>
+            </label>
+        </div>
+
+        <div class="form-control mt-6">
+            <button type="submit" class="btn btn-primary w-full">
+                <span class="mdi mdi-login mr-2"></span>
+                Login
+            </button>
+        </div>
+
+        {% if redirect_field_value %}
+            <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
+        {% endif %}
+    </form>
+
+    <div class="divider">OR</div>
+
+    <div class="text-center space-y-2">
+        <p class="text-base-content/85">
+            Don't have an account?
+            <a href="{% url 'account_signup' %}" class="link link-primary">Sign up</a>
+        </p>
+        <p>
+            <a href="{% url 'account_reset_password' %}" class="link link-primary text-sm">
+                Forgot your password?
+            </a>
+        </p>
+    </div>
+{% endblock %}

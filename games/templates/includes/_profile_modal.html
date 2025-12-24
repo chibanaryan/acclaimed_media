@@ -1,0 +1,160 @@
+{# Edit Profile Modal #}
+<dialog id="profileModal" class="modal">
+    <div class="modal-box bg-base-200 max-w-md">
+        <form method="dialog">
+            <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" aria-label="close">
+                <span class="mdi mdi-close"></span>
+            </button>
+        </form>
+
+        <h2 class="text-2xl font-bold mb-6">Edit Profile</h2>
+
+        {# Profile Info #}
+        <div class="space-y-4 mb-6">
+            <div class="form-control">
+                <label class="label">
+                    <span class="label-text font-semibold">Email</span>
+                </label>
+                <p class="text-lg">{{ user.email }}</p>
+            </div>
+
+            <div class="form-control">
+                <label class="label">
+                    <span class="label-text font-semibold">Member Since</span>
+                </label>
+                <p class="text-lg">{{ user.date_joined|date:"F j, Y" }}</p>
+            </div>
+        </div>
+
+        <div class="divider"></div>
+
+        {# Newsletter Subscription #}
+        <div class="mb-6"
+             x-data="{
+                 subscribed: {{ is_subscribed|yesno:'true,false' }},
+                 loading: false,
+                 message: '',
+                 messageType: ''
+             }">
+            <h3 class="font-semibold mb-3">
+                <span class="mdi mdi-email-newsletter mr-1"></span>
+                Newsletter
+            </h3>
+
+            <div x-show="message" x-cloak
+                 :class="messageType === 'success' ? 'alert-success' : 'alert-error'"
+                 class="alert mb-3 text-sm">
+                <span x-text="message"></span>
+            </div>
+
+            <template x-if="subscribed">
+                <div>
+                    <p class="text-sm text-base-content/85 mb-3">
+                        You're subscribed to updates. We'll email you when we publish new content.
+                    </p>
+                    <form action="{% url 'subscribe' %}" method="post"
+                          @submit.prevent="
+                              loading = true;
+                              message = '';
+                              // Redirect to unsubscribe flow
+                              window.location.href = '{% url 'subscribe' %}?unsubscribe=1';
+                          ">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline btn-sm" :disabled="loading">
+                            <span x-show="loading" class="loading loading-spinner loading-xs"></span>
+                            Unsubscribe
+                        </button>
+                    </form>
+                </div>
+            </template>
+
+            <template x-if="!subscribed">
+                <div>
+                    <p class="text-sm text-base-content/85 mb-3">
+                        Get notified when we publish new content. No spam, just updates.
+                    </p>
+                    <form action="{% url 'subscribe' %}" method="post"
+                          @submit.prevent="
+                              loading = true;
+                              message = '';
+                              const formData = new FormData();
+                              formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+                              formData.append('email', '{{ user.email }}');
+                              fetch('{% url 'subscribe' %}', {
+                                  method: 'POST',
+                                  body: formData
+                              }).then(response => {
+                                  loading = false;
+                                  if (response.redirected && response.url.includes('pending')) {
+                                      message = 'Check your email to confirm subscription.';
+                                      messageType = 'success';
+                                  } else if (response.redirected && response.url.includes('already')) {
+                                      subscribed = true;
+                                      message = 'You\\'re already subscribed!';
+                                      messageType = 'success';
+                                  } else {
+                                      message = 'Something went wrong. Please try again.';
+                                      messageType = 'error';
+                                  }
+                              }).catch(() => {
+                                  loading = false;
+                                  message = 'Something went wrong. Please try again.';
+                                  messageType = 'error';
+                              });
+                          ">
+                        {% csrf_token %}
+                        <input type="hidden" name="email" value="{{ user.email }}">
+                        <button type="submit" class="btn btn-primary btn-sm" :disabled="loading">
+                            <span x-show="loading" class="loading loading-spinner loading-xs"></span>
+                            <span class="mdi mdi-email-check mr-1"></span>
+                            Subscribe to Updates
+                        </button>
+                    </form>
+                </div>
+            </template>
+        </div>
+
+        <div class="divider"></div>
+
+        {# Coming Soon #}
+        <div class="bg-base-300 rounded-lg p-4 mb-6">
+            <h3 class="font-semibold mb-2">
+                <span class="mdi mdi-gamepad-variant mr-1"></span>
+                Coming Soon
+            </h3>
+            <p class="text-sm text-base-content/85">
+                Track which games you've played, mark favorites, and build your personal backlog.
+            </p>
+        </div>
+
+        {# Account Actions #}
+        <div class="space-y-2">
+            <a href="{% url 'account_email' %}" class="btn btn-outline btn-sm w-full">
+                <span class="mdi mdi-email mr-1"></span>
+                Manage Email Addresses
+            </a>
+            <a href="{% url 'account_change_password' %}" class="btn btn-outline btn-sm w-full">
+                <span class="mdi mdi-lock mr-1"></span>
+                Change Password
+            </a>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>
+
+<script nonce="{{ csp_nonce }}">
+    // Profile modal functionality
+    document.addEventListener('DOMContentLoaded', function() {
+        const profileModal = document.getElementById('profileModal');
+        if (profileModal) {
+            document.addEventListener('click', function(e) {
+                if (e.target.closest('.profile-modal-trigger')) {
+                    e.preventDefault();
+                    profileModal.showModal();
+                }
+            });
+        }
+    });
+</script>

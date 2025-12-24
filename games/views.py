@@ -238,6 +238,17 @@ class ContactThankYouView(TemplateView):
     template_name = "contact_thank_you.html"
 
 
+class ProfileView(LoginRequiredMixin, TemplateView):
+    """Display user profile page."""
+
+    template_name = "account/profile.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["user"] = self.request.user
+        return context
+
+
 def download_games_csv(request):
     """Download games list as CSV, respecting current filters."""
     # Get filtered queryset using same logic as GameSearchView / GameListView

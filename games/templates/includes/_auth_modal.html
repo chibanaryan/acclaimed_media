@@ -1,0 +1,220 @@
+{# Auth Modal - Login/Signup with Alpine.js state management #}
+<dialog id="authModal" class="modal"
+        x-data="{
+            view: 'options',
+            isLogin: true,
+            email: '',
+            password: '',
+            password2: '',
+            error: '',
+            loading: false,
+            reset() {
+                this.view = 'options';
+                this.isLogin = true;
+                this.email = '';
+                this.password = '';
+                this.password2 = '';
+                this.error = '';
+                this.loading = false;
+            }
+        }"
+        @close="reset()">
+    <div class="modal-box bg-base-200 max-w-sm">
+        <form method="dialog">
+            <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" aria-label="close">
+                <span class="mdi mdi-close"></span>
+            </button>
+        </form>
+
+        {# Auth Options View (default) #}
+        <div x-show="view === 'options'" x-cloak>
+            <h2 class="text-2xl font-bold text-center mb-2">Welcome</h2>
+            <p class="text-base-content/85 text-center text-sm mb-6">
+                Sign in to track your games and build your backlog.
+            </p>
+
+            <div class="space-y-3">
+                {# Email option #}
+                <button type="button"
+                        @click="view = 'login'"
+                        class="btn btn-outline w-full">
+                    <span class="mdi mdi-email mr-2"></span>
+                    Continue with Email
+                </button>
+
+                {# Future OAuth placeholders #}
+                <div class="divider text-xs text-base-content/60">Coming Soon</div>
+
+                <button type="button" disabled class="btn btn-outline w-full opacity-50 cursor-not-allowed">
+                    <svg class="w-5 h-5 mr-2" viewBox="0 0 24 24">
+                        <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                        <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                        <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                        <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                    </svg>
+                    Continue with Google
+                </button>
+            </div>
+        </div>
+
+        {# Login/Signup Form View #}
+        <div x-show="view === 'login'" x-cloak>
+            <button type="button" @click="view = 'options'" class="btn btn-ghost btn-sm mb-2">
+                <span class="mdi mdi-chevron-left"></span> Back
+            </button>
+
+            <h2 class="text-2xl font-bold text-center mb-6" x-text="isLogin ? 'Sign In' : 'Create Account'"></h2>
+
+            {# Error message #}
+            <div x-show="error" x-cloak class="alert alert-error mb-4 text-sm">
+                <span x-text="error"></span>
+            </div>
+
+            <form @submit.prevent="
+                loading = true;
+                error = '';
+                const formData = new FormData();
+                formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+                formData.append('login', email);
+                formData.append('email', email);
+                formData.append('password', password);
+                if (!isLogin) {
+                    formData.append('password1', password);
+                    formData.append('password2', password2);
+                }
+                fetch(isLogin ? '{% url 'account_login' %}' : '{% url 'account_signup' %}', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'same-origin',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                }).then(response => {
+                    if (response.redirected) {
+                        window.location.href = response.url;
+                    } else {
+                        return response.text();
+                    }
+                }).then(html => {
+                    if (html && html.includes('error') || html && html.includes('Error')) {
+                        loading = false;
+                        error = isLogin ? 'Invalid email or password.' : 'Please check your information and try again.';
+                    }
+                }).catch(() => {
+                    loading = false;
+                    error = 'Something went wrong. Please try again.';
+                });
+            " class="space-y-4">
+                <div class="form-control">
+                    <label class="label" for="auth_email">
+                        <span class="label-text">Email</span>
+                    </label>
+                    <input type="email"
+                           id="auth_email"
+                           x-model="email"
+                           class="input input-bordered w-full"
+                           placeholder="your@email.com"
+                           required>
+                </div>
+
+                <div class="form-control">
+                    <label class="label" for="auth_password">
+                        <span class="label-text">Password</span>
+                    </label>
+                    <input type="password"
+                           id="auth_password"
+                           x-model="password"
+                           class="input input-bordered w-full"
+                           required>
+                </div>
+
+                <div x-show="!isLogin" x-cloak class="form-control">
+                    <label class="label" for="auth_password2">
+                        <span class="label-text">Confirm Password</span>
+                    </label>
+                    <input type="password"
+                           id="auth_password2"
+                           x-model="password2"
+                           class="input input-bordered w-full"
+                           :required="!isLogin">
+                </div>
+
+                <button type="submit"
+                        class="btn btn-primary w-full"
+                        :disabled="loading">
+                    <span x-show="loading" class="loading loading-spinner loading-sm"></span>
+                    <span x-text="isLogin ? 'Sign In' : 'Create Account'"></span>
+                </button>
+            </form>
+
+            <div class="divider"></div>
+
+            <div class="text-center text-sm space-y-2">
+                <p>
+                    <span x-text="isLogin ? 'Don\\'t have an account?' : 'Already have an account?'"></span>
+                    <button type="button"
+                            @click="isLogin = !isLogin; error = ''"
+                            class="link link-primary"
+                            x-text="isLogin ? 'Sign up' : 'Sign in'">
+                    </button>
+                </p>
+                <p x-show="isLogin">
+                    <button type="button"
+                            @click="view = 'forgot'"
+                            class="link link-primary text-sm">
+                        Forgot your password?
+                    </button>
+                </p>
+            </div>
+        </div>
+
+        {# Forgot Password View #}
+        <div x-show="view === 'forgot'" x-cloak>
+            <button type="button" @click="view = 'login'" class="btn btn-ghost btn-sm mb-2">
+                <span class="mdi mdi-chevron-left"></span> Back
+            </button>
+
+            <h2 class="text-2xl font-bold text-center mb-2">Reset Password</h2>
+            <p class="text-base-content/85 text-center text-sm mb-6">
+                Enter your email and we'll send you a reset link.
+            </p>
+
+            <form action="{% url 'account_reset_password' %}" method="post" class="space-y-4">
+                {% csrf_token %}
+                <div class="form-control">
+                    <label class="label" for="reset_email">
+                        <span class="label-text">Email</span>
+                    </label>
+                    <input type="email"
+                           id="reset_email"
+                           name="email"
+                           x-model="email"
+                           class="input input-bordered w-full"
+                           placeholder="your@email.com"
+                           required>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-full">
+                    <span class="mdi mdi-email-outline mr-2"></span>
+                    Send Reset Link
+                </button>
+            </form>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>
+
+<script nonce="{{ csp_nonce }}">
+    // Auth modal functionality
+    document.addEventListener('DOMContentLoaded', function() {
+        const authModal = document.getElementById('authModal');
+        if (authModal) {
+            document.addEventListener('click', function(e) {
+                if (e.target.closest('.auth-modal-trigger')) {
+                    e.preventDefault();
+                    authModal.showModal();
+                }
+            });
+        }
+    });
+</script>

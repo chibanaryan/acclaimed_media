@@ -1,0 +1,53 @@
+{% extends "account/base_auth.html" %}
+
+{% block title %} - Profile{% endblock %}
+
+{% block auth_content %}
+    <h1 class="text-3xl font-bold mb-6 text-center">Your Profile</h1>
+
+    <div class="space-y-4">
+        <div class="form-control">
+            <label class="label">
+                <span class="label-text font-semibold">Email</span>
+            </label>
+            <p class="text-lg">{{ user.email }}</p>
+        </div>
+
+        <div class="form-control">
+            <label class="label">
+                <span class="label-text font-semibold">Member Since</span>
+            </label>
+            <p class="text-lg">{{ user.date_joined|date:"F j, Y" }}</p>
+        </div>
+
+        <div class="divider"></div>
+
+        {# Coming soon section #}
+        <div class="bg-base-200 rounded-lg p-4 mb-4">
+            <h2 class="font-semibold mb-2">
+                <span class="mdi mdi-gamepad-variant mr-1"></span>
+                Coming Soon
+            </h2>
+            <p class="text-sm text-base-content/85">
+                Track which games you've played, mark favorites, and build your personal backlog.
+            </p>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="space-y-2">
+            <a href="{% url 'account_email' %}" class="btn btn-outline w-full">
+                <span class="mdi mdi-email mr-2"></span>
+                Manage Email Addresses
+            </a>
+            <a href="{% url 'account_change_password' %}" class="btn btn-outline w-full">
+                <span class="mdi mdi-lock mr-2"></span>
+                Change Password
+            </a>
+            <a href="{% url 'account_logout' %}" class="btn btn-error btn-outline w-full">
+                <span class="mdi mdi-logout mr-2"></span>
+                Sign Out
+            </a>
+        </div>
+    </div>
+{% endblock %}

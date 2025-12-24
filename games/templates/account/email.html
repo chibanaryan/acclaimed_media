@@ -1,0 +1,72 @@
+{% extends "account/base_auth.html" %}
+
+{% block title %} - Manage Email{% endblock %}
+
+{% block auth_content %}
+    <h1 class="text-3xl font-bold mb-6 text-center">Manage Email</h1>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %} mb-4">
+                <span>{{ message }}</span>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <p class="text-base-content/85 mb-4">
+        The following email addresses are associated with your account:
+    </p>
+
+    {% if emailaddresses %}
+        <div class="space-y-2 mb-6">
+            {% for emailaddress in emailaddresses %}
+                <div class="flex items-center justify-between p-3 bg-base-200 rounded-lg">
+                    <div>
+                        <span class="font-medium">{{ emailaddress.email }}</span>
+                        {% if emailaddress.primary %}
+                            <span class="badge badge-primary badge-sm ml-2">Primary</span>
+                        {% endif %}
+                        {% if emailaddress.verified %}
+                            <span class="badge badge-success badge-sm ml-1">Verified</span>
+                        {% else %}
+                            <span class="badge badge-warning badge-sm ml-1">Unverified</span>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="text-base-content/60 mb-6">No email addresses on file.</p>
+    {% endif %}
+
+    <div class="divider">Add Email</div>
+
+    <form method="post" action="{% url 'account_email' %}" class="space-y-4">
+        {% csrf_token %}
+
+        <div class="form-control">
+            <label class="label" for="id_email">
+                <span class="label-text">New Email Address</span>
+            </label>
+            <input class="input input-bordered w-full"
+                   type="email"
+                   name="email"
+                   id="id_email"
+                   placeholder="new@email.com"
+                   autocomplete="email">
+        </div>
+
+        <div class="form-control">
+            <button type="submit" name="action_add" class="btn btn-primary w-full">
+                <span class="mdi mdi-email-outline mr-2"></span>
+                Add Email
+            </button>
+        </div>
+    </form>
+
+    <div class="text-center mt-6">
+        <a href="{% url 'account_profile' %}" class="link link-primary text-sm">
+            Back to Profile
+        </a>
+    </div>
+{% endblock %}

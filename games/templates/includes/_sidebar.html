@@ -160,6 +160,36 @@
             </li>
         </ul>
 
+        {# Authentication #}
+        {% if user.is_authenticated %}
+        <div class="dropdown dropdown-top w-full mb-3">
+            <div tabindex="0" role="button" class="btn btn-outline w-full">
+                <span class="mdi mdi-account text-xl"></span>
+                Profile
+                <span class="mdi mdi-chevron-up text-sm"></span>
+            </div>
+            <ul tabindex="0" class="dropdown-content menu bg-base-300 rounded-box w-full p-2 shadow-lg z-50">
+                <li>
+                    <a href="#" class="profile-modal-trigger">
+                        <span class="mdi mdi-account-edit"></span>
+                        Edit Profile
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'account_logout' %}">
+                        <span class="mdi mdi-logout"></span>
+                        Logout
+                    </a>
+                </li>
+            </ul>
+        </div>
+        {% else %}
+        <button class="btn btn-outline w-full mb-3 auth-modal-trigger">
+            <span class="mdi mdi-login text-xl"></span>
+            Login
+        </button>
+        {% endif %}
+
         {# Contact button #}
         <button class="btn btn-primary w-full mb-3 contact-modal-trigger">
             <span class="mdi mdi-email text-xl"></span>

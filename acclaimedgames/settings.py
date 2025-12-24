@@ -66,7 +66,17 @@ INSTALLED_APPS = [
     "rest_framework",
     "tailwind",
     "theme",
+    # django-allauth
+    "allauth",
+    "allauth.account",
+    "allauth.socialaccount",  # For future OAuth support
     "games",
+]
+
+# django-allauth authentication backends
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",  # Keep for admin login
+    "allauth.account.auth_backends.AuthenticationBackend",
 ]
 
 # django-tailwind configuration
@@ -82,6 +92,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "allauth.account.middleware.AccountMiddleware",  # django-allauth
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django.contrib.flatpages.middleware.FlatpageFallbackMiddleware",
@@ -112,6 +123,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "games.context_processors.csp_nonce",  # CSP nonce for templates
+                "games.context_processors.user_subscription",  # Subscription status
             ],
             # In development, don't use cached template loader
             # This ensures template changes are picked up immediately
@@ -166,6 +178,15 @@ AUTH_PASSWORD_VALIDATORS = [
 # Authentication URLs
 LOGIN_REDIRECT_URL = "/"
 LOGIN_URL = "/accounts/login/"
+
+# django-allauth configuration
+ACCOUNT_LOGIN_METHODS = {"email"}  # Email-only login (no username)
+ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]  # Email-only signup
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None  # Tell allauth there's no username
+ACCOUNT_UNIQUE_EMAIL = True
+ACCOUNT_EMAIL_VERIFICATION = "none"  # No mandatory verification initially
+ACCOUNT_LOGOUT_REDIRECT_URL = "/"
+ACCOUNT_EMAIL_SUBJECT_PREFIX = "[Acclaimed Video Games] "
 
 INTERNAL_IPS = [
     "127.0.0.1",

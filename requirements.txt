@@ -1,6 +1,7 @@
 beautifulsoup4
 coverage
 django
+django-allauth[socialaccount]
 django-debug-toolbar
 django-environ
 django-extensions
