@@ -59,27 +59,15 @@
                      console.warn('[YearGrid] Invalid year counts received:', event.detail);
                      return;
                  }
-                 // Ensure the array has the same years as originalYearCounts
-                 // If lengths don't match, something is wrong - use a merged approach
-                 if (event.detail.length !== this.originalYearCounts.length) {
-                     console.warn('[YearGrid] Year counts length mismatch:', event.detail.length, 'vs', this.originalYearCounts.length);
-                     // Build a complete array using original structure with new counts
-                     const newCountMap = {};
-                     event.detail.forEach(yc => {
-                         if (yc && typeof yc.year === 'number') {
-                             newCountMap[yc.year] = yc.count || 0;
-                         }
-                     });
-                     this.yearCounts = this.originalYearCounts.map(yc => ({
-                         year: yc.year,
-                         count: newCountMap[yc.year] !== undefined ? newCountMap[yc.year] : 0
-                     }));
-                 } else {
-                     this.yearCounts = event.detail;
-                 }
-                 // Keep originalMaxCount for consistent intensity scale
-                 this.maxCount = this.originalMaxCount;
-                 this.buildDecades();
+                 // Build count map from event data
+                 const newCountMap = {};
+                 event.detail.forEach(yc => {
+                     if (yc && typeof yc.year === 'number') {
+                         newCountMap[yc.year] = yc.count || 0;
+                     }
+                 });
+                 // Update counts in place (no rebuild) for instant UI update
+                 this.updateCounts(newCountMap);
              };
              window.addEventListener('year-counts-update', this._yearCountsHandler);
          },
@@ -94,6 +82,23 @@
          },
          handleReset() {
              this.lastClicked = null;
+         },
+
+         // Update counts in place without rebuilding structure (fast)
+         updateCounts(countMap) {
+             for (const decade of this.decades) {
+                 for (const cell of decade.cells) {
+                     if (cell && cell.year && !cell.hidden) {
+                         const newCount = countMap[cell.year] || 0;
+                         cell.count = newCount;
+                         cell.available = newCount > 0;
+                     }
+                 }
+             }
+             // Also update yearCounts array for other methods that use it
+             for (const yc of this.yearCounts) {
+                 yc.count = countMap[yc.year] || 0;
+             }
          },
 
          buildDecades() {

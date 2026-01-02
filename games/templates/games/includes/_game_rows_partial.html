@@ -1,0 +1,6 @@
+{# Game rows partial - used for background preloading all game rows #}
+{# Returns just the game rows without any UI chrome (sort, pagination, etc.) #}
+{# These rows have data attributes for client-side filtering via show/hide #}
+{% for game in games %}
+    {% include 'games/includes/_game_row.html' with game=game index=forloop.counter show_rank=show_rank %}
+{% endfor %}

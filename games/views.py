@@ -898,9 +898,9 @@ class HomePageView(RobustPaginationMixin, ListView):
             )
 
         platforms = utils.get_or_set_cache(
-            f"search_platforms_list:{config.CACHE_VERSION}",
-            models.Platform.objects.all(),
-            ["id", "name", "code", "year_start", "year_end"],
+            f"search_platforms_list_with_counts:{config.CACHE_VERSION}",
+            models.Platform.objects.annotate(game_count=Count("games")),
+            ["id", "name", "code", "year_start", "year_end", "game_count"],
             order_by="name",
             transform_id=True,
         )
@@ -1188,6 +1188,38 @@ class HomePageView(RobustPaginationMixin, ListView):
         context["last_update"] = metadata.last_full_update
 
         return context
+
+
+class GameRowsPartialView(ListView):
+    """
+    Returns all game rows as HTML for background preloading.
+
+    This enables client-side filtering via show/hide without needing
+    to maintain separate client-side rendering logic. The server is the
+    single source of truth for row HTML.
+    """
+
+    template_name = "games/includes/_game_rows_partial.html"
+    context_object_name = "games"
+
+    def get_queryset(self):
+        return (
+            models.Game.objects.with_relations()
+            .with_played_status(self.request.user)
+            .with_list_count()
+            .order_by("rank")
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["show_rank"] = "alltime"
+        return context
+
+    def render_to_response(self, context, **response_kwargs):
+        response = super().render_to_response(context, **response_kwargs)
+        # Cache for 5 minutes - games don't change often
+        response["Cache-Control"] = "public, max-age=300"
+        return response
 
 
 class DeveloperListView(RobustPaginationMixin, HTMXPartialMixin, ListView):

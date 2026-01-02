@@ -316,7 +316,7 @@
   .year-grid-decade {
     @apply w-[50px] min-w-[50px] flex items-center justify-center py-1.5 px-1;
     @apply bg-base-300 rounded-sm cursor-pointer font-semibold text-base-content/60;
-    @apply transition-all duration-150;
+    /* No transition - selection state changes should be instant */
   }
 
   .year-grid-decade:hover {
@@ -344,9 +344,10 @@
   /* Year cell with heatmap background */
   .year-grid-cell {
     @apply flex-1 min-w-0 h-7 flex items-center justify-center;
-    @apply rounded-sm cursor-pointer relative transition-all duration-150;
+    @apply rounded-sm cursor-pointer relative;
     /* Heat-style heatmap - deep orange-red for warm color gradient */
     background-color: color-mix(in oklch, var(--color-heatmap) var(--heatmap-opacity, 10%), transparent);
+    /* No transition - selection state changes should be instant */
   }
 
   .year-grid-cell:hover {
@@ -1015,5 +1016,15 @@ input[type="number"] {
 .tooltip::before,
 .tooltip::after {
   z-index: 50 !important;
+}
+
+/* Simple filter: Hide preloaded games until they're filtered into view */
+.preloaded-hidden {
+  display: none !important;
+}
+
+/* Simple filter: Hide games beyond current pagination limit */
+.pagination-hidden {
+  display: none !important;
 }
 

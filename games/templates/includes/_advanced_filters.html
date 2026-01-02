@@ -177,65 +177,94 @@
                    this.filters.played;
         },
         async initClientFiltering() {
-            // Wait for deferred scripts to load (retry up to 10 times, 100ms apart)
+            // Dispatch initial counts after Alpine has initialized all child components
+            // Use setTimeout(0) to defer until after the current execution context
+            setTimeout(() => this.dispatchInitialCounts(), 0);
+
+            // Wait for SimpleGameFilter to be available
             let retries = 0;
-            const maxRetries = 10;
+            const maxRetries = 20;
 
             const tryInit = async () => {
-                if (typeof getClientSideFiltering !== 'function') {
+                if (typeof window.SimpleGameFilter === 'undefined') {
                     retries++;
                     if (retries < maxRetries) {
                         setTimeout(tryInit, 100);
                         return;
                     }
-                    console.log('[CSF] Client-side filtering not available after retries');
-                    // Fallback: dispatch initial counts from server-rendered JSON
+                    console.log('[SimpleFilter] Not available after retries');
                     this.dispatchInitialCounts();
                     return;
                 }
 
-                this._csf = getClientSideFiltering();
-                try {
-                    await this._csf.init({
-                        onLoadStart: () => console.log('[CSF] Loading game data...'),
-                        onLoadComplete: () => {
-                            console.log('[CSF] Game data loaded, client filtering ready');
-                            this.clientFilterReady = true;
-                            // Only re-render if filters are active (prevents flash on default page)
-                            if (this.hasActiveFilters()) {
-                                this.performClientUpdate({ historyMethod: 'replaceState' });
-                            } else {
-                                // Just update faceted counts without re-rendering
-                                this.updateFacetCounts();
-                            }
-                        }
-                    });
-                } catch (e) {
-                    console.error('[CSF] Failed to initialize:', e);
-                    // Fallback: dispatch initial counts from server-rendered JSON
-                    this.dispatchInitialCounts();
+                // Listen for filter data loaded (JSON is fast, enables filtering)
+                window.addEventListener('filter-data-loaded', () => {
+                    console.log('[SimpleFilter] Filter data loaded, client filtering ready');
+                    this.clientFilterReady = true;
+
+                    // Dispatch full year counts for heatmap baseline (before any filters)
+                    // This ensures heatmap intensity is always relative to the full dataset
+                    const fullYearCounts = window.SimpleGameFilter.getFullYearCounts();
+                    if (fullYearCounts.length > 0) {
+                        window.dispatchEvent(new CustomEvent('year-original-counts-update', { detail: fullYearCounts }));
+                    }
+
+                    // Re-apply current filter state after data is loaded
+                    this.performClientUpdate({ historyMethod: 'replaceState' });
+                }, { once: true });
+
+                // Check if filter data already loaded
+                if (window.SimpleGameFilter.isFilterDataLoaded()) {
+                    console.log('[SimpleFilter] Filter data already loaded');
+                    this.clientFilterReady = true;
+
+                    // Dispatch full year counts for heatmap baseline
+                    const fullYearCounts = window.SimpleGameFilter.getFullYearCounts();
+                    if (fullYearCounts.length > 0) {
+                        window.dispatchEvent(new CustomEvent('year-original-counts-update', { detail: fullYearCounts }));
+                    }
+
+                    this.performClientUpdate({ historyMethod: 'replaceState' });
                 }
             };
 
             tryInit();
         },
+        // Get all descendant genre IDs for a given genre (recursive)
+        _getDescendantIds(genreId) {
+            const children = this.genres.filter(g => String(g.parent_id) === String(genreId));
+            let ids = children.map(c => String(c.id));
+            for (const child of children) {
+                ids = ids.concat(this._getDescendantIds(child.id));
+            }
+            return ids;
+        },
+        // Expand genre IDs to include all descendants (for filtering)
+        // When a category is selected, we need to match games with any child genre
+        _getExpandedGenreIds(genreIds) {
+            if (!genreIds || genreIds.length === 0) return [];
+            const expanded = new Set();
+            for (const gid of genreIds) {
+                expanded.add(String(gid));
+                // Add all descendants
+                const descendants = this._getDescendantIds(gid);
+                descendants.forEach(d => expanded.add(d));
+            }
+            return Array.from(expanded);
+        },
+        // Get filters with expanded genre IDs for SimpleGameFilter
+        _getExpandedFilters() {
+            return {
+                ...this.filters,
+                genres: this._getExpandedGenreIds(this.filters.genres)
+            };
+        },
         _buildDynamicTitle() {
             // Build dynamic page title based on active filters
             const timeWindow = this._buildTimeWindow();
             const platformLabel = this._buildPlatformSegment();
-            let genreLabel = '';
+            const genreLabel = this._buildGenreSegment();
             let seriesLabel = '';
-
-            // If genres are selected, fold them into the title
-            if (this.filters.genres && this.filters.genres.length > 0) {
-                const genreNames = this.filters.genres
-                    .map(gid => this.genres.find(g => String(g.id) === String(gid)))
-                    .filter(g => g)
-                    .map(g => g.name);
-                if (genreNames.length > 0) {
-                    genreLabel = ' ' + this._joinNames(genreNames);
-                }
-            }
 
             // If exactly one series is selected, use it as the primary label
             if (this.filters.series && this.filters.series.length === 1) {
@@ -257,7 +286,7 @@
             // Platform comes first if present, then genre, then series
             let titleParts = 'Most Acclaimed';
             if (platform) titleParts += ' ' + platform;
-            if (genreLabel) titleParts += genreLabel;  // genreLabel already has leading space
+            if (genreLabel) titleParts += ' ' + genreLabel;
             if (seriesLabel) titleParts += ' ' + seriesLabel;
             titleParts += ' Games' + timeSuffix;
 
@@ -285,6 +314,47 @@
         _buildPlatformSegment() {
             // Use helper function from utils-base.js to build platform segment
             return buildPlatformSegment(this.platforms, this.filters.platforms);
+        },
+        _buildGenreSegment() {
+            // Build genre segment for title - collapse parent+children to just parent name
+            if (!this.filters.genres || this.filters.genres.length === 0) return '';
+
+            const selectedIds = new Set(this.filters.genres.map(id => String(id)));
+            const labels = [];
+            const consumedIds = new Set();
+
+            // First pass: find parent categories that have all descendants selected
+            const parentGenres = this.genres.filter(g => g.level === 0);
+            for (const parent of parentGenres) {
+                const parentId = String(parent.id);
+                if (!selectedIds.has(parentId)) continue;
+
+                // Get all descendant IDs for this parent
+                const descendantIds = this._getDescendantIds(parentId);
+                const allIds = [parentId, ...descendantIds];
+
+                // Check if ALL are selected and NONE are already consumed
+                const allSelected = allIds.every(id => selectedIds.has(id));
+                const noneConsumed = allIds.every(id => !consumedIds.has(id));
+
+                if (allSelected && noneConsumed) {
+                    labels.push(parent.name);
+                    allIds.forEach(id => consumedIds.add(id));
+                }
+            }
+
+            // Second pass: add remaining individual genre names
+            for (const gid of this.filters.genres) {
+                const id = String(gid);
+                if (consumedIds.has(id)) continue;
+
+                const genre = this.genres.find(g => String(g.id) === id);
+                if (genre) {
+                    labels.push(genre.name);
+                }
+            }
+
+            return this._joinNames(labels);
         },
         _joinNames(names) {
             // Join a list of names with commas and 'and' before the last item
@@ -439,21 +509,17 @@
                 return this.performClientUpdate({ historyMethod });
             }
 
-            // Client-side not ready yet - show/maintain loading state
-            // Content will be rendered when client-side filtering initializes
-            if (partial) {
-                this.isLoading = true;
-                setLoading('game-results-container');
-                return;
-            }
+            // Client-side not ready yet - fall back to server request
+            // This ensures filters work even before preload completes
 
             // Full page load - let server handle it
             const signal = this.fetchManager.newRequest();
             this.isLoading = true;
             setLoading('game-results-container');
 
-            const params = buildFilterParams(this.filters, { preservePage });
-            const url = '{% url 'home' %}?' + normalizeUrl(params.toString());
+            const params = buildFilterParams(this.filters, { preservePage, minYear: {{ min_year }}, maxYear: {{ max_year }} });
+            const paramString = normalizeUrl(params.toString());
+            const url = paramString ? '{% url 'home' %}?' + paramString : '{% url 'home' %}';
 
             try {
                 const html = await fetchHtml(url, signal);
@@ -569,35 +635,41 @@
             const loadMoreContainer = document.querySelector('.load-more-container');
 
             if (!gameListContainer) {
-                console.error('[CSF] game-list-container not found');
-                // Still dispatch count events for mobile filters even if container not found
-                this.updateFacetCounts();
+                console.error('[SimpleFilter] game-list-container not found');
                 this.isLoading = false;
                 return;
             }
 
-            // Apply filters and render
-            const result = this._csf.applyFilters(this.filters);
+            // Apply filters using SimpleGameFilter (show/hide based on data attributes)
+            // Use expanded filters to include descendant genres when category is selected
+            const result = window.SimpleGameFilter.applyFilters(this._getExpandedFilters());
             if (!result) {
                 this.isLoading = false;
                 return;
             }
 
-            // Render results
-            const state = this._csf.renderResults(result, gameListContainer, {
-                highlightId,
-                showRank: this.hasActiveFilters() ? 'filtered' : 'alltime'
-            });
+            // Apply pagination to show first 100 matching games
+            const paginationResult = window.SimpleGameFilter.applyPagination(100);
 
             // Update count display
             if (countContainer) {
-                countContainer.innerHTML = this._csf.renderer.getResultSummaryHtml(state.loaded, state.total);
+                countContainer.innerHTML = 'Showing <span class=\'loaded-count-value\'>' + paginationResult.shown.toLocaleString() + '<\/span> of ' + result.visible.toLocaleString();
             }
 
             // Update Load More button
             if (loadMoreContainer) {
-                loadMoreContainer.innerHTML = this._csf.renderer.getLoadMoreHtml(state);
-                this._initClientLoadMore(loadMoreContainer, gameListContainer, countContainer);
+                const hasMore = paginationResult.shown < result.visible && paginationResult.shown < 1000;
+                const remaining = Math.min(result.visible - paginationResult.shown, 1000 - paginationResult.shown);
+                const maxLoaded = paginationResult.shown >= 1000;
+
+                if (maxLoaded) {
+                    loadMoreContainer.innerHTML = '<div class=\'alert alert-info\'><span class=\'mdi mdi-information-outline\'><\/span><span>Showing maximum of 1,000 results. Refine your filters to see more specific results.<\/span><\/div>';
+                } else if (hasMore) {
+                    loadMoreContainer.innerHTML = '<button type=\'button\' class=\'btn btn-ghost load-more-button\'><span class=\'mdi mdi-space-invaders\'><\/span><span class=\'load-more-text\'>Load More (' + remaining.toLocaleString() + ' remaining)<\/span><\/button>';
+                    this._initSimpleLoadMore(loadMoreContainer, countContainer, result.visible);
+                } else {
+                    loadMoreContainer.innerHTML = '<div class=\'text-base-content/60 text-center\'>All results loaded<\/div>';
+                }
             }
 
             // Update page title (desktop)
@@ -607,36 +679,45 @@
             }
 
             // Update faceted counts
-            if (state.facets) {
+            if (result.facets) {
                 // Year counts for heatmap
                 const yearCountsArray = [];
-                const yearFacets = state.facets.years || {};
+                const yearFacets = result.facets.years || {};
                 for (let y = {{ min_year }}; y <= {{ max_year }}; y++) {
                     yearCountsArray.push({ year: y, count: yearFacets[y] || 0 });
                 }
                 window.dispatchEvent(new CustomEvent('year-counts-update', { detail: yearCountsArray }));
 
                 // Genre counts
-                window.dispatchEvent(new CustomEvent('genre-counts-update', { detail: state.facets.genres }));
+                window.dispatchEvent(new CustomEvent('genre-counts-update', { detail: result.facets.genres }));
 
                 // Platform counts (individual)
-                window.dispatchEvent(new CustomEvent('platform-counts-update', { detail: state.facets.platforms }));
-
-                // Platform group counts (deduplicated manufacturer/form factor counts)
-                if (state.facets.platformGroups) {
-                    this.platformGroupCounts = state.facets.platformGroups;
-                    window.dispatchEvent(new CustomEvent('platform-group-counts-update', { detail: state.facets.platformGroups }));
-                }
+                window.dispatchEvent(new CustomEvent('platform-counts-update', { detail: result.facets.platforms }));
 
                 // Series counts
-                if (state.facets.series) {
-                    window.dispatchEvent(new CustomEvent('series-counts-update', { detail: state.facets.series }));
+                if (result.facets.series) {
+                    window.dispatchEvent(new CustomEvent('series-counts-update', { detail: result.facets.series }));
                 }
             }
 
+            // Handle game highlight if present
+            if (highlightId) {
+                setTimeout(() => {
+                    const desktopElement = document.getElementById('game-' + highlightId);
+                    const mobileElement = document.getElementById('game-' + highlightId + '-mobile');
+                    const isDesktop = window.matchMedia('(min-width: 962px)').matches;
+                    const element = isDesktop ? desktopElement : mobileElement;
+
+                    if (element) {
+                        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                }, 100);
+            }
+
             // Update URL
-            const params = buildFilterParams(this.filters);
-            const url = '{% url 'home' %}?' + normalizeUrl(params.toString());
+            const params = buildFilterParams(this.filters, { minYear: {{ min_year }}, maxYear: {{ max_year }} });
+            const paramString = normalizeUrl(params.toString());
+            const url = paramString ? '{% url 'home' %}?' + paramString : '{% url 'home' %}';
             window.history[historyMethod]({}, '', url);
 
             this.isLoading = false;
@@ -646,9 +727,45 @@
                 delete this.filters.highlight;
             }
         },
+        _initSimpleLoadMore(loadMoreContainer, countContainer, totalVisible) {
+            const button = loadMoreContainer.querySelector('.load-more-button');
+            if (!button) return;
+
+            button.addEventListener('click', () => {
+                button.classList.add('loading');
+                button.disabled = true;
+
+                const state = window.SimpleGameFilter.showMore(100);
+
+                // Update count
+                if (countContainer) {
+                    countContainer.innerHTML = 'Showing <span class=\'loaded-count-value\'>' + state.shown.toLocaleString() + '<\/span> of ' + totalVisible.toLocaleString();
+                }
+
+                // Update or replace Load More button
+                const remaining = Math.min(totalVisible - state.shown, 1000 - state.shown);
+                const maxLoaded = state.shown >= 1000;
+
+                if (maxLoaded) {
+                    loadMoreContainer.innerHTML = '<div class=\'alert alert-info\'><span class=\'mdi mdi-information-outline\'><\/span><span>Showing maximum of 1,000 results. Refine your filters to see more specific results.<\/span><\/div>';
+                } else if (state.hasMore && remaining > 0) {
+                    loadMoreContainer.innerHTML = '<button type=\'button\' class=\'btn btn-ghost load-more-button\'><span class=\'mdi mdi-space-invaders\'><\/span><span class=\'load-more-text\'>Load More (' + remaining.toLocaleString() + ' remaining)<\/span><\/button>';
+                    this._initSimpleLoadMore(loadMoreContainer, countContainer, totalVisible);
+                } else {
+                    loadMoreContainer.innerHTML = '<div class=\'text-base-content/60 text-center\'>All results loaded<\/div>';
+                }
+            });
+        },
         updateFacetCounts() {
-            // Apply filters to get faceted counts without re-rendering the game list
-            const result = this._csf.applyFilters(this.filters);
+            // Apply filters to get faceted counts using SimpleGameFilter
+            if (!window.SimpleGameFilter || !window.SimpleGameFilter.isFilterDataLoaded()) {
+                // Fall back to server-rendered counts
+                this.dispatchInitialCounts();
+                return;
+            }
+
+            // Use expanded filters to include descendant genres when category is selected
+            const result = window.SimpleGameFilter.applyFilters(this._getExpandedFilters());
             if (!result || !result.facets) return;
 
             // Year counts for heatmap
@@ -665,23 +782,44 @@
             // Platform counts (individual)
             window.dispatchEvent(new CustomEvent('platform-counts-update', { detail: result.facets.platforms || {} }));
 
-            // Platform group counts (deduplicated manufacturer/form factor counts)
-            if (result.facets.platformGroups) {
-                this.platformGroupCounts = result.facets.platformGroups;
-                window.dispatchEvent(new CustomEvent('platform-group-counts-update', { detail: result.facets.platformGroups }));
-            }
-
             // Series counts
             if (result.facets.series) {
                 window.dispatchEvent(new CustomEvent('series-counts-update', { detail: result.facets.series }));
             }
         },
         dispatchInitialCounts() {
-            // Fallback: read initial counts from server-rendered JSON elements
-            // and dispatch events so filters can display their content
-            console.log('[CSF] Dispatching initial counts from server-rendered data');
+            // Dispatch initial counts from Alpine data (platforms/genres arrays have game_count)
+            // This allows filters to render immediately on page load
+            console.log('[CSF] Dispatching initial counts from Alpine data');
 
-            // Year counts
+            // Platform counts - build map from platforms array
+            if (this.platforms && this.platforms.length > 0) {
+                const platformCounts = {};
+                this.platforms.forEach(p => {
+                    platformCounts[String(p.id)] = p.game_count || 0;
+                });
+                window.dispatchEvent(new CustomEvent('platform-counts-update', { detail: platformCounts }));
+            }
+
+            // Genre counts - build map from genres array
+            if (this.genres && this.genres.length > 0) {
+                const genreCounts = {};
+                this.genres.forEach(g => {
+                    genreCounts[String(g.id)] = g.game_count || 0;
+                });
+                window.dispatchEvent(new CustomEvent('genre-counts-update', { detail: genreCounts }));
+            }
+
+            // Series counts - build map from seriesList array
+            if (this.seriesList && this.seriesList.length > 0) {
+                const seriesCounts = {};
+                this.seriesList.forEach(s => {
+                    seriesCounts[String(s.id)] = s.game_count || 0;
+                });
+                window.dispatchEvent(new CustomEvent('series-counts-update', { detail: seriesCounts }));
+            }
+
+            // Year counts - try from JSON element first (for heatmap), or skip for initial load
             const yearCountsEl = document.getElementById('year-counts-update');
             if (yearCountsEl) {
                 try {
@@ -691,66 +829,6 @@
                     console.error('Error parsing year counts:', e);
                 }
             }
-
-            // Genre counts
-            const genreCountsEl = document.getElementById('genre-counts-update');
-            if (genreCountsEl) {
-                try {
-                    const genreCounts = JSON.parse(genreCountsEl.textContent);
-                    window.dispatchEvent(new CustomEvent('genre-counts-update', { detail: genreCounts }));
-                } catch (e) {
-                    console.error('Error parsing genre counts:', e);
-                }
-            }
-
-            // Platform counts
-            const platformCountsEl = document.getElementById('platform-counts-update');
-            if (platformCountsEl) {
-                try {
-                    const platformCounts = JSON.parse(platformCountsEl.textContent);
-                    window.dispatchEvent(new CustomEvent('platform-counts-update', { detail: platformCounts }));
-                } catch (e) {
-                    console.error('Error parsing platform counts:', e);
-                }
-            }
-
-            // Series counts (if available)
-            const seriesCountsEl = document.getElementById('series-counts-update');
-            if (seriesCountsEl) {
-                try {
-                    const seriesCounts = JSON.parse(seriesCountsEl.textContent);
-                    window.dispatchEvent(new CustomEvent('series-counts-update', { detail: seriesCounts }));
-                } catch (e) {
-                    console.error('Error parsing series counts:', e);
-                }
-            }
-        },
-        _initClientLoadMore(loadMoreContainer, gameListContainer, countContainer) {
-            const button = loadMoreContainer.querySelector('.load-more-button');
-            if (!button) return;
-
-            button.addEventListener('click', () => {
-                button.classList.add('loading');
-                button.disabled = true;
-
-                const state = this._csf.loadMore(gameListContainer);
-
-                // Update count
-                if (countContainer) {
-                    countContainer.innerHTML = this._csf.renderer.getResultSummaryHtml(state.loaded, state.total);
-                }
-
-                // Update or replace Load More button
-                loadMoreContainer.innerHTML = this._csf.renderer.getLoadMoreHtml({
-                    hasMore: state.hasMore,
-                    remaining: state.remaining,
-                    maxLoaded: state.loaded >= 1000
-                });
-
-                if (state.hasMore) {
-                    this._initClientLoadMore(loadMoreContainer, gameListContainer, countContainer);
-                }
-            });
         },
         updateResults() {
             if (!this.initialized) return;
@@ -803,8 +881,8 @@
 
     {# Page heading above the two-column layout - hidden on mobile (sticky header shows there) #}
     <div id="search-heading" class="mb-4 hidden desktop:block">
-        <div class="flex justify-between items-center mb-1">
-            <h1 class="text-3xl font-bold" id="search-title">
+        <div class="flex justify-between items-start mb-1 overflow-hidden" style="height: 4.5rem;">
+            <h1 class="text-3xl font-bold line-clamp-2" id="search-title">
                 {{ filter_title|default:"Advanced Search" }}
             </h1>
         </div>
@@ -840,19 +918,8 @@
             buildDynamicTitle() {
                 const timeWindow = this.buildTimeWindow();
                 const platformLabel = this.buildPlatformSegment();
-                let genreLabel = '';
+                const genreLabel = this.buildGenreSegment();
                 let seriesLabel = '';
-
-                // If genres are selected, fold them into the title
-                if (filters.genres && filters.genres.length > 0) {
-                    const genreNames = filters.genres
-                        .map(gid => genres.find(g => String(g.id) === String(gid)))
-                        .filter(g => g)
-                        .map(g => g.name);
-                    if (genreNames.length > 0) {
-                        genreLabel = ' ' + this.joinNames(genreNames);
-                    }
-                }
 
                 // If exactly one series is selected, fold it into the title
                 if (filters.series && filters.series.length === 1) {
@@ -877,7 +944,7 @@
                 // Build combined title
                 let titleParts = 'Most Acclaimed';
                 if (platform) titleParts += ' ' + platform;
-                if (genreLabel) titleParts += genreLabel;
+                if (genreLabel) titleParts += ' ' + genreLabel;
                 if (seriesLabel) titleParts += ' ' + seriesLabel;
                 titleParts += ' Games' + timeSuffix;
 
@@ -909,6 +976,58 @@
                 return buildPlatformSegment(platforms, filters.platforms);
             },
 
+            buildGenreSegment() {
+                // Build genre segment for title - collapse parent+children to just parent name
+                if (!filters.genres || filters.genres.length === 0) return '';
+
+                const selectedIds = new Set(filters.genres.map(id => String(id)));
+                const labels = [];
+                const consumedIds = new Set();
+
+                // Helper to get descendant IDs for a genre
+                const getDescendantIds = (genreId) => {
+                    const children = genres.filter(g => String(g.parent_id) === String(genreId));
+                    let ids = children.map(c => String(c.id));
+                    for (const child of children) {
+                        ids = ids.concat(getDescendantIds(child.id));
+                    }
+                    return ids;
+                };
+
+                // First pass: find parent categories that have all descendants selected
+                const parentGenres = genres.filter(g => g.level === 0);
+                for (const parent of parentGenres) {
+                    const parentId = String(parent.id);
+                    if (!selectedIds.has(parentId)) continue;
+
+                    // Get all descendant IDs for this parent
+                    const descendantIds = getDescendantIds(parentId);
+                    const allIds = [parentId, ...descendantIds];
+
+                    // Check if ALL are selected and NONE are already consumed
+                    const allSelected = allIds.every(id => selectedIds.has(id));
+                    const noneConsumed = allIds.every(id => !consumedIds.has(id));
+
+                    if (allSelected && noneConsumed) {
+                        labels.push(parent.name);
+                        allIds.forEach(id => consumedIds.add(id));
+                    }
+                }
+
+                // Second pass: add remaining individual genre names
+                for (const gid of filters.genres) {
+                    const id = String(gid);
+                    if (consumedIds.has(id)) continue;
+
+                    const genre = genres.find(g => String(g.id) === id);
+                    if (genre) {
+                        labels.push(genre.name);
+                    }
+                }
+
+                return this.joinNames(labels);
+            },
+
             joinNames(names) {
                 // Join a list of names with commas and 'and' before the last item
                 if (!names || names.length === 0) return '';
@@ -918,8 +1037,8 @@
             }
          }"
          x-effect="document.body.classList.toggle('filter-sheet-open', filterOpen)">
-        <div class="relative z-10 bg-base-200 border-b border-base-content/10 py-4 mb-4 -mx-4 px-4 flex items-center justify-between gap-3">
-            <h1 class="text-lg font-bold flex-1 min-w-0" x-ref="mobileTitle">{{ filter_title|default:"Most Acclaimed Video Games of All Time" }}</h1>
+        <div class="relative z-10 bg-base-200 border-b border-base-content/10 mb-4 -mx-4 px-4 flex items-start justify-between gap-3 overflow-hidden" style="height: 5.5rem; padding-top: 1rem; padding-bottom: 1rem;">
+            <h1 class="text-lg font-bold flex-1 min-w-0 line-clamp-2" x-ref="mobileTitle">{{ filter_title|default:"Most Acclaimed Video Games of All Time" }}</h1>
             <button type="button" class="btn btn-primary btn-sm shrink-0" @click="filterOpen = true">
                 <span class="mdi mdi-tune"></span>
                 Filters

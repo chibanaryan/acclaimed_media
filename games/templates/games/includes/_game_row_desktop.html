@@ -5,7 +5,15 @@
 {% load game_filters static humanize %}
 <div class="game-row-wrapper hidden desktop:flex items-center"
      {% if game %}id="game-{{ game.id }}"{% endif %}
-     data-slot="root">
+     data-slot="root"
+     {% if game %}data-game-id="{{ game.id }}"
+     data-year="{{ game.year_of_release }}"
+     data-name="{{ game.name|lower }}"
+     data-genres="{{ game.wikipedia_genres.all|join_ids }}"
+     data-platforms="{{ game.platforms.all|join_ids }}"
+     data-series="{{ game.series.all|join_ids }}"
+     data-rank="{{ game.rank }}"
+     data-igdb-id="{{ game.igdb_id }}"{% endif %}>
     {# Played button - outside game-row to avoid hover effect #}
     {% if not hide_played_button and user.is_authenticated or not game %}
     <div class="w-12 min-w-12 max-w-12 shrink-0 flex items-center justify-center" data-slot="played-button">

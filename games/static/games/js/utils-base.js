@@ -191,6 +191,8 @@ class FetchManager {
  * @param {Object} filters - Filter values
  * @param {Object} options - Options for building params
  * @param {boolean} options.preservePage - Keep current page parameter
+ * @param {number} options.minYear - Default minimum year (skip if filters.start matches)
+ * @param {number} options.maxYear - Default maximum year (skip if filters.end matches)
  * @returns {URLSearchParams} Built parameters
  */
 function buildFilterParams(filters, options = {}) {
@@ -204,8 +206,13 @@ function buildFilterParams(filters, options = {}) {
     }
 
     if (filters.q) params.set('q', filters.q);
-    if (filters.start) params.set('start', filters.start);
-    if (filters.end) params.set('end', filters.end);
+    // Only add year params if they differ from defaults
+    if (filters.start && (!options.minYear || parseInt(filters.start) !== options.minYear)) {
+        params.set('start', filters.start);
+    }
+    if (filters.end && (!options.maxYear || parseInt(filters.end) !== options.maxYear)) {
+        params.set('end', filters.end);
+    }
     if (filters.genres && filters.genres.length) {
         const genreIds = filters.genres.map(g =>
             (typeof g === 'object' && g !== null && g.id !== undefined) ? g.id : g

@@ -133,9 +133,21 @@
              return children.some(c => this.isGenreAvailable(c.id));
          },
 
-         // Check if genre is selected
+         // Check if genre is selected (visually)
+         // If the parent is selected, don't show children as selected visually
          isGenreSelected(genreId) {
-             return filters.genres.includes(String(genreId));
+             const id = String(genreId);
+             if (!filters.genres.includes(id)) return false;
+
+             // Check if parent is also selected - if so, don't show child as selected
+             const genre = genres.find(g => String(g.id) === id);
+             if (genre && genre.parent_id) {
+                 const parentId = String(genre.parent_id);
+                 if (filters.genres.includes(parentId)) {
+                     return false;  // Parent is selected, hide child selection
+                 }
+             }
+             return true;
          },
 
          // Check if the category itself is selected (parent level)
@@ -181,11 +193,11 @@
 
                  // If parent category is directly selected, drill down to just this genre
                  if (filters.genres.includes(parentId)) {
-                     // Remove parent, add just this child
-                     filters.genres = filters.genres.filter(gid => gid !== parentId);
-                     if (!filters.genres.includes(id)) {
-                         filters.genres.push(id);
-                     }
+                     // Remove parent AND all descendants, add just this child
+                     const descendantIds = this.getDescendantIds(parentId);
+                     const allIdsToRemove = [parentId, ...descendantIds];
+                     filters.genres = filters.genres.filter(gid => !allIdsToRemove.includes(gid));
+                     filters.genres.push(id);
                      this.dispatchFilterChange();
                      return;
                  }
@@ -215,24 +227,27 @@
          },
 
          // MULTI-SELECT: Toggle parent category selection (add/remove from selection)
-         // Implements exclusive selection: selecting parent removes all descendants
+         // When selecting a category, add ALL descendant IDs to filters (for URL params & server-side)
          toggleCategorySelection(categoryId) {
              const id = String(categoryId);
              // Preserve current expansion state before selection changes
              if (this.expandedCategories[id] === undefined) {
                  this.expandedCategories[id] = this.hasCategoryOrChildrenSelected(id);
              }
+             const descendantIds = this.getDescendantIds(categoryId);
+             const allIds = [id, ...descendantIds];  // Category + all descendants
+
+             // Check if category is currently selected (category ID is in filters)
              const idx = filters.genres.indexOf(id);
              if (idx > -1) {
-                 // Already selected - remove it
-                 filters.genres.splice(idx, 1);
+                 // Already selected - remove category and all descendants
+                 filters.genres = filters.genres.filter(gid => !allIds.includes(gid));
              } else {
-                 // Not selected - add category and remove all descendants (exclusive selection)
-                 const descendantIds = this.getDescendantIds(categoryId);
-                 // Remove any selected descendants
-                 filters.genres = filters.genres.filter(gid => !descendantIds.includes(gid));
-                 // Add the category
-                 filters.genres.push(id);
+                 // Not selected - add all IDs (category + descendants) for URL params & server-side
+                 // First remove any that might already be there
+                 filters.genres = filters.genres.filter(gid => !allIds.includes(gid));
+                 // Then add all
+                 filters.genres.push(...allIds);
              }
              this.dispatchFilterChange();
          },

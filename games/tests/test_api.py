@@ -430,6 +430,60 @@ class UnifiedSearchViewTests(TestCase):
             self.assertLessEqual(data["games"][0]["rank"], data["games"][1]["rank"])
 
 
+class GameFilterDataViewTests(TestCase):
+    """Test the GameFilterDataView endpoint for client-side filtering."""
+
+    def setUp(self):
+        self.client = APIClient()
+        # Use get_or_create since migrations may have already created genres
+        self.genre, _ = models.WikipediaGenre.objects.get_or_create(
+            slug="test-filter-action", defaults={"name": "Test Action"}
+        )
+        self.platform, _ = models.Platform.objects.get_or_create(
+            code="TFPC", defaults={"name": "Test Filter PC"}
+        )
+        self.series = models.Series.objects.create(
+            name="Test Filter Series", slug="test-filter-series", igdb_id=99999
+        )
+        self.game = models.Game.objects.create(
+            name="Test Filter Game",
+            rank=1,
+            igdb_id=9999,
+            year_of_release=2020,
+            slug="test-filter-game",
+        )
+        self.game.wikipedia_genres.add(self.genre)
+        self.game.platforms.add(self.platform)
+        self.game.series.add(self.series)
+
+    def test_filter_data_returns_games_array(self):
+        """Test that filter data endpoint returns games array."""
+        response = self.client.get("/api/games/filter-data/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("games", data)
+        self.assertIn("version", data)
+        # Should have at least our test game
+        self.assertGreaterEqual(len(data["games"]), 1)
+
+    def test_filter_data_has_correct_fields(self):
+        """Test that game data has all required filter fields."""
+        response = self.client.get("/api/games/filter-data/")
+        data = response.json()
+        # Find our test game by ID
+        game = next((g for g in data["games"] if g["id"] == self.game.id), None)
+        self.assertIsNotNone(game, "Test game not found in filter data")
+        # Check all abbreviated fields are present
+        self.assertEqual(game["id"], self.game.id)
+        self.assertEqual(game["y"], 2020)  # year
+        self.assertEqual(game["n"], "test filter game")  # name (lowercase)
+        self.assertEqual(game["g"], [self.genre.id])  # genres
+        self.assertEqual(game["p"], [self.platform.id])  # platforms
+        self.assertEqual(game["s"], [self.series.id])  # series
+        self.assertEqual(game["i"], 9999)  # igdb_id
+        self.assertEqual(game["r"], 1)  # rank
+
+
 class GameDataVersionViewTests(TestCase):
     """Test the GameDataVersionView endpoint."""
 
@@ -450,135 +504,3 @@ class GameDataVersionViewTests(TestCase):
         self.assertIn("version", data)
         self.assertIsInstance(data["version"], str)
         self.assertEqual(len(data["version"]), 12)  # MD5 hash truncated to 12 chars
-
-
-class GameAllDataViewTests(TestCase):
-    """Test the GameAllDataView endpoint for client-side filtering."""
-
-    def setUp(self):
-        self.client = APIClient()
-        self.platform = models.Platform.objects.create(code="PC", name="PC")
-        self.root_dev = models.Developer.objects.create(
-            name="Test Company", slug="test-company", igdb_id=100
-        )
-        self.developer = models.Developer.objects.create(
-            parent=self.root_dev, name="Test Studio", igdb_id=101
-        )
-        self.genre = models.WikipediaGenre.objects.create(
-            name="Test Action", slug="test-action-unique", level=0
-        )
-        self.child_genre = models.WikipediaGenre.objects.create(
-            name="Test Shooter", slug="test-shooter-unique", parent=self.genre, level=1
-        )
-        self.game = models.Game.objects.create(
-            name="Test Game",
-            rank=1,
-            year_of_release=2020,
-            slug="test-game",
-            igdb_id=1234,
-        )
-        self.game.platforms.add(self.platform)
-        self.game.developers.add(self.developer)
-        self.game.wikipedia_genres.add(self.genre)
-
-    def test_all_data_endpoint_returns_correct_structure(self):
-        """Test that all data endpoint returns correct structure."""
-        response = self.client.get("/api/games/all/")
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-
-        # Check top-level structure
-        self.assertIn("version", data)
-        self.assertIn("data", data)
-
-        # Check data structure
-        game_data = data["data"]
-        self.assertIn("games", game_data)
-        self.assertIn("developers", game_data)
-        self.assertIn("platforms", game_data)
-        self.assertIn("genres", game_data)
-
-    def test_all_data_games_have_correct_fields(self):
-        """Test that games have correct compressed field names."""
-        response = self.client.get("/api/games/all/")
-        data = response.json()
-        games = data["data"]["games"]
-
-        self.assertEqual(len(games), 1)
-        game = games[0]
-
-        # Check compressed field names
-        self.assertIn("id", game)
-        self.assertIn("n", game)  # name
-        self.assertIn("s", game)  # slug
-        self.assertIn("r", game)  # rank
-        self.assertIn("y", game)  # year
-        self.assertIn("a", game)  # artwork_id
-        self.assertIn("dv", game)  # developer IDs
-        self.assertIn("p", game)  # platform IDs
-        self.assertIn("g", game)  # genre IDs
-
-        # Check values
-        self.assertEqual(game["n"], "Test Game")
-        self.assertEqual(game["r"], 1)
-        self.assertEqual(game["y"], 2020)
-        self.assertIn(self.developer.id, game["dv"])
-        self.assertIn(self.platform.id, game["p"])
-        self.assertIn(self.genre.id, game["g"])
-
-    def test_all_data_developers_reference_data(self):
-        """Test that developers reference data is correct."""
-        response = self.client.get("/api/games/all/")
-        data = response.json()
-        developers = data["data"]["developers"]
-
-        # Note: JSON keys are strings, but Python dict may use integers
-        # Check that the subsidiary developer is in the developers dict
-        dev_id_key = self.developer.id
-        if str(dev_id_key) in developers:
-            dev_id_key = str(dev_id_key)
-        self.assertIn(dev_id_key, developers)
-        dev_data = developers[dev_id_key]
-        self.assertEqual(dev_data["n"], "Test Studio")
-        self.assertEqual(dev_data["pa"], self.root_dev.id)  # parent ID
-
-        # Check that the root developer is also included
-        root_id_key = self.root_dev.id
-        if str(root_id_key) in developers:
-            root_id_key = str(root_id_key)
-        self.assertIn(root_id_key, developers)
-        root_data = developers[root_id_key]
-        self.assertEqual(root_data["n"], "Test Company")
-        self.assertEqual(root_data["s"], "test-company")
-
-    def test_all_data_genres_have_hierarchy(self):
-        """Test that genres include hierarchy information."""
-        response = self.client.get("/api/games/all/")
-        data = response.json()
-        genres = data["data"]["genres"]
-
-        # Find parent genre
-        parent_genre = next((g for g in genres if g["id"] == self.genre.id), None)
-        self.assertIsNotNone(parent_genre)
-        self.assertEqual(parent_genre["n"], "Test Action")
-        self.assertEqual(parent_genre["l"], 0)  # level
-        self.assertIsNone(parent_genre["p"])  # parent_id
-        self.assertIn(self.child_genre.id, parent_genre["d"])  # descendants
-
-        # Find child genre
-        child_genre = next((g for g in genres if g["id"] == self.child_genre.id), None)
-        self.assertIsNotNone(child_genre)
-        self.assertEqual(child_genre["n"], "Test Shooter")
-        self.assertEqual(child_genre["l"], 1)  # level
-        self.assertEqual(child_genre["p"], self.genre.id)  # parent_id
-
-    def test_all_data_platforms_reference_data(self):
-        """Test that platforms reference data is correct."""
-        response = self.client.get("/api/games/all/")
-        data = response.json()
-        platforms = data["data"]["platforms"]
-
-        self.assertIn(str(self.platform.id), platforms)
-        platform_data = platforms[str(self.platform.id)]
-        self.assertEqual(platform_data["n"], "PC")
-        self.assertEqual(platform_data["c"], "PC")

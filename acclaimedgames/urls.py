@@ -84,6 +84,12 @@ urlpatterns = [
     # Main site routes (Django + HTMX + Alpine.js)
     # Rankings is the homepage
     path("", views.HomePageView.as_view(), name="home"),
+    # Background preload endpoint - returns all game rows as HTML
+    path(
+        "games/rows-partial/",
+        views.GameRowsPartialView.as_view(),
+        name="game-rows-partial",
+    ),
     path("contact/", views.ContactFormView.as_view(), name="contact"),
     path(
         "contact/thank-you/",

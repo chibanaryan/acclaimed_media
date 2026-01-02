@@ -38,13 +38,8 @@
     window.isAuthenticated = false;
     {% endif %}
     </script>
-    {% if enable_client_filtering %}
-    {# Client-side filtering scripts - loaded for fast subsequent filtering #}
-    <script src="{% static 'games/js/client-filter.min.js' %}" defer nonce="{{ csp_nonce }}"></script>
-    <script src="{% static 'games/js/game-cache.min.js' %}" defer nonce="{{ csp_nonce }}"></script>
-    <script src="{% static 'games/js/game-list-renderer.min.js' %}" defer nonce="{{ csp_nonce }}"></script>
-    <script src="{% static 'games/js/client-filtering.min.js' %}" defer nonce="{{ csp_nonce }}"></script>
-    {% endif %}
+    {# Simple client-side filtering - preloads all game rows as HTML, then show/hide #}
+    <script src="{% static 'games/js/game-filter-simple.min.js' %}" defer nonce="{{ csp_nonce }}"></script>
 {% endblock %}
 
 {% block content %}
@@ -82,6 +77,9 @@
     </a>
     {# Content to the right on desktop #}
     <div class="flex flex-col items-center text-center gap-3">
+        <p class="text-base text-base-content/70 max-w-md">
+            The top {{ game_count|default:"1,000"|intcomma }} most recommended games across {{ list_count|intcomma }} critic lists from {{ publication_count|intcomma }} publications.
+        </p>
         {# Action Buttons #}
         <div class="flex flex-wrap justify-center gap-2">
             {% if not user.is_authenticated %}
@@ -95,9 +93,6 @@
                 <span>Support This Project</span>
             </a>
         </div>
-        <p class="text-base text-base-content/70 max-w-md">
-            The top {{ game_count|default:"1,000"|intcomma }} most recommended games across {{ list_count|intcomma }} critic lists from {{ publication_count|intcomma }} publications.
-        </p>
         {% if last_update %}
         <p class="text-sm text-base-content/60">
             Updated: {{ last_update|date:"F j, Y" }}
@@ -106,7 +101,7 @@
     </div>
 </div>
 
-<div class="divider my-4"></div>
+<div class="divider my-2"></div>
 
 <div id="content">
     {% include 'includes/_advanced_filters.html' with filters=filters genres=genres platforms=platforms min_year=min_year max_year=max_year %}

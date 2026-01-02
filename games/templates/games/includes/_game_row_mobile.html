@@ -7,7 +7,15 @@
 <div class="game-row game-card-mobile desktop:hidden grid items-center gap-1.5 p-2 bg-base-200 rounded-lg hover:bg-base-300 transition-colors mb-2 cursor-pointer {% if game and highlight and game.id == highlight %}is-highlighted{% endif %}"
      {% if game %}id="game-{{ game.id }}-mobile"{% endif %}
      data-slot="root"
-     {% if game %}onclick="window.location.href='{% url 'game-detail' slug=game.slug %}'"{% endif %}
+     {% if game %}onclick="window.location.href='{% url 'game-detail' slug=game.slug %}'"
+     data-game-id="{{ game.id }}"
+     data-year="{{ game.year_of_release }}"
+     data-name="{{ game.name|lower }}"
+     data-genres="{{ game.wikipedia_genres.all|join_ids }}"
+     data-platforms="{{ game.platforms.all|join_ids }}"
+     data-series="{{ game.series.all|join_ids }}"
+     data-rank="{{ game.rank }}"
+     data-igdb-id="{{ game.igdb_id }}"{% endif %}
      style="grid-template-columns: {% if not hide_played_button and user.is_authenticated or not game %}auto {% endif %}{% if show_rank == 'alltime' or show_rank == 'filtered' or not game %}auto {% endif %}auto 1fr;">
 
     {# Played button - only render container if authenticated (server) or for JS template cloning #}

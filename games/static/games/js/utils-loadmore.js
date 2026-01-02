@@ -35,13 +35,10 @@ function initLoadMore() {
         container.addEventListener('click', function(e) {
             const button = e.target.closest('.load-more-button');
             if (button && !button.classList.contains('is-loading')) {
-                // Use CSF load more if available (instant, no network requests)
-                if (typeof getClientSideFiltering === 'function') {
-                    const csf = getClientSideFiltering();
-                    if (csf && csf.isReady()) {
-                        handleLoadMoreCSF(csf);
-                        return;
-                    }
+                // Use SimpleGameFilter load more if available (instant, no network requests)
+                if (typeof window.SimpleGameFilter !== 'undefined' && window.SimpleGameFilter.isPreloaded()) {
+                    handleLoadMoreSimple();
+                    return;
                 }
                 // Fallback to server-side load more
                 handleLoadMore({ currentTarget: button });
@@ -118,34 +115,31 @@ function getFiltersFromURL() {
 
 /**
  * Get the current game list state from the best available source
- * Priority: CSF renderer state > data attributes > DOM count
- * @returns {Object} { total, loaded, filters, showRank, csf }
+ * Priority: SimpleGameFilter > data attributes > DOM count
+ * @returns {Object} { total, loaded, filters, showRank, simpleFilter }
  */
 function getCurrentState() {
     const filters = getFiltersFromURL();
     let total = 0;
     let loaded = 0;
-    let csf = null;
+    let simpleFilter = null;
 
-    // Try to get state from CSF (most authoritative when available)
-    if (typeof getClientSideFiltering === 'function') {
-        csf = getClientSideFiltering();
-        if (csf && csf.isReady()) {
-            const result = csf.applyFilters(filters);
-            if (result) {
-                total = result.total;
-            }
-            // Get loaded count from renderer if it has state
-            if (csf.renderer && csf.renderer.currentGames && csf.renderer.currentGames.length > 0) {
-                loaded = Math.min(
-                    csf.renderer.currentPage * csf.renderer.PAGE_SIZE,
-                    csf.renderer.currentGames.length
-                );
-            }
+    // Try to get state from SimpleGameFilter (most authoritative when available)
+    if (typeof window.SimpleGameFilter !== 'undefined' && window.SimpleGameFilter.isFilterDataLoaded()) {
+        simpleFilter = window.SimpleGameFilter;
+
+        // Get visible count from SimpleGameFilter
+        const counts = simpleFilter.getVisibleCount();
+        loaded = counts.shown;
+
+        // Apply filters to get total matching count
+        const result = simpleFilter.applyFilters(filters);
+        if (result) {
+            total = result.visible;
         }
     }
 
-    // Fallback to data attributes if CSF doesn't have state
+    // Fallback to data attributes if SimpleGameFilter doesn't have state
     if (loaded === 0) {
         const input = document.querySelector('.jump-to-rank-input');
         if (input) {
@@ -157,23 +151,22 @@ function getCurrentState() {
     }
 
     // Final fallback: count actual rendered rows
-    const renderedRows = document.querySelectorAll('#game-list-container .game-row.desktop').length;
+    const renderedRows = document.querySelectorAll('#game-list-container .game-row.desktop:not(.pagination-hidden):not([style*="display: none"])').length;
     if (renderedRows > loaded) {
         loaded = renderedRows;
     }
 
-    const showRank = hasActiveFilters(filters, csf) ? 'filtered' : 'alltime';
+    const showRank = hasActiveFilters(filters) ? 'filtered' : 'alltime';
 
-    return { total, loaded, filters, showRank, csf };
+    return { total, loaded, filters, showRank, simpleFilter };
 }
 
 /**
  * Check if any filters are active (should show filtered rank vs alltime rank)
  * @param {Object} filters - Filters from getFiltersFromURL()
- * @param {Object} csf - ClientSideFiltering instance (optional, for year bounds)
  * @returns {boolean}
  */
-function hasActiveFilters(filters, csf) {
+function hasActiveFilters(filters) {
     // Check simple filters
     if (filters.q) return true;
     if (filters.genres && filters.genres.length > 0) return true;
@@ -181,16 +174,9 @@ function hasActiveFilters(filters, csf) {
     if (filters.series && filters.series.length > 0) return true;
     if (filters.played) return true;
 
-    // Check year filter - only active if different from default bounds
-    if (csf && csf.getYearBounds) {
-        const bounds = csf.getYearBounds();
-        if (filters.start && filters.start > bounds.min) return true;
-        if (filters.end && filters.end < bounds.max) return true;
-    } else {
-        // Without CSF, any year value counts as filter
-        if (filters.start) return true;
-        if (filters.end) return true;
-    }
+    // Check year filter - any year value counts as filter
+    if (filters.start) return true;
+    if (filters.end) return true;
 
     return false;
 }
@@ -205,7 +191,7 @@ async function handleJumpToRank(input) {
 
     // Get authoritative state
     const state = getCurrentState();
-    const { total, loaded, csf } = state;
+    const { total, loaded, simpleFilter } = state;
 
     // Validate input
     if (!targetRank || targetRank < 1 || targetRank > total) {
@@ -214,21 +200,22 @@ async function handleJumpToRank(input) {
         return;
     }
 
-    // Check if target is already loaded
+    // Check if target is already loaded (visible, not pagination-hidden)
     if (targetRank <= loaded) {
         scrollToAndHighlightRank(targetRank);
         input.value = '';
         return;
     }
 
-    // Try to use client-side filtering (instant, no network requests)
-    if (csf && csf.isReady()) {
+    // Try to use SimpleGameFilter (instant, no network requests)
+    // All rows are preloaded, just need to remove pagination-hidden class
+    if (simpleFilter && simpleFilter.isPreloaded()) {
         try {
-            jumpToRankClientSide(csf, targetRank, loaded, perPage);
+            jumpToRankSimple(simpleFilter, targetRank);
             input.value = '';
             return;
         } catch (err) {
-            console.error('[JumpToRank] Client-side error:', err);
+            console.error('[JumpToRank] SimpleFilter error:', err);
             // Fall through to server-side
         }
     }
@@ -239,77 +226,44 @@ async function handleJumpToRank(input) {
 }
 
 /**
- * Jump to rank using client-side rendering (instant, no network)
+ * Jump to rank using SimpleGameFilter (instant, no network)
+ * All rows are preloaded in DOM, just need to reveal them
  */
-function jumpToRankClientSide(csf, targetRank, loaded, perPage) {
-    const gameListContainer = document.getElementById('game-list-container');
+function jumpToRankSimple(simpleFilter, targetRank) {
     const countContainer = document.querySelector('.result-count');
     const loadMoreContainer = document.querySelector('.load-more-container');
 
-    if (!gameListContainer) {
-        console.error('[JumpToRank CSF] No game list container found');
-        return;
-    }
-
-    // Get authoritative state (filters, showRank already computed)
-    const currentState = getCurrentState();
-    const { filters, showRank } = currentState;
-
-    // Get filtered games from engine
-    const result = csf.applyFilters(filters);
-    if (!result || !result.games) {
-        console.error('[JumpToRank CSF] No games returned from filter');
-        return;
-    }
-
-    // Calculate which games to render (from loaded to targetRank)
-    const gamesToRender = result.games.slice(loaded, targetRank);
-    const total = result.total;
-    const newLoaded = Math.min(targetRank, total);
-
-    // Render games directly to container
-    const renderer = csf.renderer;
-    gamesToRender.forEach((game, i) => {
-        const index = loaded + i + 1; // 1-based rank
-        const desktopRow = renderer._renderDesktopRow(game, index, showRank);
-        const mobileRow = renderer._renderMobileRow(game, index, showRank);
-        if (desktopRow) gameListContainer.appendChild(desktopRow);
-        if (mobileRow) gameListContainer.appendChild(mobileRow);
-    });
-
-    // Reinitialize HTMX for dynamically rendered content
-    if (typeof htmx !== 'undefined') {
-        htmx.process(gameListContainer);
-    }
-
-    // Update the renderer's state to match
-    renderer.currentGames = result.games;
-    renderer.currentPage = Math.ceil(newLoaded / perPage);
+    // Re-apply pagination with the new target as the limit
+    // This shows games 1 through targetRank
+    const paginationResult = simpleFilter.applyPagination(targetRank);
+    const counts = simpleFilter.getVisibleCount();
+    const totalVisible = counts.visible;
 
     // Update count display
     if (countContainer) {
-        countContainer.innerHTML = renderer.getResultSummaryHtml(newLoaded, total);
+        countContainer.innerHTML = 'Showing <span class=\'loaded-count-value\'>' +
+            paginationResult.shown.toLocaleString() + '</span> of ' + totalVisible.toLocaleString();
     }
 
     // Update Load More button
-    const hasMore = newLoaded < total && newLoaded < 1000;
-    const remaining = Math.min(total - newLoaded, 1000 - newLoaded);
     if (loadMoreContainer) {
-        loadMoreContainer.innerHTML = renderer.getLoadMoreHtml({
-            hasMore,
-            remaining,
-            maxLoaded: newLoaded >= 1000
-        });
-        if (hasMore) {
-            csf._initLoadMoreButton(loadMoreContainer, gameListContainer, countContainer);
+        const hasMore = paginationResult.shown < totalVisible && paginationResult.shown < 1000;
+        const remaining = Math.min(totalVisible - paginationResult.shown, 1000 - paginationResult.shown);
+        const maxLoaded = paginationResult.shown >= 1000;
+
+        if (maxLoaded) {
+            loadMoreContainer.innerHTML = '<div class=\'alert alert-info\'><span class=\'mdi mdi-information-outline\'></span><span>Showing maximum of 1,000 results. Refine your filters to see more specific results.</span></div>';
+        } else if (hasMore) {
+            loadMoreContainer.innerHTML = '<button type=\'button\' class=\'btn btn-ghost load-more-button\'><span class=\'mdi mdi-space-invaders\'></span><span class=\'load-more-text\'>Load More (' + remaining.toLocaleString() + ' remaining)</span></button>';
+        } else {
+            loadMoreContainer.innerHTML = '<div class=\'text-base-content/60 text-center\'>All results loaded</div>';
         }
     }
 
     // Update jump-to-rank inputs
     document.querySelectorAll('.jump-to-rank-input').forEach(inp => {
-        inp.dataset.loaded = newLoaded;
+        inp.dataset.loaded = paginationResult.shown;
     });
-
 
     // Scroll to and highlight the target rank
     setTimeout(() => {
@@ -481,61 +435,41 @@ function scrollToAndHighlightRank(position) {
 }
 
 /**
- * Handles Load More using client-side filtering (instant, no network)
- * @param {ClientSideFiltering} csf - The CSF instance
+ * Handles Load More using SimpleGameFilter (instant, no network)
+ * All rows are preloaded in DOM, just need to reveal next batch
  */
-function handleLoadMoreCSF(csf) {
-    const gameListContainer = document.getElementById('game-list-container');
+function handleLoadMoreSimple() {
     const countContainer = document.querySelector('.result-count');
     const loadMoreContainer = document.querySelector('.load-more-container');
 
-    if (!gameListContainer) return;
-
-    // Get authoritative state
-    const currentState = getCurrentState();
-    const { filters, showRank, loaded } = currentState;
-
-    // Initialize renderer state if not already done (taking over from server-rendered content)
-    const renderer = csf.renderer;
-    if (!renderer.currentGames || renderer.currentGames.length === 0) {
-        // Get the filtered games from the engine
-        const result = csf.applyFilters(filters);
-        if (!result || !result.games) return;
-
-        // Set the renderer's state based on what's already loaded
-        renderer.currentGames = result.games;
-        renderer.currentPage = Math.ceil(loaded / renderer.PAGE_SIZE);
-    }
-
-    // Use CSF's loadMore method
-    const state = csf.loadMore(gameListContainer, { showRank });
-    if (!state) return;
-
-    // Mark that CSF has taken over
-    csf._hasRenderedUI = true;
-
-    // Reinitialize HTMX for dynamically rendered content
-    if (typeof htmx !== 'undefined') {
-        htmx.process(gameListContainer);
-    }
+    // Use SimpleGameFilter's showMore to reveal next batch
+    const state = window.SimpleGameFilter.showMore(100);
+    const counts = window.SimpleGameFilter.getVisibleCount();
+    const totalVisible = counts.visible;
 
     // Update count display
     if (countContainer) {
-        countContainer.innerHTML = csf.renderer.getResultSummaryHtml(state.loaded, state.total);
+        countContainer.innerHTML = 'Showing <span class=\'loaded-count-value\'>' +
+            state.shown.toLocaleString() + '</span> of ' + totalVisible.toLocaleString();
     }
 
     // Update Load More button
     if (loadMoreContainer) {
-        loadMoreContainer.innerHTML = csf.renderer.getLoadMoreHtml({
-            hasMore: state.hasMore,
-            remaining: state.remaining,
-            maxLoaded: state.loaded >= 1000
-        });
+        const remaining = Math.min(totalVisible - state.shown, 1000 - state.shown);
+        const maxLoaded = state.shown >= 1000;
+
+        if (maxLoaded) {
+            loadMoreContainer.innerHTML = '<div class=\'alert alert-info\'><span class=\'mdi mdi-information-outline\'></span><span>Showing maximum of 1,000 results. Refine your filters to see more specific results.</span></div>';
+        } else if (state.hasMore && remaining > 0) {
+            loadMoreContainer.innerHTML = '<button type=\'button\' class=\'btn btn-ghost load-more-button\'><span class=\'mdi mdi-space-invaders\'></span><span class=\'load-more-text\'>Load More (' + remaining.toLocaleString() + ' remaining)</span></button>';
+        } else {
+            loadMoreContainer.innerHTML = '<div class=\'text-base-content/60 text-center\'>All results loaded</div>';
+        }
     }
 
     // Update jump-to-rank inputs
     document.querySelectorAll('.jump-to-rank-input').forEach(inp => {
-        inp.dataset.loaded = state.loaded;
+        inp.dataset.loaded = state.shown;
     });
 }
 

@@ -609,3 +609,17 @@ def genre_icon(genre):
         return GENRE_CATEGORY_ICONS.get(genre.name, "mdi-gamepad-variant")
 
     return "mdi-gamepad-variant"
+
+
+@register.filter
+def join_ids(queryset):
+    """
+    Join the IDs of a queryset into a comma-separated string.
+
+    Args:
+        queryset: A Django queryset or list of objects with 'id' attribute
+
+    Returns:
+        Comma-separated string of IDs, e.g., "1,5,12"
+    """
+    return ",".join(str(obj.id) for obj in queryset)

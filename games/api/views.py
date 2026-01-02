@@ -349,6 +349,49 @@ class PlatformListView(ListAPIView):
     queryset = models.Platform.objects.all()
 
 
+@method_decorator(cache_page(60 * 15), name="dispatch")  # 15 min cache
+class GameFilterDataView(APIView):
+    """
+    Lightweight JSON endpoint for client-side filtering.
+
+    Returns minimal data needed for fast client-side filtering:
+    - id, year, name, genres (IDs), platforms (IDs), series (IDs), igdbId, rank
+
+    This is fetched once and used for instant filtering without server calls.
+    HTML rendering remains server-side (single source of truth).
+    """
+
+    def get(self, request):
+        games = (
+            models.Game.objects.only(
+                "id",
+                "year_of_release",
+                "name",
+                "igdb_id",
+                "rank",
+            )
+            .prefetch_related("wikipedia_genres", "platforms", "series")
+            .order_by("rank")
+        )
+
+        data = []
+        for game in games:
+            data.append(
+                {
+                    "id": game.id,
+                    "y": game.year_of_release,  # year
+                    "n": game.name.lower(),  # name (lowercase for search)
+                    "g": [g.id for g in game.wikipedia_genres.all()],  # genre IDs
+                    "p": [p.id for p in game.platforms.all()],  # platform IDs
+                    "s": [s.id for s in game.series.all()],  # series IDs
+                    "i": game.igdb_id,  # IGDB ID (for played status)
+                    "r": game.rank,  # rank
+                }
+            )
+
+        return Response({"games": data, "version": _compute_game_data_version()})
+
+
 class GameSearchAPIView(APIView):
     """
     API endpoint for navbar search - returns JSON list of games matching query.
@@ -536,147 +579,3 @@ class GameDataVersionView(APIView):
 
     def get(self, request):
         return Response({"version": _compute_game_data_version()})
-
-
-@method_decorator(cache_page(config.CACHE_TIMEOUT_1_HOUR), name="dispatch")
-class GameAllDataView(APIView):
-    """
-    Complete game data endpoint for client-side filtering.
-
-    Returns all games with minimal payload for efficient client-side filtering:
-    - Compressed field names to minimize payload size
-    - Reference data (developers, platforms, genres) keyed by ID
-    - Genre hierarchy with descendant IDs for hierarchical filtering
-
-    Response format:
-    {
-        "version": "abc123def456",
-        "data": {
-            "games": [{id, n, s, r, y, a, dv, p, g, sr, lc}, ...],
-            "developers": {id: {n, pa, s}, ...},
-            "platforms": {id: {n, c}, ...},
-            "genres": [{id, n, s, p, l, d}, ...]
-        }
-    }
-    """
-
-    def get(self, request):
-        version = _compute_game_data_version()
-
-        # Fetch all games with required relations
-        games = (
-            models.Game.objects.select_related("primary_igdb_game_data")
-            .prefetch_related(
-                "developers__parent",
-                "platforms",
-                "wikipedia_genres",
-                "series",
-            )
-            .with_list_count()
-            .order_by("rank")
-        )
-
-        # Build games list with minimal field names
-        games_data = []
-        developers_dict = {}
-        platforms_dict = {}
-        series_dict = {}
-
-        for game in games:
-            # Collect developer IDs and build developer reference data
-            dev_ids = []
-            for dev in game.developers.all():
-                dev_ids.append(dev.id)
-                if dev.id not in developers_dict:
-                    # Get root developer slug for URL routing
-                    root = dev.root_developer
-                    developers_dict[dev.id] = {
-                        "n": dev.name,
-                        "pa": dev.parent_id,
-                        "s": root.slug if root else dev.slug,
-                    }
-                    # Also add parent chain to dict
-                    if dev.parent and dev.parent.id not in developers_dict:
-                        parent = dev.parent
-                        parent_root = parent.root_developer
-                        developers_dict[parent.id] = {
-                            "n": parent.name,
-                            "pa": parent.parent_id,
-                            "s": parent_root.slug if parent_root else parent.slug,
-                        }
-
-            # Collect platform IDs
-            platform_ids = []
-            for platform in game.platforms.all():
-                platform_ids.append(platform.id)
-                if platform.id not in platforms_dict:
-                    platforms_dict[platform.id] = {
-                        "n": platform.name,
-                        "c": platform.code,
-                    }
-
-            # Collect genre IDs
-            genre_ids = [g.id for g in game.wikipedia_genres.all()]
-
-            # Collect series IDs and build series reference data
-            series_ids = []
-            for s in game.series.all():
-                series_ids.append(s.id)
-                if s.id not in series_dict:
-                    series_dict[s.id] = {
-                        "n": s.name,
-                        "s": s.slug,
-                    }
-
-            # Get artwork ID from primary IGDB data
-            artwork_id = None
-            if game.primary_igdb_game_data:
-                artwork_id = game.primary_igdb_game_data.artwork_id
-
-            games_data.append(
-                {
-                    "id": game.id,
-                    "i": game.igdb_id,  # IGDB ID for played game tracking
-                    "n": game.name,
-                    "s": game.slug,
-                    "r": game.rank,
-                    "y": game.year_of_release,
-                    "a": artwork_id,
-                    "dv": dev_ids,  # Changed from "st" to "dv" for developers
-                    "p": platform_ids,
-                    "g": genre_ids,
-                    "sr": series_ids,
-                    "lc": game.list_count,  # List count for display
-                }
-            )
-
-        # Build genre hierarchy with descendant IDs for client-side expansion
-        genres_data = []
-        all_genres = models.WikipediaGenre.objects.prefetch_related("children").all()
-
-        # Pre-compute descendant IDs for each genre
-        for genre in all_genres:
-            descendant_ids = genre.get_descendant_ids(include_self=False)
-            genres_data.append(
-                {
-                    "id": genre.id,
-                    "n": genre.name,
-                    "s": genre.slug,
-                    "p": genre.parent_id,
-                    "l": genre.level,
-                    "d": descendant_ids,
-                }
-            )
-
-        return Response(
-            {
-                "version": version,
-                "data": {
-                    "games": games_data,
-                    "developers": developers_dict,
-                    "platforms": platforms_dict,
-                    "genres": genres_data,
-                    "series": series_dict,
-                },
-            }
-        )
