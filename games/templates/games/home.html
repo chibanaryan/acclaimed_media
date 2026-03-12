@@ -18,7 +18,7 @@
         if ('requestIdleCallback' in window) {
             requestIdleCallback(function() {
                 var script = document.createElement('script');
-                script.src = '{% static 'games/js/utils-loadmore.min.js' %}?v=3';
+                script.src = '{% static 'games/js/utils-loadmore.min.js' %}?v=6';
                 script.defer = true;
                 script.nonce = '{{ csp_nonce }}';
                 document.head.appendChild(script);
@@ -27,7 +27,7 @@
             // Fallback for browsers without requestIdleCallback
             setTimeout(function() {
                 var script = document.createElement('script');
-                script.src = '{% static 'games/js/utils-loadmore.min.js' %}?v=3';
+                script.src = '{% static 'games/js/utils-loadmore.min.js' %}?v=6';
                 script.defer = true;
                 script.nonce = '{{ csp_nonce }}';
                 document.head.appendChild(script);
@@ -237,6 +237,27 @@
                 waitForUtils();
             }
         }
+    }, 300);
+</script>
+{% endif %}
+{% if jump_rank and not highlight %}
+<script nonce="{{ csp_nonce }}">
+    setTimeout(function() {
+        var rank = {{ jump_rank }};
+
+        if (typeof scrollToAndHighlightRank === 'function') {
+            scrollToAndHighlightRank(rank);
+            return;
+        }
+
+        var waitForUtils = function() {
+            if (typeof scrollToAndHighlightRank === 'function') {
+                scrollToAndHighlightRank(rank);
+            } else {
+                setTimeout(waitForUtils, 100);
+            }
+        };
+        waitForUtils();
     }, 300);
 </script>
 {% endif %}

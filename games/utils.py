@@ -59,6 +59,29 @@ from games.services.query_filters import (  # noqa: F401
 
 
 # =============================================================================
+# Pagination Utilities
+# =============================================================================
+
+
+def rank_to_page(rank: int | None, page_size: int | None = None) -> int | None:
+    """Convert a 1-based rank into a 1-based page number."""
+    from games import config
+
+    if page_size is None:
+        page_size = config.DEFAULT_PAGE_SIZE
+
+    try:
+        rank_value = int(rank)
+    except (TypeError, ValueError):
+        return None
+
+    if rank_value < 1 or page_size < 1:
+        return None
+
+    return ((rank_value - 1) // page_size) + 1
+
+
+# =============================================================================
 # Email Utilities
 # =============================================================================
 

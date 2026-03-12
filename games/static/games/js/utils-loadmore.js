@@ -137,6 +137,17 @@ function getCurrentState() {
     let total = 0;
     let loaded = 0;
     let csf = null;
+    let rangeStart = 1;
+    let rangeEnd = 0;
+    let isPageWindow = false;
+    const input = document.querySelector('.jump-to-rank-input');
+
+    if (input) {
+        rangeStart = parseInt(input.dataset.rangeStart) || 1;
+        rangeEnd = parseInt(input.dataset.rangeEnd) || 0;
+        isPageWindow = input.dataset.pageWindow === 'true';
+        total = parseInt(input.dataset.total) || 0;
+    }
 
     // Try to get state from CSF (most authoritative when available)
     if (typeof getClientSideFiltering === 'function') {
@@ -158,24 +169,47 @@ function getCurrentState() {
 
     // Fallback to data attributes if CSF doesn't have state
     if (loaded === 0) {
-        const input = document.querySelector('.jump-to-rank-input');
         if (input) {
             loaded = parseInt(input.dataset.loaded) || 0;
-            if (total === 0) {
-                total = parseInt(input.dataset.total) || 0;
+            if (rangeEnd === 0) {
+                rangeEnd = loaded;
             }
         }
     }
 
     // Final fallback: count actual rendered rows
     const renderedRows = document.querySelectorAll('#game-list-container .game-row.desktop').length;
-    if (renderedRows > loaded) {
+    if (renderedRows > loaded && !isPageWindow) {
         loaded = renderedRows;
+    }
+
+    if (isPageWindow && renderedRows > 0) {
+        loaded = renderedRows;
+        rangeEnd = rangeStart + renderedRows - 1;
+    } else if (!isPageWindow && rangeEnd < loaded) {
+        rangeEnd = loaded;
     }
 
     const showRank = hasActiveFilters(filters, csf) ? 'filtered' : 'alltime';
 
-    return { total, loaded, filters, showRank, csf };
+    return { total, loaded, filters, showRank, csf, rangeStart, rangeEnd, isPageWindow };
+}
+
+function isRankInCurrentWindow(targetRank, state) {
+    if (state.isPageWindow) {
+        return targetRank >= state.rangeStart && targetRank <= state.rangeEnd;
+    }
+
+    return targetRank <= state.loaded;
+}
+
+function navigateToRankPage(targetRank, perPage) {
+    const params = new URLSearchParams(window.location.search);
+    params.set('page', Math.ceil(targetRank / perPage));
+    params.set('jump', targetRank);
+    params.delete('highlight');
+    params.delete('append');
+    window.location.assign(window.location.pathname + '?' + params.toString());
 }
 
 /**
@@ -235,8 +269,14 @@ async function handleJumpToRank(input) {
     }
 
     // Check if target is already loaded
-    if (targetRank <= loaded) {
-        scrollToAndHighlightRank(targetRank);
+    if (isRankInCurrentWindow(targetRank, state)) {
+        scrollToAndHighlightRank(targetRank, state);
+        input.value = '';
+        return;
+    }
+
+    if (state.isPageWindow) {
+        navigateToRankPage(targetRank, perPage);
         input.value = '';
         return;
     }
@@ -253,8 +293,9 @@ async function handleJumpToRank(input) {
         }
     }
 
-    // Fallback: fetch from server (parallel loading)
-    await jumpToRankServerSide(targetRank, loaded, perPage);
+    // Fallback: navigate directly to the page containing the target rank.
+    // This avoids fetching every intermediate page when CSF is not ready yet.
+    navigateToRankPage(targetRank, perPage);
     input.value = '';
 }
 
@@ -491,13 +532,19 @@ async function loadPage(page) {
  * Scrolls to and highlights a specific position in the list
  * @param {number} position - The 1-based position to scroll to (e.g., 50 = 50th game in list)
  */
-function scrollToAndHighlightRank(position) {
+function scrollToAndHighlightRank(position, state = null) {
     // Detect view mode from container
     const gameListContainer = document.getElementById('game-list-container');
     const isGridView = gameListContainer && gameListContainer.classList.contains('view-grid');
+    const currentState = state || getCurrentState();
 
-    // Position is 1-based, arrays are 0-based
-    const index = position - 1;
+    const basePosition = currentState.isPageWindow ? currentState.rangeStart : 1;
+    const index = position - basePosition;
+
+    if (index < 0) {
+        console.warn('Could not find position:', position);
+        return;
+    }
 
     let elementToScroll = null;
     let elementsToHighlight = [];

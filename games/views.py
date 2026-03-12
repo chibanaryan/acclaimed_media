@@ -1071,8 +1071,86 @@ class HomePageView(RobustPaginationMixin, ListView):
                 samesite=data.get("samesite") or None,
             )
 
+    @staticmethod
+    def _parse_jump_rank(value):
+        if not value:
+            return None
+        try:
+            rank = int(value)
+        except (TypeError, ValueError):
+            return None
+        return rank if rank > 0 else None
+
+    def _get_highlighted_game(self, request):
+        highlight = request.GET.get("highlight")
+        if not highlight or not highlight.isdigit():
+            return None
+        return (
+            models.Game.objects.filter(id=int(highlight))
+            .only("id", "rank", "year_rank", "decade_rank")
+            .first()
+        )
+
+    @staticmethod
+    def _requested_highlight_rank_field(request):
+        start_param = request.GET.get("start")
+        end_param = request.GET.get("end")
+        year_param = request.GET.get("year")
+        decade_param = request.GET.get("decade")
+
+        if start_param or end_param:
+            try:
+                start = int(start_param) if start_param else None
+                end = int(end_param) if end_param else None
+            except (TypeError, ValueError):
+                return "rank"
+
+            if start is not None and end is not None:
+                if start == end:
+                    return "year_rank"
+                if start % 10 == 0 and end == start + 9:
+                    return "decade_rank"
+            return None
+
+        if year_param:
+            return "year_rank"
+
+        if decade_param:
+            try:
+                decade_start = int(str(decade_param).split("-")[0])
+            except (TypeError, ValueError):
+                return None
+            return "decade_rank" if decade_start % 10 == 0 else None
+
+        return "rank"
+
+    def _infer_highlight_page(self, request):
+        if request.GET.get("page"):
+            return None
+
+        game = self._get_highlighted_game(request)
+        if game is None:
+            return None
+
+        rank_field = self._requested_highlight_rank_field(request)
+        if rank_field is None:
+            return None
+
+        return utils.rank_to_page(getattr(game, rank_field, None))
+
+    def _apply_inferred_highlight_page(self, request):
+        inferred_page = self._infer_highlight_page(request)
+        if not inferred_page:
+            return
+
+        query = request.GET.copy()
+        query["page"] = str(inferred_page)
+        request.GET = query
+
     def dispatch(self, request, *args, **kwargs):
         """Cache rendered home page content for anonymous users to reduce TTFB."""
+        self._apply_inferred_highlight_page(request)
+
         # Only cache for anonymous, non-HTMX full-page requests
         is_htmx = (
             request.headers.get("HX-Request")
@@ -1525,6 +1603,7 @@ class HomePageView(RobustPaginationMixin, ListView):
         context["max_year"] = max_year
         # Always include full range 1970-present for year dropdowns
         context["year_range"] = range(1970, max_year + 1)
+        context["jump_rank"] = self._parse_jump_rank(self.request.GET.get("jump"))
         # Convert highlight to int for comparison with game.id in template
         highlight_str = self.request.GET.get("highlight")
         context["highlight"] = (
@@ -1788,17 +1867,38 @@ class HomePageView(RobustPaginationMixin, ListView):
 
         # Load More context
         page_obj = context.get("page_obj")
-        if page_obj:
+        if page_obj is not None:
+            range_start = page_obj.start_index()
+            range_end = page_obj.end_index()
+            rendered_count = len(page_obj.object_list)
+            has_window_target = bool(
+                context.get("highlight") or context.get("jump_rank")
+            )
+            is_deep_link_window = bool(page_obj.number > 1 and has_window_target)
+
             context["has_more"] = page_obj.has_next()
             context["next_page"] = (
                 page_obj.next_page_number() if page_obj.has_next() else None
             )
             context["total_count"] = page_obj.paginator.count
             context["loaded_count"] = page_obj.end_index()
+            context["jump_loaded_count"] = (
+                rendered_count if is_deep_link_window else page_obj.end_index()
+            )
+            context["range_start"] = range_start
+            context["range_end"] = range_end
+            context["is_deep_link_window"] = is_deep_link_window
             context["remaining_count"] = max(
                 0, page_obj.paginator.count - page_obj.end_index()
             )
             context["max_loaded"] = page_obj.end_index() >= page_obj.paginator.count
+            context["show_load_more"] = bool(
+                not is_deep_link_window and page_obj.has_next()
+            )
+            context["show_all_loaded"] = bool(
+                not is_deep_link_window
+                and page_obj.end_index() >= page_obj.paginator.count
+            )
 
         # Enable client-side filtering for fast subsequent interactions
         context["enable_client_filtering"] = True

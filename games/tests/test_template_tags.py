@@ -253,70 +253,69 @@ class GameRankUrlTest(TestCase):
     def test_basic_rank_url_no_params(self):
         """Test basic rank URL returns base games path with no params."""
         url = game_rank_url(150)
-        self.assertEqual(url, "/")
-        self.assertNotIn("page=", url)  # No page param - view handles dynamic loading
+        self.assertEqual(url, "/?page=2")
 
     def test_rank_with_game_id_highlight(self):
         """Test rank URL with game ID for highlighting."""
         url = game_rank_url(50, game_id=123)
-        self.assertNotIn("page=", url)  # No page param
+        self.assertIn("page=1", url)
         self.assertIn("highlight=123", url)
 
     def test_rank_with_single_year_filter(self):
         """Test rank URL with single year uses start/end params."""
-        url = game_rank_url(25, start=2020, end=2020)
+        url = game_rank_url(125, start=2020, end=2020)
+        self.assertIn("page=2", url)
         self.assertIn("start=2020", url)
         self.assertIn("end=2020", url)
         self.assertNotIn("year=", url)  # No legacy year param
         self.assertNotIn("decade=", url)
-        self.assertNotIn("page=", url)
 
     def test_rank_with_decade_range(self):
         """Test rank URL with decade range uses start/end params."""
-        url = game_rank_url(25, start=1990, end=1999)
+        url = game_rank_url(225, start=1990, end=1999)
+        self.assertIn("page=3", url)
         self.assertIn("start=1990", url)
         self.assertIn("end=1999", url)
         self.assertNotIn("decade=", url)  # No legacy decade param
-        self.assertNotIn("page=", url)
 
     def test_rank_with_custom_range(self):
         """Test rank URL with custom year range."""
         url = game_rank_url(25, start=2015, end=2020)
+        self.assertIn("page=1", url)
         self.assertIn("start=2015", url)
         self.assertIn("end=2020", url)
         self.assertNotIn("decade=", url)
         self.assertNotIn("year=", url)
-        self.assertNotIn("page=", url)
 
     def test_rank_with_only_start(self):
         """Test rank URL with only start year."""
         url = game_rank_url(25, start=2010)
+        self.assertIn("page=1", url)
         self.assertIn("start=2010", url)
         self.assertNotIn("end=", url)
-        self.assertNotIn("page=", url)
 
     def test_rank_with_only_end(self):
         """Test rank URL with only end year."""
         url = game_rank_url(25, end=2020)
+        self.assertIn("page=1", url)
         self.assertIn("end=2020", url)
         self.assertNotIn("start=", url)
-        self.assertNotIn("page=", url)
 
     def test_highlight_with_year_filter(self):
         """Test rank URL with both highlight and year filter."""
         url = game_rank_url(150, game_id=456, start=2020, end=2020)
+        self.assertIn("page=2", url)
         self.assertIn("highlight=456", url)
         self.assertIn("start=2020", url)
         self.assertIn("end=2020", url)
-        self.assertNotIn("page=", url)
 
     def test_highlight_with_decade_range(self):
         """Test rank URL with both highlight and decade range."""
         url = game_rank_url(150, game_id=789, start=1990, end=1999)
+        self.assertIn("page=2", url)
         self.assertIn("highlight=789", url)
         self.assertIn("start=1990", url)
         self.assertIn("end=1999", url)
-        self.assertNotIn("page=", url)
 
 
 class ToJsonFilterTest(TestCase):

@@ -1155,9 +1155,13 @@ class GameSearchLoadMoreTest(TestCase):
         self.assertTrue(response.context["has_more"])
         self.assertEqual(response.context["next_page"], 2)
         self.assertEqual(response.context["loaded_count"], 100)
+        self.assertEqual(response.context["jump_loaded_count"], 100)
         self.assertEqual(response.context["total_count"], 150)
         self.assertEqual(response.context["remaining_count"], 50)
         self.assertFalse(response.context["max_loaded"])
+        self.assertFalse(response.context["is_deep_link_window"])
+        self.assertTrue(response.context["show_load_more"])
+        self.assertFalse(response.context["show_all_loaded"])
 
     def test_z_append_mode_returns_append_template(self):
         """Test that append=true returns the append template.
@@ -1216,21 +1220,25 @@ class GameSearchLoadMoreTest(TestCase):
         self.assertEqual(len(response.context["games"]), 1)
         self.assertFalse(response.context["has_more"])
 
-    def test_highlight_beyond_100_uses_standard_page_size(self):
-        """Test that highlighting a game beyond position 100 still loads standard page.
-
-        Client-side JS handles loading more games via CSF (client-side filtering).
-        The server always returns the standard page size for fast initial load.
-        """
+    def test_highlight_beyond_100_opens_direct_page_window(self):
+        """Test that deep highlight links open the page containing the game."""
         # Get the game at position 120 (rank 121)
         game_120 = Game.objects.get(rank=121)
 
         response = self.client.get(reverse("home") + f"?highlight={game_120.id}")
         self.assertEqual(response.status_code, 200)
-        # Server returns standard page size - client-side loads more if needed
-        self.assertEqual(len(response.context["games"]), 100)
-        # The highlight parameter is passed to context for client-side handling
+        self.assertEqual(response.context["page_obj"].number, 2)
+        self.assertEqual(len(response.context["games"]), 50)
         self.assertEqual(response.context["highlight"], game_120.id)
+        self.assertIn(game_120, response.context["games"])
+        self.assertEqual(response.context["range_start"], 101)
+        self.assertEqual(response.context["range_end"], 150)
+        self.assertEqual(response.context["jump_loaded_count"], 50)
+        self.assertTrue(response.context["is_deep_link_window"])
+        self.assertFalse(response.context["show_load_more"])
+        self.assertFalse(response.context["show_all_loaded"])
+        self.assertContains(response, "Showing 101-150 of 150")
+        self.assertNotContains(response, "Load More (")
 
     def test_highlight_within_100_loads_normal_page(self):
         """Test that highlighting a game within position 100 loads normal page size."""
@@ -1244,6 +1252,70 @@ class GameSearchLoadMoreTest(TestCase):
         # Verify the highlighted game is in the results
         game_ids = [g.id for g in response.context["games"]]
         self.assertIn(game_50.id, game_ids)
+        self.assertFalse(response.context["is_deep_link_window"])
+        self.assertEqual(response.context["range_start"], 1)
+        self.assertEqual(response.context["range_end"], 100)
+
+    def test_highlight_exact_year_infers_page_from_year_rank(self):
+        """Test exact-year highlight links infer page from year_rank."""
+        year_games = []
+        for i in range(121):
+            year_games.append(
+                Game.objects.create(
+                    name=f"Year Rank Game {i:03d}",
+                    rank=1000 + i,
+                    year_of_release=2021,
+                    year_rank=i + 1,
+                )
+            )
+
+        target = year_games[-1]
+
+        response = self.client.get(
+            reverse("home"),
+            {"highlight": target.id, "start": 2021, "end": 2021},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["page_obj"].number, 2)
+        self.assertIn(target, response.context["games"])
+        self.assertTrue(response.context["is_deep_link_window"])
+
+    def test_highlight_exact_decade_infers_page_from_decade_rank(self):
+        """Test exact-decade highlight links infer page from decade_rank."""
+        decade_games = []
+        for i in range(121):
+            decade_games.append(
+                Game.objects.create(
+                    name=f"Decade Rank Game {i:03d}",
+                    rank=2000 + i,
+                    year_of_release=2031,
+                    decade_rank=i + 1,
+                )
+            )
+
+        target = decade_games[-1]
+
+        response = self.client.get(
+            reverse("home"),
+            {"highlight": target.id, "start": 2030, "end": 2039},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["page_obj"].number, 2)
+        self.assertIn(target, response.context["games"])
+        self.assertTrue(response.context["is_deep_link_window"])
+
+    def test_jump_parameter_marks_page_as_window(self):
+        """Test jump query param keeps non-first pages in page-window mode."""
+        response = self.client.get(reverse("home"), {"page": 2, "jump": 121})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["page_obj"].number, 2)
+        self.assertTrue(response.context["is_deep_link_window"])
+        self.assertEqual(response.context["range_start"], 101)
+        self.assertEqual(response.context["range_end"], 150)
+        self.assertFalse(response.context["show_load_more"])
 
 
 class DeveloperListViewTest(TestCase):

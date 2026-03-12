@@ -13,6 +13,7 @@ Alternatively, use {% load core_filters %} for just the common filters.
 from django import template
 
 from games import config, constants
+from games.utils import rank_to_page
 
 # Import shared filters to make them available via {% load game_filters %}
 from core.templatetags.core_filters import (
@@ -48,14 +49,10 @@ def get_list_type_label(type_code):
 @register.simple_tag
 def game_rank_url(rank, game_id=None, start=None, end=None):
     """
-    Generate URL for game rank with highlight for smooth scrolling.
-
-    The games list uses infinite scroll with dynamic page sizing. When a highlight
-    parameter is provided, the view automatically loads enough games to include
-    the highlighted one, then smooth scrolls to it.
+    Generate URL for a rank link with the target page and optional highlight.
 
     Args:
-        rank: The rank number (unused, kept for backward compatibility)
+        rank: The rank number used to derive the destination page
         game_id: Optional game ID for highlighting
         start: Optional start year for filtering
         end: Optional end year for filtering
@@ -66,8 +63,12 @@ def game_rank_url(rank, game_id=None, start=None, end=None):
     from django.urls import reverse
     from urllib.parse import urlencode
 
-    # Build query parameters - no page needed, view handles dynamic loading
+    # Build query parameters
     query_params = {}
+
+    page = rank_to_page(rank, config.DEFAULT_PAGE_SIZE)
+    if page:
+        query_params["page"] = page
 
     if game_id:
         query_params["highlight"] = game_id
