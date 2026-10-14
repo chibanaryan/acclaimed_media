@@ -1,5 +1,11 @@
 # Developer Log
 
+## 2026-10-14 (comma spacing)
+
+- Fix stray spaces before commas in game row metadata (`BioWare , BioWare Edmonton`, `8 , DOS`): `{% if not forloop.last %}, {% endif %}` separators sat on their own indented line, so Django emitted the newline as rendered text
+- Pull the developer, platform-family, and platform-code separators onto the preceding tag in the desktop and mobile row templates, and close the gap inside the platform-family badge; mobile's inner platform loop now uses the same `forloop.parentloop` form as desktop
+- Spacing was previously inconsistent within a session: the client-side renderer already joined with `', '`, so rows lost the stray space whenever a filter re-rendered them
+
 ## 2026-09-30 (stray Other genres)
 
 - Fix stray genres under the "Other" filter category (`and` on Super Mario Maker, `Clicker` on Universal Paperclips, `MMOFPS` on PlanetSide): unmapped Wikipedia infobox wording was passed through unchanged and filed under Other on each metadata refresh

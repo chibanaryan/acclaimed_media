@@ -51,16 +51,7 @@
                 {% with display_devs=game.get_display_developers %}
                     {% if display_devs %}
                     <span class="whitespace-nowrap" data-slot="primary-developer">
-                        {% for dev in display_devs %}
-                            {% with root=dev.display_root_developer %}
-                                {% if root.slug %}
-                                <a href="{% url 'developer-detail' slug=root.slug %}{% if dev.id != root.id %}#developer-{{ dev.id }}-game-{{ game.id }}{% else %}#game-{{ game.id }}{% endif %}" class="link link-hover">{{ dev.name }}</a>
-                                {% else %}
-                                {{ dev.name }}
-                                {% endif %}
-                            {% endwith %}
-                            {% if not forloop.last %}, {% endif %}
-                        {% endfor %}
+                        {% for dev in display_devs %}{% with root=dev.display_root_developer %}{% if root.slug %}<a href="{% url 'developer-detail' slug=root.slug %}{% if dev.id != root.id %}#developer-{{ dev.id }}-game-{{ game.id }}{% else %}#game-{{ game.id }}{% endif %}" class="link link-hover">{{ dev.name }}</a>{% else %}{{ dev.name }}{% endif %}{% endwith %}{% if not forloop.last %}, {% endif %}{% endfor %}
                     </span>
                     {% endif %}
 
@@ -76,13 +67,10 @@
                                     {% elif family.icon %}
                                     <span class="mdi {{ family.icon }} text-sm leading-none" aria-hidden="true"></span>
                                     {% endif %}
-                                    <span class="tabular-nums font-bold leading-none" style="font-size: 8px; margin-left: 1px; margin-top: -2px;">{{ family.count }}</span>
-                                </span>
-                                {% if not forloop.last %}, {% endif %}
+                                    <span class="tabular-nums font-bold leading-none" style="font-size: 8px; margin-left: 1px; margin-top: -2px;">{{ family.count }}</span></span>{% if not forloop.last %}, {% endif %}
                                 {% else %}
                                     {% for p in family.platforms %}
-                                    <span class="tooltip tooltip-top hover:text-primary cursor-pointer transition-colors" data-tip="{{ p.name }}" onclick="event.stopPropagation(); document.dispatchEvent(new CustomEvent('add-platforms', {detail: {platformIds: '{{ p.id }}', gameId: '{{ game.id }}'} }))">{{ p.code }}</span>
-                                    {% if not forloop.last %}, {% elif not forloop.parentloop.last %}, {% endif %}
+                                    <span class="tooltip tooltip-top hover:text-primary cursor-pointer transition-colors" data-tip="{{ p.name }}" onclick="event.stopPropagation(); document.dispatchEvent(new CustomEvent('add-platforms', {detail: {platformIds: '{{ p.id }}', gameId: '{{ game.id }}'} }))">{{ p.code }}</span>{% if not forloop.last %}, {% elif not forloop.parentloop.last %}, {% endif %}
                                     {% endfor %}
                                 {% endif %}
                             {% endfor %}

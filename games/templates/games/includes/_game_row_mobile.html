@@ -56,14 +56,12 @@
                                         {% elif family.icon %}
                                         <span class="mdi {{ family.icon }}" aria-hidden="true"></span>
                                         {% endif %}
-                                        <span class="tabular-nums font-bold" style="font-size: 8px; margin-left: 1px;">{{ family.count }}</span>
-                                    </span>
+                                        <span class="tabular-nums font-bold" style="font-size: 8px; margin-left: 1px;">{{ family.count }}</span></span>{% if not forloop.last %}, {% endif %}
                                     {% else %}
                                         {% for p in family.platforms %}
-                                        <span title="{{ p.name }}">{{ p.code }}</span>{% if not forloop.last %}, {% endif %}
+                                        <span title="{{ p.name }}">{{ p.code }}</span>{% if not forloop.last %}, {% elif not forloop.parentloop.last %}, {% endif %}
                                         {% endfor %}
                                     {% endif %}
-                                    {% if not forloop.last %}, {% endif %}
                                 {% endfor %}
                             </span>
                         </span>
