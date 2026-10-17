@@ -518,10 +518,8 @@ class Command(BaseCommand):
             if wikidata_id:
                 defaults["wikidata_id"] = wikidata_id
 
-            wiki_game_data, created = WikipediaGameData.objects.update_or_create(
-                game=game,
-                page_title=page_result.page_title,
-                defaults=defaults,
+            wiki_game_data, created = WikipediaGameData.upsert_for_game(
+                game, page_result.page_title, defaults
             )
 
         # Set primary relationship
@@ -854,10 +852,8 @@ class Command(BaseCommand):
         if steam_app_id:
             defaults["steam_app_id"] = steam_app_id
 
-        wiki_game_data, created = WikipediaGameData.objects.update_or_create(
-            game=game,
-            page_title=page_title,
-            defaults=defaults,
+        wiki_game_data, created = WikipediaGameData.upsert_for_game(
+            game, page_title, defaults
         )
 
         # Set primary relationship

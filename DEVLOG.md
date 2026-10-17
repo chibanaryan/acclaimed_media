@@ -7,6 +7,7 @@
 - The import thread survives the dropped stream, so the Wikipedia and IGDB data usually did land despite the error toast - the browser just stopped hearing about it. Long refreshes are still better run as `heroku run:detached -- python manage.py refresh_all_metadata`
 - Add a "Refresh All IGDB Data" button (`/import/igdb-progress/?force=true`) that re-fetches every game in place; previously the only way to update existing IGDB metadata from the admin was to clear it first and re-fetch
 - The SSE Wikipedia path now stores the Wikidata-derived `hltb_id` (P2816), `steam_app_id` (P1733), and Wikiquote sitelink, matching `fetch_wikipedia_metadata`; games enriched through the button were missing the IDs that HLTB matching and quotes rely on
+- Fix "get() returned more than one WikipediaGameData" failing a game on every refresh (hit Resident Evil 2): an alternate Wikidata ID that resolves to the article a game already has created a second record with the same page title. `WikipediaGameData.upsert_for_game()` now collapses such duplicates into the primary record, and all seven Wikipedia save paths go through it
 
 ## 2026-10-14 (comma spacing)
 

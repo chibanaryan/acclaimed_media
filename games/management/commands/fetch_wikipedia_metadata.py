@@ -480,10 +480,8 @@ class Command(BaseCommand):
             if page_result.wikiquote_page_title:
                 defaults["wikiquote_page_title"] = page_result.wikiquote_page_title
 
-            wiki_game_data, created = WikipediaGameData.objects.update_or_create(
-                game=game,
-                page_title=page_result.page_title,
-                defaults=defaults,
+            wiki_game_data, created = WikipediaGameData.upsert_for_game(
+                game, page_result.page_title, defaults
             )
 
         # Set primary relationship

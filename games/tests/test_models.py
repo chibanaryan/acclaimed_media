@@ -1083,6 +1083,74 @@ class WikipediaGameDataTests(TestCase):
         """Test __str__ returns correct format."""
         self.assertEqual(str(self.wiki_data), "Wikipedia data for Test Game")
 
+    def test_upsert_for_game_updates_existing_record(self):
+        """upsert_for_game updates the record for that game and page title."""
+        record, created = models.WikipediaGameData.upsert_for_game(
+            self.game,
+            "Test_Game_(video_game)",
+            {"primary_genre": "Adventure"},
+        )
+
+        self.assertFalse(created)
+        self.assertEqual(record.pk, self.wiki_data.pk)
+        self.assertEqual(record.primary_genre, "Adventure")
+
+    def test_upsert_for_game_creates_missing_record(self):
+        """upsert_for_game creates a record when the page title is new."""
+        record, created = models.WikipediaGameData.upsert_for_game(
+            self.game,
+            "Test_Game_2",
+            {"primary_genre": "Puzzle"},
+        )
+
+        self.assertTrue(created)
+        self.assertEqual(record.page_title, "Test_Game_2")
+
+    def test_upsert_for_game_collapses_duplicate_page_titles(self):
+        """Duplicate records for one page title are merged into the primary."""
+        duplicate = models.WikipediaGameData.objects.create(
+            game=self.game,
+            page_title="Test_Game_(video_game)",
+            wikidata_id="Q99999",
+            is_primary=False,
+        )
+
+        record, created = models.WikipediaGameData.upsert_for_game(
+            self.game,
+            "Test_Game_(video_game)",
+            {"primary_genre": "Adventure"},
+        )
+
+        self.assertFalse(created)
+        self.assertEqual(record.pk, self.wiki_data.pk)
+        self.assertFalse(
+            models.WikipediaGameData.objects.filter(pk=duplicate.pk).exists()
+        )
+
+    def test_upsert_for_game_repoints_primary_before_deleting(self):
+        """The game is repointed when it referenced the discarded duplicate."""
+        duplicate = models.WikipediaGameData.objects.create(
+            game=self.game,
+            page_title="Test_Game_(video_game)",
+            wikidata_id="Q99999",
+            is_primary=False,
+        )
+        self.game.primary_wikipedia_game_data = duplicate
+        self.game.save(update_fields=["primary_wikipedia_game_data"])
+
+        record, _ = models.WikipediaGameData.upsert_for_game(
+            self.game,
+            "Test_Game_(video_game)",
+            {"primary_genre": "Adventure"},
+        )
+
+        self.assertEqual(record.pk, self.wiki_data.pk)
+        self.game.refresh_from_db()
+        self.assertEqual(self.game.primary_wikipedia_game_data_id, self.wiki_data.pk)
+        self.assertFalse(
+            models.WikipediaGameData.objects.filter(pk=duplicate.pk).exists()
+        )
+
     def test_wikipedia_url(self):
         """Test wikipedia_url property returns correct URL."""
         expected = "https://en.wikipedia.org/wiki/Test_Game_(video_game)"

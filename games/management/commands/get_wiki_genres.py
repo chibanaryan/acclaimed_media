@@ -237,17 +237,15 @@ class Command(BaseCommand):
                             result.all_genres,
                         )
                     )
-                    wiki_game_data, created = (
-                        WikipediaGameData.objects.update_or_create(
-                            game=game,
-                            page_title=result.game_name,
-                            defaults={
-                                "primary_genre": normalized_primary,
-                                "all_genres": normalized_all_str,
-                                "lookup_source": result.source_url,
-                                "is_primary": True,
-                            },
-                        )
+                    wiki_game_data, created = WikipediaGameData.upsert_for_game(
+                        game,
+                        result.game_name,
+                        {
+                            "primary_genre": normalized_primary,
+                            "all_genres": normalized_all_str,
+                            "lookup_source": result.source_url,
+                            "is_primary": True,
+                        },
                     )
 
                     # Set primary relationship

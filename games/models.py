@@ -728,6 +728,34 @@ class WikipediaGameData(models.Model):
             return f"https://en.wikiquote.org/wiki/{title}"
         return None
 
+    @classmethod
+    def upsert_for_game(cls, game, page_title, defaults):
+        """update_or_create on (game, page_title), collapsing duplicate rows.
+
+        Nothing stops a game from having two records with the same page title -
+        an alternate Wikidata ID that resolves to the same article creates one -
+        and plain update_or_create then raises MultipleObjectsReturned, which
+        fails that game on every metadata refresh from then on.
+        """
+        matches = list(
+            cls.objects.filter(game=game, page_title=page_title).order_by("id")
+        )
+
+        if len(matches) > 1:
+            keep = next((match for match in matches if match.is_primary), matches[0])
+            extra_pks = [match.pk for match in matches if match.pk != keep.pk]
+
+            # Repoint the game before deleting, so the primary record survives
+            if game.primary_wikipedia_game_data_id in extra_pks:
+                game.primary_wikipedia_game_data = keep
+                game.save(update_fields=["primary_wikipedia_game_data"])
+
+            cls.objects.filter(pk__in=extra_pks).delete()
+
+        return cls.objects.update_or_create(
+            game=game, page_title=page_title, defaults=defaults
+        )
+
 
 class HLTBGameData(models.Model):
     """
@@ -1316,10 +1344,10 @@ class Game(MediaItemBase):
             capitalized_all_str = ", ".join(capitalized_all) if capitalized_all else ""
 
             # Create or update WikipediaGameData record
-            wiki_game_data, created = WikipediaGameData.objects.update_or_create(
-                game=self,
-                page_title=page_title,
-                defaults={
+            wiki_game_data, created = WikipediaGameData.upsert_for_game(
+                self,
+                page_title,
+                {
                     "wikidata_id": wikidata_id_extracted,
                     "primary_genre": capitalized_primary,
                     "all_genres": capitalized_all_str,

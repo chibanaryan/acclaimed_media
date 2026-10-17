@@ -498,10 +498,8 @@ def import_wikipedia_pages_with_progress(force_refresh: bool = False):
                                     )
 
                                 wiki_game_data, created = (
-                                    models.WikipediaGameData.objects.update_or_create(
-                                        game=game,
-                                        page_title=result.page_title,
-                                        defaults=defaults,
+                                    models.WikipediaGameData.upsert_for_game(
+                                        game, result.page_title, defaults
                                     )
                                 )
 

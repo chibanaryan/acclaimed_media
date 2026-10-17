@@ -170,15 +170,13 @@ class Command(BaseCommand):
                         ).update(is_primary=False)
 
                         # Create or update WikipediaGameData record
-                        wiki_game_data, created = (
-                            WikipediaGameData.objects.update_or_create(
-                                game=game,
-                                page_title=result.page_title,
-                                defaults={
-                                    "lookup_source": result.lookup_source,
-                                    "is_primary": True,
-                                },
-                            )
+                        wiki_game_data, created = WikipediaGameData.upsert_for_game(
+                            game,
+                            result.page_title,
+                            {
+                                "lookup_source": result.lookup_source,
+                                "is_primary": True,
+                            },
                         )
 
                         # Set primary relationship
