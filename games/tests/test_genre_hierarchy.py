@@ -217,6 +217,17 @@ class GenreNormalizerTest(TestCase):
         self.assertEqual(normalize_genre("Idle game"), "Puzzle")
         self.assertEqual(normalize_genre("MMOFPS"), "First-Person Shooter")
 
+    def test_normalize_dating_sim_word_game_and_level_editor(self):
+        """The remaining Other leftovers map to canonical genres."""
+        self.assertEqual(normalize_genre("dating sim"), "Life Simulation")
+        self.assertEqual(normalize_genre("Dating simulation"), "Life Simulation")
+        self.assertEqual(normalize_genre("Dating simulator"), "Life Simulation")
+        self.assertEqual(normalize_genre("Word game"), "Puzzle")
+        self.assertEqual(normalize_genre("word puzzle"), "Puzzle")
+        self.assertEqual(normalize_genre("Level editor and platformer"), "Platform")
+        # The level editor on its own is still not a genre
+        self.assertIsNone(normalize_genre("Level editor"))
+
     def test_normalize_drops_conjunction_tokens(self):
         """Conjunctions split out of infobox prose are not genres."""
         for token in ["and", "And", "or", "&"]:

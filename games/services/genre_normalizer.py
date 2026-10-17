@@ -162,6 +162,9 @@ GENRE_MAPPING = {
     "Pinball": "Party",  # Consolidated: only 1 game, under Puzzle & Casual
     "Social simulation": "Life Simulation",
     "Social simulator": "Life Simulation",
+    "Dating sim": "Life Simulation",  # Thirsty Suitors; same family as social sim
+    "Dating simulation": "Life Simulation",
+    "Dating simulator": "Life Simulation",
     "Farm life sim": "Life Simulation",
     "Farm simulation": "Life Simulation",
     "God game": "God Game",
@@ -196,6 +199,8 @@ GENRE_MAPPING = {
     "Clicker game": "Puzzle",
     "Idle": "Puzzle",
     "Idle game": "Puzzle",
+    "Word game": "Puzzle",  # Consolidated: only 1 game (Wordle)
+    "Word puzzle": "Puzzle",
     # Puzzle & Casual genres (Party, Music, Educational are children of Puzzle & Casual)
     "Cooking": None,
     "Party": "Party",
@@ -250,6 +255,8 @@ GENRE_MAPPING = {
     "First-person": None,
     "Hacking": None,
     "Level editor": None,
+    # Super Mario Maker's infobox joins both halves into one link
+    "Level editor and platformer": "Platform",
     "Lunar Lander": None,
     "Puzzle game": "Puzzle",
     "Vehicle construction": "Construction & Management",
