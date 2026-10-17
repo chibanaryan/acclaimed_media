@@ -181,7 +181,9 @@ def forwards(apps, schema_editor):
     tactical_shooter = _ensure_tactical_shooter(WikipediaGenre, shooter)
     simulation = _ensure_root_genre(WikipediaGenre, "Simulation")
 
-    tactical_source_genres = list(WikipediaGenre.objects.filter(name__iexact="Tactical"))
+    tactical_source_genres = list(
+        WikipediaGenre.objects.filter(name__iexact="Tactical")
+    )
     delivery_source_genres = list(
         WikipediaGenre.objects.filter(
             Q(name__iexact="Delivery sim")

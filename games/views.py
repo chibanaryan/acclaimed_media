@@ -45,6 +45,7 @@ from core.mixins import (
     AnonymousResponseCacheMixin,
     HTMXPartialMixin,
     RobustPaginationMixin,
+    StaffOnlyMixin,
 )
 from core.models import User
 from games import config, constants, models, utils
@@ -3360,7 +3361,7 @@ Sitemap: https://www.acclaimedvideogames.com/sitemap.xml
     return HttpResponse(content, content_type="text/plain")
 
 
-class ImportView(LoginRequiredMixin, FormView):
+class ImportView(StaffOnlyMixin, FormView):
     """
     Handles batch importing of game data files with validation and transaction safety.
 
@@ -3623,7 +3624,7 @@ class ImportView(LoginRequiredMixin, FormView):
         return super().form_valid(form)
 
 
-class IGDBProgressView(LoginRequiredMixin, View):
+class IGDBProgressView(StaffOnlyMixin, View):
     """
     Streams IGDB data fetching progress via Server-Sent Events (SSE).
     Allows real-time progress bar updates in the browser.
@@ -3648,7 +3649,7 @@ class IGDBProgressView(LoginRequiredMixin, View):
         )
 
 
-class WikipediaPageProgressView(LoginRequiredMixin, View):
+class WikipediaPageProgressView(StaffOnlyMixin, View):
     """
     Streams Wikipedia page lookup progress via Server-Sent Events (SSE).
     Allows real-time progress bar updates in the browser.
@@ -3667,7 +3668,7 @@ class WikipediaPageProgressView(LoginRequiredMixin, View):
         )
 
 
-class BatchImportProgressView(LoginRequiredMixin, View):
+class BatchImportProgressView(StaffOnlyMixin, View):
     """
     Streams batch file import progress via Server-Sent Events (SSE).
 

@@ -18,6 +18,7 @@ from django.views.generic import DetailView, ListView
 from books import config, models
 from books.forms import GoodreadsImportForm
 from books.services.goodreads_importer import import_goodreads_csv
+from core import constants as core_constants
 from core.cache_helpers import get_year_bounds
 from core.mixins import HTMXPartialMixin, RobustPaginationMixin, StaffOnlyMixin
 
@@ -355,12 +356,15 @@ class BookDetailView(StaffOnlyMixin, DetailView):
         context = super().get_context_data(**kwargs)
         book = context["book"]
 
-        # Build grouped lists from prefetched data
+        # Build grouped lists from prefetched data. Group on the stored code
+        # and take labels from core.constants: grouping on a label and then
+        # ordering by a hand-kept list of label strings is what made this
+        # section render empty on every book page, because the labels were
+        # keyed "AT"/"DEC" while ListBase.type stores "A"/"D".
         grouped = defaultdict(list)
         for membership in book.lists.all():
             list_type = membership.list.type
-            label = _get_list_type_label(list_type)
-            grouped[label].append(
+            grouped[list_type].append(
                 {
                     "id": membership.list.id,
                     "name": membership.list.name,
@@ -371,7 +375,7 @@ class BookDetailView(StaffOnlyMixin, DetailView):
                     ),
                     "publisher": membership.list.publisher,
                     "type": list_type,
-                    "type_name": label,
+                    "type_name": core_constants.get_list_type_label(list_type),
                     "url": membership.list.url,
                     "year": membership.list.year,
                     "rank": membership.rank,
@@ -379,9 +383,11 @@ class BookDetailView(StaffOnlyMixin, DetailView):
             )
 
         # Order groups by type importance
-        type_order = ["All time", "Decade", "Miscellaneous", "End of year"]
-        sorted_grouped_lists = [(k, grouped[k]) for k in type_order if k in grouped]
-        context["grouped_lists"] = sorted_grouped_lists
+        context["grouped_lists"] = [
+            (core_constants.get_list_type_label(code), grouped[code])
+            for code in core_constants.LIST_TYPE_IMPORTANCE_ORDER
+            if code in grouped
+        ]
 
         # Check if current user has marked this book as read or want-to-read
         if self.request.user.is_authenticated and book.goodreads_id:
@@ -635,14 +641,3 @@ class BookSearchView(StaffOnlyMixin, ListView):
             qs = qs.none()
 
         return qs.order_by("rank")[: self.paginate_by]
-
-
-def _get_list_type_label(list_type):
-    """Convert list type code to display label."""
-    type_labels = {
-        "AT": "All time",
-        "DEC": "Decade",
-        "EOY": "End of year",
-        "MISC": "Miscellaneous",
-    }
-    return type_labels.get(list_type, "Other")

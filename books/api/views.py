@@ -11,15 +11,12 @@ from django.db import connection
 from django.db.models import Count, F, Min, Prefetch
 from django.db.models.functions import Lower
 from django.shortcuts import get_object_or_404
-from django.utils.decorators import method_decorator
-from django.views.decorators.cache import cache_page
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView, Response
 
-from games import config  # Shared cache config
 from games import utils  # Shared utilities
 
 from core.permissions import IsStaffOrHide
@@ -27,8 +24,15 @@ from core.permissions import IsStaffOrHide
 from .. import models
 from . import serializers
 
+# Note on caching: these endpoints are deliberately uncached. `cache_page`
+# wraps `dispatch`, so it is consulted *before* permissions run - a response
+# generated for a staff member is then replayed to anonymous callers, which
+# defeats `IsStaffOrHide` entirely. Eight endpoints carried it until
+# 2026-10-17, `BookAllDataView` (the whole dataset) among them. Any future
+# caching must vary on the user. The same reasoning is recorded in
+# music/api/views.py, which never had the decorators.
 
-@method_decorator(cache_page(60 * 15), name="dispatch")  # 15 min cache
+
 class BookListView(ListAPIView):
     """
     List all books with filtering and search.
@@ -79,7 +83,6 @@ class BookListView(ListAPIView):
         return qs.distinct()
 
 
-@method_decorator(cache_page(60 * 30), name="dispatch")  # 30 min cache
 class BookDetailView(RetrieveAPIView):
     """Get detailed book information including list appearances."""
 
@@ -98,7 +101,6 @@ class BookDetailView(RetrieveAPIView):
     )
 
 
-@method_decorator(cache_page(60 * 30), name="dispatch")  # 30 min cache
 class AuthorDetailView(RetrieveAPIView):
     """API endpoint for author details."""
 
@@ -178,7 +180,6 @@ class BookListListView(ListAPIView):
         return qs
 
 
-@method_decorator(cache_page(config.CACHE_TIMEOUT_1_HOUR), name="dispatch")
 class BookMetaView(APIView):
     """
     Metadata about the books database.
@@ -226,10 +227,11 @@ class BookMetaView(APIView):
         # Calculate counts for each decade
         from django.db.models.functions import Floor
 
+        # Books with no year form a NULL decade, and formatting it raises
+        # TypeError, so this endpoint 500s as soon as one such book exists.
         decades_data = (
-            models.Book.objects.annotate(
-                decade_start=Floor(F("year_published") / 10) * 10
-            )
+            models.Book.objects.exclude(year_published__isnull=True)
+            .annotate(decade_start=Floor(F("year_published") / 10) * 10)
             .values("decade_start")
             .annotate(count=Count("id"))
             .order_by("decade_start")
@@ -258,7 +260,6 @@ class BookMetaView(APIView):
         return Response(data)
 
 
-@method_decorator(cache_page(config.CACHE_TIMEOUT_24_HOURS), name="dispatch")
 class BookGenreListView(ListAPIView):
     """List all book genres (flat list with hierarchy metadata)."""
 
@@ -267,7 +268,6 @@ class BookGenreListView(ListAPIView):
     queryset = models.BookGenre.objects.all().order_by("level", "display_order", "name")
 
 
-@method_decorator(cache_page(config.CACHE_TIMEOUT_24_HOURS), name="dispatch")
 class BookGenreTreeView(ListAPIView):
     """List book genres as hierarchical tree structure."""
 
@@ -414,7 +414,6 @@ def _compute_book_data_version():
     return hashlib.md5(version_string.encode()).hexdigest()[:12]
 
 
-@method_decorator(cache_page(config.CACHE_TIMEOUT_1_HOUR), name="dispatch")
 class BookDataVersionView(APIView):
     """Lightweight endpoint returning only the data version hash."""
 
@@ -424,7 +423,6 @@ class BookDataVersionView(APIView):
         return Response({"version": _compute_book_data_version()})
 
 
-@method_decorator(cache_page(config.CACHE_TIMEOUT_1_HOUR), name="dispatch")
 class BookAllDataView(APIView):
     """
     Complete book data endpoint for client-side filtering.

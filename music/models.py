@@ -16,11 +16,13 @@ from django.utils.text import slugify
 
 from core.models import (
     CreatorBase,
+    ExternalDataBase,
     ListBase,
     ListMembershipBase,
     MediaItemBase,
     PublicationBase,
 )
+from music import config
 
 
 class Artist(CreatorBase):
@@ -157,8 +159,15 @@ class AlbumQuerySet(models.QuerySet):
     """Chainable query helpers that keep album list views off the N+1 path."""
 
     def with_relations(self) -> "AlbumQuerySet":
-        """Prefetch everything an album row renders."""
-        return self.prefetch_related("artists", "artists__parent", "genres")
+        """Prefetch everything an album row renders.
+
+        ``primary_musicbrainz_album_data`` is joined because every row asks
+        it for the cover URL; without it a hundred-row page runs a hundred
+        extra queries.
+        """
+        return self.select_related("primary_musicbrainz_album_data").prefetch_related(
+            "artists", "artists__parent", "genres"
+        )
 
     def with_list_count(self) -> "AlbumQuerySet":
         """Annotate how many source lists each album appears on."""
@@ -196,11 +205,44 @@ class Album(MediaItemBase):
         db_index=True,
         help_text="MusicBrainz release-group MBID (Wikidata P436)",
     )
+    discogs_master_id = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Discogs master release ID (Wikidata P1954)",
+    )
     cover_image_url = models.URLField(null=True, blank=True)
     all_wikidata_ids = models.JSONField(
         default=list,
         blank=True,
         help_text="Every Wikidata ID for this album; the first is primary",
+    )
+
+    # Fast-path pointers to the primary external-metadata record of each
+    # source, so rendering a row never has to filter on is_primary.
+    primary_wikipedia_album_data = models.OneToOneField(
+        "WikipediaAlbumData",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="primary_album",
+        help_text="Primary Wikipedia/Wikidata record for display",
+    )
+    primary_discogs_album_data = models.OneToOneField(
+        "DiscogsAlbumData",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="primary_album",
+        help_text="Primary Discogs record for display",
+    )
+    primary_musicbrainz_album_data = models.OneToOneField(
+        "MusicBrainzAlbumData",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="primary_album",
+        help_text="Primary MusicBrainz record for display",
     )
 
     class Meta:
@@ -211,6 +253,7 @@ class Album(MediaItemBase):
         indexes = [
             models.Index(fields=["year_released", "rank"]),
             models.Index(fields=["musicbrainz_release_group_id"]),
+            models.Index(fields=["discogs_master_id"]),
         ]
 
     def save(self, *args: Any, **kwargs: Any) -> None:
@@ -265,11 +308,35 @@ class Album(MediaItemBase):
 
     @cached_property
     def thumbnail(self) -> Optional[str]:
-        return self.cover_image_url
+        """Row-sized cover art (250px), falling back to the stored URL.
+
+        Rows render at 90px, so the 250px variant covers 2x displays. The
+        Cover Art Archive serves a size by URL, so the ids on the MusicBrainz
+        record are enough to ask for one.
+        """
+        return self._cover_art_url(250) or self.cover_image_url
 
     @cached_property
     def image(self) -> Optional[str]:
-        return self.cover_image_url
+        """Detail-page cover art (500px), falling back to the stored URL."""
+        return self._cover_art_url(500) or self.cover_image_url
+
+    def _cover_art_url(self, size: int) -> Optional[str]:
+        """The best URL for cover art at ``size`` px, or None.
+
+        Prefers our own stored copy. The Cover Art Archive redirects to
+        archive.org, which returns an intermittent 500 on perfectly valid
+        images - measured at roughly one request in ten, with some items
+        broken outright. On a page showing a hundred covers that guarantees
+        visible breakage on every load, so the bytes are stored locally and
+        served from here. The remote URL stays as the fallback.
+        """
+        data = self.primary_musicbrainz_album_data
+        if data is None:
+            return None
+        if data.cover_art_stored:
+            return data.local_cover_art_url(size)
+        return data.cover_art_url(size)
 
     def get_display_artists(self, max_count: Optional[int] = None) -> list:
         """Return the album's artists, dropping any that parent another.
@@ -360,3 +427,338 @@ class AlbumListMembership(ListMembershipBase):
 
     def __str__(self) -> str:
         return f"{self.list} - {self.album} - {self.rank}"
+
+
+class WikipediaAlbumData(ExternalDataBase):
+    """
+    Supplemental Wikidata/Wikipedia album data.
+
+    Named for consistency with ``WikipediaGameData`` and ``WikipediaBookData``
+    even though Wikidata supplies most of it: the enwiki sitelink is what ties
+    an album to an article, and everything else rides on the same request.
+
+    Metadata persists when albums are deleted (SET_NULL). That matters here
+    more than it does for games: ``music.services.import_handler.import_albums``
+    deletes every Album row before reloading, so without SET_NULL a re-import
+    would discard every fetched cover and genre.
+    """
+
+    album = models.ForeignKey(
+        "Album",
+        on_delete=models.SET_NULL,
+        related_name="wikipedia_album_data_set",
+        null=True,
+        blank=True,
+    )
+    wikidata_id = models.CharField(
+        max_length=20,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Wikidata entity ID (e.g., 'Q212863')",
+    )
+    page_title = models.CharField(
+        max_length=300, blank=True, db_index=True, help_text="Wikipedia page title"
+    )
+    release_date = models.DateField(
+        null=True, blank=True, help_text="Full release date from Wikidata P577"
+    )
+    record_label = models.CharField(
+        max_length=300, null=True, blank=True, help_text="Record label (P264)"
+    )
+    spotify_album_id = models.CharField(
+        max_length=50, null=True, blank=True, help_text="Spotify album ID (P2205)"
+    )
+    primary_genre = models.CharField(max_length=200, null=True, blank=True)
+    all_genres = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Comma-separated genre labels from P136, before normalization",
+    )
+
+    class Meta:
+        db_table = "music_wikipediaalbumdata"
+        verbose_name = "Wikipedia Album Data"
+        verbose_name_plural = "Wikipedia Album Data"
+        indexes = [
+            models.Index(fields=["album", "is_primary"]),
+            models.Index(fields=["wikidata_id"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["album"],
+                condition=models.Q(is_primary=True) & models.Q(album__isnull=False),
+                name="unique_primary_wikipedia_per_album",
+            )
+        ]
+
+    def __str__(self) -> str:
+        if self.album:
+            return f"Wikipedia data for {self.album.name}"
+        return f"Orphaned Wikipedia data (Wikidata: {self.wikidata_id or 'unknown'})"
+
+    @property
+    def wikipedia_url(self) -> Optional[str]:
+        """The article URL, or None when no page title was resolved."""
+        if self.page_title:
+            return f"https://en.wikipedia.org/wiki/{self.page_title.replace(' ', '_')}"
+        return None
+
+    @classmethod
+    def collapse_duplicates(cls, album, wikidata_id):
+        """Reduce (album, wikidata_id) to one row and return it, or None.
+
+        Two albums in the supplied ranking carry two Wikidata IDs each - the
+        UK and US editions of 'Let It Bleed' and 'Aftermath' - and alternate
+        IDs can resolve to the same article, so nothing stops a second row
+        appearing for the same pair. Left alone it becomes a
+        ``MultipleObjectsReturned`` that fails that album on every refresh
+        from then on, which is the bug ``WikipediaGameData.upsert_for_game``
+        exists to prevent on the games side.
+        """
+        matches = list(
+            cls.objects.filter(album=album, wikidata_id=wikidata_id).order_by("id")
+        )
+        if not matches:
+            return None
+        if len(matches) == 1:
+            return matches[0]
+
+        keep = next((match for match in matches if match.is_primary), matches[0])
+        extra_pks = [match.pk for match in matches if match.pk != keep.pk]
+
+        # Repoint the album before deleting, so the primary record survives.
+        if album.primary_wikipedia_album_data_id in extra_pks:
+            album.primary_wikipedia_album_data = keep
+            album.save(update_fields=["primary_wikipedia_album_data"])
+
+        cls.objects.filter(pk__in=extra_pks).delete()
+        return keep
+
+
+class DiscogsAlbumData(ExternalDataBase):
+    """
+    Discogs master-release data: the genre source of record.
+
+    ``genres`` and ``styles`` are stored verbatim rather than only as
+    normalized ``MusicGenre`` links, for two reasons: the style-to-root
+    mapping can be re-derived without re-fetching 500 masters, and the
+    provenance is kept should attribution ever be required.
+    """
+
+    album = models.ForeignKey(
+        "Album",
+        on_delete=models.SET_NULL,
+        related_name="discogs_album_data_set",
+        null=True,
+        blank=True,
+    )
+    master_id = models.PositiveIntegerField(
+        db_index=True, help_text="Discogs master release ID (Wikidata P1954)"
+    )
+    title = models.CharField(max_length=300, blank=True)
+    main_release_year = models.PositiveSmallIntegerField(null=True, blank=True)
+    genres = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Discogs top-level genres, verbatim (e.g. ['Rock', 'Pop'])",
+    )
+    styles = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Discogs styles, verbatim (e.g. ['Art Rock', 'Psychedelic Rock'])",
+    )
+
+    class Meta:
+        db_table = "music_discogsalbumdata"
+        verbose_name = "Discogs Album Data"
+        verbose_name_plural = "Discogs Album Data"
+        indexes = [
+            models.Index(fields=["album", "is_primary"]),
+            models.Index(fields=["master_id"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["album"],
+                condition=models.Q(is_primary=True) & models.Q(album__isnull=False),
+                name="unique_primary_discogs_per_album",
+            )
+        ]
+
+    def __str__(self) -> str:
+        if self.album:
+            return f"Discogs data for {self.album.name}"
+        return f"Orphaned Discogs data (master: {self.master_id})"
+
+    @property
+    def discogs_url(self) -> str:
+        return f"https://www.discogs.com/master/{self.master_id}"
+
+
+class MusicBrainzAlbumData(ExternalDataBase):
+    """
+    MusicBrainz release-group data, plus the Cover Art Archive provenance.
+
+    The cover art lives here because it is keyed by MusicBrainz identifiers:
+    the Cover Art Archive is indexed by release MBID, and only the release
+    MBID and image id are stored, since a size is requested by URL. That is
+    the same trade ``IGDBGameData.artwork_id`` makes.
+    """
+
+    album = models.ForeignKey(
+        "Album",
+        on_delete=models.SET_NULL,
+        related_name="musicbrainz_album_data_set",
+        null=True,
+        blank=True,
+    )
+    release_group_mbid = models.CharField(
+        max_length=36, db_index=True, help_text="MusicBrainz release-group MBID"
+    )
+    title = models.CharField(max_length=300, blank=True)
+    primary_type = models.CharField(
+        max_length=50, blank=True, help_text="Album, Single, EP, Broadcast, Other"
+    )
+    secondary_types = models.JSONField(
+        default=list, blank=True, help_text="Live, Compilation, Soundtrack, ..."
+    )
+    first_release_date = models.CharField(
+        max_length=10,
+        blank=True,
+        help_text="Partial dates are valid here: '1966', '1966-05', '1966-05-16'",
+    )
+    rating = models.FloatField(null=True, blank=True)
+    rating_votes = models.PositiveIntegerField(null=True, blank=True)
+    all_genres = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Comma-separated MusicBrainz genre names, vote-ordered",
+    )
+    cover_art_release_mbid = models.CharField(
+        max_length=36,
+        blank=True,
+        help_text="Release MBID the Cover Art Archive front image belongs to",
+    )
+    cover_art_image_id = models.CharField(
+        max_length=30, blank=True, help_text="Cover Art Archive image id"
+    )
+    cover_art_stored = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="The image bytes are in AlbumCover, so serve them locally",
+    )
+
+    class Meta:
+        db_table = "music_musicbrainzalbumdata"
+        verbose_name = "MusicBrainz Album Data"
+        verbose_name_plural = "MusicBrainz Album Data"
+        indexes = [
+            models.Index(fields=["album", "is_primary"]),
+            models.Index(fields=["release_group_mbid"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["album"],
+                condition=models.Q(is_primary=True) & models.Q(album__isnull=False),
+                name="unique_primary_musicbrainz_per_album",
+            )
+        ]
+
+    def __str__(self) -> str:
+        if self.album:
+            return f"MusicBrainz data for {self.album.name}"
+        return f"Orphaned MusicBrainz data ({self.release_group_mbid})"
+
+    @property
+    def release_group_url(self) -> str:
+        return f"https://musicbrainz.org/release-group/{self.release_group_mbid}"
+
+    def local_cover_art_url(self, size: int) -> Optional[str]:
+        """The URL of our own stored copy of the cover.
+
+        Keyed by the Cover Art Archive's own identifiers, which never change
+        for a given image, so the response can be cached immutably.
+        """
+        if not (self.cover_art_release_mbid and self.cover_art_image_id):
+            return None
+        return reverse(
+            "music:cover",
+            kwargs={
+                "release_mbid": self.cover_art_release_mbid,
+                "image_id": self.cover_art_image_id,
+                "size": size,
+            },
+        )
+
+    def cover_art_url(self, size: Optional[int] = None) -> Optional[str]:
+        """The Cover Art Archive URL for the front cover, or None.
+
+        Passing a size returns that thumbnail; passing none returns the full
+        image. The request has to go through coverartarchive.org, which
+        answers with a 307 to archive.org, so this is the URL to hotlink and
+        not the one it redirects to.
+        """
+        if not (self.cover_art_release_mbid and self.cover_art_image_id):
+            return None
+        base = (
+            f"{config.COVER_ART_ARCHIVE_URL}/release/"
+            f"{self.cover_art_release_mbid}/{self.cover_art_image_id}"
+        )
+        if size is None:
+            return f"{base}.jpg"
+        return f"{base}-{size}.jpg"
+
+
+class AlbumCover(models.Model):
+    """Our own copy of an album's cover art.
+
+    The Cover Art Archive is the right *source* for album art, but it is the
+    wrong thing to hotlink: it answers with a 307 to archive.org, which
+    returns an intermittent 500 on images that are perfectly present a moment
+    later, and a handful of items are broken outright. A list page showing a
+    hundred covers therefore shows several broken ones on every load.
+
+    So the bytes are fetched once and served from here. Rows are keyed by the
+    archive's own release MBID, image id and size rather than by album, which
+    means they survive the ``Album.objects.all().delete()`` that every import
+    performs and are re-adopted afterwards without re-downloading.
+    """
+
+    #: The sizes stored: one for rows, one for the detail page.
+    ROW_SIZE = 250
+    DETAIL_SIZE = 500
+    SIZES = (ROW_SIZE, DETAIL_SIZE)
+
+    album = models.ForeignKey(
+        "Album",
+        on_delete=models.SET_NULL,
+        related_name="covers",
+        null=True,
+        blank=True,
+    )
+    release_mbid = models.CharField(max_length=36, db_index=True)
+    image_id = models.CharField(max_length=30, db_index=True)
+    size = models.PositiveSmallIntegerField()
+    data = models.BinaryField()
+    content_type = models.CharField(max_length=40, default="image/jpeg")
+    byte_size = models.PositiveIntegerField(default=0)
+    source_url = models.URLField(blank=True)
+    fetched_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "music_albumcover"
+        verbose_name = "Album Cover"
+        verbose_name_plural = "Album Covers"
+        indexes = [
+            models.Index(fields=["release_mbid", "image_id", "size"]),
+            models.Index(fields=["album"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["release_mbid", "image_id", "size"],
+                name="unique_cover_per_image_and_size",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"Cover {self.image_id} @ {self.size}px ({self.byte_size} bytes)"

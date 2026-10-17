@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from core import constants as core_constants
 from core.models import User
-from music import models
+from music import models, views
 from music.views import _decade_options, _filter_title, group_list_appearances
 
 
@@ -715,3 +715,159 @@ class MusicListListViewTests(MusicDataMixin, TestCase):
         response = self.client.get(reverse("music:list-list"))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.context["music_lists"]), 4)
+
+
+class AlbumCoverViewTests(StaffUserTestMixin, TestCase):
+    """Serving our own stored copy of a cover.
+
+    The remote Cover Art Archive URL redirects to archive.org, which 500s
+    intermittently, so a page of a hundred covers shows several broken images
+    on every load. These are served from here instead.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.cover = models.AlbumCover.objects.create(
+            release_mbid="f04cce33-b9a0-4bed-af11-f84d649652b2",
+            image_id="25254108559",
+            size=250,
+            data=b"\xff\xd8binary",
+            content_type="image/jpeg",
+            byte_size=8,
+        )
+        self.url = reverse(
+            "music:cover",
+            kwargs={
+                "release_mbid": self.cover.release_mbid,
+                "image_id": self.cover.image_id,
+                "size": 250,
+            },
+        )
+
+    def test_the_bytes_are_served_with_their_content_type(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/jpeg")
+        self.assertEqual(response.content, b"\xff\xd8binary")
+        # Computed from the bytes actually served, not the stored count.
+        self.assertEqual(response["Content-Length"], "8")
+
+    def test_the_response_is_cached_immutably(self):
+        """The URL carries identifiers that never change for an image."""
+        response = self.client.get(self.url)
+        self.assertIn("immutable", response["Cache-Control"])
+        self.assertIn("max-age=31536000", response["Cache-Control"])
+
+    def test_an_unknown_cover_is_404(self):
+        url = reverse(
+            "music:cover",
+            kwargs={"release_mbid": "nope", "image_id": "nope", "size": 250},
+        )
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_the_wrong_size_is_404(self):
+        url = reverse(
+            "music:cover",
+            kwargs={
+                "release_mbid": self.cover.release_mbid,
+                "image_id": self.cover.image_id,
+                "size": 1200,
+            },
+        )
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_anonymous_gets_404(self):
+        self.client.logout()
+        self.assertEqual(self.client.get(self.url).status_code, 404)
+
+    def test_a_non_staff_user_gets_404(self):
+        User.objects.create_user(username="plaincover", password="plainpass")
+        self.client.login(username="plaincover", password="plainpass")
+        self.assertEqual(self.client.get(self.url).status_code, 404)
+
+    def test_the_cover_route_is_not_read_as_an_album_slug(self):
+        """It sits above the catch-all <slug:slug>/ pattern."""
+        models.Album.objects.create(name="Cover", slug="cover", rank=1)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+
+
+class GenreGroupingTests(TestCase):
+    """The genre filter presents a two-level taxonomy, so it uses optgroups."""
+
+    def test_children_are_grouped_under_their_root(self):
+        rock = {
+            "id": 1,
+            "name": "Rock",
+            "level": 0,
+            "parent_id": None,
+            "albums_count": 10,
+        }
+        punk = {
+            "id": 2,
+            "name": "Punk",
+            "level": 0,
+            "parent_id": None,
+            "albums_count": 4,
+        }
+        post_punk = {
+            "id": 3,
+            "name": "Post-Punk",
+            "level": 1,
+            "parent_id": 2,
+            "albums_count": 3,
+        }
+        groups = views.group_genre_options([rock, punk, post_punk])
+        self.assertEqual([g["root"]["name"] for g in groups], ["Rock", "Punk"])
+        self.assertEqual(
+            [o["name"] for o in groups[1]["options"]], ["Punk", "Post-Punk"]
+        )
+
+    def test_a_root_is_selectable_as_well_as_a_label(self):
+        rock = {
+            "id": 1,
+            "name": "Rock",
+            "level": 0,
+            "parent_id": None,
+            "albums_count": 10,
+        }
+        groups = views.group_genre_options([rock])
+        self.assertEqual(groups[0]["options"], [rock])
+
+    def test_an_orphaned_child_becomes_its_own_group(self):
+        """A parent filtered out for having no albums must not lose its child."""
+        child = {
+            "id": 3,
+            "name": "Post-Punk",
+            "level": 1,
+            "parent_id": 99,
+            "albums_count": 3,
+        }
+        groups = views.group_genre_options([child])
+        self.assertEqual(groups[0]["root"]["name"], "Post-Punk")
+
+    def test_children_sort_after_their_root_then_by_name(self):
+        rock = {
+            "id": 1,
+            "name": "Rock",
+            "level": 0,
+            "parent_id": None,
+            "albums_count": 10,
+        }
+        b = {"id": 2, "name": "B Rock", "level": 1, "parent_id": 1, "albums_count": 1}
+        a = {"id": 3, "name": "A Rock", "level": 1, "parent_id": 1, "albums_count": 1}
+        groups = views.group_genre_options([rock, b, a])
+        self.assertEqual(
+            [o["name"] for o in groups[0]["options"]], ["Rock", "A Rock", "B Rock"]
+        )
+
+    def test_no_options_means_no_groups(self):
+        self.assertEqual(views.group_genre_options([]), [])
+
+    def test_the_album_count_is_selected_for_display(self):
+        """Annotating without selecting left the template rendering a blank."""
+        genre = models.MusicGenre.objects.create(name="Rock")
+        album = models.Album.objects.create(name="A", rank=1)
+        album.genres.set([genre])
+        options = views._cached_genre_options()
+        self.assertEqual(options[0]["albums_count"], 1)

@@ -1158,11 +1158,13 @@ tr.entity-row:hover {
     line-height: 1.75rem;
   }
 
-  /* Thumbnail grows from its centre on hover, as game rows do */
+  /* Thumbnail grows from its centre on hover, as game rows do.
+     The aspect ratio is a variable because media types differ: box art is
+     portrait, album sleeves are square. */
   .media-row.desktop .media-thumb-link {
     @apply block flex-shrink-0;
-    width: 38px;
-    height: calc(38px * 128 / 90);
+    width: var(--media-thumb-width, 38px);
+    aspect-ratio: var(--media-thumb-aspect, 90 / 128);
     border-radius: 6px;
     overflow: hidden;
     margin-left: 4px;
@@ -1178,7 +1180,30 @@ tr.entity-row:hover {
   .media-row.desktop .media-thumb {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: var(--media-thumb-fit, cover);
+  }
+
+  /* Square artwork shown whole. `contain` rather than `cover` so a sleeve
+     that is not exactly 1:1 is letterboxed instead of cropped - the point of
+     a cover is the whole cover. */
+  .media-thumb-whole {
+    --media-thumb-aspect: 1 / 1;
+    --media-thumb-fit: contain;
+    /* A square is shorter than the 38x54 portrait box it replaces, so widen
+       it to keep the row's visual weight the same. */
+    --media-thumb-width: 48px;
+  }
+
+  .media-thumb-mobile {
+    @apply rounded overflow-hidden bg-base-100;
+    width: 3rem;
+    aspect-ratio: var(--media-thumb-aspect, 90 / 128);
+  }
+
+  .media-thumb-mobile img {
+    width: 100%;
+    height: 100%;
+    object-fit: var(--media-thumb-fit, cover);
   }
 
   .media-row.desktop .media-row-details {

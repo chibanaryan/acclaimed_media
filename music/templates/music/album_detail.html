@@ -22,9 +22,11 @@
     </div>
     <div class="md:w-1/2">
         {% if album.cover_image_url %}
-        <img src="{{ album.cover_image_url }}" alt="{{ album.name }}"
+        {# object-contain, not the browser default of fill: a sleeve that is #}
+        {# not exactly square would otherwise be stretched into the 1:1 box. #}
+        <img src="{{ album.image }}" alt="{{ album.name }}"
              width="300" height="300" loading="eager" fetchpriority="high"
-             class="rounded-box w-full max-w-xs" style="aspect-ratio: 1/1;">
+             class="rounded-box w-full max-w-xs object-contain" style="aspect-ratio: 1/1;">
         {% else %}
         <div class="rounded-box bg-base-200 flex flex-col items-center justify-center w-full max-w-xs text-base-content/40"
              style="aspect-ratio: 1/1;">

@@ -169,3 +169,107 @@ class AlbumListMembershipAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related("list", "album")
+
+
+class ExternalDataAdminBase(admin.ModelAdmin):
+    """Shared shape for the fetched-metadata tables.
+
+    These are all written by ``fetch_album_metadata`` rather than by hand, so
+    the admin's job is to let staff see what a fetch produced and correct the
+    odd wrong answer, not to be a data-entry form.
+    """
+
+    readonly_fields = ["fetched_at", "updated_at"]
+    list_select_related = ["album"]
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("album")
+
+
+@admin.register(models.WikipediaAlbumData)
+class WikipediaAlbumDataAdmin(ExternalDataAdminBase):
+    list_display = [
+        "album",
+        "wikidata_id",
+        "page_title",
+        "release_date",
+        "record_label",
+        "is_primary",
+    ]
+    list_filter = ["is_primary"]
+    search_fields = ["album__name", "wikidata_id", "page_title", "record_label"]
+    autocomplete_fields = ["album"]
+
+
+@admin.register(models.DiscogsAlbumData)
+class DiscogsAlbumDataAdmin(ExternalDataAdminBase):
+    list_display = [
+        "album",
+        "master_id",
+        "title",
+        "main_release_year",
+        "genre_summary",
+        "style_summary",
+        "is_primary",
+    ]
+    list_filter = ["is_primary"]
+    search_fields = ["album__name", "master_id", "title"]
+    autocomplete_fields = ["album"]
+
+    @admin.display(description="Discogs genres")
+    def genre_summary(self, obj):
+        return ", ".join(obj.genres) or "-"
+
+    @admin.display(description="Discogs styles")
+    def style_summary(self, obj):
+        return ", ".join(obj.styles) or "-"
+
+
+@admin.register(models.MusicBrainzAlbumData)
+class MusicBrainzAlbumDataAdmin(ExternalDataAdminBase):
+    list_display = [
+        "album",
+        "release_group_mbid",
+        "primary_type",
+        "first_release_date",
+        "rating",
+        "cover_art_stored",
+        "is_primary",
+    ]
+    list_filter = ["is_primary", "cover_art_stored", "primary_type"]
+    search_fields = ["album__name", "release_group_mbid", "title"]
+    autocomplete_fields = ["album"]
+
+
+@admin.register(models.AlbumCover)
+class AlbumCoverAdmin(admin.ModelAdmin):
+    """The stored cover bytes.
+
+    ``data`` is deliberately absent from every form and list: it is up to a
+    few hundred kilobytes of binary per row, and rendering it into a change
+    form would be slow and useless.
+    """
+
+    list_display = ["album", "size", "kilobytes", "content_type", "fetched_at"]
+    list_filter = ["size", "content_type"]
+    search_fields = ["album__name", "release_mbid", "image_id"]
+    readonly_fields = ["fetched_at", "kilobytes", "preview"]
+    exclude = ["data"]
+    autocomplete_fields = ["album"]
+
+    def get_queryset(self, request):
+        # defer() the bytes: a changelist of 100 rows is otherwise ~5 MB.
+        return super().get_queryset(request).select_related("album").defer("data")
+
+    @admin.display(description="Size", ordering="byte_size")
+    def kilobytes(self, obj):
+        return f"{obj.byte_size // 1024} KB"
+
+    @admin.display(description="Preview")
+    def preview(self, obj):
+        if not obj.pk:
+            return "-"
+        return format_html(
+            '<img src="{}" width="200" height="200" style="object-fit:contain">',
+            obj.album.thumbnail if obj.album else "",
+        )

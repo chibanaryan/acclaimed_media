@@ -43,8 +43,10 @@ LIST_TYPE_BADGE_CLASSES = {
 
 DEFAULT_GENRE_ICON = "mdi-music-note"
 
-# Root music genres mapped to a Material Design icon. Populated as the
-# metadata pass fills MusicGenre; anything unmapped falls back above.
+# Root music genres mapped to a Material Design icon. These names are the
+# root set the Discogs style mapping normalizes to, so they have to match
+# music.services.genre_normalizer.GENRE_HIERARCHY exactly - a name that does
+# not match silently renders the fallback icon instead.
 MUSIC_GENRE_CATEGORY_ICONS = {
     "Blues": "mdi-guitar-acoustic",
     "Classical": "mdi-music-clef-treble",
@@ -61,6 +63,7 @@ MUSIC_GENRE_CATEGORY_ICONS = {
     "Reggae": "mdi-palm-tree",
     "Rock": "mdi-guitar-electric",
     "Soul": "mdi-heart-pulse",
+    "World": "mdi-earth",
 }
 
 

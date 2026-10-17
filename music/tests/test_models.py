@@ -355,3 +355,199 @@ class AlbumListMembershipTests(TestCase):
             list=self.source, album=self.album
         )
         self.assertIsNone(membership.rank)
+
+
+class ExternalDataModelTests(TestCase):
+    """The fetched-metadata records and their derived URLs."""
+
+    def setUp(self):
+        self.album = models.Album.objects.create(
+            name="Abbey Road", rank=2, wikidata_id="Q173643"
+        )
+
+    def test_wikipedia_data_str_names_its_album(self):
+        record = models.WikipediaAlbumData.objects.create(
+            album=self.album, wikidata_id="Q173643"
+        )
+        self.assertEqual(str(record), "Wikipedia data for Abbey Road")
+
+    def test_an_orphaned_wikipedia_record_says_so(self):
+        record = models.WikipediaAlbumData.objects.create(wikidata_id="Q1")
+        self.assertEqual(str(record), "Orphaned Wikipedia data (Wikidata: Q1)")
+
+    def test_an_orphaned_record_with_no_id_still_has_a_str(self):
+        record = models.WikipediaAlbumData.objects.create()
+        self.assertEqual(str(record), "Orphaned Wikipedia data (Wikidata: unknown)")
+
+    def test_the_wikipedia_url_is_built_from_the_page_title(self):
+        record = models.WikipediaAlbumData.objects.create(
+            album=self.album, page_title="What's Going On (album)"
+        )
+        self.assertEqual(
+            record.wikipedia_url,
+            "https://en.wikipedia.org/wiki/What's_Going_On_(album)",
+        )
+
+    def test_no_page_title_means_no_wikipedia_url(self):
+        record = models.WikipediaAlbumData.objects.create(album=self.album)
+        self.assertIsNone(record.wikipedia_url)
+
+    def test_discogs_data_str_and_url(self):
+        record = models.DiscogsAlbumData.objects.create(
+            album=self.album, master_id=24047
+        )
+        self.assertEqual(str(record), "Discogs data for Abbey Road")
+        self.assertEqual(record.discogs_url, "https://www.discogs.com/master/24047")
+
+    def test_an_orphaned_discogs_record_says_so(self):
+        record = models.DiscogsAlbumData.objects.create(master_id=24047)
+        self.assertEqual(str(record), "Orphaned Discogs data (master: 24047)")
+
+    def test_musicbrainz_data_str_and_url(self):
+        record = models.MusicBrainzAlbumData.objects.create(
+            album=self.album, release_group_mbid="rg-1"
+        )
+        self.assertEqual(str(record), "MusicBrainz data for Abbey Road")
+        self.assertEqual(
+            record.release_group_url, "https://musicbrainz.org/release-group/rg-1"
+        )
+
+    def test_an_orphaned_musicbrainz_record_says_so(self):
+        record = models.MusicBrainzAlbumData.objects.create(release_group_mbid="rg-1")
+        self.assertEqual(str(record), "Orphaned MusicBrainz data (rg-1)")
+
+    def test_a_cover_art_url_is_composed_per_size(self):
+        record = models.MusicBrainzAlbumData.objects.create(
+            album=self.album,
+            release_group_mbid="rg-1",
+            cover_art_release_mbid="rel-1",
+            cover_art_image_id="img-1",
+        )
+        self.assertEqual(
+            record.cover_art_url(250),
+            "https://coverartarchive.org/release/rel-1/img-1-250.jpg",
+        )
+
+    def test_a_cover_art_url_with_no_size_is_the_full_image(self):
+        record = models.MusicBrainzAlbumData.objects.create(
+            album=self.album,
+            release_group_mbid="rg-1",
+            cover_art_release_mbid="rel-1",
+            cover_art_image_id="img-1",
+        )
+        self.assertEqual(
+            record.cover_art_url(),
+            "https://coverartarchive.org/release/rel-1/img-1.jpg",
+        )
+
+    def test_no_cover_identifiers_means_no_urls(self):
+        record = models.MusicBrainzAlbumData.objects.create(
+            album=self.album, release_group_mbid="rg-1"
+        )
+        self.assertIsNone(record.cover_art_url(250))
+        self.assertIsNone(record.local_cover_art_url(250))
+
+    def test_the_local_cover_url_routes_through_our_own_view(self):
+        record = models.MusicBrainzAlbumData.objects.create(
+            album=self.album,
+            release_group_mbid="rg-1",
+            cover_art_release_mbid="rel-1",
+            cover_art_image_id="img-1",
+        )
+        self.assertEqual(
+            record.local_cover_art_url(500), "/music/cover/rel-1/img-1-500.jpg"
+        )
+
+    def test_a_cover_row_describes_itself(self):
+        cover = models.AlbumCover.objects.create(
+            release_mbid="rel-1", image_id="img-1", size=250, data=b"x", byte_size=42
+        )
+        self.assertEqual(str(cover), "Cover img-1 @ 250px (42 bytes)")
+
+    def test_a_cover_is_unique_per_image_and_size(self):
+        models.AlbumCover.objects.create(
+            release_mbid="rel-1", image_id="img-1", size=250, data=b"x"
+        )
+        with self.assertRaises(IntegrityError):
+            models.AlbumCover.objects.create(
+                release_mbid="rel-1", image_id="img-1", size=250, data=b"y"
+            )
+
+    def test_only_one_record_per_source_can_be_primary(self):
+        models.WikipediaAlbumData.objects.create(
+            album=self.album, wikidata_id="Q1", is_primary=True
+        )
+        with self.assertRaises(IntegrityError):
+            models.WikipediaAlbumData.objects.create(
+                album=self.album, wikidata_id="Q2", is_primary=True
+            )
+
+    def test_orphaned_records_may_both_be_primary(self):
+        """The constraint is scoped to rows that still have an album."""
+        models.WikipediaAlbumData.objects.create(wikidata_id="Q1", is_primary=True)
+        models.WikipediaAlbumData.objects.create(wikidata_id="Q2", is_primary=True)
+        self.assertEqual(models.WikipediaAlbumData.objects.count(), 2)
+
+    def test_metadata_survives_its_album_being_deleted(self):
+        """Every import deletes all albums; the metadata must outlive that."""
+        record = models.WikipediaAlbumData.objects.create(
+            album=self.album, wikidata_id="Q173643"
+        )
+        cover = models.AlbumCover.objects.create(
+            album=self.album, release_mbid="rel", image_id="img", size=250, data=b"x"
+        )
+        self.album.delete()
+        record.refresh_from_db()
+        cover.refresh_from_db()
+        self.assertIsNone(record.album)
+        self.assertIsNone(cover.album)
+
+
+class AlbumCoverUrlTests(TestCase):
+    """Which URL an album renders depends on whether we hold the bytes."""
+
+    def setUp(self):
+        self.album = models.Album.objects.create(name="Abbey Road", rank=2)
+
+    def attach(self, stored):
+        record = models.MusicBrainzAlbumData.objects.create(
+            album=self.album,
+            release_group_mbid="rg-1",
+            cover_art_release_mbid="rel-1",
+            cover_art_image_id="img-1",
+            cover_art_stored=stored,
+        )
+        self.album.primary_musicbrainz_album_data = record
+        self.album.save()
+        return models.Album.objects.get(pk=self.album.pk)
+
+    def test_a_stored_cover_is_served_locally(self):
+        album = self.attach(stored=True)
+        self.assertEqual(album.thumbnail, "/music/cover/rel-1/img-1-250.jpg")
+        self.assertEqual(album.image, "/music/cover/rel-1/img-1-500.jpg")
+
+    def test_an_unstored_cover_falls_back_to_the_archive(self):
+        album = self.attach(stored=False)
+        self.assertIn("coverartarchive.org", album.thumbnail)
+        self.assertTrue(album.thumbnail.endswith("-250.jpg"))
+
+    def test_with_no_metadata_record_the_stored_url_is_used(self):
+        self.album.cover_image_url = "https://example.test/cover.jpg"
+        self.album.save()
+        album = models.Album.objects.get(pk=self.album.pk)
+        self.assertEqual(album.thumbnail, "https://example.test/cover.jpg")
+
+    def test_with_nothing_at_all_there_is_no_cover(self):
+        album = models.Album.objects.get(pk=self.album.pk)
+        self.assertIsNone(album.thumbnail)
+        self.assertIsNone(album.image)
+
+    def test_reading_a_cover_url_costs_no_extra_query(self):
+        """Without the select_related a hundred-row page runs a hundred more."""
+        self.attach(stored=True)
+        albums = list(models.Album.objects.with_relations().all())
+        with self.assertNumQueries(0):
+            self.assertEqual(
+                [album.thumbnail for album in albums],
+                ["/music/cover/rel-1/img-1-250.jpg"],
+            )

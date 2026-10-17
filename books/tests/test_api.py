@@ -712,3 +712,60 @@ class PostgresSearchFieldsTests(TestCase):
             self.assertIn("name__search", views.AuthorListView.search_fields)
 
         importlib.reload(views)
+
+
+class StaffOnlyResponsesAreNotCachedTests(TestCase):
+    """The books API must not cache staff responses.
+
+    ``cache_page`` wraps ``dispatch``, so it is consulted before DRF calls
+    ``check_permissions``. Eight of these endpoints carried a ``cache_page``
+    decorator until 2026-10-17, which meant a response generated for a staff
+    member was stored and replayed to anonymous callers - defeating
+    ``IsStaffOrHide`` entirely. ``BookAllDataView`` served the whole dataset
+    that way, cached for an hour.
+    """
+
+    #: One per endpoint that used to be decorated.
+    PREVIOUSLY_CACHED_PATHS = [
+        "/api/books/",
+        "/api/books/meta/",
+        "/api/books/genres/",
+        "/api/books/genres/tree/",
+        "/api/books/version/",
+        "/api/books/all/",
+    ]
+
+    def setUp(self):
+        super().setUp()
+        self.staff_user = User.objects.create_user(
+            username="cachestaff", password="cachepass", is_staff=True
+        )
+        models.Book.objects.create(name="Cached", slug="cached", rank=1)
+
+    def test_no_endpoint_replays_a_staff_response_to_anonymous_callers(self):
+        staff_client = APIClient()
+        staff_client.force_authenticate(user=self.staff_user)
+        anonymous = APIClient()
+
+        for path in self.PREVIOUSLY_CACHED_PATHS:
+            with self.subTest(path=path):
+                warmed = staff_client.get(path)
+                self.assertEqual(warmed.status_code, 200)
+
+                response = anonymous.get(path)
+                self.assertEqual(response.status_code, 404)
+
+    def test_the_detail_endpoints_do_not_replay_either(self):
+        staff_client = APIClient()
+        staff_client.force_authenticate(user=self.staff_user)
+        anonymous = APIClient()
+
+        path = "/api/books/cached/"
+        self.assertEqual(staff_client.get(path).status_code, 200)
+        self.assertEqual(anonymous.get(path).status_code, 404)
+
+    def test_no_view_module_applies_cache_page(self):
+        """A decorator added back later must fail here, not in production."""
+        with open("books/api/views.py", encoding="utf-8") as handle:
+            source = handle.read()
+        self.assertNotIn("cache_page", source.replace("# ", "").split("Note on")[0])

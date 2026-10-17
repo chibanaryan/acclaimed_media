@@ -139,19 +139,26 @@
             {% endif %}
 
             {# Genre - only once the metadata pass has populated genres #}
-            {% if genres %}
+            {% if genre_groups %}
             <div class="mb-4 pb-3 border-b border-base-100">
                 <div class="flex items-center gap-2 mb-2">
                     <span class="mdi mdi-music-note text-xl text-accent"></span>
                     <span class="font-bold text-base">Genre</span>
                 </div>
+                {# Grouped by root genre: the taxonomy is two deep (a root, #}
+                {# then the Discogs styles under it), which a flat list of a #}
+                {# hundred and fifty names cannot present usefully. #}
                 <select name="genres" aria-label="Filter by genre"
                         class="select select-bordered select-sm w-full bg-base-100">
                     <option value="">All genres</option>
-                    {% for genre in genres %}
-                    <option value="{{ genre.id }}" {% if current_genres == genre.id|stringformat:'s' %}selected{% endif %}>
-                        {{ genre.name }} ({{ genre.albums_count }})
-                    </option>
+                    {% for group in genre_groups %}
+                    <optgroup label="{{ group.root.name }}">
+                        {% for genre in group.options %}
+                        <option value="{{ genre.id }}" {% if current_genres == genre.id|stringformat:'s' %}selected{% endif %}>
+                            {{ genre.name }} ({{ genre.albums_count }})
+                        </option>
+                        {% endfor %}
+                    </optgroup>
                     {% endfor %}
                 </select>
             </div>

@@ -78,12 +78,14 @@
     {% block mobile_tracking_button %}{% endblock %}
     
     {# Mobile Thumbnail #}
-    <div class="w-12 rounded overflow-hidden bg-base-100" style="aspect-ratio: 90/128;">
+    {% block mobile_thumbnail %}
+    <div class="media-thumb-mobile">
         <img {% if item and item.thumbnail %}src="{{ item.thumbnail }}"{% endif %}
              width="90" height="128"
-             class="w-full h-full object-cover" loading="lazy" decoding="async"
+             loading="lazy" decoding="async"
              data-slot="thumbnail-mobile">
     </div>
+    {% endblock %}
     
     {# Mobile Info #}
     <div class="min-w-0 flex items-center justify-between">

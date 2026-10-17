@@ -129,3 +129,18 @@
 .mdi-music-note::before { content: "\F0387"; }
 .mdi-account-music::before { content: "\F0803"; }
 .mdi-database-import::before { content: "\F095D"; }
+
+/* Music genre root icons - music_filters.MUSIC_GENRE_CATEGORY_ICONS */
+.mdi-guitar-acoustic::before { content: "\F0771"; }
+.mdi-music-clef-treble::before { content: "\F0F70"; }
+.mdi-guitar-pick::before { content: "\F02C5"; }
+.mdi-waveform::before { content: "\F147D"; }
+.mdi-music-note-eighth::before { content: "\F0388"; }
+.mdi-microphone-variant::before { content: "\F0370"; }
+.mdi-saxophone::before { content: "\F0609"; }
+.mdi-guitar-electric::before { content: "\F02C4"; }
+.mdi-star-four-points::before { content: "\F0AE2"; }
+.mdi-flash::before { content: "\F0241"; }
+.mdi-palm-tree::before { content: "\F1055"; }
+.mdi-heart-pulse::before { content: "\F05F6"; }
+.mdi-earth::before { content: "\F01E7"; }

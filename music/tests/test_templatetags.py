@@ -1,5 +1,7 @@
 """Tests for the music template filters and tags."""
 
+import re
+
 from django.template import Context, Template
 from django.test import TestCase
 
@@ -109,16 +111,43 @@ class MusicGenreIconTests(TestCase):
         )
 
     def test_every_mapped_icon_is_declared_in_the_font_subset(self):
-        # An icon class with no codepoint renders as a blank box.
+        """Every genre icon must have a codepoint, or it renders as a box.
+
+        This asserts over the whole map rather than just the fallback: when
+        it only checked the fallback, 13 of the 15 genre icons were missing
+        from the subset and nothing noticed, because MusicGenre was empty so
+        no badge had ever rendered.
+        """
         with open("games/static/games/css/mdi-subset.css", encoding="utf-8") as handle:
             subset = handle.read()
-        declared = {
-            name
-            for name in list(music_filters.MUSIC_GENRE_CATEGORY_ICONS.values())
-            + [music_filters.DEFAULT_GENRE_ICON]
-            if f".{name}::before" in subset
-        }
-        self.assertIn(music_filters.DEFAULT_GENRE_ICON, declared)
+
+        expected = set(music_filters.MUSIC_GENRE_CATEGORY_ICONS.values())
+        expected.add(music_filters.DEFAULT_GENRE_ICON)
+        missing = sorted(name for name in expected if f".{name}::before" not in subset)
+        self.assertEqual(
+            missing,
+            [],
+            f"Icons missing from mdi-subset.css: {missing}. "
+            "Add them and re-run scripts/build_mdi_subset.sh.",
+        )
+
+    def test_the_subset_css_and_base_template_agree_on_codepoints(self):
+        """base.html serves the runtime CSS; a drift there means a blank box."""
+        with open("games/static/games/css/mdi-subset.css", encoding="utf-8") as handle:
+            subset = handle.read()
+        with open("games/templates/base.html", encoding="utf-8") as handle:
+            base = handle.read()
+
+        pattern = r"\.{}::before\s*{{\s*content:\s*\"(\\F[0-9A-Fa-f]+)\""
+        mismatched = []
+        for name in sorted(set(music_filters.MUSIC_GENRE_CATEGORY_ICONS.values())):
+            in_subset = re.search(pattern.format(re.escape(name)), subset)
+            in_base = re.search(pattern.format(re.escape(name)), base)
+            if not in_base:
+                mismatched.append(f"{name}: absent from base.html")
+            elif in_subset and in_subset.group(1).upper() != in_base.group(1).upper():
+                mismatched.append(f"{name}: {in_subset.group(1)} != {in_base.group(1)}")
+        self.assertEqual(mismatched, [])
 
 
 class ArtistDisplayTests(TestCase):

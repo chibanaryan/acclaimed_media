@@ -24,9 +24,11 @@ Use these skills for common workflows:
 - `/test` - Run tests with coverage
 - `/icons` - Add Material Design Icons to the site (including subset font rebuilds)
 - `/openlibrary` - Fetch book metadata from Open Library API
+- `/music-metadata` - Fetch album metadata (Wikidata, Discogs, MusicBrainz, cover art)
 
-The music section has no skill yet; import its data with
-`python manage.py import_music_data`.
+Import the music ranking release with `python manage.py import_music_data`,
+then populate its metadata with `/music-metadata`
+(`python manage.py fetch_album_metadata`).
 
 ## Development Commands
 
@@ -196,6 +198,14 @@ Music-specific models (staff-only beta):
 - **Artist** - Recording artists with hierarchical parent-child relationships (bands, side projects)
 - **MusicGenre** - Hierarchical music genres with path denormalization
 - **MusicPublication/MusicList/AlbumListMembership** - Album rankings and positions within them
+- **WikipediaAlbumData/DiscogsAlbumData/MusicBrainzAlbumData** - fetched metadata on
+  `ExternalDataBase`, each with the `primary_…` OneToOne fast-path and the
+  `unique_primary_…_per_album` partial constraint. All use `on_delete=SET_NULL`, so
+  they survive the `Album.objects.all().delete()` every import performs and are
+  re-adopted by external ID afterwards
+- **AlbumCover** - the cover-art bytes at two sizes, keyed by the Cover Art Archive's
+  own release MBID, image id and size rather than by album, so they also outlive an
+  import
 
 ### API Architecture
 
@@ -300,6 +310,8 @@ the main site - reach them by URL):
 - `/music/artists/<slug>/` - Artist detail with ranked albums
 - `/music/lists/` - The published source lists behind the rankings
 - `/music/import/` - Staff import for the three release files
+- `/music/cover/<release_mbid>/<image_id>-<size>.jpg` - Cover art served from our own
+  store, cached a year and immutable
 
 **Navigation:** `core/includes/_sidebar_nav.html` picks the sidebar links
 from `media_type`, so each section has its own navigation while the common
@@ -462,6 +474,44 @@ from the games files:
 
 Unranked lists record every member at rank 1, matching the games convention.
 
+## Music Metadata Pipeline
+
+Run `/music-metadata` (`python manage.py fetch_album_metadata`) after an import.
+Every album carries a Wikidata QID, which supplies the Discogs and MusicBrainz
+identifiers the other sources are keyed by, so nothing is matched on title.
+
+Four passes, selectable, because their costs differ by two orders of magnitude:
+Wikidata is ~25 batched requests (seconds), cover art ~1000 downloads (~18 min),
+Discogs ~500 requests at 25/min anonymous (~23 min), and MusicBrainz ~500 at its
+hard 1 req/sec cap (~9 min, opt-in via `--musicbrainz`). Set `DISCOGS_TOKEN` to
+raise the Discogs limit; the client paces itself from the response headers either
+way.
+
+Two decisions worth knowing before changing any of it:
+
+- **Genres come from Discogs, not Wikidata.** Discogs publishes a curated
+  two-level vocabulary and assigns it per album by exact master ID. Deriving a
+  tree from Wikidata's P279 graph classified only 159 of this corpus's 207 genre
+  entities unambiguously, put thrash metal under Rock, and left ska, dub and
+  ambient unreachable. `music/services/genre_normalizer.py` maps Discogs styles
+  onto our own 16 roots, which keep Punk, Metal, Soul and R&B first-class where
+  Discogs files them under Rock and "Funk / Soul". A style's root is resolved
+  **globally** - explicit mapping, then the style's own name, and only then the
+  album's genre list - because taking it from the album made `Alternative Rock` a
+  child of Electronic for OK Computer, and that row then represented every
+  alternative rock album.
+- **Cover art is downloaded, not hotlinked.** The Cover Art Archive redirects to
+  archive.org, which 500s on roughly one request in ten and has a few items
+  broken outright, so a hundred-cover page broke visibly on every load. The bytes
+  live in `AlbumCover` and `music.views.AlbumCoverView` serves them. Downloading
+  doubles as verification, and there are three fallbacks: the release group's own
+  art, then any release in the group (earliest first), then a MusicBrainz search
+  by title and artist for albums whose Wikidata entity has no P436.
+
+`Album.cover_image_url` keeps the remote URL for the API and Open Graph scrapers;
+`Album.thumbnail` and `Album.image` are what the pages render and prefer the local
+copy.
+
 ## Configuration
 
 ### Environment Variables
@@ -475,6 +525,8 @@ Environment variables are managed via django-environ (`.env` file):
 - `WIKIDATA_ACCESS_TOKEN` - For faster Wikipedia processing (2.5x speedup)
 - `BOOKS_ENABLED` - Enable books feature (default: False, enabled in DEBUG/TEST modes)
 - `HARDCOVER_API_TOKEN` - Optional Hardcover API token for additional book metadata
+- `DISCOGS_TOKEN` - Optional Discogs personal access token; raises the music
+  metadata rate limit above the 25 requests/minute anonymous tier
 
 ### Configuration Files
 

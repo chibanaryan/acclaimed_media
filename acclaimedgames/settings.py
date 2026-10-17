@@ -321,6 +321,12 @@ IGDB_USE_PRO_TIER = env.bool("IGDB_USE_PRO_TIER", default=False)
 # (from https://meta.wikimedia.org/wiki/Special:BotPasswords)
 WIKIDATA_ACCESS_TOKEN = env("WIKIDATA_ACCESS_TOKEN", default=None)
 
+# Discogs API authentication (optional - raises the rate limit above the 25
+# requests/minute the anonymous tier reports). A free personal access token
+# from https://www.discogs.com/settings/developers is enough; the music
+# metadata client reads the limit off the response headers either way.
+DISCOGS_TOKEN = env("DISCOGS_TOKEN", default=None)
+
 # Email configuration (Brevo SMTP)
 # In dev: print to console. In prod: send via Brevo SMTP.
 # Brevo requires verified sender - contact@acclaimedvideogames.com is verified

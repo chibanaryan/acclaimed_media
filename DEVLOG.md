@@ -1,5 +1,116 @@
 # Developer Log
 
+## 2026-10-17 (music metadata pipeline; import views staff-gated)
+
+- **Gate the games import views on staff.** `ImportView`, `IGDBProgressView`,
+  `WikipediaPageProgressView` and `BatchImportProgressView` were
+  `LoginRequiredMixin` only, so any of production's 268 verified non-staff accounts
+  could open `/import/` and POST to `/import/batch-progress/` to replace or delete
+  all 1,400 games, 920 lists and 22,215 memberships. They now use
+  `core.mixins.StaffOnlyMixin`, which 404s rather than redirecting. Every existing
+  test for these views authenticated as a non-staff user, so the fixtures gained
+  `is_staff=True` and `test_requires_authentication` inverted from 302 to 404
+- Add the album metadata pipeline: `music/wikidata.py`, `music/discogs.py`,
+  `music/musicbrainz.py` (MusicBrainz plus the Cover Art Archive),
+  `music/services/genre_normalizer.py`, `music/services/metadata_service.py` for the
+  orchestration and DB writes, and `fetch_album_metadata` with a `/music-metadata`
+  skill. The four clients share `music/services/http_client.py` rather than each
+  re-implementing a session, a delay, retries and the difference between "no data"
+  and "request failed"
+- Wikidata is the hub rather than one source among several: every album carries a
+  QID, and `wbgetentities` takes 50 ids per request, so ~25 round trips yield the
+  performers, genre candidates, release date, label and - the point - the Discogs
+  and MusicBrainz identifiers the other clients are keyed by. Measured over the 502
+  QIDs in the release: P175 and P577 on 502, P436 on 500, P1954 on 498, P136 on 499
+- **Genres come from Discogs, not Wikidata.** Wikidata's P136 labels are messy (two
+  of the 207 genre entities have no English label at all, and the set includes
+  non-genres like "stage and screen"), and deriving a tree from its P279 subclass
+  graph classified only 159 of the 207 unambiguously while filing thrash metal
+  under Rock and mbaqanga under Jazz, with ska, dub and ambient unreachable. Discogs
+  instead publishes a curated two-level vocabulary - a closed top-level `genres` set
+  and `styles` beneath it, which is exactly what `MusicGenre` models - and assigns
+  it per album by exact master ID. 498 of 502 albums have one
+- The 16 roots are ours, not Discogs': Discogs files Punk and Metal as styles under
+  Rock and collapses Funk, Soul and R&B into one "Funk / Soul", which is too coarse
+  for a site ranking acclaimed albums. `STYLE_TO_ROOT` records only the corrections
+- A style's root is resolved **globally** - explicit mapping, then the style name's
+  rightmost root word, then the album's Discogs genres. That order is the fix for a
+  real bug: taking the root from the album's genre list made `Alternative Rock` a
+  child of Electronic, because OK Computer is tagged "Electronic, Rock", and that
+  one global row then represented every alternative rock album on the site. All 153
+  styles the release uses now resolve with no album context, pinned by
+  `RealVocabularyTests` so a new release fails the suite rather than silently
+  dropping genres
+- **Cover art is downloaded and served from our own origin, not hotlinked.** The
+  Cover Art Archive is the right source but answers with a 307 to archive.org,
+  which returns an intermittent 500 on images that are present a moment later -
+  roughly one request in ten, with a few items broken outright. A list page showing
+  a hundred covers therefore showed several broken images on every load. The bytes
+  now live in `AlbumCover` (two sizes, ~34 MB for 500 albums) and
+  `music.views.AlbumCoverView` serves them with a year-long immutable cache,
+  which also removes a redirect per image
+- Downloading doubles as verification, which is what makes the fallbacks work: art
+  that will not download is rejected and the next candidate tried. Three
+  fallbacks, each added because a real album needed it - the release group's own
+  front cover; then any release in the group, earliest first (two groups return a
+  *persistent* 500 at the group level while their releases serve art fine); then a
+  MusicBrainz search by title and artist, for the one album whose Wikidata entity
+  carries no P436. 500 of 500 albums have cover art
+- Retry 5xx, not just 429/503. Treating a server error as a permanent miss cost 26
+  of 499 albums their covers on the first run; retrying recovered 24 of them
+- The Discogs client paces itself from `X-Discogs-Ratelimit` rather than a constant,
+  since the limit differs between the anonymous and token tiers and the docs 403
+  automated clients. The headroom factor must be **above** one: a first attempt
+  spread requests at 0.8 of the window average, which is faster than the limit
+  allows, and earned a run of 429s a few dozen requests in
+- Artists are the **union** of the published credit and Wikidata P175, matched on a
+  normalized name. Neither alone is right: P175 names the canonical act, which is
+  sometimes coarser than the credit, so trusting it alone lost Paul McCartney
+  'Band on the Run' and both credited artists 'Clube da Esquina'; the credit alone
+  only guesses at whether a comma is a separator. Normalizing on punctuation, `&`
+  and `the` is what keeps P175's "Bob Marley & The Wailers" from doubling the
+  importer's "Bob Marley and the Wailers". `Album.artist_credit` is never touched
+- Fix album covers being cropped to a portrait 90:128 box. The shared row CSS
+  hardcoded box-art proportions with `object-fit: cover`; the aspect ratio and fit
+  are now variables, and `media-thumb-whole` makes a sleeve square and `contain`,
+  so the whole cover shows. Adds a `mobile_thumbnail` block to
+  `core/includes/_base_media_row.html`, whose mobile image was outside any block
+  and so could not be overridden at all - it also emitted a `src`-less `<img>` when
+  an item had no cover
+- **13 of the 15 genre icons were missing from the MDI subset**, so every genre badge
+  would have rendered as a blank box the moment genres existed. The test meant to
+  catch this built a set of icons that *were* present and then asserted only that
+  the fallback was among them; it now asserts over the whole map and separately
+  checks that `base.html` and `mdi-subset.css` agree on each codepoint
+- Turn on the genre filter: it was fully wired server-side and hidden only because
+  `MusicGenre` was empty. The control groups styles under their root with
+  `<optgroup>`, since a flat list of 150 names is unusable. Also fixes
+  `_cached_genre_options()` annotating `albums_count` without selecting it, which
+  would have rendered every count blank
+- Album detail gains Discogs, release date, label and Wikipedia rows; the API gains
+  `thumbnail_url` (what to render) alongside `cover_image_url` (the remote URL, kept
+  because an Open Graph scraper cannot reach a staff-gated local route)
+- The admin registration test now derives its model list from the app config. The
+  hand-kept list passed while four new models went unregistered, which is exactly
+  when that is easiest to miss
+- **Books:** remove the `cache_page` decorator from all eight staff-only API
+  endpoints. `cache_page` wraps `dispatch`, so it was consulted before DRF checked
+  permissions - a staff response was stored and replayed to anonymous callers,
+  defeating `IsStaffOrHide` entirely. `BookAllDataView` served the whole dataset
+  that way, cached an hour. The same leak was removed from music before launch;
+  books now has the regression test music already had
+- **Books:** fix `_get_list_type_label` mapping `"AT"/"DEC"/"EOY"/"MISC"` against a
+  `max_length=1` column that stores `A`/`D`/`E`/`M`. All four codes fell through to
+  "Other", which was absent from the group ordering, so the list-appearances section
+  rendered empty on every book page. Replaced with `core.constants.get_list_type_label`,
+  which three other call sites already used correctly. Both tests covering it
+  encoded the bug - one built its fixture with `type="AT"`, which only persists
+  because SQLite ignores varchar length
+- **Books:** guard `/api/books/meta/` against books with no `year_published`; a NULL
+  decade raised `TypeError` and 500d the endpoint. Found by the new cache test.
+  `games/api/views.py` has the same unguarded code, latent only because every game
+  has a year
+
 ## 2026-10-17 (music vertical groundwork)
 
 - Add a `music/` app: the third media vertical, staff-only and marked beta, carrying 500 ranked albums over 54 published source lists. `Album`, `Artist`, `MusicGenre`, `MusicPublication`, `MusicList` and `AlbumListMembership` subclass the `core` abstract bases; `Album` adds `artist_credit` (the credit exactly as published) alongside an `artists` M2M so the display text survives whatever the parser makes of it

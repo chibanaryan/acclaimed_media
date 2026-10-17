@@ -13,6 +13,13 @@ urlpatterns = [
     path("lists/", views.MusicListListView.as_view(), name="list-list"),
     # Data import (staff only, like every music route)
     path("import/", views.MusicImportView.as_view(), name="import"),
+    # Cover art, served from our own store rather than hotlinked. Before
+    # <slug:slug>/ so "cover" is not read as an album slug.
+    path(
+        "cover/<str:release_mbid>/<str:image_id>-<int:size>.jpg",
+        views.AlbumCoverView.as_view(),
+        name="cover",
+    ),
     # Artist routes (before <slug:slug>/ so "artists" is not read as a slug)
     path("artists/", views.ArtistListView.as_view(), name="artist-list"),
     path(

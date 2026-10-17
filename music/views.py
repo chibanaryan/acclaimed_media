@@ -18,6 +18,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Count, Prefetch, Q
 from django.db.models.functions import Lower
+from django.http import Http404, HttpResponse
 from django.shortcuts import render
 from django.views import View
 from django.views.generic import DetailView, ListView
@@ -181,7 +182,9 @@ def _cached_genre_options():
     """Return the genre filter options.
 
     Empty until the metadata pass populates ``MusicGenre``; the template
-    hides the genre filter when there is nothing to show.
+    hides the genre filter when there is nothing to show. ``albums_count`` is
+    selected explicitly - annotating without naming it in ``values()`` leaves
+    the template rendering a blank count.
     """
     cache_key = f"{config.CACHE_VERSION}:music_genre_options"
     options = cache.get(cache_key)
@@ -190,10 +193,43 @@ def _cached_genre_options():
             models.MusicGenre.objects.annotate(albums_count=Count("albums"))
             .filter(albums_count__gt=0)
             .order_by("level", "display_order", "name")
-            .values("id", "name", "slug", "level", "parent_id", "path")
+            .values("id", "name", "slug", "level", "parent_id", "path", "albums_count")
         )
         cache.set(cache_key, options, config.CACHE_TIMEOUT_24_HOURS)
     return options
+
+
+def group_genre_options(options):
+    """Group flat genre options under their root, for <optgroup>.
+
+    The taxonomy is two levels - a root genre and the Discogs styles beneath
+    it - which is more than a flat list of two hundred names can present
+    usefully. Roots keep the order ``genre_normalizer.GENRE_HIERARCHY`` sets,
+    which the query's ``display_order`` already reflects.
+
+    A root is offered as a selectable option of its own as well as a group
+    label, because filtering on "all of Rock" is the most useful thing a
+    reader can ask for.
+    """
+    by_id = {option["id"]: option for option in options}
+    groups = []
+    group_index = {}
+
+    for option in options:
+        root = option
+        # Walk up to the root; the tree is two deep, so this is one step.
+        while root.get("parent_id") and root["parent_id"] in by_id:
+            root = by_id[root["parent_id"]]
+
+        if root["id"] not in group_index:
+            group_index[root["id"]] = {"root": root, "options": []}
+            groups.append(group_index[root["id"]])
+        group_index[root["id"]]["options"].append(option)
+
+    for group in groups:
+        group["options"].sort(key=lambda item: (item["level"], item["name"]))
+
+    return groups
 
 
 def _cached_hero_stats():
@@ -316,7 +352,9 @@ class AlbumHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
         context["min_year"] = min_year
         context["max_year"] = max_year
         context["artists"] = _cached_artist_options()
-        context["genres"] = _cached_genre_options()
+        genres = _cached_genre_options()
+        context["genres"] = genres
+        context["genre_groups"] = group_genre_options(genres)
         context.update(_cached_hero_stats())
 
         page_obj = context.get("page_obj")
@@ -583,12 +621,43 @@ class MusicListListView(
         return context
 
 
+class AlbumCoverView(StaffOnlyMixin, View):
+    """Serve our own stored copy of an album cover.
+
+    The Cover Art Archive is the source of this art, but hotlinking it means
+    every page view depends on archive.org, which 500s intermittently; a
+    list page showing a hundred covers then shows several broken images on
+    every load. Storing the bytes and serving them from here removes that
+    dependency, and also the 307 redirect each remote image costs.
+
+    The URL carries the archive's release MBID, image id and size, all of
+    which are immutable for a given image, so the response is cached for a
+    year. Staff-gated like every other music route.
+    """
+
+    # A year, which is the maximum worth asking for, marked immutable so a
+    # revalidation request is never made.
+    CACHE_CONTROL = "public, max-age=31536000, immutable"
+
+    def get(self, request, release_mbid, image_id, size):
+        cover = models.AlbumCover.objects.filter(
+            release_mbid=release_mbid, image_id=image_id, size=size
+        ).first()
+        if cover is None:
+            raise Http404("No such cover")
+
+        response = HttpResponse(bytes(cover.data), content_type=cover.content_type)
+        response["Cache-Control"] = self.CACHE_CONTROL
+        response["Content-Length"] = str(len(cover.data))
+        return response
+
+
 class MusicImportView(StaffOnlyMixin, View):
     """Import the album rankings from uploaded files or the bundled release.
 
-    Staff-gated like every other music view. Note that the games equivalent
-    (``games.views.ImportView``) is only login-gated, which lets any verified
-    account replace the game rankings; this one requires staff.
+    Staff-gated like every other music view, as ``games.views.ImportView``
+    now is too - it was login-gated until 2026-10-17, which let any verified
+    account replace the game rankings.
 
     The import runs inline rather than over SSE: 500 albums land in well
     under a second, so the streaming progress machinery the games importer

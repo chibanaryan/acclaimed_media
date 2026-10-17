@@ -17,6 +17,7 @@ from django.urls import reverse
 
 from books import models
 from books.views import invalidate_read_books_cache, invalidate_want_to_read_cache
+from core import constants as core_constants
 
 
 User = get_user_model()
@@ -400,7 +401,7 @@ class BookDetailViewTests(StaffUserTestMixin, TestCase):
             publisher=publication,
             name="All Time Favorites",
             year=2024,
-            type="AT",
+            type=core_constants.LIST_ALLTIME,
         )
         models.BookListMembership.objects.create(
             list=book_list,
@@ -804,13 +805,52 @@ class BookSearchViewTests(StaffUserTestMixin, TestCase):
 
 
 class ListTypeLabelTests(TestCase):
-    """Tests for list type label mapping."""
+    """Tests for list type label mapping.
+
+    These assert against the codes ``ListBase.type`` actually stores. The
+    previous version pinned "AT"/"DEC"/"EOY"/"MISC", which no row can hold -
+    the column is max_length=1 - so it passed while every book's
+    list-appearances section rendered empty.
+    """
 
     def test_list_type_label_mapping(self):
-        from books.views import _get_list_type_label
+        self.assertEqual(
+            core_constants.get_list_type_label(core_constants.LIST_ALLTIME),
+            "All time",
+        )
+        self.assertEqual(
+            core_constants.get_list_type_label(core_constants.LIST_DECADE), "Decade"
+        )
+        self.assertEqual(
+            core_constants.get_list_type_label(core_constants.LIST_EOY),
+            "End of year",
+        )
+        self.assertEqual(
+            core_constants.get_list_type_label(core_constants.LIST_MISC),
+            "Miscellaneous",
+        )
 
-        self.assertEqual(_get_list_type_label("AT"), "All time")
-        self.assertEqual(_get_list_type_label("DEC"), "Decade")
-        self.assertEqual(_get_list_type_label("EOY"), "End of year")
-        self.assertEqual(_get_list_type_label("MISC"), "Miscellaneous")
-        self.assertEqual(_get_list_type_label("OTHER"), "Other")
+    def test_every_stored_list_type_groups_on_a_book_detail_page(self):
+        """All four codes must produce a group, not fall through to nothing."""
+        book = models.Book.objects.create(name="Grouped", slug="grouped", rank=1)
+        publication = models.BookPublication.objects.create(name="Grouper")
+        for index, code in enumerate(core_constants.LIST_TYPE_IMPORTANCE_ORDER):
+            book_list = models.BookList.objects.create(
+                publisher=publication,
+                name=f"List {code}",
+                year=2000 + index,
+                type=code,
+            )
+            models.BookListMembership.objects.create(list=book_list, book=book, rank=1)
+
+        User = get_user_model()
+        User.objects.create_user(
+            username="groupstaff", password="grouppass", is_staff=True
+        )
+        self.client.login(username="groupstaff", password="grouppass")
+
+        response = self.client.get(
+            reverse("books:book-detail", kwargs={"slug": "grouped"})
+        )
+        labels = [label for label, _items in response.context["grouped_lists"]]
+        self.assertEqual(labels, ["All time", "Decade", "Miscellaneous", "End of year"])

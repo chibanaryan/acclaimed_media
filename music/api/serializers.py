@@ -32,8 +32,10 @@ album_fields = [
     "artists",
     "genres",
     "cover_image_url",
+    "thumbnail_url",
     "wikidata_id",
     "musicbrainz_release_group_id",
+    "discogs_master_id",
 ]
 
 
@@ -43,10 +45,19 @@ class AlbumSummarySerializer(serializers.ModelSerializer):
     artists = IdSlugNameSerializer(many=True)
     genres = IdSlugNameSerializer(many=True)
     list_count = serializers.SerializerMethodField()
+    thumbnail_url = serializers.SerializerMethodField()
 
     class Meta:
         model = models.Album
         fields = album_fields + ["list_count"]
+
+    def get_thumbnail_url(self, obj):
+        """The URL a client should render, which may be our local copy.
+
+        ``cover_image_url`` is the Cover Art Archive's own URL, kept for
+        provenance and for Open Graph scrapers; this is what to display.
+        """
+        return obj.thumbnail
 
     def get_list_count(self, obj):
         """Use the ``with_list_count()`` annotation when it is present."""

@@ -13,12 +13,23 @@ class ImportViewIntegrationTests(TestCase):
 
     def setUp(self):
         User = get_user_model()
-        self.user = User.objects.create_user(username="tester", password="pass")
+        self.user = User.objects.create_user(
+            username="tester", password="pass", is_staff=True
+        )
         self.client = Client()
 
-    def test_requires_authentication(self):
+    def test_anonymous_gets_404_not_a_login_redirect(self):
+        """The import views are staff-only, and hide rather than redirect."""
         response = self.client.get(reverse("import"))
-        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.status_code, 404)
+
+    def test_non_staff_user_gets_404(self):
+        """A verified but non-staff account must not reach the importer."""
+        User = get_user_model()
+        User.objects.create_user(username="plain", password="plainpass")
+        self.client.login(username="plain", password="plainpass")
+        response = self.client.get(reverse("import"))
+        self.assertEqual(response.status_code, 404)
 
     @mock.patch("games.views.utils.import_batch", return_value=(True, "Done"))
     def test_successful_data_import(self, mock_import):
@@ -262,8 +273,19 @@ class IGDBProgressViewTests(TestCase):
 
     def setUp(self):
         User = get_user_model()
-        self.user = User.objects.create_user(username="tester", password="pass")
+        self.user = User.objects.create_user(
+            username="tester", password="pass", is_staff=True
+        )
         self.client = Client()
+
+    def test_anonymous_gets_404(self):
+        self.assertEqual(self.client.get("/import/igdb-progress/").status_code, 404)
+
+    def test_non_staff_user_gets_404(self):
+        User = get_user_model()
+        User.objects.create_user(username="plain", password="plainpass")
+        self.client.login(username="plain", password="plainpass")
+        self.assertEqual(self.client.get("/import/igdb-progress/").status_code, 404)
 
     def test_igdb_progress_view_get(self):
         """Test IGDBProgressView.get() returns streaming response."""
@@ -297,8 +319,23 @@ class WikipediaPageProgressViewTests(TestCase):
 
     def setUp(self):
         User = get_user_model()
-        self.user = User.objects.create_user(username="tester2", password="pass")
+        self.user = User.objects.create_user(
+            username="tester2", password="pass", is_staff=True
+        )
         self.client = Client()
+
+    def test_anonymous_gets_404(self):
+        self.assertEqual(
+            self.client.get("/import/wikipedia-page-progress/").status_code, 404
+        )
+
+    def test_non_staff_user_gets_404(self):
+        User = get_user_model()
+        User.objects.create_user(username="plain", password="plainpass")
+        self.client.login(username="plain", password="plainpass")
+        self.assertEqual(
+            self.client.get("/import/wikipedia-page-progress/").status_code, 404
+        )
 
     def test_wikipedia_progress_view_get(self):
         """Test WikipediaPageProgressView.get() returns streaming response."""
@@ -320,9 +357,23 @@ class BatchImportProgressViewTests(TestCase):
 
     def setUp(self):
         User = get_user_model()
-        self.user = User.objects.create_user(username="batchtester", password="pass")
+        self.user = User.objects.create_user(
+            username="batchtester", password="pass", is_staff=True
+        )
         self.client = Client()
         self.client.login(username="batchtester", password="pass")
+
+    def test_anonymous_gets_404(self):
+        self.client.logout()
+        response = self.client.post(reverse("batch-import-progress"))
+        self.assertEqual(response.status_code, 404)
+
+    def test_non_staff_user_gets_404(self):
+        User = get_user_model()
+        User.objects.create_user(username="plain", password="plainpass")
+        self.client.login(username="plain", password="plainpass")
+        response = self.client.post(reverse("batch-import-progress"))
+        self.assertEqual(response.status_code, 404)
 
     def test_batch_progress_without_files_streams_error_event(self):
         response = self.client.post(reverse("batch-import-progress"))

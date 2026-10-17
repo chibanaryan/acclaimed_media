@@ -68,5 +68,41 @@
             </td>
         </tr>
         {% endif %}
+        {% if album.discogs_master_id %}
+        <tr>
+            <th class="text-left">Discogs</th>
+            <td>
+                <a href="https://www.discogs.com/master/{{ album.discogs_master_id }}"
+                   target="_blank" rel="noopener" class="link link-hover">
+                    Master release <span class="mdi mdi-open-in-new text-xs"></span>
+                </a>
+            </td>
+        </tr>
+        {% endif %}
+        {% with wiki=album.primary_wikipedia_album_data %}
+        {% if wiki.release_date %}
+        <tr>
+            <th class="text-left">Released</th>
+            <td>{{ wiki.release_date|date:"j F Y" }}</td>
+        </tr>
+        {% endif %}
+        {% if wiki.record_label %}
+        <tr>
+            <th class="text-left">Label</th>
+            <td>{{ wiki.record_label }}</td>
+        </tr>
+        {% endif %}
+        {% if wiki.page_title %}
+        <tr>
+            <th class="text-left">Wikipedia</th>
+            <td>
+                <a href="{{ wiki.wikipedia_url }}"
+                   target="_blank" rel="noopener" class="link link-hover">
+                    {{ wiki.page_title }} <span class="mdi mdi-open-in-new text-xs"></span>
+                </a>
+            </td>
+        </tr>
+        {% endif %}
+        {% endwith %}
     </tbody>
 </table>

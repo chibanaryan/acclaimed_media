@@ -7,8 +7,11 @@
 {% extends 'core/includes/_base_media_row.html' %}
 {% load music_filters %}
 
+{# Sleeves are square and shown whole: `media-thumb-whole` swaps the shared #}
+{# row's portrait 90:128 box and object-fit:cover, which cropped the top and #}
+{# bottom off every cover. #}
 {% block thumbnail %}
-<a {% if item %}href="{{ item.get_absolute_url }}"{% endif %} class="media-thumb-link" data-slot="thumb-link">
+<a {% if item %}href="{{ item.get_absolute_url }}"{% endif %} class="media-thumb-link media-thumb-whole" data-slot="thumb-link">
     {% if item and item.thumbnail %}
     <img src="{{ item.thumbnail }}" alt="{{ item.name }}"
          width="90" height="90" loading="lazy" decoding="async"
@@ -19,6 +22,20 @@
     </span>
     {% endif %}
 </a>
+{% endblock %}
+
+{% block mobile_thumbnail %}
+<div class="media-thumb-mobile media-thumb-whole">
+    {% if item and item.thumbnail %}
+    <img src="{{ item.thumbnail }}" alt="{{ item.name }}"
+         width="90" height="90" loading="lazy" decoding="async"
+         data-slot="thumbnail-mobile">
+    {% else %}
+    <span class="media-thumb-placeholder" aria-hidden="true">
+        <span class="mdi mdi-album text-base"></span>
+    </span>
+    {% endif %}
+</div>
 {% endblock %}
 
 {% block metadata %}
