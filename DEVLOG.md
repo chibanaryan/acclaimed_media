@@ -93,6 +93,11 @@
 - The admin registration test now derives its model list from the app config. The
   hand-kept list passed while four new models went unregistered, which is exactly
   when that is easiest to miss
+- The `--musicbrainz` pass also fills genres for the three albums that have no
+  Discogs master at all, through the same normalizer; MusicBrainz's community
+  genre names only need title-casing to match the Discogs spellings, so
+  "southern soul" joins the existing Soul root rather than creating a second
+  lower-cased row. It never overwrites a genre Discogs supplied
 - **Books:** remove the `cache_page` decorator from all eight staff-only API
   endpoints. `cache_page` wraps `dispatch`, so it was consulted before DRF checked
   permissions - a staff response was stored and replayed to anonymous callers,

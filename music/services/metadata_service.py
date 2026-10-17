@@ -42,6 +42,10 @@ from music.wikidata import WikidataClient
 
 logger = logging.getLogger(__name__)
 
+#: How many MusicBrainz genres to take when it is the fallback source. It
+#: lists everything anyone has voted for, eight or more for a popular album.
+MAX_MUSICBRAINZ_GENRES = 5
+
 #: How many of a release group's releases to try for cover art. A group can
 #: have ninety, and the original pressings sort first, so there is nothing to
 #: gain from walking all of them.
@@ -753,6 +757,32 @@ class AlbumMetadataService:
             ]
         album.genres.set(genres)
 
+    def _apply_musicbrainz_genres(self, album, group) -> None:
+        """Fill in genres for an album Discogs could not supply any for.
+
+        Three albums in the release have no Discogs master at all, so the
+        genre source of record has nothing to say about them. MusicBrainz
+        does, and its community genre names go through the same normalizer -
+        they only need title-casing to match the Discogs spellings, so
+        'southern soul' lands under the existing Soul root rather than
+        creating a second lower-cased row.
+
+        Only ever a fallback: Discogs stays authoritative wherever it has an
+        answer, so the taxonomy does not acquire two overlapping vocabularies.
+        """
+        if album.genres.exists():
+            return
+
+        titled = [name.title() for name in group.genres[:MAX_MUSICBRAINZ_GENRES]]
+        genres = genre_normalizer.genres_for_album(titled)
+        if genres:
+            album.genres.set(genres)
+            logger.info(
+                "Filled %s's genres from MusicBrainz: %s",
+                album.name,
+                [genre.name for genre in genres],
+            )
+
     # ------------------------------------------------------ musicbrainz pass
 
     def run_musicbrainz(self, albums: Iterable[models.Album]) -> PassResult:
@@ -787,6 +817,7 @@ class AlbumMetadataService:
                 record.save()
 
                 self._set_primary(album, record, "primary_musicbrainz_album_data")
+                self._apply_musicbrainz_genres(album, group)
                 result.processed += 1
                 self._notify(
                     "progress",

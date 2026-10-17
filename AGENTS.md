@@ -499,7 +499,9 @@ Two decisions worth knowing before changing any of it:
   **globally** - explicit mapping, then the style's own name, and only then the
   album's genre list - because taking it from the album made `Alternative Rock` a
   child of Electronic for OK Computer, and that row then represented every
-  alternative rock album.
+  alternative rock album. The `--musicbrainz` pass fills genres for the three
+  albums with no Discogs master, through the same normalizer and only where
+  Discogs supplied none.
 - **Cover art is downloaded, not hotlinked.** The Cover Art Archive redirects to
   archive.org, which 500s on roughly one request in ten and has a few items
   broken outright, so a hundred-cover page broke visibly on every load. The bytes

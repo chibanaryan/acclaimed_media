@@ -12,6 +12,7 @@ from django.test import SimpleTestCase, TestCase
 from music import models
 from music.musicbrainz import CoverArt, ReleaseGroup
 from music.discogs import DiscogsMaster
+from music.services import genre_normalizer
 from music.services.metadata_service import (
     AlbumMetadataService,
     PassResult,
@@ -828,3 +829,65 @@ class PartialCoverDownloadTests(ServiceTestCase):
         # The bytes-only path failed, so it went on to re-resolve the art.
         client.fetch_front_cover.assert_called_once()
         self.assertEqual(result.processed, 0)
+
+
+class MusicBrainzGenreFallbackTests(ServiceTestCase):
+    """MusicBrainz fills genres only where Discogs supplied none.
+
+    Three albums in the release have no Discogs master at all, so the genre
+    source of record has nothing to say about them.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.album.musicbrainz_release_group_id = RG_MBID
+        self.album.save()
+
+    def build_client(self, genres):
+        client = mock.MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        client.fetch_release_group.return_value = ReleaseGroup(
+            mbid=RG_MBID, title="X", genres=genres
+        )
+        return client
+
+    def run_pass(self, client):
+        with mock.patch(
+            "music.services.metadata_service.MusicBrainzClient", return_value=client
+        ):
+            return self.service.run_musicbrainz([self.album])
+
+    def test_genres_are_filled_when_the_album_has_none(self):
+        self.run_pass(self.build_client(["soul", "southern soul", "r&b"]))
+        self.assertEqual(
+            sorted(g.name for g in self.album.genres.all()),
+            ["R&B", "Soul", "Southern Soul"],
+        )
+
+    def test_lowercase_names_reuse_the_existing_title_cased_rows(self):
+        """Otherwise the tree acquires a second, lower-cased 'art rock'."""
+        existing = genre_normalizer.get_or_create_genre("Art Rock", "Rock")
+        self.run_pass(self.build_client(["art rock"]))
+        self.assertEqual(models.MusicGenre.objects.filter(name="Art Rock").count(), 1)
+        self.assertIn(existing, self.album.genres.all())
+
+    def test_discogs_genres_are_not_overwritten(self):
+        keeper = genre_normalizer.get_or_create_genre("Pop Rock", "Rock")
+        self.album.genres.set([keeper])
+        self.run_pass(self.build_client(["hip hop"]))
+        self.assertEqual([g.name for g in self.album.genres.all()], ["Pop Rock"])
+
+    def test_only_the_top_few_genres_are_taken(self):
+        """MusicBrainz lists everything anyone voted for."""
+        many = [f"Genre {i}" for i in range(12)]
+        self.run_pass(self.build_client(["rock"] + many))
+        self.assertLessEqual(self.album.genres.count(), 6)
+
+    def test_unresolvable_genres_leave_the_album_alone(self):
+        self.run_pass(self.build_client(["utterly unknown thing"]))
+        self.assertEqual(self.album.genres.count(), 0)
+
+    def test_no_genres_at_all_is_harmless(self):
+        self.run_pass(self.build_client([]))
+        self.assertEqual(self.album.genres.count(), 0)

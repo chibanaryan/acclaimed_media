@@ -59,7 +59,7 @@ They are separate because their costs differ by two orders of magnitude.
 | `wikidata` | ~25 | ~30s | `WikipediaAlbumData`, both external IDs, `Artist` rows |
 | `covers` | ~1000 | ~18 min | `AlbumCover` bytes, `MusicBrainzAlbumData` cover ids |
 | `discogs` | ~500 | ~23 min anonymous | `DiscogsAlbumData`, `MusicGenre` rows and links |
-| `musicbrainz` | ~500 | ~9 min | release type, exact date, rating, MB genres |
+| `musicbrainz` | ~500 | ~9 min | release type, exact date, rating, genre fallback |
 
 Wikidata is batched 50 entity IDs per request, which is why it is seconds
 rather than minutes. The default run omits `musicbrainz`: it is enrichment,
@@ -117,6 +117,14 @@ print(len(styles)); [print(f'{n:4d}  {s}') for s, n in styles.most_common()]
 the current release uses, so a new release with new styles fails there rather
 than silently dropping genres. Add the style to `STYLE_TO_ROOT` and to that
 test's `OBSERVED` list.
+
+**The MusicBrainz fallback.** Three albums in the release have no Discogs
+master at all, so the genre source of record has nothing to say about them.
+The `--musicbrainz` pass fills genres for any album that still has none, using
+MusicBrainz's community genres through the same normalizer — they only need
+title-casing to match the Discogs spellings, so `southern soul` lands under the
+existing Soul root instead of creating a second lower-cased row. It never
+overwrites a genre Discogs supplied, so the taxonomy keeps one vocabulary.
 
 A new **root** genre also needs an entry in
 `music_filters.MUSIC_GENRE_CATEGORY_ICONS` and a re-run of
