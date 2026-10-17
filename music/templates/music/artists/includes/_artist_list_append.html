@@ -1,0 +1,7 @@
+{# Append-only partial: desktop rows for Load More. Wrapped in a table so #}
+{# the HTMX swap keeps the tr elements, as the developer list does. #}
+<table><tbody>
+{% for artist in artists %}
+{% include 'music/artists/includes/_artist_row.html' with artist=artist %}
+{% endfor %}
+</tbody></table>

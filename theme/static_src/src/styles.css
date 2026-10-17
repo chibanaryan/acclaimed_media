@@ -957,25 +957,29 @@
  * ============================================================================ */
 
 /* Developer Row - Desktop table hover effects */
-tr.developer-row {
+tr.developer-row,
+tr.entity-row {
   border-left: 4px solid transparent;
   border-top-left-radius: 9999px;
   border-bottom-left-radius: 9999px;
   transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 }
 
-tr.developer-row:hover {
+tr.developer-row:hover,
+tr.entity-row:hover {
   background-color: color-mix(in oklch, var(--color-primary) 12%, transparent);
   transform: translateY(-1px);
   border-left-color: var(--color-primary);
 }
 
 /* Mobile developer cards - simple hover effect */
-.developer-row.card {
+.developer-row.card,
+.entity-row.card {
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-.developer-row.card:hover {
+.developer-row.card:hover,
+.entity-row.card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px color-mix(in oklch, var(--color-base-content) 10%, transparent);
 }
@@ -1095,6 +1099,138 @@ tr.developer-row:hover {
   .safe-area-inset-bottom {
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
+}
+
+/* ============================================================================
+ * SHARED MEDIA ROW STYLES
+ * ============================================================================
+ * The class names core/includes/_base_media_row.html emits, so any media
+ * vertical that extends that template is styled without a fourth copy of the
+ * game-row rules. Used by the music section; games and books still carry
+ * their own .game-* / .book-* equivalents above.
+ */
+
+.media-row {
+  position: relative;
+  transition: transform 0.15s ease;
+}
+
+/* Highlight overlay on a pseudo-element so the animation stays composited */
+.media-row::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-color: color-mix(in oklch, var(--color-primary) 15%, transparent);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.media-row.is-highlighted::before {
+  opacity: 1;
+}
+
+/* Scroll offset for the fixed mobile header (60px nav + breathing room) */
+@media (max-width: 1087px) {
+  .media-row {
+    scroll-margin-top: 68px;
+  }
+}
+
+@layer components {
+
+  .media-row.desktop {
+    min-height: 52px;
+  }
+
+  .media-row.desktop .media-rank {
+    transition: transform 0.2s ease;
+  }
+
+  .media-row.desktop:hover .media-rank {
+    transform: scale(1.08);
+  }
+
+  .media-row.desktop .media-title {
+    font-size: 1.125rem; /* text-lg */
+    line-height: 1.75rem;
+  }
+
+  /* Thumbnail grows from its centre on hover, as game rows do */
+  .media-row.desktop .media-thumb-link {
+    @apply block flex-shrink-0;
+    width: 38px;
+    height: calc(38px * 128 / 90);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-left: 4px;
+    margin-right: 4px;
+    transform-origin: center center;
+    transition: transform 0.2s ease;
+  }
+
+  .media-row.desktop:hover .media-thumb-link {
+    transform: scale(1.16);
+  }
+
+  .media-row.desktop .media-thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .media-row.desktop .media-row-details {
+    @apply opacity-80;
+    transition: opacity 0.15s ease;
+  }
+
+  .media-row.desktop:hover .media-row-details {
+    @apply opacity-100;
+  }
+
+  /* Stand-in for a missing cover: albums have none until the metadata
+     pass runs, and an empty <img> box reads as a broken image. */
+  .media-thumb-placeholder {
+    @apply flex items-center justify-center bg-base-300 text-base-content/40;
+    width: 100%;
+    height: 100%;
+  }
+
+  .media-card-mobile {
+    position: relative;
+    border-left: 3px solid transparent;
+  }
+
+  .media-card-mobile::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background-color: color-mix(in oklch, var(--color-primary) 20%, transparent);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .media-card-mobile.is-highlighted::before {
+    opacity: 1;
+  }
+
+  .media-card-mobile.is-highlighted {
+    border-left-color: var(--color-primary);
+  }
+
+  .media-card-mobile.is-highlighted.fade-out::before {
+    opacity: 0;
+  }
+
+  .media-card-mobile.is-highlighted.fade-out {
+    border-left-color: transparent;
+  }
+
 }
 
 /* Bottom Sheet Backdrop Animation */

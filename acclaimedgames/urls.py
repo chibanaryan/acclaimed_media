@@ -154,35 +154,20 @@ urlpatterns = [
     # path("books/", include("books.urls", namespace="books")),
 ]
 
-# Forum routes (django-machina) - only mounted when the feature flag is on.
-# Machina's apps/migrations are always installed so the tables exist in
-# production before the flag is flipped (mirrors the books rollout pattern).
-if settings.FORUM_ENABLED:
-    from haystack.views import search_view_factory
-    from machina import urls as machina_urls
-
-    from games.forum import ForumSearchForm, ForumSearchView
-
-    urlpatterns = [
-        # Shadows machina's forum_search:search URL (must come first):
-        # the stock form's SearchQuerySet filters return zero results on
-        # haystack's simple backend - see games.forum.ForumSearchForm.
-        path(
-            "forum/search/",
-            search_view_factory(view_class=ForumSearchView, form_class=ForumSearchForm),
-            name="forum-search",
-        ),
-        path("forum/", include(machina_urls)),
-    ] + urlpatterns
-
-# Books routes - always included, but views require staff access
-# Access is controlled at the view level via StaffOnlyMixin / IsStaffOrHide permission
-# Search endpoints are now in books/api/urls.py
+# Books and music routes - always included, but views require staff access.
+# Access is controlled at the view level via StaffOnlyMixin / IsStaffOrHide,
+# so the tables and routes exist in production before the flag is flipped.
 books_urlpatterns = [
     path("api/books/", include("books.api.urls", namespace="books-api")),
     path("books/", include("books.urls", namespace="books")),
 ]
 urlpatterns = books_urlpatterns + urlpatterns
+
+music_urlpatterns = [
+    path("api/music/", include("music.api.urls", namespace="music-api")),
+    path("music/", include("music.urls", namespace="music")),
+]
+urlpatterns = music_urlpatterns + urlpatterns
 
 if settings.DEBUG:
     import debug_toolbar

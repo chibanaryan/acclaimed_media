@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% load humanize music_filters %}
+
+{% block title %}Album Artists{% endblock %}
+{% block meta_description %}Artists with albums in the acclaimed album rankings.{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto">
+<h1 class="text-3xl font-bold mb-4">
+    Artists
+    <span class="badge badge-warning badge-sm align-middle ml-1">Beta</span>
+</h1>
+
+<div id="artist-results-wrapper">
+    {% include 'music/artists/includes/_artist_list_results.html' %}
+</div>
+</div>
+{% endblock %}

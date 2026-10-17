@@ -5,6 +5,31 @@
     {# Nav items that can overflow to hamburger menu #}
     <div class="flex-1 min-w-0 overflow-hidden" x-ref="navContainer">
         <div id="mobile-nav-items" class="flex gap-1 items-center nav-calculating" x-ref="navItems">
+            {% if media_type == 'music' %}
+            {# Music section: its own links, and no games search #}
+            <a href="{% url 'music:home' %}" class="btn btn-ghost btn-sm btn-square shrink-0 nav-item{% if request.resolver_match.url_name == 'home' %} btn-active{% endif %}" data-nav-item="albums" data-menu-label="Albums" aria-label="Albums">
+                <span class="mdi mdi-album text-lg"></span>
+            </a>
+
+            <a href="{% url 'music:artist-list' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'artist-list' or request.resolver_match.url_name == 'artist-detail' %} btn-active{% endif %}" data-nav-item="artists" data-menu-label="Artists">
+                Artists
+            </a>
+
+            <a href="{% url 'music:list-list' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'list-list' %} btn-active{% endif %}" data-nav-item="music-lists" data-menu-label="Source Lists">
+                Lists
+            </a>
+
+            {% if user.is_staff %}
+            <a href="{% url 'music:import' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'import' %} btn-active{% endif %}" data-nav-item="music-import" data-menu-label="Import Data">
+                Import
+            </a>
+            {% endif %}
+
+            <a href="{% url 'home' %}" class="btn btn-ghost btn-sm btn-square shrink-0 nav-item" data-nav-item="back-to-games" data-menu-label="Back to Games" aria-label="Back to Games">
+                <span class="mdi mdi-arrow-left text-lg"></span>
+            </a>
+
+            {% else %}
             <a href="{% url 'home' %}" class="btn btn-ghost btn-sm btn-square shrink-0 nav-item{% if request.resolver_match.url_name == 'home' or media_type == 'games' %} btn-active{% endif %}" data-nav-item="rankings" aria-label="Rankings" title="">
                 <span class="mdi mdi-medal text-lg"></span>
             </a>
@@ -150,18 +175,13 @@
                 Lists
             </a>
 
-            {% if FORUM_ENABLED %}
-            <a href="{% url 'forum:index' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.namespace|slice:':5' == 'forum' %} btn-active{% endif %}" data-nav-item="forum" data-menu-label="Forum">
-                Forum
-            </a>
-            {% endif %}
-
             {% has_published_articles as show_blog %}
             {% if show_blog %}
             <a href="{% url 'article-list' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'article-list' or request.resolver_match.url_name == 'article-detail' %} btn-active{% endif %}" data-nav-item="blog" data-menu-label="Blog">
                 Blog
             </a>
             {% endif %}
+            {% endif %}{# End media_type branch #}
 
             {# Login/User button #}
             {% if user.is_authenticated %}

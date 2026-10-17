@@ -1,0 +1,18 @@
+{# Append-only partial: the next page of rows, plus its own load-more so #}
+{# the button reappears while pages remain. #}
+{% load humanize %}
+{% for album in albums %}
+    {% include 'music/includes/_album_row.html' with item=album show_rank=show_rank index=forloop.counter|add:page_obj.start_index|add:-1 highlight=highlight %}
+{% endfor %}
+{% if has_more %}
+<div class="load-more-container flex justify-center mt-4">
+    <button type="button"
+            class="btn btn-outline btn-sm"
+            hx-get="{% url 'music:home' %}?page={{ next_page }}&append=true{% if query_string %}&{{ query_string }}{% endif %}"
+            hx-target="#album-list-container"
+            hx-swap="beforeend"
+            hx-on::after-request="this.closest('.load-more-container').remove()">
+        Load {{ remaining_count|intcomma }} more
+    </button>
+</div>
+{% endif %}

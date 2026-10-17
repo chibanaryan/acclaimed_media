@@ -1,0 +1,130 @@
+{# Artist results: count, controls, table, mobile cards. #}
+{# Rendered on first load and on every HTMX swap. #}
+{% load humanize music_filters %}
+
+<h2 id="results-count" class="text-xl text-base-content/85 mb-4">
+    {% if total_count %}
+        Showing <span id="loaded-count">{{ loaded_count|intcomma }}</span> of {{ total_count|intcomma }} artist{{ total_count|pluralize }}
+    {% else %}
+        Showing 0
+    {% endif %}
+</h2>
+
+<div class="flex flex-wrap items-center gap-2 mb-6 min-h-[2.5rem]">
+    {% include 'core/includes/_search_box.html' with input_id='artist-search' placeholder='Search by name' value=current_q hx_get=request.path hx_target='#artist-results-wrapper' hx_include="[name='sort'], [name='dir']" %}
+
+    <div class="w-px h-6 bg-base-content/20"></div>
+
+    <div class="flex items-center gap-1">
+        <span class="mdi mdi-sort text-base text-base-content/70"></span>
+        <select name="sort"
+                class="select select-bordered select-sm bg-base-200"
+                style="width: fit-content; max-width: 100%;"
+                aria-label="Sort artists by"
+                hx-get="{{ request.path }}"
+                hx-target="#artist-results-wrapper"
+                hx-trigger="change"
+                hx-swap="innerHTML"
+                hx-push-url="true"
+                hx-include="[name='q'], [name='dir']">
+            <option value="albums" {% if current_sort == 'albums' %}selected{% endif %}>Albums</option>
+            <option value="name" {% if current_sort == 'name' %}selected{% endif %}>Alphabetical</option>
+        </select>
+    </div>
+
+    <select name="dir"
+            class="select select-bordered select-sm bg-base-200"
+            style="width: fit-content; max-width: 100%;"
+            aria-label="Sort direction"
+            hx-get="{{ request.path }}"
+            hx-target="#artist-results-wrapper"
+            hx-trigger="change"
+            hx-swap="innerHTML"
+            hx-push-url="true"
+            hx-include="[name='q'], [name='sort']">
+        <option value="desc" {% if current_dir == 'desc' %}selected{% endif %}>Descending</option>
+        <option value="asc" {% if current_dir == 'asc' %}selected{% endif %}>Ascending</option>
+    </select>
+
+    {% if current_q %}
+    <a href="{% url 'music:artist-list' %}" class="btn btn-ghost btn-sm">
+        <span class="mdi mdi-close"></span>
+        <span>Clear search</span>
+    </a>
+    {% endif %}
+</div>
+
+{% if artists %}
+{# Desktop table view #}
+<div class="hidden desktop:block overflow-x-auto">
+    <table class="table-minimal table-fixed w-full">
+        <colgroup>
+            <col style="width: 34%;">
+            <col style="width: 9%;">
+            <col style="width: 33%;">
+            <col style="width: 12%;">
+            <col style="width: 12%;">
+        </colgroup>
+        <thead>
+            <tr>
+                <th class="font-semibold">Name</th>
+                <th class="font-semibold text-center">Rank</th>
+                <th class="font-semibold">Top Album</th>
+                <th class="font-semibold text-right">Related</th>
+                <th class="font-semibold text-right">Albums</th>
+            </tr>
+        </thead>
+        <tbody id="artist-list-container">
+            {% for artist in artists %}
+            {% include 'music/artists/includes/_artist_row.html' with artist=artist %}
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{# Mobile cards #}
+<div class="desktop:hidden" id="artist-list-container-mobile">
+    {% for artist in artists %}
+    <div class="entity-row card bg-base-200 p-3 mb-2">
+        <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0">
+                {% if artist.slug %}
+                <a href="{{ artist.get_absolute_url }}" class="link link-accent font-semibold truncate">{{ artist.name }}</a>
+                {% else %}
+                <span class="font-semibold truncate">{{ artist|artist_display_name }}</span>
+                {% endif %}
+                {% with best=artist.albums.first %}
+                {% if best %}
+                <div class="text-xs text-base-content/70 truncate">
+                    Best: {{ best.name }} (#{{ best.rank }})
+                </div>
+                {% endif %}
+                {% endwith %}
+            </div>
+            <span class="tabular-nums text-sm whitespace-nowrap shrink-0">
+                {{ artist.albums_count }} album{{ artist.albums_count|pluralize }}
+            </span>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if has_more %}
+<div class="load-more-container flex justify-center mt-4">
+    <button type="button"
+            class="btn btn-outline btn-sm"
+            hx-get="{% url 'music:artist-list' %}?page={{ next_page }}&append=true&q={{ current_q|urlencode }}&sort={{ current_sort }}&dir={{ current_dir }}"
+            hx-target="#artist-list-container"
+            hx-swap="beforeend"
+            hx-on::after-request="this.closest('.load-more-container').remove()">
+        Load more artists
+    </button>
+</div>
+{% endif %}
+
+{% else %}
+<div class="alert">
+    <span class="mdi mdi-account-music"></span>
+    <span>No artists found.</span>
+</div>
+{% endif %}

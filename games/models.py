@@ -1578,10 +1578,7 @@ class Publication(PublicationBase):
     reputation_score = models.PositiveSmallIntegerField(
         null=True,
         blank=True,
-        help_text=(
-            "Editorial reputation score. Shown in the consolidated "
-            "'Publication reputation scores' forum topic."
-        ),
+        help_text="Editorial reputation score, staff-edited. Display only.",
     )
 
     class Meta:
@@ -1672,7 +1669,8 @@ class Post(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        # "posts" clashes with machina's forum_conversation.Post.poster
+        # Named "news_posts" rather than "posts" since the forum's own Post
+        # model used to claim that accessor; kept to avoid a pointless rename
         related_name="news_posts",
     )
 

@@ -1,10 +1,11 @@
 [run]
-source = games,books,core
+source = games,books,core,music
 omit =
     */migrations/*
     */tests/*
     */management/commands/*
     games/services/import_handler.py
+    music/services/import_handler.py
 
 [report]
 exclude_lines =

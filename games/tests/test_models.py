@@ -58,7 +58,7 @@ class RankingUtilsTests(TestCase):
         self.assertEqual(games_updated, 0)
         self.assertEqual(years_processed, 0)
 
-    @mock.patch("games.services.ranking_service.connection")
+    @mock.patch("core.services.ranking.connection")
     @mock.patch("games.services.ranking_service.models.Game.objects")
     def test_update_year_decade_ranks_postgresql_path(
         self, mock_game_objects, mock_connection

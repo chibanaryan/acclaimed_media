@@ -7,11 +7,10 @@ following the same patterns established in the games app.
 
 from collections import defaultdict
 
-from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.cache import cache
 from django.db.models import Count, Prefetch, Q
 from django.db.models.functions import Lower
-from django.http import Http404
 from django.shortcuts import get_object_or_404, render
 from django.views import View
 from django.views.generic import DetailView, ListView
@@ -20,22 +19,7 @@ from books import config, models
 from books.forms import GoodreadsImportForm
 from books.services.goodreads_importer import import_goodreads_csv
 from core.cache_helpers import get_year_bounds
-from core.mixins import HTMXPartialMixin, RobustPaginationMixin
-
-
-class StaffOnlyMixin(UserPassesTestMixin):
-    """
-    Mixin that restricts access to staff/admin users only.
-
-    Returns 404 (not 403) for non-staff users so the feature
-    remains hidden until publicly launched.
-    """
-
-    def test_func(self):
-        return self.request.user.is_authenticated and self.request.user.is_staff
-
-    def handle_no_permission(self):
-        raise Http404("Page not found")
+from core.mixins import HTMXPartialMixin, RobustPaginationMixin, StaffOnlyMixin
 
 
 def _get_year_bounds():

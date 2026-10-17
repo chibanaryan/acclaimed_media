@@ -3,10 +3,8 @@ import sys
 
 import environ
 import sentry_sdk
-from machina import MACHINA_MAIN_STATIC_DIR, MACHINA_MAIN_TEMPLATE_DIR
 from sentry_sdk.integrations.django import DjangoIntegration
 
-from acclaimedgames.forum_apps import pin_machina_auto_fields
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 env = environ.Env(DEBUG=(bool, False))
@@ -37,9 +35,6 @@ DEBUG = env("DEBUG", default=False)  # Default to True for development
 
 # Feature flags - Books app is in development, only show in DEBUG/TEST mode
 BOOKS_ENABLED = DEBUG or TEST_MODE
-
-# Forum is in development - hidden in production until FORUM_ENABLED=True is set
-FORUM_ENABLED = env.bool("FORUM_ENABLED", default=DEBUG or TEST_MODE)
 
 SECRET_KEY = env(
     "SECRET_KEY",
@@ -86,6 +81,7 @@ INSTALLED_APPS = [
     "core",
     "games",
     "books",
+    "music",
     # django-allauth
     "allauth",
     "allauth.account",
@@ -93,28 +89,8 @@ INSTALLED_APPS = [
     "allauth.socialaccount.providers.google",
     "allauth.socialaccount.providers.facebook",
     "django_extensions",
-    # django-machina forum and its dependencies. These must stay as plain
-    # module strings (machina's class loader matches them); their app
-    # configs are pinned to AutoField PKs below via pin_machina_auto_fields.
-    "mptt",
-    "haystack",
-    "widget_tweaks",
-    "machina",
-    "machina.apps.forum",
-    "machina.apps.forum_conversation",
-    "machina.apps.forum_conversation.forum_attachments",
-    "machina.apps.forum_conversation.forum_polls",
-    "machina.apps.forum_feeds",
-    "machina.apps.forum_moderation",
-    "machina.apps.forum_search",
-    "machina.apps.forum_tracking",
-    "machina.apps.forum_member",
-    "machina.apps.forum_permission",
 ]
 
-# Keep machina's model state on AutoField PKs (its shipped migrations)
-# despite our global BigAutoField default - see forum_apps.py.
-pin_machina_auto_fields()
 
 # django-tailwind configuration
 TAILWIND_APP_NAME = "theme"
@@ -136,8 +112,6 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django.contrib.flatpages.middleware.FlatpageFallbackMiddleware",
     "games.middleware.HTMXPushURLMiddleware",  # HTMX history support
-    # Attaches machina's permission handler to the request
-    "machina.apps.forum_permission.middleware.ForumPermissionMiddleware",
 ]
 
 # Only enable cache middleware in production (not in DEBUG/TEST or dev server)
@@ -153,11 +127,7 @@ if DEBUG:
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        # Project-level machina overrides must come before machina's own templates
-        "DIRS": [
-            BASE_DIR / "templates" / "machina",
-            MACHINA_MAIN_TEMPLATE_DIR,
-        ],
+        "DIRS": [],
         # When loaders is explicitly defined, APP_DIRS must be False
         # The app_directories loader is included in the loaders list instead
         "APP_DIRS": False,
@@ -170,7 +140,6 @@ TEMPLATES = [
                 "games.context_processors.csp_nonce",  # CSP nonce for templates
                 "games.context_processors.feature_flags",  # Feature flags
                 "games.context_processors.media_type",  # Current media type
-                "machina.core.context_processors.metadata",  # Forum metadata
             ],
             # In development/tests, don't use cached template loader
             # This ensures template changes are picked up immediately
@@ -288,19 +257,14 @@ else:
 
 CACHE_MIDDLEWARE_SECONDS = 60 * 60
 
-# django-machina requires a dedicated cache for temporary attachment uploads
-CACHES["machina_attachments"] = {
-    "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
-    "LOCATION": BASE_DIR / "machina_attachments_cache",
-}
 
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-STATICFILES_DIRS = [MACHINA_MAIN_STATIC_DIR]
+STATICFILES_DIRS = []
 
-# User-uploaded files (forum avatars). Note: Heroku's filesystem is
-# ephemeral, so uploads are lost on dyno restart; fine for avatars in the
-# short term, move to S3 or similar if uploads ever matter.
+# User-uploaded files. Nothing uploads today (the forum's avatars were the
+# only consumer); Heroku's filesystem is ephemeral, so move to S3 or similar
+# if uploads ever matter.
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
@@ -338,41 +302,6 @@ WHITENOISE_KEEP_ONLY_HASHED_FILES = True  # Remove non-hashed files in productio
 WHITENOISE_INDEX_FILE = False  # Django handles routing, not static file serving
 
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
-
-# django-haystack is required by machina's forum search; the simple backend
-# does basic database matching without needing a search engine service
-HAYSTACK_CONNECTIONS = {
-    "default": {"ENGINE": "haystack.backends.simple_backend.SimpleEngine"},
-}
-
-# django-machina forum configuration
-MACHINA_FORUM_NAME = "Acclaimed Video Games Forum"
-
-# No avatar uploads until persistent file hosting exists (Heroku's
-# filesystem is ephemeral, so uploads vanish on dyno restart)
-MACHINA_PROFILE_AVATARS_ENABLED = False
-
-# machina's default markdown2 config plus table support, used by the
-# publication reputation scores topic (and available to all posts)
-MACHINA_MARKUP_LANGUAGE = (
-    "machina.core.markdown.markdown",
-    {"safe_mode": True, "extras": {"break-on-newline": True, "tables": True}},
-)
-
-# Every authenticated user can read and post in any forum without per-forum
-# permission grants. Staff get moderator permissions via the Forum Moderators
-# group (see games/forum.py); superusers implicitly have all permissions.
-MACHINA_DEFAULT_AUTHENTICATED_USER_FORUM_PERMISSIONS = [
-    "can_see_forum",
-    "can_read_forum",
-    "can_start_new_topics",
-    "can_reply_to_topics",
-    "can_edit_own_posts",
-    "can_delete_own_posts",
-    "can_post_without_approval",
-    "can_vote_in_polls",
-    "can_download_file",
-]
 
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [],
@@ -442,6 +371,10 @@ LOGGING = {
         "games.middleware": {
             "handlers": ["console"],
             "level": "ERROR" if TEST_MODE else "WARNING",
+        },
+        "music.services.import_handler": {
+            "handlers": ["console"],
+            "level": "ERROR" if TEST_MODE else "INFO",
         },
     },
 }

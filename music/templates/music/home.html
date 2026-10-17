@@ -1,0 +1,186 @@
+{% extends 'base.html' %}
+{% load humanize music_filters %}
+
+{% block title %}{{ filter_title|default:"Most Acclaimed Albums" }}{% endblock %}
+{% block meta_description %}Album rankings aggregated from {{ list_count }} published critics' lists.{% endblock %}
+
+{% block content %}
+<div class="flex flex-col w-full">
+
+{# Page heading row - title on the left, matching the games layout widths #}
+<div id="search-heading" class="mb-4 hidden desktop:flex items-center gap-6" style="min-height: 80px;">
+    <div class="min-w-0 flex-1 max-w-[calc(100%-357px-1.5rem)] flex flex-col justify-center">
+        <h1 class="text-3xl font-bold line-clamp-2" id="search-title">
+            {{ filter_title|default:"Most Acclaimed Albums" }}
+            <span class="badge badge-warning badge-sm align-middle ml-1">Beta</span>
+        </h1>
+        <p class="text-base-content/70 text-sm">
+            The top {{ album_count|intcomma }} most recommended albums across
+            {{ list_count|intcomma }} critic lists from
+            {{ publication_count|intcomma }} publications.
+        </p>
+    </div>
+</div>
+
+{# Mobile heading #}
+<div class="desktop:hidden mb-3">
+    <h1 class="text-2xl font-bold" id="search-title-mobile">
+        {{ filter_title|default:"Most Acclaimed Albums" }}
+        <span class="badge badge-warning badge-sm align-middle">Beta</span>
+    </h1>
+    <p class="text-base-content/70 text-sm">
+        {{ album_count|intcomma }} albums &middot; {{ list_count|intcomma }} lists
+    </p>
+</div>
+
+{# Two-column layout: results on the left, filters sidebar on the right #}
+<div class="flex flex-col desktop:flex-row desktop:gap-6">
+
+    {# Left column - results #}
+    <div class="min-w-0 w-full desktop:max-w-[calc(100%-357px-1.5rem)]" style="contain: layout;">
+        <div id="album-results-container">
+            {% include 'music/includes/_album_list_results.html' %}
+        </div>
+    </div>
+
+    {# Right sidebar - filters. One GET form; HTMX serializes it on change. #}
+    <div class="w-full desktop:w-[357px] desktop:shrink-0 order-first desktop:order-last mb-4 desktop:mb-0">
+        <form id="album-filters"
+              hx-get="{% url 'music:home' %}"
+              hx-target="#album-results-container"
+              hx-swap="innerHTML"
+              hx-push-url="true"
+              hx-indicator="#album-loading"
+              hx-trigger="submit, change, keyup changed delay:350ms from:find input[name='q']"
+              class="bg-base-200 rounded-lg p-4">
+
+            {# Filters header #}
+            <div class="flex items-center justify-between mb-3 pb-2 border-b border-base-100">
+                <div class="flex items-center gap-2">
+                    <span class="mdi mdi-filter-variant text-xl text-accent"></span>
+                    <span class="font-bold text-base">Filters</span>
+                </div>
+                {% if is_filtered %}
+                <a href="{% url 'music:home' %}" class="btn btn-ghost btn-xs text-base-content/70 hover:text-error">
+                    <span class="mdi mdi-close text-xs"></span>
+                    <span class="text-xs">Clear all</span>
+                </a>
+                {% endif %}
+                <span id="album-loading" class="htmx-indicator loading loading-spinner loading-xs"></span>
+            </div>
+
+            {# Search #}
+            <div class="mb-4 pb-3 border-b border-base-100">
+                <div class="flex items-center gap-2 mb-2">
+                    <svg class="h-5 w-5 text-accent" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                        <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2.5" fill="none" stroke="currentColor">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <path d="m21 21-4.3-4.3"></path>
+                        </g>
+                    </svg>
+                    <span class="font-bold text-base">Search</span>
+                </div>
+                <label class="input input-bordered input-sm w-full bg-base-100">
+                    <input type="search" name="q" value="{{ current_q }}"
+                           class="grow" placeholder="Album or artist" autocomplete="off">
+                </label>
+            </div>
+
+            {# Release year #}
+            <div class="mb-4 pb-3 border-b border-base-100">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="mdi mdi-calendar-range text-xl text-accent"></span>
+                    <span class="font-bold text-base">Release Year</span>
+                </div>
+                <div class="flex flex-wrap gap-1 mb-2">
+                    {% for decade in decades %}
+                    <button type="button"
+                            class="mobile-filter-chip{% if decade.selected %} mobile-filter-chip-selected{% endif %}"
+                            name="decade" value="{{ decade.start }}"
+                            hx-get="{% url 'music:home' %}?start={{ decade.start }}&end={{ decade.end }}{% if current_q %}&q={{ current_q|urlencode }}{% endif %}{% if current_sort != 'rank' %}&sort={{ current_sort }}{% endif %}"
+                            hx-target="#album-results-container"
+                            hx-swap="innerHTML"
+                            hx-push-url="true">
+                        {{ decade.label }}
+                        <span class="text-xs opacity-70 tabular-nums">{{ decade.count }}</span>
+                    </button>
+                    {% endfor %}
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="number" name="start" value="{{ current_start }}"
+                           min="{{ min_year }}" max="{{ max_year }}" placeholder="{{ min_year }}"
+                           aria-label="From year"
+                           class="input input-bordered input-sm w-full bg-base-100">
+                    <span class="text-base-content/50">&ndash;</span>
+                    <input type="number" name="end" value="{{ current_end }}"
+                           min="{{ min_year }}" max="{{ max_year }}" placeholder="{{ max_year }}"
+                           aria-label="To year"
+                           class="input input-bordered input-sm w-full bg-base-100">
+                </div>
+            </div>
+
+            {# Artist #}
+            {% if artists %}
+            <div class="mb-4 pb-3 border-b border-base-100">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="mdi mdi-account-music text-xl text-accent"></span>
+                    <span class="font-bold text-base">Artist</span>
+                </div>
+                <select name="artists" aria-label="Filter by artist"
+                        class="select select-bordered select-sm w-full bg-base-100">
+                    <option value="">All artists</option>
+                    {% for artist in artists %}
+                    <option value="{{ artist.id }}" {% if current_artists == artist.id|stringformat:'s' %}selected{% endif %}>
+                        {{ artist.name }} ({{ artist.albums_count }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+
+            {# Genre - only once the metadata pass has populated genres #}
+            {% if genres %}
+            <div class="mb-4 pb-3 border-b border-base-100">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="mdi mdi-music-note text-xl text-accent"></span>
+                    <span class="font-bold text-base">Genre</span>
+                </div>
+                <select name="genres" aria-label="Filter by genre"
+                        class="select select-bordered select-sm w-full bg-base-100">
+                    <option value="">All genres</option>
+                    {% for genre in genres %}
+                    <option value="{{ genre.id }}" {% if current_genres == genre.id|stringformat:'s' %}selected{% endif %}>
+                        {{ genre.name }} ({{ genre.albums_count }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+
+            {# Sort - kept in the form so a change re-runs the whole query #}
+            <div>
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="mdi mdi-sort text-xl text-accent"></span>
+                    <span class="font-bold text-base">Sort</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <select name="sort" aria-label="Sort albums by"
+                            class="select select-bordered select-sm w-full bg-base-100">
+                        <option value="rank" {% if current_sort == 'rank' %}selected{% endif %}>Rank</option>
+                        <option value="year" {% if current_sort == 'year' %}selected{% endif %}>Year</option>
+                        <option value="name" {% if current_sort == 'name' %}selected{% endif %}>Alphabetical</option>
+                        <option value="lists" {% if current_sort == 'lists' %}selected{% endif %}># Lists</option>
+                    </select>
+                    <select name="dir" aria-label="Sort direction"
+                            class="select select-bordered select-sm bg-base-100"
+                            style="width: fit-content;">
+                        <option value="asc" {% if current_dir == 'asc' %}selected{% endif %}>Asc</option>
+                        <option value="desc" {% if current_dir == 'desc' %}selected{% endif %}>Desc</option>
+                    </select>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+</div>
+{% endblock %}

@@ -1,0 +1,89 @@
+{# Primary sidebar navigation, per media type. #}
+{# The current section is decided by `media_type` (games.context_processors). #}
+{# Keep each template comment on one line: Django's lexer only strips #}
+{# single-line ones, so a comment spanning a newline renders as page text. #}
+<ul class="menu gap-1">
+{% if media_type == 'music' %}
+    <li>
+        <a href="{% url 'music:home' %}"
+           class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}">
+            <span class="mdi mdi-album text-xl"></span>
+            Albums
+        </a>
+    </li>
+    <li>
+        <a href="{% url 'music:artist-list' %}"
+           class="{% if request.resolver_match.url_name == 'artist-list' or request.resolver_match.url_name == 'artist-detail' %}active{% endif %}">
+            <span class="mdi mdi-account-music text-xl"></span>
+            Artists
+        </a>
+    </li>
+    <li>
+        <a href="{% url 'music:list-list' %}"
+           class="{% if request.resolver_match.url_name == 'list-list' %}active{% endif %}">
+            <span class="mdi mdi-format-list-numbered text-xl"></span>
+            Source Lists
+        </a>
+    </li>
+    {% if user.is_staff %}
+    <li>
+        <a href="{% url 'music:import' %}"
+           class="{% if request.resolver_match.url_name == 'import' %}active{% endif %}">
+            <span class="mdi mdi-database-import text-xl"></span>
+            Import Data
+        </a>
+    </li>
+    {% endif %}
+    <li class="mt-2 pt-2 border-t border-base-100">
+        <a href="{% url 'home' %}">
+            <span class="mdi mdi-arrow-left text-xl"></span>
+            Back to Games
+        </a>
+    </li>
+{% elif media_type == 'books' %}
+    <li>
+        <a href="{% url 'books:home' %}"
+           class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}">
+            <span class="mdi mdi-book-open-page-variant text-xl"></span>
+            Books
+        </a>
+    </li>
+    <li>
+        <a href="{% url 'books:author-list' %}"
+           class="{% if request.resolver_match.url_name == 'author-list' or request.resolver_match.url_name == 'author-detail' %}active{% endif %}">
+            <span class="mdi mdi-account-group text-xl"></span>
+            Authors
+        </a>
+    </li>
+    <li class="mt-2 pt-2 border-t border-base-100">
+        <a href="{% url 'home' %}">
+            <span class="mdi mdi-arrow-left text-xl"></span>
+            Back to Games
+        </a>
+    </li>
+{% else %}
+    {% if not BOOKS_ENABLED %}
+    <li>
+        <a href="{% url 'home' %}"
+           class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}">
+            <span class="mdi mdi-medal text-xl"></span>
+            Rankings
+        </a>
+    </li>
+    {% endif %}
+    <li>
+        <a href="{% url 'developers-list' %}"
+           class="{% if request.resolver_match.url_name == 'developers-list' %}active{% endif %}">
+            <span class="mdi mdi-account-group text-xl"></span>
+            Developers
+        </a>
+    </li>
+    <li>
+        <a href="{% url 'list-list' %}"
+           class="{% if request.resolver_match.url_name == 'list-list' %}active{% endif %}">
+            <span class="mdi mdi-format-list-numbered text-xl"></span>
+            Source Lists
+        </a>
+    </li>
+{% endif %}
+</ul>

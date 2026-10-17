@@ -1,0 +1,53 @@
+{# One artist row in the desktop table. Props: artist #}
+{% load humanize %}
+<tr class="entity-row">
+    <td class="py-3">
+        {% if artist.slug %}
+        <a href="{{ artist.get_absolute_url }}" class="link link-accent text-lg font-semibold hover:underline">{{ artist.name }}</a>
+        {% else %}
+        <span class="text-lg font-semibold">{{ artist.name }}</span>
+        {% endif %}
+        {% if artist.parent %}
+        <div class="text-xs text-base-content/70">part of {{ artist.parent.name }}</div>
+        {% endif %}
+    </td>
+    {% with best=artist.albums.first %}
+    <td class="text-center align-middle">
+        {% if best %}
+        <span class="text-accent font-bold text-xl tabular-nums">#{{ best.rank }}</span>
+        {% else %}
+        <span class="text-base-content/30 text-lg">&mdash;</span>
+        {% endif %}
+    </td>
+    <td class="py-2">
+        {% if best %}
+        <a href="{{ best.get_absolute_url }}" class="flex items-center gap-3 group py-1 -ml-1 pl-1 rounded transition-colors hover:bg-base-content/5">
+            {% if best.cover_image_url %}
+            <div class="w-10 h-10 flex-shrink-0 overflow-hidden rounded shadow-sm group-hover:shadow-md transition-shadow">
+                <img src="{{ best.cover_image_url }}" alt="" width="40" height="40"
+                     class="w-full h-full object-cover" loading="lazy">
+            </div>
+            {% else %}
+            <div class="w-10 h-10 bg-base-100 rounded flex items-center justify-center flex-shrink-0">
+                <span class="mdi mdi-album text-base-content/30"></span>
+            </div>
+            {% endif %}
+            <span class="min-w-0">
+                <span class="block truncate group-hover:underline">{{ best.name }}</span>
+                {% if best.year_released %}
+                <span class="block text-xs text-base-content/70">{{ best.year_released }}</span>
+                {% endif %}
+            </span>
+        </a>
+        {% else %}
+        <span class="text-base-content/30">&mdash;</span>
+        {% endif %}
+    </td>
+    {% endwith %}
+    <td class="text-right align-middle text-sm text-base-content/70">
+        {% if artist.subsidiaries.all %}{{ artist.subsidiaries.all|length }}{% else %}&mdash;{% endif %}
+    </td>
+    <td class="text-right align-middle">
+        <span class="font-semibold tabular-nums">{{ artist.albums_count }}</span>
+    </td>
+</tr>

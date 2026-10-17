@@ -1,0 +1,72 @@
+{# Album metadata table for the detail page. #}
+{% load humanize music_filters %}
+<table class="table-minimal w-full">
+    <tbody>
+        <tr>
+            <th class="text-left">All time rank</th>
+            <td>
+                <a href="{% album_rank_url album %}" class="link link-hover font-semibold">#{{ album.rank }}</a>
+                <span class="text-base-content/70">of {{ total_album_count|intcomma }}</span>
+            </td>
+        </tr>
+        {% if album.decade_rank and album.decade %}
+        <tr>
+            <th class="text-left">{{ album.decade }}s rank</th>
+            <td>
+                <a href="{% url 'music:home' %}?start={{ album.decade }}&end={{ album.decade|add:9 }}&highlight={{ album.id }}"
+                   class="link link-hover">#{{ album.decade_rank }}</a>
+            </td>
+        </tr>
+        {% endif %}
+        {% if album.year_rank and album.year_released %}
+        <tr>
+            <th class="text-left">{{ album.year_released }} rank</th>
+            <td>
+                <a href="{% album_year_url album %}" class="link link-hover">#{{ album.year_rank }}</a>
+            </td>
+        </tr>
+        {% endif %}
+        <tr>
+            <th class="text-left">List appearances</th>
+            <td>{{ list_appearance_count }} list{{ list_appearance_count|pluralize }}</td>
+        </tr>
+        <tr>
+            <th class="text-left">Artist{{ album.artists.count|pluralize }}</th>
+            <td>{% artist_links album %}</td>
+        </tr>
+        {% if album.genres.count %}
+        <tr>
+            <th class="text-left">Genre{{ album.genres.count|pluralize }}</th>
+            <td>
+                {% for genre in album.genres.all %}
+                <span class="badge badge-outline badge-sm gap-1">
+                    <span class="mdi {{ genre|music_genre_icon }}"></span>{{ genre.name }}
+                </span>
+                {% endfor %}
+            </td>
+        </tr>
+        {% endif %}
+        {% if album.wikidata_id %}
+        <tr>
+            <th class="text-left">Wikidata</th>
+            <td>
+                <a href="https://www.wikidata.org/wiki/{{ album.wikidata_id }}"
+                   target="_blank" rel="noopener" class="link link-hover">
+                    {{ album.wikidata_id }} <span class="mdi mdi-open-in-new text-xs"></span>
+                </a>
+            </td>
+        </tr>
+        {% endif %}
+        {% if album.musicbrainz_release_group_id %}
+        <tr>
+            <th class="text-left">MusicBrainz</th>
+            <td>
+                <a href="https://musicbrainz.org/release-group/{{ album.musicbrainz_release_group_id }}"
+                   target="_blank" rel="noopener" class="link link-hover">
+                    Release group <span class="mdi mdi-open-in-new text-xs"></span>
+                </a>
+            </td>
+        </tr>
+        {% endif %}
+    </tbody>
+</table>

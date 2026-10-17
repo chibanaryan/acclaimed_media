@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% load humanize music_filters %}
+
+{% block title %}{{ artist.name }} - Acclaimed Albums{% endblock %}
+{% block meta_description %}{{ artist.name }} has {{ albums_count }} album{{ albums_count|pluralize }} in the acclaimed album rankings.{% endblock %}
+{% block og_title %}{{ artist.name }}{% endblock %}
+{% block twitter_title %}{{ artist.name }}{% endblock %}
+
+{% block content %}
+<h1 class="text-3xl font-bold mb-2 flex items-center gap-3 flex-wrap">
+    <span>{{ artist.name }}</span>
+    <span class="badge badge-warning badge-sm">Beta</span>
+</h1>
+<p class="text-base-content/70 mb-4">
+    {{ albums_count }} ranked album{{ albums_count|pluralize }}
+    {% if best_album %}&middot; best is
+    <a href="{{ best_album.get_absolute_url }}" class="link link-hover">{{ best_album.name }}</a>
+    at #{{ best_album.rank }}{% endif %}
+    {% if artist.parent %}&middot; part of
+    {% if artist.parent.slug %}<a href="{{ artist.parent.get_absolute_url }}" class="link link-hover">{{ artist.parent.name }}</a>
+    {% else %}{{ artist.parent.name }}{% endif %}{% endif %}
+</p>
+
+{% if artist.subsidiaries.all %}
+<div class="mb-4">
+    <h2 class="text-sm font-semibold text-base-content/70 mb-1">Related acts</h2>
+    {% for sub in artist.subsidiaries.all %}
+    <span class="badge badge-outline badge-sm">{{ sub.name }}</span>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if artist.wikidata_id or artist.musicbrainz_id %}
+<p class="text-sm mb-4">
+    {% if artist.wikidata_id %}
+    <a href="https://www.wikidata.org/wiki/{{ artist.wikidata_id }}" target="_blank" rel="noopener" class="link link-hover">
+        Wikidata <span class="mdi mdi-open-in-new text-xs"></span>
+    </a>
+    {% endif %}
+    {% if artist.musicbrainz_id %}
+    <a href="https://musicbrainz.org/artist/{{ artist.musicbrainz_id }}" target="_blank" rel="noopener" class="link link-hover ml-3">
+        MusicBrainz <span class="mdi mdi-open-in-new text-xs"></span>
+    </a>
+    {% endif %}
+</p>
+{% endif %}
+
+<h2 class="text-2xl font-bold mb-4">Albums</h2>
+<div>
+    {% for album in artist_albums %}
+        {% include 'music/includes/_album_row.html' with item=album show_rank='alltime' %}
+    {% empty %}
+        <div class="alert"><span>No ranked albums for this artist.</span></div>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -10,35 +10,22 @@ from datetime import datetime
 from django.db import connection
 from django.db.models import Count, F, Min, Prefetch
 from django.db.models.functions import Lower
-from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.generics import ListAPIView, RetrieveAPIView
-from rest_framework.permissions import BasePermission, IsAuthenticated
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView, Response
 
 from games import config  # Shared cache config
 from games import utils  # Shared utilities
 
+from core.permissions import IsStaffOrHide
+
 from .. import models
 from . import serializers
-
-
-class IsStaffOrHide(BasePermission):
-    """
-    Permission class that returns 404 for non-staff users.
-
-    This hides the books API from public view until launch.
-    """
-
-    def has_permission(self, request, view):
-        if request.user.is_authenticated and request.user.is_staff:
-            return True
-        # Raise 404 to hide the endpoint from non-staff users
-        raise Http404("Page not found")
 
 
 @method_decorator(cache_page(60 * 15), name="dispatch")  # 15 min cache

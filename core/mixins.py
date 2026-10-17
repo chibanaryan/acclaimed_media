@@ -1,8 +1,9 @@
 """Reusable view mixins for the multi-media platform."""
 
+from django.contrib.auth.mixins import UserPassesTestMixin
 from django.core.cache import cache
 from django.core.paginator import EmptyPage, Paginator
-from django.http import HttpResponse
+from django.http import Http404, HttpResponse
 
 
 class RobustPaginationMixin:
@@ -181,3 +182,18 @@ class HTMXPartialMixin:
         if self.request.headers.get("HX-Request") and self.htmx_partial_template:
             return [self.htmx_partial_template]
         return super().get_template_names()
+
+
+class StaffOnlyMixin(UserPassesTestMixin):
+    """Restrict a view to staff users, hiding it from everyone else.
+
+    Returns 404 rather than 403 so an unlaunched media vertical looks
+    absent instead of merely forbidden. The DRF counterpart is
+    ``core.permissions.IsStaffOrHide``.
+    """
+
+    def test_func(self):
+        return self.request.user.is_authenticated and self.request.user.is_staff
+
+    def handle_no_permission(self):
+        raise Http404("Page not found")

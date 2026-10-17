@@ -2,43 +2,15 @@
 <div class="flex flex-col h-full">
     {# TOP CONTAINER: Logo + Navigation + Search - Always visible #}
     <div class="shrink-0 px-4 py-6">
-        {# Main navigation: Rankings, Developers, Source Lists #}
+        {# Main navigation - the link set depends on the current media type #}
         <nav class="mb-3">
-            {% if BOOKS_ENABLED %}
+            {% if BOOKS_ENABLED and media_type != 'music' %}
             {% include 'core/includes/_media_switcher.html' with variant='tabs' size='sm' %}
             {% endif %}
-            <ul class="menu gap-1">
-                {% if not BOOKS_ENABLED %}
-                <li>
-                    <a href="{% url 'home' %}" class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}">
-                        <span class="mdi mdi-medal text-xl"></span>
-                        Rankings
-                    </a>
-                </li>
-                {% endif %}
-                <li>
-                    <a href="{% url 'developers-list' %}" class="{% if request.resolver_match.url_name == 'developers-list' %}active{% endif %}">
-                        <span class="mdi mdi-account-group text-xl"></span>
-                        Developers
-                    </a>
-                </li>
-                <li>
-                    <a href="{% url 'list-list' %}" class="{% if request.resolver_match.url_name == 'list-list' %}active{% endif %}">
-                        <span class="mdi mdi-format-list-numbered text-xl"></span>
-                        Source Lists
-                    </a>
-                </li>
-                {% if FORUM_ENABLED %}
-                <li>
-                    <a href="{% url 'forum:index' %}" class="{% if request.resolver_match.namespace|slice:':5' == 'forum' %}active{% endif %}">
-                        <span class="mdi mdi-forum text-xl"></span>
-                        Forum
-                    </a>
-                </li>
-                {% endif %}
-            </ul>
+            {% include 'core/includes/_sidebar_nav.html' %}
         </nav>
 
+        {% if media_type == 'games' %}
         {# Search bar #}
         <div class="relative"
              x-data="createUnifiedSearchData('{% url 'games-api:unified-search' %}', 3, 5)"
@@ -143,6 +115,7 @@
                 </ul>
             </div>
         </div>
+        {% endif %}
 
         {# Secondary navigation: Blog #}
         {% has_published_articles as show_blog %}

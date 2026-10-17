@@ -1,0 +1,60 @@
+{# Album row - desktop and mobile, from the shared core row template. #}
+{# Props: album, show_rank ('alltime'|'filtered'|'none'), index, highlight #}
+{# The core template speaks in terms of `item`, so home.html includes this #}
+{# partial with `item=album`. Unlike the games and books rows this is not a #}
+{# dual-render template: music has no client-side renderer yet, so there is #}
+{# no JS cloning contract to keep in sync. #}
+{% extends 'core/includes/_base_media_row.html' %}
+{% load music_filters %}
+
+{% block thumbnail %}
+<a {% if item %}href="{{ item.get_absolute_url }}"{% endif %} class="media-thumb-link" data-slot="thumb-link">
+    {% if item and item.thumbnail %}
+    <img src="{{ item.thumbnail }}" alt="{{ item.name }}"
+         width="90" height="90" loading="lazy" decoding="async"
+         class="media-thumb" data-slot="thumbnail">
+    {% else %}
+    <span class="media-thumb-placeholder" aria-hidden="true">
+        <span class="mdi mdi-album text-lg"></span>
+    </span>
+    {% endif %}
+</a>
+{% endblock %}
+
+{% block metadata %}
+{% if item %}
+    {% if item.artist_credit %}
+    <span class="whitespace-nowrap" data-slot="artist-credit">{% artist_links item %}</span>
+    {% endif %}
+
+    {% if item.genres.count > 0 %}
+    <span class="whitespace-nowrap">
+        {% if item.artist_credit %}<span class="text-base-content/30">|</span> {% endif %}
+        <span data-slot="genres">
+            {% for genre in item.genres.all %}{{ genre.name }}{% if not forloop.last %}<span class="text-base-content/30"> / </span>{% endif %}{% endfor %}
+        </span>
+    </span>
+    {% endif %}
+
+    {% if item.list_count %}
+    <span class="whitespace-nowrap">
+        {% if item.genres.count > 0 or item.artist_credit %}<span class="text-base-content/30">|</span> {% endif %}
+        <span class="tabular-nums" data-slot="list-count">{{ item.list_count }} list{{ item.list_count|pluralize }}</span>
+    </span>
+    {% endif %}
+{% endif %}
+{% endblock %}
+
+{% block mobile_metadata %}
+{% if item %}
+    {% if item.artist_credit %}
+    <span class="whitespace-nowrap" data-slot="artist-credit">{{ item.artist_credit }}</span>
+    {% endif %}
+    {% if item.list_count %}
+    <span class="whitespace-nowrap">
+        {% if item.artist_credit %}<span class="text-base-content/30">|</span> {% endif %}
+        <span class="tabular-nums" data-slot="list-count">{{ item.list_count }} list{{ item.list_count|pluralize }}</span>
+    </span>
+    {% endif %}
+{% endif %}
+{% endblock %}

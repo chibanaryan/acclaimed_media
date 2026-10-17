@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+{% load humanize music_filters %}
+
+{% block title %}{{ album.name }} ({{ album.year_released }}) - Acclaimed Albums{% endblock %}
+{% block meta_description %}{{ album.name }} by {{ album.artist_credit }} is ranked #{{ album.rank }} across {{ list_appearance_count }} published album lists.{% endblock %}
+{% block og_title %}{{ album.name }} - {{ album.artist_credit }}{% endblock %}
+{% block og_description %}Ranked #{{ album.rank }} of {{ total_album_count|intcomma }} albums.{% endblock %}
+{% block twitter_title %}{{ album.name }} - {{ album.artist_credit }}{% endblock %}
+{% block twitter_description %}Ranked #{{ album.rank }} of {{ total_album_count|intcomma }} albums.{% endblock %}
+
+{% block content %}
+{% if album %}
+<h1 class="text-3xl font-bold mb-2 flex items-center gap-3 flex-wrap">
+    <span>{{ album.name }}{% if album.year_released %} ({{ album.year_released }}){% endif %}</span>
+    <span class="badge badge-warning badge-sm">Beta</span>
+</h1>
+<p class="text-base-content/70 mb-4">{% artist_links album %}</p>
+
+<div class="flex flex-col-reverse md:flex-row gap-6 mb-8">
+    <div class="md:w-1/2 min-w-0 overflow-hidden">
+        {% include 'music/includes/_album_properties.html' %}
+    </div>
+    <div class="md:w-1/2">
+        {% if album.cover_image_url %}
+        <img src="{{ album.cover_image_url }}" alt="{{ album.name }}"
+             width="300" height="300" loading="eager" fetchpriority="high"
+             class="rounded-box w-full max-w-xs" style="aspect-ratio: 1/1;">
+        {% else %}
+        <div class="rounded-box bg-base-200 flex flex-col items-center justify-center w-full max-w-xs text-base-content/40"
+             style="aspect-ratio: 1/1;">
+            <span class="mdi mdi-album text-6xl"></span>
+            <span class="text-xs mt-2">No cover art yet</span>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if grouped_lists %}
+<h2 class="text-2xl font-bold mb-4">
+    Source Lists
+    <span class="text-base font-normal text-base-content/70">({{ list_appearance_count }})</span>
+</h2>
+{% for group_label, group_items in grouped_lists %}
+    {% include 'music/includes/_album_list_type_group.html' with group_label=group_label group_items=group_items %}
+{% endfor %}
+{% endif %}
+
+{% if related_albums %}
+<h2 class="text-2xl font-bold mt-8 mb-4">More by {{ album.artist_credit }}</h2>
+<div>
+    {% for other in related_albums %}
+        {% include 'music/includes/_album_row.html' with item=other show_rank='alltime' %}
+    {% endfor %}
+</div>
+{% endif %}
+{% else %}
+<div class="alert alert-error">
+    <span>Album not found</span>
+</div>
+{% endif %}
+{% endblock %}

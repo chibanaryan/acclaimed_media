@@ -18,13 +18,10 @@ def feature_flags(request):
     """
     import os
 
-    from django.conf import settings
-
     return {
         # Books feature is hidden until ready for public release
-        "BOOKS_ENABLED": os.environ.get("BOOKS_ENABLED", "").lower() == "true",
-        # Forum is hidden until FORUM_ENABLED=True is set in production
-        "FORUM_ENABLED": settings.FORUM_ENABLED,
+        "BOOKS_ENABLED": os.environ.get("BOOKS_ENABLED", "").lower()
+        == "true",
     }
 
 
@@ -34,12 +31,14 @@ def media_type(request):
 
     Determines media type based on URL namespace:
     - 'books' namespace -> 'books'
+    - 'music' namespace -> 'music'
     - Everything else -> 'games'
     """
     resolver_match = getattr(request, "resolver_match", None)
     if resolver_match:
-        # Check if we're in the books namespace
         namespace = getattr(resolver_match, "namespace", "") or ""
         if namespace.startswith("books"):
             return {"media_type": "books"}
+        if namespace.startswith("music"):
+            return {"media_type": "music"}
     return {"media_type": "games"}

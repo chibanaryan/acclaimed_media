@@ -25,6 +25,9 @@ Use these skills for common workflows:
 - `/icons` - Add Material Design Icons to the site (including subset font rebuilds)
 - `/openlibrary` - Fetch book metadata from Open Library API
 
+The music section has no skill yet; import its data with
+`python manage.py import_music_data`.
+
 ## Development Commands
 
 ### Backend (Django)
@@ -118,6 +121,15 @@ heroku run -- python manage.py shell
   - **templates/books/** - Book templates
   - **static/books/js/** - Book list renderer and client-side filtering
 
+- **music/** - Music app for album rankings (staff-only beta, unlinked from the main site):
+  - **models.py** - Album, Artist, MusicGenre, MusicPublication, MusicList, AlbumListMembership
+  - **api/** - REST API with views, serializers, and URL routing (read-only, staff-only, deliberately uncached)
+  - **views.py** - Album/artist/source-list views, all behind `core.mixins.StaffOnlyMixin`
+  - **services/import_handler.py** - Imports the three-TSV album ranking release
+  - **templatetags/music_filters.py** - Music-specific template filters
+  - **management/commands/import_music_data.py** - Loads the ranking release files
+  - **templates/music/** - Music templates; album rows extend `core/includes/_base_media_row.html`
+
 **Installed Apps:**
 - `django.contrib.admin` - Admin interface
 - `django.contrib.auth` - Authentication
@@ -135,6 +147,7 @@ heroku run -- python manage.py shell
 - `core` - Shared infrastructure (User model, abstract bases, mixins)
 - `games` - Main game aggregation app with HTMX and Alpine.js
 - `books` - Book rankings app (behind `BOOKS_ENABLED` feature flag)
+- `music` - Album rankings app (staff-only beta)
 
 **Middleware:**
 - `django.middleware.security.SecurityMiddleware` - Security headers
@@ -177,6 +190,13 @@ Books-specific models (behind `BOOKS_ENABLED` feature flag):
 - **ReadBook/WantToReadBook** - User tracking for books (like PlayedGame/WantToPlayGame)
 - **WikipediaBookData** - Wikipedia metadata for books
 
+Music-specific models (staff-only beta):
+
+- **Album** - Albums with ranking, published artist credit, artists, genres, and Wikidata/MusicBrainz ids
+- **Artist** - Recording artists with hierarchical parent-child relationships (bands, side projects)
+- **MusicGenre** - Hierarchical music genres with path denormalization
+- **MusicPublication/MusicList/AlbumListMembership** - Album rankings and positions within them
+
 ### API Architecture
 
 Django REST Framework powers the API at `/api/` with endpoints:
@@ -200,6 +220,19 @@ Books API endpoints (behind `BOOKS_ENABLED` feature flag):
 - `/api/books/authors/` - List authors
 - `/api/books/authors/<slug>/` - Author details with book list
 - `/api/books/unified-search/` - Unified book search
+
+Music API endpoints (staff-only):
+- `/api/music/` - List and filter albums
+- `/api/music/<slug>/` - Album details with list appearances
+- `/api/music/search/` - Album search
+- `/api/music/artists/` and `/api/music/artists/<slug>/` - Artists
+- `/api/music/lists/` - Source lists
+- `/api/music/genres/` - Music genres
+- `/api/music/meta/` - Counts and year/decade distributions
+
+**Note:** these endpoints carry no `cache_page` decorator on purpose. `cache_page`
+wraps `dispatch`, so it is consulted before permissions run and a staff response
+would be replayed to anonymous callers, defeating `IsStaffOrHide`.
 
 ### Template Architecture
 
@@ -259,6 +292,27 @@ Book routes (behind `BOOKS_ENABLED` feature flag):
 - `/authors/` - Author list with book counts
 - `/authors/<slug>/` - Author detail view with books
 
+Music routes (staff-only, and deliberately **not** linked from anywhere on
+the main site - reach them by URL):
+- `/music/` - Album rankings with HTMX search, year/artist/genre filters and sorting
+- `/music/<slug>/` - Album detail with list appearances grouped by list type
+- `/music/artists/` - Artist list with album counts
+- `/music/artists/<slug>/` - Artist detail with ranked albums
+- `/music/lists/` - The published source lists behind the rankings
+- `/music/import/` - Staff import for the three release files
+
+**Navigation:** `core/includes/_sidebar_nav.html` picks the sidebar links
+from `media_type`, so each section has its own navigation while the common
+bottom block stays shared. Music is not linked from the games chrome.
+
+**Access:** every music view and API endpoint uses `core.mixins.StaffOnlyMixin`
+or `core.permissions.IsStaffOrHide`, which raise 404 (not 403) for anyone else.
+There is no feature flag: the staff gate is the single access mechanism, and the
+section has no entry point in the sidebar, mobile nav or media switcher, so a
+normal visitor has no way to discover it. Music is also kept out of
+`sitemap.xml`. Add a nav entry (and a flag, if you want a kill switch) when the
+section is ready to launch publicly.
+
 **HTMX Integration:**
 - Dynamic filtering without full page reloads
 - Pagination for lists with smooth navigation
@@ -276,57 +330,6 @@ Book routes (behind `BOOKS_ENABLED` feature flag):
 - Pushes URLs to browser history when HTMX requests complete
 - Maintains browser back/forward functionality with HTMX
 - Uses `HX-Push-Url` header for selective history updates
-
-## Forum (django-machina)
-
-The site has a community forum at `/forum/` powered by django-machina,
-behind the `FORUM_ENABLED` feature flag (on in DEBUG/TEST, off in production
-until the env var is set).
-
-**Purpose:** Site feedback and discussion of publication reputation scores.
-
-**Structure:**
-- **Site Feedback** forum - general feedback, suggestions, bug reports
-- **Publications** forum - holds one auto-maintained sticky topic,
-  "Publication reputation scores", whose first post is a table of every
-  publication's `reputation_score` (staff-edited in Django admin) so the
-  scores can be compared directly; users discuss them in the replies
-
-**Disabled features:** avatars (`MACHINA_PROFILE_AVATARS_ENABLED = False`
-until persistent file hosting exists - Heroku's filesystem is ephemeral)
-and the RSS feed column (removed in the `forum_list.html` override).
-
-**Key files:**
-- `games/forum.py` - forum structure, permission grants, publication topic sync
-- `games/signals.py` - `Publication` post_save keeps topics in sync;
-  `User` post_save adds staff to the "Forum Moderators" group
-- `acclaimedgames/forum_apps.py` - pins machina apps to AutoField PKs so the
-  global `DEFAULT_AUTO_FIELD = BigAutoField` doesn't generate migrations
-  inside site-packages (do not remove machina entries from INSTALLED_APPS -
-  machina's class loader matches those module strings)
-- `templates/machina/board_base.html` - renders machina pages inside the
-  site chrome via the `pre_content`/`content`/`extra_head`/`extra_scripts`
-  blocks of `base.html`
-
-**Permissions:**
-- Anonymous: global read access (DB rows created by `setup_forum`)
-- Authenticated: post/reply/edit-own via
-  `MACHINA_DEFAULT_AUTHENTICATED_USER_FORUM_PERMISSIONS` in settings
-- Staff: automatically added to the "Forum Moderators" group (all machina
-  permissions granted globally); superusers implicitly have everything
-
-**Setup command (idempotent, run once per environment after migrating):**
-```bash
-python manage.py setup_forum
-```
-Creates the forums, grants anonymous read permissions, adds existing staff
-to the moderators group, and creates/syncs the publication scores topic.
-Run it on Heroku after the first deploy, and again after `sync_from_prod`
-locally if publications changed.
-
-**Production rollout:** deploy, run `heroku run -- python manage.py migrate`
-then `heroku run -- python manage.py setup_forum`, and set the
-`FORUM_ENABLED=True` config var when ready to launch.
 
 ### Google Analytics Integration
 
@@ -420,6 +423,45 @@ IGDB provides cover art, descriptions, developer information, and genres.
 
 For detailed command usage, run `/igdb`.
 
+## Forum (removed)
+
+The community forum (django-machina) was removed on 2026-10-17; a hosted
+provider will cover that need instead. Migration `0115_drop_machina_tables`
+dropped its 14 tables, content types, permissions, the "Forum Moderators"
+group and machina's `django_migrations` rows, so nothing of it remains in the
+schema. `Publication.reputation_score` survives as staff-edited editorial
+metadata, now display-only.
+
+## Music Data Import
+
+The album rankings come from three TSV files, the same shape the games importer
+takes (`acclaimedgames/test_input_files/music/` holds the current release):
+
+| File | Columns |
+|---|---|
+| `ListData.txt` | publisher, year, name, url |
+| `WebRankings.txt` | rank, name, artist_credit, year, wikidata_ids |
+| `ListPositions.txt` | tab-separated `listIndex:position` pairs, one row per album in rank order |
+
+```bash
+python manage.py import_music_data            # uses the checked-in release files
+python manage.py import_music_data --dry-run  # report inferred list types, change nothing
+python manage.py import_music_data --lists ... --albums ... --positions ...
+```
+
+The import replaces all music ranking data in one transaction. Two details differ
+from the games files:
+
+- **No list type column.** `infer_list_type()` derives A/D/E/M from each title.
+  Decade and era wording is matched before all-time wording, and an unqualified
+  title falls back to all-time, since every list in this corpus is retrospective.
+  Check the printed classification and correct any list in the admin.
+- **Artist credits may contain commas that are not separators.**
+  `split_artist_credit()` splits on commas except for acts listed in
+  `ARTISTS_WITH_COMMAS` (`Crosby, Stills & Nash` and friends).
+
+Unranked lists record every member at rank 1, matching the games convention.
+
 ## Configuration
 
 ### Environment Variables
@@ -447,7 +489,9 @@ Environment variables are managed via django-environ (`.env` file):
 - **Development**: SQLite (`db.sqlite3`)
 - **Production**: PostgreSQL on Heroku
 - The `rank` field on Game determines primary ordering (lower is better)
-- `year_rank` and `decade_rank` are calculated automatically on save
+- `year_rank` and `decade_rank` are derived from `rank` by
+  `core.services.ranking.update_year_decade_ranks()`, which runs during import -
+  **not** automatically on save
 
 ## Dependencies
 

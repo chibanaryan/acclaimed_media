@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% load humanize music_filters %}
+
+{% block title %}Album Source Lists{% endblock %}
+{% block meta_description %}The published album lists aggregated into the album rankings.{% endblock %}
+
+{% block content %}
+<div class="max-w-[860px] mx-auto">
+<div id="content">
+    <div class="flex items-center justify-between mb-2">
+        <h1 class="text-3xl font-bold">
+            Source Lists
+            <span class="badge badge-warning badge-sm align-middle ml-1">Beta</span>
+        </h1>
+        {% if user.is_staff %}
+        <a href="{% url 'music:import' %}"
+           class="link link-hover text-base-content/70 hover:text-accent inline-flex items-center gap-1 text-sm">
+            <span class="mdi mdi-database-import"></span>
+            Import data
+        </a>
+        {% endif %}
+    </div>
+
+    <p class="text-base-content/70 text-sm mb-4">Album rankings and lists from publications worldwide</p>
+
+    {# Search input #}
+    <div class="mb-6">
+        {% include 'core/includes/_search_box.html' with input_id='music-list-search' placeholder='Search publications' value=current_q hx_get=request.path hx_target='#filter-results-wrapper' hx_include="[name='type'], [name='sort'], [name='dir']" %}
+    </div>
+
+    <div id="filter-results-wrapper">
+        {% include 'music/lists/includes/_list_list_results.html' %}
+    </div>
+</div>
+</div>
+{% endblock %}

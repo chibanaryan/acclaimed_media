@@ -1,0 +1,45 @@
+{# Album results: count header and rows. #}
+{# Rendered on first load and on every HTMX swap of #album-results-container. #}
+{% load humanize music_filters %}
+
+<div class="flex items-center justify-between gap-4 mb-2 text-sm">
+    <div class="result-count text-base-content/70">
+        {% if total_count %}
+            Showing <span id="loaded-count" class="loaded-count-value">{{ loaded_count|intcomma }}</span>
+            of {{ total_count|intcomma }} album{{ total_count|pluralize }}
+        {% else %}
+            No albums match these filters
+        {% endif %}
+    </div>
+    {% if is_filtered and total_count %}
+    <div class="text-base-content/50 text-xs">
+        Ranks shown are within these filters; (#n) is the all-time rank
+    </div>
+    {% endif %}
+</div>
+
+<div id="album-list-container">
+    {% for album in albums %}
+        {% include 'music/includes/_album_row.html' with item=album show_rank=show_rank index=forloop.counter|add:page_obj.start_index|add:-1 highlight=highlight %}
+    {% empty %}
+        <div class="alert">
+            <span class="mdi mdi-album"></span>
+            <span>Nothing here. Try widening the year range or clearing the search.</span>
+        </div>
+    {% endfor %}
+</div>
+
+{% if has_more %}
+<div class="load-more-container flex justify-center mt-4">
+    <button type="button"
+            class="btn btn-outline btn-sm"
+            hx-get="{% url 'music:home' %}?page={{ next_page }}&append=true{% if query_string %}&{{ query_string }}{% endif %}"
+            hx-target="#album-list-container"
+            hx-swap="beforeend"
+            hx-indicator="#album-load-more-indicator"
+            hx-on::after-request="this.closest('.load-more-container').remove()">
+        Load {{ remaining_count|intcomma }} more
+    </button>
+    <span id="album-load-more-indicator" class="htmx-indicator loading loading-spinner loading-sm ml-2"></span>
+</div>
+{% endif %}

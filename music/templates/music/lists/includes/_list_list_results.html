@@ -1,0 +1,104 @@
+{# Source list results: count, filter bar, legend, rows. #}
+{# Rendered on first load and on every HTMX swap of #filter-results-wrapper. #}
+{% load humanize music_filters %}
+
+<h2 id="results-count" class="text-xl text-base-content/85 mb-4">
+    {% if total_count %}
+        {{ music_lists|length|intcomma }} of {{ total_count|intcomma }} list{{ total_count|pluralize }}
+    {% else %}
+        No lists found
+    {% endif %}
+</h2>
+
+<div class="flex flex-wrap items-center gap-2 mb-6 min-h-[2.5rem]">
+    {# Sort #}
+    <div class="flex items-center gap-1">
+        <span class="mdi mdi-sort text-base text-base-content/70"></span>
+        <select name="sort"
+                class="select select-bordered select-sm bg-base-200"
+                style="width: fit-content; max-width: 100%;"
+                aria-label="Sort lists by"
+                hx-get="{{ request.path }}"
+                hx-target="#filter-results-wrapper"
+                hx-trigger="change"
+                hx-swap="innerHTML"
+                hx-push-url="true"
+                hx-include="[name='type'], [name='q']">
+            <option value="order" {% if current_sort == 'order' %}selected{% endif %}>Source order</option>
+            <option value="year" {% if current_sort == 'year' %}selected{% endif %}>Year</option>
+            <option value="albums" {% if current_sort == 'albums' %}selected{% endif %}>Albums ranked</option>
+            <option value="publication" {% if current_sort == 'publication' %}selected{% endif %}>Publication</option>
+        </select>
+    </div>
+
+    {# Separator #}
+    <div class="w-px h-6 bg-base-content/20"></div>
+
+    {# Type filter #}
+    <select name="type"
+            class="select select-bordered select-sm bg-base-200"
+            style="width: fit-content; max-width: 100%;"
+            aria-label="Filter by list type"
+            hx-get="{{ request.path }}"
+            hx-target="#filter-results-wrapper"
+            hx-trigger="change"
+            hx-swap="innerHTML"
+            hx-push-url="true"
+            hx-include="[name='sort'], [name='q']">
+        <option value="">All list types</option>
+        {% for entry in list_types %}
+        {% if entry.count %}
+        <option value="{{ entry.code }}" {% if current_type == entry.code %}selected{% endif %}>
+            {{ entry.label }} ({{ entry.count }})
+        </option>
+        {% endif %}
+        {% endfor %}
+    </select>
+
+    {% if current_type or current_q %}
+    <a href="{% url 'music:list-list' %}" class="btn btn-ghost btn-sm">
+        <span class="mdi mdi-close"></span>
+        <span>Clear filters</span>
+    </a>
+    {% endif %}
+</div>
+
+{# Badge legend, matching the games source-lists page #}
+<div class="flex items-center gap-3 mb-4 text-xs text-base-content/60">
+    <span class="badge badge-xs badge-info">All time</span>
+    <span class="badge badge-xs badge-success">Decade</span>
+    <span class="badge badge-xs badge-warning">Misc</span>
+    <span class="badge badge-xs badge-error">EOY</span>
+</div>
+
+<div id="results-container">
+    {% for source in music_lists %}
+    <div class="card bg-base-200 mb-2 publication-group">
+        <div class="flex items-center gap-3 p-3">
+            <span class="badge badge-sm {{ source.type|get_list_type_badge_class }} font-semibold shrink-0">
+                {{ source.type|get_list_type_label }}
+            </span>
+            <div class="min-w-0 flex-1">
+                <div class="font-semibold truncate">
+                    {% if source.url %}
+                    <a href="{{ source.url }}" target="_blank" rel="noopener" class="link link-hover">{{ source.name }}</a>
+                    {% else %}{{ source.name }}{% endif %}
+                </div>
+                <div class="text-sm text-base-content/70">
+                    {% if source.publisher %}{{ source.publisher.name }}{% else %}Unattributed{% endif %}
+                    &middot; {{ source.year }}
+                </div>
+            </div>
+            <div class="text-right shrink-0">
+                <div class="font-semibold tabular-nums">{{ source.album_count }}</div>
+                <div class="text-xs text-base-content/70">album{{ source.album_count|pluralize }}</div>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="alert">
+        <span class="mdi mdi-album"></span>
+        <span>No lists match these filters.</span>
+    </div>
+    {% endfor %}
+</div>

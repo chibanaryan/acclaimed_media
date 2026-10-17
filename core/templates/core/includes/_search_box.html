@@ -1,0 +1,25 @@
+{# Search input in the site's standard style. #}
+{# Props: name, input_id, placeholder, value, hx_get, hx_target, hx_include #}
+{# Matches the games source-lists search box so search looks the same #}
+{# everywhere. Keep every template comment on a single line. #}
+<label class="input input-bordered w-64 bg-base-200">
+    <svg class="h-4 w-4 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor">
+            <circle cx="11" cy="11" r="8"></circle>
+            <path d="m21 21-4.3-4.3"></path>
+        </g>
+    </svg>
+    <input type="text"
+           class="grow"
+           name="{{ name|default:'q' }}"
+           id="{{ input_id }}"
+           placeholder="{{ placeholder|default:'Search' }}"
+           value="{{ value|default:'' }}"
+           hx-get="{{ hx_get }}"
+           hx-target="{{ hx_target }}"
+           hx-trigger="input changed delay:300ms"
+           hx-swap="innerHTML"
+           hx-push-url="true"
+           {% if hx_include %}hx-include="{{ hx_include }}"{% endif %}
+           autocomplete="off">
+</label>

@@ -8,8 +8,21 @@ MAPPING_FILES=(
   "$ROOT_DIR/games/static/games/css/mdi-subset.css"
 )
 
+# Subset from the full upstream font, never from FONT_PATH itself: subsetting
+# the existing subset in place can only ever drop glyphs, so a newly
+# referenced icon was silently omitted and rendered as a blank box. The
+# version is pinned so a rebuild is reproducible and matches the codepoints
+# in the mapping files.
+MDI_VERSION="7.4.47"
+MDI_FONT_URL="https://cdn.jsdelivr.net/npm/@mdi/font@${MDI_VERSION}/fonts/materialdesignicons-webfont.woff2"
+
 if ! command -v pyftsubset >/dev/null 2>&1; then
   echo "pyftsubset is required (pip install fonttools brotli zopfli)"
+  exit 1
+fi
+
+if ! command -v curl >/dev/null 2>&1; then
+  echo "curl is required to fetch the full MDI font"
   exit 1
 fi
 
@@ -21,11 +34,12 @@ fi
 tmp_codes="$(mktemp)"
 tmp_unicodes="$(mktemp)"
 tmp_output="$(mktemp "${TMPDIR:-/tmp}/mdi-subset.XXXXXX")"
-trap 'rm -f "$tmp_codes" "$tmp_unicodes" "$tmp_output"' EXIT
+tmp_full_font="$(mktemp "${TMPDIR:-/tmp}/mdi-full.XXXXXX")"
+trap 'rm -f "$tmp_codes" "$tmp_unicodes" "$tmp_output" "$tmp_full_font"' EXIT
 
 for mapping_file in "${MAPPING_FILES[@]}"; do
   if [[ -f "$mapping_file" ]]; then
-    rg --no-filename -o '\\F[0-9A-F]+' "$mapping_file" >> "$tmp_codes"
+    grep -ohE '\\F[0-9A-Fa-f]+' "$mapping_file" >> "$tmp_codes" || true
   fi
 done
 
@@ -34,7 +48,7 @@ if [[ ! -s "$tmp_codes" ]]; then
   exit 1
 fi
 
-sort -u "$tmp_codes" | sed 's/^\\//' | awk '{print "U+"$0}' > "$tmp_unicodes"
+tr 'a-f' 'A-F' < "$tmp_codes" | sort -u | sed 's/^\\//' | awk '{print "U+"$0}' > "$tmp_unicodes"
 unicode_list="$(paste -sd, "$tmp_unicodes")"
 
 if [[ -z "$unicode_list" ]]; then
@@ -45,7 +59,13 @@ fi
 original_size="$(wc -c < "$FONT_PATH" | tr -d ' ')"
 codepoint_count="$(wc -l < "$tmp_unicodes" | tr -d ' ')"
 
-pyftsubset "$FONT_PATH" \
+echo "Fetching full MDI font v${MDI_VERSION}..."
+if ! curl -fsSL "$MDI_FONT_URL" -o "$tmp_full_font"; then
+  echo "Could not download the full MDI font from $MDI_FONT_URL"
+  exit 1
+fi
+
+pyftsubset "$tmp_full_font" \
   --unicodes="$unicode_list" \
   --flavor=woff2 \
   --layout-features='*' \
