@@ -572,6 +572,10 @@
                         Re-fetch metadata for ALL games, including those with existing data (rarely needed)
                     </p>
                     <div class="flex flex-col gap-2">
+                        <button id="fetch-igdb-force-btn" class="btn btn-warning btn-sm">
+                            <span class="mdi mdi-reload"></span>
+                            Refresh All IGDB Data
+                        </button>
                         <button id="fetch-wikipedia-force-btn" class="btn btn-warning btn-sm">
                             <span class="mdi mdi-reload"></span>
                             Refresh All Wikipedia Pages
@@ -929,18 +933,17 @@
 
     // Ensure DOM is ready before setting up event listeners
     document.addEventListener('DOMContentLoaded', function() {
-        // Handle Fetch IGDB Data button click
+        // Handle Fetch IGDB Data button clicks (missing data, or force refresh)
         const fetchButton = document.getElementById('fetch-igdb-btn')
         if (!fetchButton) {
             console.error('Fetch IGDB button not found')
             return
         }
 
-        fetchButton.addEventListener('click', (e) => {
-            e.preventDefault()
-
+        const startIgdbFetch = (force) => {
             const progressContainer = document.getElementById('progress-container')
             const progressText = document.getElementById('progress-text')
+            const modeLabel = force ? ' (force refresh)' : ''
 
             // Close existing EventSource if any
             if (activeEventSource) {
@@ -950,10 +953,10 @@
 
             // Show progress container
             progressContainer.style.display = 'flex'
-            progressText.textContent = 'Starting...'
+            progressText.textContent = force ? 'Starting IGDB refresh (force mode)...' : 'Starting...'
 
-            // Connect to SSE endpoint (fetch new data only)
-            const url = '{% url "igdb-progress" %}'
+            // Connect to SSE endpoint (all games when forcing, otherwise new data only)
+            const url = '{% url "igdb-progress" %}' + (force ? '?force=true' : '')
             console.log('Connecting to SSE endpoint:', url)
             activeEventSource = new EventSource(url)
 
@@ -969,10 +972,10 @@
 
                     if (data.event === 'start') {
                         console.log(`Starting IGDB fetch for ${data.total} games`)
-                        progressText.textContent = `Processing 0 / ${data.total} games...`
+                        progressText.textContent = `Processing 0 / ${data.total} games${modeLabel}...`
                     } else if (data.event === 'progress') {
                         console.log(`Progress: ${data.current}/${data.total} - ${data.game_name}`)
-                        progressText.textContent = `Processing ${data.current} / ${data.total} games...`
+                        progressText.textContent = `Processing ${data.current} / ${data.total} games${modeLabel}...`
                     } else if (data.event === 'complete') {
                         progressText.textContent = `Complete! Processed ${data.total} games.`
 
@@ -1021,7 +1024,24 @@
                 document.body.appendChild(alert)
                 progressContainer.style.display = 'none'
             }
+        }
+
+        fetchButton.addEventListener('click', (e) => {
+            e.preventDefault()
+            startIgdbFetch(false)
         })  // End of fetch button click handler
+
+        // Force refresh IGDB data for every game (no need to clear metadata first)
+        const fetchIgdbForceButton = document.getElementById('fetch-igdb-force-btn')
+        if (fetchIgdbForceButton) {
+            fetchIgdbForceButton.addEventListener('click', (e) => {
+                e.preventDefault()
+                if (!confirm('Re-fetch IGDB data for ALL games? Existing IGDB metadata is updated in place.')) {
+                    return
+                }
+                startIgdbFetch(true)
+            })
+        }
 
         // Handle Fetch Wikipedia Pages button click
         const fetchWikipediaButton = document.getElementById('fetch-wikipedia-btn')

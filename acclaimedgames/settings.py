@@ -123,7 +123,8 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",  # Must be after SecurityMiddleware
     "games.middleware.RateLimitMiddleware",  # Bot/crawler rate limiting
-    "django.middleware.gzip.GZipMiddleware",  # Compress HTML responses (48 KiB savings)
+    # Compress HTML responses (48 KiB savings); skips SSE streams
+    "games.middleware.EventStreamAwareGZipMiddleware",
     # "games.csp_middleware.CSPMiddleware",  # Disabled: nonce mismatch
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",

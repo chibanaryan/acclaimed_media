@@ -1,5 +1,13 @@
 # Developer Log
 
+## 2026-10-17 (metadata refresh streams)
+
+- Fix the admin metadata refresh buttons failing in the browser: `GZipMiddleware` (added 2025-12-02) compressed the `text/event-stream` responses, and zlib holds its output, so every progress event - and every 15-second keepalive - stayed inside the compressor until the stream ended. Heroku's router saw no bytes for 55 seconds and dropped the connection, which the page reported as "Connection error"
+- `EventStreamAwareGZipMiddleware` skips compression for `text/event-stream` and compresses everything else as before; the 2048-byte event padding that was added to force flushes is now actually reaching the client
+- The import thread survives the dropped stream, so the Wikipedia and IGDB data usually did land despite the error toast - the browser just stopped hearing about it. Long refreshes are still better run as `heroku run:detached -- python manage.py refresh_all_metadata`
+- Add a "Refresh All IGDB Data" button (`/import/igdb-progress/?force=true`) that re-fetches every game in place; previously the only way to update existing IGDB metadata from the admin was to clear it first and re-fetch
+- The SSE Wikipedia path now stores the Wikidata-derived `hltb_id` (P2816), `steam_app_id` (P1733), and Wikiquote sitelink, matching `fetch_wikipedia_metadata`; games enriched through the button were missing the IDs that HLTB matching and quotes rely on
+
 ## 2026-10-14 (comma spacing)
 
 - Fix stray spaces before commas in game row metadata (`BioWare , BioWare Edmonton`, `8 , DOS`): `{% if not forloop.last %}, {% endif %}` separators sat on their own indented line, so Django emitted the newline as rendered text

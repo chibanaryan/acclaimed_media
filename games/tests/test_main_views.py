@@ -154,6 +154,24 @@ class HomePageViewTest(TestCase):
         self.assertEqual(response.context["rank_distribution"][-1]["binEnd"], 1400)
         self.assertContains(response, 'data-max-rank="1400"')
 
+    def test_rank_distribution_reuses_cached_bins(self):
+        """A repeat render reads the rank distribution back from the cache."""
+        User.objects.create_user(username="rankcache", password="pass")
+        self.client.login(username="rankcache", password="pass")
+
+        first = self.client.get(reverse("home"))
+        self.assertEqual(first.context["max_rank"], 2)
+
+        # A new highest rank would change the bins on a fresh calculation
+        Game.objects.create(name="Rank 1300 Game", rank=1300, year_of_release=2024)
+
+        second = self.client.get(reverse("home"))
+
+        self.assertEqual(second.context["max_rank"], 2)
+        self.assertEqual(
+            second.context["rank_distribution"], first.context["rank_distribution"]
+        )
+
     def test_context_contains_counts(self):
         """Test that context includes list and publication counts."""
         response = self.client.get(reverse("home"))

@@ -1,7 +1,7 @@
-from django.http import HttpResponse
+from django.http import HttpResponse, StreamingHttpResponse
 from django.test import RequestFactory, TestCase
 
-from games.middleware import HTMXPushURLMiddleware
+from games.middleware import EventStreamAwareGZipMiddleware, HTMXPushURLMiddleware
 
 
 class HTMXPushURLMiddlewareTest(TestCase):
@@ -55,3 +55,39 @@ class HTMXPushURLMiddlewareTest(TestCase):
 
         # Should keep the existing custom URL, not replace with request path
         self.assertEqual(response["HX-Push-URL"], "/custom/url/")
+
+
+class EventStreamAwareGZipMiddlewareTest(TestCase):
+    """Test that SSE streams bypass compression."""
+
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def _request(self):
+        request = self.factory.get("/import/igdb-progress/")
+        request.META["HTTP_ACCEPT_ENCODING"] = "gzip"
+        return request
+
+    def test_event_stream_is_not_compressed(self):
+        """SSE events must reach the client as they are yielded."""
+        chunks = [b'data: {"event": "start"}\n\n', b": keepalive\n\n"]
+
+        def get_response(request):
+            return StreamingHttpResponse(iter(chunks), content_type="text/event-stream")
+
+        middleware = EventStreamAwareGZipMiddleware(get_response)
+        response = middleware(self._request())
+
+        self.assertNotIn("Content-Encoding", response)
+        self.assertEqual(list(response.streaming_content), chunks)
+
+    def test_regular_response_is_still_compressed(self):
+        """Compression stays on for everything else."""
+
+        def get_response(request):
+            return HttpResponse("<html>" + "a" * 500 + "</html>")
+
+        middleware = EventStreamAwareGZipMiddleware(get_response)
+        response = middleware(self._request())
+
+        self.assertEqual(response["Content-Encoding"], "gzip")

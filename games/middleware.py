@@ -1,5 +1,5 @@
 """
-Middleware for HTMX history support and rate limiting.
+Middleware for HTMX history support, rate limiting, and response compression.
 """
 
 import logging
@@ -7,6 +7,7 @@ import time
 
 from django.core.cache import cache
 from django.http import HttpResponse
+from django.middleware.gzip import GZipMiddleware
 
 from games.config import (
     RATE_LIMIT_BLOCK_DURATION,
@@ -145,3 +146,21 @@ class HTMXPushURLMiddleware:
                 response["HX-Push-URL"] = full_url
 
         return response
+
+
+class EventStreamAwareGZipMiddleware(GZipMiddleware):
+    """
+    GZipMiddleware that leaves Server-Sent Event streams uncompressed.
+
+    zlib buffers its output, so compressing a long-lived ``text/event-stream``
+    response keeps every progress event - and every keepalive ping - inside the
+    compressor until the stream finishes. On Heroku the router sees no bytes for
+    55 seconds and drops the connection, which the browser reports as a
+    connection error even though the import thread is still working.
+    """
+
+    def process_response(self, request, response):
+        content_type = response.get("Content-Type", "")
+        if content_type.startswith("text/event-stream"):
+            return response
+        return super().process_response(request, response)

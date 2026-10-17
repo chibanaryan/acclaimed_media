@@ -1504,6 +1504,44 @@ class ImportIGDBWithProgressTests(TestCase):
         # Just verify the function executes without error
 
     @mock.patch("games.services.igdb_importer.IGDBImportService")
+    def test_import_igdb_force_refresh_includes_existing_metadata(
+        self, mock_service_class
+    ):
+        """force_refresh=True re-fetches games that already have IGDB data."""
+        mock_service = mock.MagicMock()
+        mock_service_class.return_value = mock_service
+
+        igdb_data = models.IGDBGameData.objects.create(
+            game=self.game, igdb_id=123, is_primary=True
+        )
+        self.game.primary_igdb_game_data = igdb_data
+        self.game.save(update_fields=["primary_igdb_game_data"])
+
+        list(utils.import_igdb_with_progress(force_refresh=True))
+
+        queryset = mock_service.import_games.call_args.args[0]
+        self.assertEqual(list(queryset), [self.game])
+
+    @mock.patch("games.services.igdb_importer.IGDBImportService")
+    def test_import_igdb_without_force_skips_existing_metadata(
+        self, mock_service_class
+    ):
+        """Without force_refresh only games missing IGDB data are fetched."""
+        mock_service = mock.MagicMock()
+        mock_service_class.return_value = mock_service
+
+        igdb_data = models.IGDBGameData.objects.create(
+            game=self.game, igdb_id=123, is_primary=True
+        )
+        self.game.primary_igdb_game_data = igdb_data
+        self.game.save(update_fields=["primary_igdb_game_data"])
+
+        list(utils.import_igdb_with_progress())
+
+        queryset = mock_service.import_games.call_args.args[0]
+        self.assertEqual(list(queryset), [])
+
+    @mock.patch("games.services.igdb_importer.IGDBImportService")
     @mock.patch("queue.Queue")
     def test_import_igdb_with_progress_timeout(
         self, mock_queue_class, mock_service_class

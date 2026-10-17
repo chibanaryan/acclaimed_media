@@ -277,6 +277,19 @@ class IGDBProgressViewTests(TestCase):
 
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response["content-type"], "text/event-stream")
+            self.assertEqual(mock_progress.call_args.kwargs["force_refresh"], False)
+
+    def test_igdb_progress_view_force_refresh(self):
+        """force=true re-fetches games that already have IGDB data."""
+        self.client.login(username="tester", password="pass")
+
+        with mock.patch("games.views.utils.import_igdb_with_progress") as mock_progress:
+            mock_progress.return_value = iter(["data: test\n\n"])
+
+            response = self.client.get("/import/igdb-progress/?force=true")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(mock_progress.call_args.kwargs["force_refresh"], True)
 
 
 class WikipediaPageProgressViewTests(TestCase):

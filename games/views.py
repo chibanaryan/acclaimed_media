@@ -3634,8 +3634,12 @@ class IGDBProgressView(LoginRequiredMixin, View):
         update_relationships = (
             request.GET.get("update_relationships", "false").lower() == "true"
         )
+        force_refresh = request.GET.get("force", "false").lower() == "true"
         return StreamingHttpResponse(
-            utils.import_igdb_with_progress(update_relationships=update_relationships),
+            utils.import_igdb_with_progress(
+                update_relationships=update_relationships,
+                force_refresh=force_refresh,
+            ),
             content_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",

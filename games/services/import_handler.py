@@ -84,7 +84,9 @@ def import_data(data: Dict[str, Any]) -> Optional[Tuple[bool, str]]:
             return (False, f"Could not process uploaded file: {e}")
 
 
-def import_igdb_with_progress(update_relationships: bool = False):
+def import_igdb_with_progress(
+    update_relationships: bool = False, force_refresh: bool = False
+):
     """
     Fetch IGDB data for all games with progress updates.
     Yields JSON progress events for streaming to SSE client in real-time.
@@ -98,6 +100,9 @@ def import_igdb_with_progress(update_relationships: bool = False):
         update_relationships: If True, update Developer/Genre relationships
             for games that already have IGDB metadata, without modifying the
             metadata records. Used after re-importing games.
+        force_refresh: If True, re-fetch every game instead of only the games
+            that have no IGDB metadata yet. Avoids having to clear IGDB
+            metadata to pick up changed cover art, developers, or genres.
     """
     import json
     import queue
@@ -262,10 +267,14 @@ def import_igdb_with_progress(update_relationships: bool = False):
                 progress_callback=progress_callback,
             )
 
-            # Get games (only those without IGDB data)
-            games = models.Game.objects.filter(
-                primary_igdb_game_data__isnull=True
-            ).order_by("rank")
+            # Get games: every game on a force refresh, otherwise only the
+            # games that are still missing IGDB data
+            if force_refresh:
+                games = models.Game.objects.all().order_by("rank")
+            else:
+                games = models.Game.objects.filter(
+                    primary_igdb_game_data__isnull=True
+                ).order_by("rank")
 
             # Run import in a thread to avoid blocking the generator
             def run_import():
@@ -443,11 +452,25 @@ def import_wikipedia_pages_with_progress(force_refresh: bool = False):
                                 # Update wikidata_id if available
                                 if wikidata_id:
                                     orphaned_record.wikidata_id = wikidata_id
+                                # Keep the IDs harvested from Wikidata (P2816,
+                                # P1733) and the Wikiquote sitelink in sync so
+                                # HLTB matching and quotes work for new games
+                                if result.hltb_id:
+                                    orphaned_record.hltb_id = result.hltb_id
+                                if result.steam_app_id:
+                                    orphaned_record.steam_app_id = result.steam_app_id
+                                if result.wikiquote_page_title:
+                                    orphaned_record.wikiquote_page_title = (
+                                        result.wikiquote_page_title
+                                    )
                                 orphaned_record.save(
                                     update_fields=[
                                         "game",
                                         "lookup_source",
                                         "wikidata_id",
+                                        "hltb_id",
+                                        "steam_app_id",
+                                        "wikiquote_page_title",
                                     ]
                                 )
                                 wiki_game_data = orphaned_record
@@ -465,6 +488,14 @@ def import_wikipedia_pages_with_progress(force_refresh: bool = False):
                                 }
                                 if wikidata_id:
                                     defaults["wikidata_id"] = wikidata_id
+                                if result.hltb_id:
+                                    defaults["hltb_id"] = result.hltb_id
+                                if result.steam_app_id:
+                                    defaults["steam_app_id"] = result.steam_app_id
+                                if result.wikiquote_page_title:
+                                    defaults["wikiquote_page_title"] = (
+                                        result.wikiquote_page_title
+                                    )
 
                                 wiki_game_data, created = (
                                     models.WikipediaGameData.objects.update_or_create(
