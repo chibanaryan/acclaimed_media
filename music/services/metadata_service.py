@@ -42,6 +42,34 @@ from music.wikidata import WikidataClient
 
 logger = logging.getLogger(__name__)
 
+
+def fit(model, field_name: str, value):
+    """Truncate external text to what its column can actually hold.
+
+    Nothing bounds the length of a title an external service returns - Fiona
+    Apple's "When the Pawn..." is 444 characters, and both Discogs and
+    MusicBrainz return all of it - while these columns are varchar(300).
+
+    This matters more than it looks: SQLite ignores varchar length, so an
+    over-long value stores fine locally and the whole pipeline passes, then
+    PostgreSQL raises DataError and aborts the run. That is exactly what
+    happened on Heroku, at album 451 of 497, after a clean local run.
+    """
+    if value is None:
+        return None
+    max_length = model._meta.get_field(field_name).max_length
+    if max_length is None or len(value) <= max_length:
+        return value
+    logger.warning(
+        "Truncating %s.%s from %d to %d characters",
+        model.__name__,
+        field_name,
+        len(value),
+        max_length,
+    )
+    return value[:max_length]
+
+
 #: How many MusicBrainz genres to take when it is the fallback source. It
 #: lists everything anyone has voted for, eight or more for a popular album.
 MAX_MUSICBRAINZ_GENRES = 5
@@ -231,10 +259,13 @@ class AlbumMetadataService:
         )
 
         record = self._adopt_or_build_wikipedia_data(album, album_meta)
-        record.page_title = album_meta.page_title
+        model = models.WikipediaAlbumData
+        record.page_title = fit(model, "page_title", album_meta.page_title)
         record.release_date = album_meta.release_date
-        record.record_label = record_label
-        record.spotify_album_id = album_meta.spotify_album_id
+        record.record_label = fit(model, "record_label", record_label)
+        record.spotify_album_id = fit(
+            model, "spotify_album_id", album_meta.spotify_album_id
+        )
         record.primary_genre = genre_labels[0] if genre_labels else None
         record.all_genres = ", ".join(genre_labels) or None
         record.save()
@@ -327,8 +358,9 @@ class AlbumMetadataService:
         if artist is None:
             artist = self._find_artist_by_normalized_name(name)
         if artist is None:
+            name = fit(models.Artist, "name", name)
             artist = models.Artist.objects.create(
-                name=name, slug=_unique_artist_slug(name)
+                name=name, slug=fit(models.Artist, "slug", _unique_artist_slug(name))
             )
 
         changed = []
@@ -712,7 +744,7 @@ class AlbumMetadataService:
                 record = existing or models.DiscogsAlbumData(
                     album=album, master_id=master.master_id
                 )
-                record.title = master.title
+                record.title = fit(models.DiscogsAlbumData, "title", master.title)
                 record.main_release_year = master.year
                 record.genres = master.genres
                 record.styles = master.styles
@@ -807,10 +839,13 @@ class AlbumMetadataService:
                     result.errors.append(f"{album.name}: release group not found")
                     continue
 
-                record.title = group.title
-                record.primary_type = group.primary_type
+                model = models.MusicBrainzAlbumData
+                record.title = fit(model, "title", group.title)
+                record.primary_type = fit(model, "primary_type", group.primary_type)
                 record.secondary_types = group.secondary_types
-                record.first_release_date = group.first_release_date
+                record.first_release_date = fit(
+                    model, "first_release_date", group.first_release_date
+                )
                 record.rating = group.rating
                 record.rating_votes = group.rating_votes
                 record.all_genres = ", ".join(group.genres) or None

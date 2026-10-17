@@ -159,6 +159,18 @@ what Open Graph scrapers read, and a scraper cannot reach a staff-gated local
 route. `Album.thumbnail` and `Album.image` are what the pages render, and they
 prefer the local copy.
 
+## Gotchas
+
+**SQLite ignores varchar length; PostgreSQL does not.** Any text from an
+external source must go through `metadata_service.fit()` before it is saved,
+or a run that passes locally will abort partway through on Heroku. Fiona
+Apple's "When the Pawn..." has a 444-character title, which both Discogs and
+MusicBrainz return in full, against `varchar(300)` columns.
+
+**The passes are resumable.** If a run dies partway, re-running without
+`--force` skips what already landed and continues, so a failure costs only the
+records after it.
+
 ## Re-running After an Import
 
 `import_music_data` deletes every `Album` row, but the metadata tables use

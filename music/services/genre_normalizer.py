@@ -452,14 +452,22 @@ def get_or_create_genre(name: str, parent_name: Optional[str] = None):
         level = parent.level + 1
         path = f"{parent.path} > {name}"
 
+    # External style names are not length-bounded by anything we control, and
+    # SQLite would store an over-long one while PostgreSQL raises DataError.
     return MusicGenre.objects.create(
-        name=name,
-        slug=slugify(name),
+        name=name[: _max_length("name")],
+        slug=slugify(name)[: _max_length("slug")],
         parent=parent,
         level=level,
-        path=path,
+        path=path[: _max_length("path")],
         display_order=_root_display_order(name),
     )
+
+
+def _max_length(field_name: str) -> int:
+    from music.models import MusicGenre
+
+    return MusicGenre._meta.get_field(field_name).max_length
 
 
 def _root_display_order(name: str) -> int:

@@ -16,6 +16,7 @@ from music.services import genre_normalizer
 from music.services.metadata_service import (
     AlbumMetadataService,
     PassResult,
+    fit,
     normalize_artist_name,
 )
 from music.wikidata import AlbumMetadata, ArtistMetadata
@@ -891,3 +892,158 @@ class MusicBrainzGenreFallbackTests(ServiceTestCase):
     def test_no_genres_at_all_is_harmless(self):
         self.run_pass(self.build_client([]))
         self.assertEqual(self.album.genres.count(), 0)
+
+
+class ExternalTextLengthTests(ServiceTestCase):
+    """External text must be cut to fit its column before it is saved.
+
+    SQLite ignores varchar length, so an over-long value stores fine in the
+    test and dev databases and the whole pipeline looks healthy, then
+    PostgreSQL raises DataError in production. That is not hypothetical: a
+    clean local run was followed by the Heroku run aborting at album 451 of
+    497 on Fiona Apple's "When the Pawn...", whose real title is 444
+    characters. These tests assert the lengths directly rather than relying
+    on the database to complain.
+    """
+
+    LONG = "When the Pawn Hits the Conflicts He Thinks like a King " * 12
+
+    def test_fit_leaves_a_short_value_alone(self):
+        self.assertEqual(fit(models.DiscogsAlbumData, "title", "Kid A"), "Kid A")
+
+    def test_fit_passes_none_through(self):
+        self.assertIsNone(fit(models.DiscogsAlbumData, "title", None))
+
+    def test_fit_truncates_to_the_column_width(self):
+        value = fit(models.DiscogsAlbumData, "title", self.LONG)
+        self.assertEqual(len(value), 300)
+        self.assertTrue(self.LONG.startswith(value))
+
+    def test_fit_leaves_an_unbounded_field_alone(self):
+        self.assertEqual(
+            fit(models.MusicBrainzAlbumData, "all_genres", self.LONG), self.LONG
+        )
+
+    def test_a_long_discogs_title_is_stored_truncated(self):
+        self.album.discogs_master_id = 24047
+        self.album.save()
+        client = mock.MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        client.fetch_master.return_value = DiscogsMaster(
+            master_id=24047, title=self.LONG, genres=["Rock"], styles=["Pop Rock"]
+        )
+        with mock.patch(
+            "music.services.metadata_service.DiscogsClient", return_value=client
+        ):
+            self.service.run_discogs([self.album])
+
+        record = self.album.discogs_album_data_set.get()
+        self.assertEqual(
+            len(record.title),
+            models.DiscogsAlbumData._meta.get_field("title").max_length,
+        )
+
+    def test_a_long_musicbrainz_title_is_stored_truncated(self):
+        self.album.musicbrainz_release_group_id = RG_MBID
+        self.album.save()
+        client = mock.MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        client.fetch_release_group.return_value = ReleaseGroup(
+            mbid=RG_MBID, title=self.LONG, primary_type="Album"
+        )
+        with mock.patch(
+            "music.services.metadata_service.MusicBrainzClient", return_value=client
+        ):
+            self.service.run_musicbrainz([self.album])
+
+        record = self.album.musicbrainz_album_data_set.get()
+        self.assertEqual(
+            len(record.title),
+            models.MusicBrainzAlbumData._meta.get_field("title").max_length,
+        )
+
+    def test_long_wikidata_text_is_stored_truncated(self):
+        client = mock.MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        client.fetch_album_metadata.return_value = {
+            "Q173643": self.album_meta(page_title=self.LONG, spotify_album_id="x" * 80)
+        }
+        client.fetch_artists.return_value = {}
+        client.fetch_labels.return_value = {"Q213710": self.LONG}
+        with mock.patch(
+            "music.services.metadata_service.WikidataClient", return_value=client
+        ):
+            self.service.run_wikidata([self.album])
+
+        record = self.album.wikipedia_album_data_set.get()
+        model = models.WikipediaAlbumData
+        for field in ("page_title", "record_label", "spotify_album_id"):
+            with self.subTest(field=field):
+                self.assertLessEqual(
+                    len(getattr(record, field)),
+                    model._meta.get_field(field).max_length,
+                )
+
+    def test_a_long_artist_name_is_stored_truncated(self):
+        self.album.artist_credit = self.LONG
+        self.album.save()
+        client = mock.MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        client.fetch_album_metadata.return_value = {
+            "Q173643": self.album_meta(performer_qids=[])
+        }
+        client.fetch_artists.return_value = {}
+        client.fetch_labels.return_value = {}
+        with mock.patch(
+            "music.services.metadata_service.WikidataClient", return_value=client
+        ):
+            self.service.run_wikidata([self.album])
+
+        for artist in self.album.artists.all():
+            with self.subTest(artist=artist.pk):
+                self.assertLessEqual(
+                    len(artist.name),
+                    models.Artist._meta.get_field("name").max_length,
+                )
+                self.assertLessEqual(
+                    len(artist.slug or ""),
+                    models.Artist._meta.get_field("slug").max_length,
+                )
+
+    def test_every_stored_value_fits_its_column_after_a_full_pass(self):
+        """A sweep, so a newly added field cannot quietly reintroduce this."""
+        self.album.discogs_master_id = 24047
+        self.album.save()
+        client = mock.MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        client.fetch_master.return_value = DiscogsMaster(
+            master_id=24047,
+            title=self.LONG,
+            genres=["Rock"],
+            styles=[self.LONG, "Pop Rock"],
+        )
+        with mock.patch(
+            "music.services.metadata_service.DiscogsClient", return_value=client
+        ):
+            self.service.run_discogs([self.album])
+
+        for model in (
+            models.DiscogsAlbumData,
+            models.MusicGenre,
+            models.Album,
+            models.Artist,
+        ):
+            for record in model.objects.all():
+                for field in model._meta.get_fields():
+                    max_length = getattr(field, "max_length", None)
+                    if not max_length or not hasattr(record, field.name):
+                        continue
+                    value = getattr(record, field.name)
+                    if isinstance(value, str):
+                        with self.subTest(model=model.__name__, field=field.name):
+                            self.assertLessEqual(len(value), max_length)

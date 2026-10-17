@@ -98,6 +98,16 @@
   genre names only need title-casing to match the Discogs spellings, so
   "southern soul" joins the existing Soul root rather than creating a second
   lower-cased row. It never overwrites a genre Discogs supplied
+- Truncate external text to its column width before saving. Nothing bounds the
+  length of a title an external service returns - Fiona Apple's "When the
+  Pawn..." is 444 characters and both Discogs and MusicBrainz return all of it -
+  and **SQLite ignores varchar length while PostgreSQL raises `DataError`**, so a
+  clean local run was followed by the Heroku run aborting at album 451 of 497.
+  `metadata_service.fit()` now cuts every bounded field fed from an external
+  source, and the tests assert the stored lengths directly rather than waiting
+  for a database to object. Second time this divergence has bitten the project:
+  the books list-type fixture below only persisted `"AT"` in a `varchar(1)`
+  because SQLite allowed it
 - **Books:** remove the `cache_page` decorator from all eight staff-only API
   endpoints. `cache_page` wraps `dispatch`, so it was consulted before DRF checked
   permissions - a staff response was stored and replayed to anonymous callers,
