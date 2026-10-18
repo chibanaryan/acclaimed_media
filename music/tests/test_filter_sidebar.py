@@ -88,7 +88,36 @@ class FacetCountTests(MusicDataMixin, TestCase):
     def test_year_counts_do_respect_the_other_filters(self):
         response = self.client.get(reverse("music:home"), {"q": "revolver"})
         counts = {row["year"]: row["count"] for row in response.context["year_counts"]}
-        self.assertEqual(counts, {1966: 1})
+        self.assertEqual({year for year, count in counts.items() if count}, {1966})
+
+    def test_the_whole_year_range_is_sent_however_narrow_the_filter(self):
+        """The grid builds its decades from this array, not from min/max.
+
+        Sending only the years a filter covers shrank the grid to those
+        decades on a page load, so refreshing on a narrow genre left most
+        of the timeline with no cells at all.
+        """
+        narrow = models.MusicGenre.objects.create(name="Dub")
+        self.kid_a.genres.set([narrow])
+        response = self.client.get(reverse("music:home"), {"genres": str(narrow.id)})
+        counts = response.context["year_counts"]
+        years = [row["year"] for row in counts]
+        self.assertEqual(
+            years,
+            list(range(response.context["min_year"], response.context["max_year"] + 1)),
+        )
+        # The filter still shows through, as zeros.
+        self.assertEqual({row["year"] for row in counts if row["count"]}, {2000})
+
+    def test_an_album_matching_two_genres_in_the_subtree_counts_once(self):
+        # The genre filter joins through an M2M, so without `distinct` the
+        # album is counted once per matching genre.
+        rock = models.MusicGenre.objects.create(name="Prog")
+        style = models.MusicGenre.objects.create(name="Krautrock", parent=rock, level=1)
+        self.revolver.genres.set([rock, style])
+        response = self.client.get(reverse("music:home"), {"genres": str(rock.id)})
+        counts = {row["year"]: row["count"] for row in response.context["year_counts"]}
+        self.assertEqual(counts[1966], 1)
 
     def test_genre_counts_ignore_the_genre_filter_itself(self):
         electronic = models.MusicGenre.objects.create(name="Electronic")
@@ -371,7 +400,9 @@ class ListenStatusFacetTests(MusicDataMixin, TestCase):
         # what the status filter leaves - otherwise clicking 1979 under
         # "Listened" would promise a row and deliver none.
         response = self.client.get(reverse("music:home") + "?listened=yes")
-        years = {entry["year"] for entry in response.context["year_counts"]}
+        years = {
+            entry["year"] for entry in response.context["year_counts"] if entry["count"]
+        }
         self.assertEqual(years, {1966})
 
     def test_the_genre_counts_respect_the_status_filter(self):
@@ -385,5 +416,7 @@ class ListenStatusFacetTests(MusicDataMixin, TestCase):
         response = self.client.get(
             reverse("music:home") + "?listened=yes,want&start=1979&end=1979"
         )
-        years = {entry["year"] for entry in response.context["year_counts"]}
+        years = {
+            entry["year"] for entry in response.context["year_counts"] if entry["count"]
+        }
         self.assertEqual(years, {1966, 1979})

@@ -1,7 +1,11 @@
-{# Append-only partial: desktop rows for Load More. Wrapped in a table so #}
-{# the HTMX swap keeps the tr elements, as the developer list does. #}
-<table><tbody>
-{% for artist in artists %}
-{% include 'music/artists/includes/_artist_row.html' with artist=artist %}
-{% endfor %}
-</tbody></table>
+{# Append-only partial: desktop rows for Load More. #}
+{# #}
+{# Bare <tr>s, with no wrapper table. htmx's makeFragment special-cases a #}
+{# response that starts with <tr> and parses it inside a table, so the rows #}
+{# survive; wrapping them here instead put a whole second <table> inside the #}
+{# real one's <tbody>, which has no colgroup and so sized its columns #}
+{# independently - every appended row was visibly out of line with the rows #}
+{# above it. #}
+{# Keep every template comment on a single line. #}
+{% load humanize %}
+{% for artist in artists %}{% include 'music/artists/includes/_artist_row.html' with artist=artist %}{% endfor %}

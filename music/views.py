@@ -334,14 +334,29 @@ def expand_genre_ids(genre_ids):
     return sorted(expanded)
 
 
-def _year_counts(queryset):
-    """Albums per release year, for the year heatmap."""
-    return [
-        {"year": row["year_released"], "count": row["count"]}
+def _year_counts(queryset, min_year, max_year):
+    """Albums per release year, for the year heatmap.
+
+    Every year in the corpus-wide range is present, zeros included, as
+    `games.views.HomePageView` builds its own. The grid takes its decade
+    structure from this array rather than from `min_year`/`max_year`, so
+    returning only the years the current filter happens to cover shrank the
+    grid itself: loading `/music/?genres=<something narrow>` left most of
+    the timeline with no cells to click, and no way back to it.
+
+    `distinct=True` because the genre and artist filters join through M2M
+    tables, so an album matching two genres in the selected subtree would
+    otherwise be counted once per match.
+    """
+    counts = {
+        row["year_released"]: row["count"]
         for row in queryset.exclude(year_released__isnull=True)
         .values("year_released")
-        .annotate(count=Count("id"))
-        .order_by("year_released")
+        .annotate(count=Count("id", distinct=True))
+    }
+    return [
+        {"year": year, "count": counts.get(year, 0)}
+        for year in range(min_year, max_year + 1)
     ]
 
 
@@ -590,7 +605,9 @@ class AlbumHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
         context["year_counts"] = _year_counts(
             apply_album_filters(
                 base, self.request.GET, skip=("year",), user=self.request.user
-            )
+            ),
+            min_year,
+            max_year,
         )
         context["genre_counts"] = _genre_counts(
             apply_album_filters(
