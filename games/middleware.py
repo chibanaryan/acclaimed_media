@@ -43,7 +43,7 @@ class RateLimitMiddleware:
 
     Blocks IPs that exceed per-minute or per-hour thresholds.
 
-    The counters live in the per-process ``local`` cache rather than the
+    The counters live in the per-process ``ratelimit`` cache rather than the
     shared ``default`` one. Three cache operations run on every non-exempt
     request and the keys are per-IP-per-minute, so on a database-backed cache
     this would add writes to Postgres on every hit from every crawler and
@@ -51,6 +51,11 @@ class RateLimitMiddleware:
     gunicorn worker counts independently, so the effective limit is looser
     than the configured one by the worker count - which is how this has
     always behaved, LocMemCache being per-process too.
+
+    They had their own alias from 2026-10-18. Sharing ``local`` with the
+    rendered pages meant the two culled each other out of one 500-entry
+    LocMem, so a crawl wide enough to matter evicted the very counters meant
+    to stop it.
     """
 
     def __init__(self, get_response):
@@ -64,7 +69,7 @@ class RateLimitMiddleware:
         ``override_settings(CACHES=...)`` applies: middleware is instantiated
         once per handler, long before any such override.
         """
-        return caches["local"]
+        return caches["ratelimit"]
 
     def __call__(self, request):
         path = request.path

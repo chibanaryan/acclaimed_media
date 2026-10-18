@@ -28,8 +28,11 @@ if SENTRY_DSN and not TEST_MODE:
         dsn=SENTRY_DSN,
         integrations=[DjangoIntegration()],
         send_default_pii=True,
-        traces_sample_rate=1.0,
-        profiles_sample_rate=1.0,
+        # Sampled, not exhaustive: tracing and profiling every request cost
+        # per-request CPU and latency on a dyno that has neither to spare,
+        # and burn the Sentry quota. Errors are still captured in full.
+        traces_sample_rate=0.1,
+        profiles_sample_rate=0.0,
     )
 
 # Core Django settings
@@ -116,10 +119,15 @@ MIDDLEWARE = [
     "games.middleware.HTMXPushURLMiddleware",  # HTMX history support
 ]
 
-# Only enable cache middleware in production (not in DEBUG/TEST or dev server)
-if not DEBUG and not TEST_MODE and not RUNNING_DEVSERVER:
-    MIDDLEWARE.insert(0, "django.middleware.cache.UpdateCacheMiddleware")
-    MIDDLEWARE.append("django.middleware.cache.FetchFromCacheMiddleware")
+# There is deliberately no site-wide `UpdateCacheMiddleware` /
+# `FetchFromCacheMiddleware` pair. Every page here varies on `Cookie` - the
+# auth-aware chrome and the CSRF token see to that - so the middleware keyed a
+# separate copy of each page on each visitor's cookie header, while declining
+# to store anything at all for a first-time visitor who has none. Three
+# workers' worth of per-visitor HTML was most of why the dyno sat over its
+# 512 MB quota. `core.mixins.AnonymousResponseCacheMixin` is the whole-page
+# cache instead: anonymous requests only, one key per URL, and only for the
+# pages worth it.
 
 # Enable debug toolbar only in development
 if DEBUG:
@@ -244,13 +252,6 @@ CACHES = build_caches(
     test_mode=TEST_MODE,
     base_dir=BASE_DIR,
 )
-
-CACHE_MIDDLEWARE_SECONDS = 60 * 60
-# The whole-page middleware cache below must stay on the per-process alias.
-# Pointing it at `default` would send every anonymous page's full HTML into
-# Postgres and cull the shared filter options out of it.
-CACHE_MIDDLEWARE_ALIAS = "local"
-
 
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"

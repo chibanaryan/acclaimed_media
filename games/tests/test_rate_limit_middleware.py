@@ -15,16 +15,23 @@ from games.config import (
 LOCMEM = {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}
 
 
-@override_settings(CACHES={"default": LOCMEM, "local": dict(LOCMEM, LOCATION="local")})
+@override_settings(
+    CACHES={
+        "default": LOCMEM,
+        # The views these tests request cache whole pages on `local`.
+        "local": dict(LOCMEM, LOCATION="local"),
+        "ratelimit": dict(LOCMEM, LOCATION="ratelimit"),
+    }
+)
 class RateLimitMiddlewareTest(TestCase):
     """Test rate limiting middleware.
 
-    The counters live on the per-process `local` alias, not `default` - see
-    `core.cache_config` for why - so the seeding helpers write there.
+    The counters live on the per-process `ratelimit` alias, not `default` -
+    see `core.cache_config` for why - so the seeding helpers write there.
     """
 
     def setUp(self):
-        self.cache = caches["local"]
+        self.cache = caches["ratelimit"]
         self.cache.clear()
 
     def tearDown(self):
@@ -131,7 +138,7 @@ class RateLimitMiddlewareTest(TestCase):
         """If cache is unavailable, requests should pass through."""
         broken = MagicMock()
         broken.get.side_effect = Exception("Cache unavailable")
-        with patch("games.middleware.caches", new={"local": broken}):
+        with patch("games.middleware.caches", new={"ratelimit": broken}):
             response = self.client.get("/")
             # Should not be 429 - graceful degradation
             self.assertNotEqual(response.status_code, 429)
@@ -170,7 +177,7 @@ class RateLimitMiddlewareTest(TestCase):
         unwritable = MagicMock()
         unwritable.get.return_value = None
         unwritable.set.side_effect = Exception("cache write failed")
-        with patch("games.middleware.caches", new={"local": unwritable}):
+        with patch("games.middleware.caches", new={"ratelimit": unwritable}):
             with patch(
                 "games.middleware.RateLimitMiddleware._incr",
                 side_effect=[RATE_LIMIT_PER_MINUTE + 1, 1],

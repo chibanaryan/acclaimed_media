@@ -1,5 +1,6 @@
 """Tests for the shared staff gate: core.mixins and core.permissions."""
 
+import zlib
 from unittest import mock
 
 from django.contrib.auth.models import AnonymousUser
@@ -128,7 +129,19 @@ class AnonymousResponseCacheAliasTests(TestCase):
         self._get()
         caches["local"].set(
             "example_page",
-            {"content": b"from the cache", "status": 200, "content_type": None},
+            {
+                "body": zlib.compress(b"from the cache"),
+                "status": 200,
+                "content_type": None,
+            },
             60,
         )
         self.assertEqual(self._get().content, b"from the cache")
+
+    def test_the_stored_body_is_deflated(self):
+        # Uncompressed, ~50 cacheable URLs at ~1.4 MB each would be 60-70 MB
+        # in every worker.
+        self._get()
+        payload = caches["local"].get("example_page")
+        self.assertNotIn("content", payload)
+        self.assertEqual(zlib.decompress(payload["body"]), self._get().content)

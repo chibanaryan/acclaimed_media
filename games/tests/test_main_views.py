@@ -4,6 +4,7 @@ Tests for main site views (Django + HTMX + Alpine.js).
 Comprehensive test coverage for all user-facing views.
 """
 
+import zlib
 from unittest import mock
 
 from django.contrib.flatpages.models import FlatPage
@@ -298,7 +299,7 @@ class HomePageViewTest(TestCase):
         caches["local"].set(
             cache_key,
             {
-                "content": b"cached home",
+                "body": zlib.compress(b"cached home"),
                 "status": 200,
                 "content_type": "text/html; charset=utf-8",
                 "headers": {"X-Test-Header": "1"},
@@ -352,7 +353,7 @@ class HomePageViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         cached = caches["local"].get(cache_key)
         self.assertIsInstance(cached, dict)
-        self.assertIn("content", cached)
+        self.assertIn("body", cached)
 
     def test_home_page_streaming_response_not_cached(self):
         cache_key = f"home_page:{config.CACHE_VERSION}:default"

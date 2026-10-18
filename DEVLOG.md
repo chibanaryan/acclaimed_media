@@ -1,5 +1,40 @@
 # Developer Log
 
+## 2026-10-18 (web dyno memory)
+
+- **The dyno is back inside its 512 MB quota.** It had been running at
+  496-533 MB of RSS in every hourly bucket with up to 86 MB of swap, peaking
+  at 604 MB (112.6%) and firing R14 and H27 all day. The roadmap's reading
+  was right - a baseline footprint larger than the quota, not a leak - and
+  the numbers now account for all of it: a worker boots at ~110 MB and
+  plateaus at ~200 MB, flat from 50 page renders out to 1000, so three of
+  them needed ~570 MB
+- **Two workers, not three.** 2 x 200 MB leaves ~110 MB of headroom on a
+  Basic dyno. `--preload` was measured and rejected: a forked child touched
+  ~160 MB of the parent's pages within 20 requests, because CPython
+  refcounts dirty the page holding every object they read, so
+  copy-on-write saved nothing (593 MB preloaded vs 585 MB not).
+  `--max-requests` is a guard against slow growth rather than a lever - a
+  recycled worker is back at the plateau within ~15 renders
+- **The site-wide page cache middleware is gone.** Every page varies on
+  `Cookie`, so Django keyed a separate copy of each page on each visitor's
+  cookie header - and stored nothing at all for a cookieless first-time
+  visitor, since it skips the write when the response sets cookies and the
+  request carried none. All of the cost, none of the benefit, at 1.4 MB an
+  entry for any client that did not ask for gzip.
+  `AnonymousResponseCacheMixin` is the whole-page cache now
+- **Cached page bodies are deflated.** 48 SEO landing URLs plus the home
+  page at ~1.4 MB each was up to 67 MB in every worker; it is ~5 MB now,
+  and a cache hit returns byte-identical HTML
+- **Page HTML can no longer evict the rate limiter.** The per-IP counters
+  had been sharing `local`'s 500 entries with whole rendered pages, so a
+  crawl wide enough to matter culled out the counters meant to stop it. They
+  have their own `ratelimit` alias
+- Sentry now samples tracing at 0.1 with profiling off - not a memory fix
+  (the SDK's ~30 MB per worker is the import, not the sampling) but it was
+  tracing and profiling every single request. `AlbumCoverView` also stopped
+  holding a second full copy of every cover it serves
+
 ## 2026-10-18 (album tracking)
 
 - **Albums can be tracked.** `ListenedAlbum` / `WantToListenAlbum` on

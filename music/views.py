@@ -1209,9 +1209,13 @@ class AlbumCoverView(StaffOnlyMixin, View):
         if cover is None:
             raise Http404("No such cover")
 
-        response = HttpResponse(bytes(cover.data), content_type=cover.content_type)
+        # `bytes(cover.data)` here would hold a second full copy of the
+        # image: psycopg2 hands back a memoryview and Django's content
+        # setter converts it once already. The covers run to 228 KB and a
+        # rankings page asks for a hundred of them.
+        response = HttpResponse(cover.data, content_type=cover.content_type)
         response["Cache-Control"] = self.CACHE_CONTROL
-        response["Content-Length"] = str(len(cover.data))
+        response["Content-Length"] = str(len(response.content))
         return response
 
 

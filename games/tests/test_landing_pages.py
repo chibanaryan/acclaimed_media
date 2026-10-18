@@ -3,6 +3,7 @@
 import importlib
 import json
 import re
+import zlib
 
 from django.core.cache import caches
 from django.test import TestCase
@@ -244,7 +245,7 @@ class LandingPageViewTests(LandingPageDataMixin, TestCase):
         payload = caches["local"].get(cache_key)
         self.assertIsNotNone(payload)
         # Prove the second request is served from the cache
-        payload["content"] = b"CACHED MARKER"
+        payload["body"] = zlib.compress(b"CACHED MARKER")
         caches["local"].set(cache_key, payload, 60)
         response = self.client.get("/games/action/")
         self.assertEqual(response.content, b"CACHED MARKER")

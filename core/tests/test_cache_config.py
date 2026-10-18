@@ -62,39 +62,59 @@ class BuildDefaultCacheTests(SimpleTestCase):
 
 
 class BuildCachesTests(SimpleTestCase):
-    """Both aliases together."""
+    """All three aliases together."""
 
-    def test_both_aliases_are_defined(self):
+    def test_every_alias_is_defined(self):
         caches = cache_config.build_caches(
             "dbcache://cache_table", debug=False, test_mode=False, base_dir=Path("/tmp")
         )
-        self.assertEqual(sorted(caches), ["default", "local"])
+        self.assertEqual(sorted(caches), ["default", "local", "ratelimit"])
         self.assertEqual(caches["default"]["BACKEND"], cache_config.DATABASE_BACKEND)
 
-    def test_the_local_alias_is_always_per_process(self):
-        # Whole-page HTML and the rate-limit counters live here, so it must
-        # never follow CACHE_URL onto a shared backend.
+    def test_the_per_process_aliases_are_always_per_process(self):
+        # Whole-page HTML and the rate-limit counters live here, so neither
+        # may follow CACHE_URL onto a shared backend.
         for url in (None, "dbcache://cache_table", "locmemcache://"):
-            with self.subTest(url=url):
-                caches = cache_config.build_caches(
-                    url, debug=False, test_mode=False, base_dir=Path("/tmp")
-                )
-                self.assertEqual(
-                    caches["local"]["BACKEND"], cache_config.LOCMEM_BACKEND
-                )
-                self.assertEqual(caches["local"]["OPTIONS"]["MAX_ENTRIES"], 500)
+            for alias in ("local", "ratelimit"):
+                with self.subTest(url=url, alias=alias):
+                    caches = cache_config.build_caches(
+                        url, debug=False, test_mode=False, base_dir=Path("/tmp")
+                    )
+                    self.assertEqual(
+                        caches[alias]["BACKEND"], cache_config.LOCMEM_BACKEND
+                    )
+
+    def test_pages_and_counters_do_not_share_an_entry_budget(self):
+        # One 500-entry LocMem held both, so a wide crawl's cached pages
+        # culled out the counters meant to stop it.
+        caches = cache_config.build_caches(
+            "dbcache://cache_table", debug=False, test_mode=False, base_dir=Path("/tmp")
+        )
+        self.assertNotEqual(
+            caches["local"]["LOCATION"], caches["ratelimit"]["LOCATION"]
+        )
+        self.assertEqual(caches["local"]["OPTIONS"]["MAX_ENTRIES"], 500)
+        self.assertEqual(caches["ratelimit"]["OPTIONS"]["MAX_ENTRIES"], 5000)
 
 
 class SettingsWiringTests(SimpleTestCase):
     """What settings.py did with the above."""
 
-    def test_the_whole_page_middleware_cache_is_the_local_alias(self):
-        # Pointing this at `default` would send every anonymous page's HTML
-        # into Postgres in production and cull the shared entries out of it.
-        self.assertEqual(settings.CACHE_MIDDLEWARE_ALIAS, "local")
+    def test_the_per_process_aliases_are_configured(self):
+        for alias in ("local", "ratelimit"):
+            with self.subTest(alias=alias):
+                self.assertIn(alias, settings.CACHES)
+                self.assertEqual(
+                    settings.CACHES[alias]["BACKEND"], cache_config.LOCMEM_BACKEND
+                )
 
-    def test_the_local_alias_is_configured(self):
-        self.assertIn("local", settings.CACHES)
-        self.assertEqual(
-            settings.CACHES["local"]["BACKEND"], cache_config.LOCMEM_BACKEND
+    def test_there_is_no_site_wide_page_cache_middleware(self):
+        # Every page varies on Cookie, so this pair stored a copy of each
+        # page per visitor and filled the dyno. `AnonymousResponseCacheMixin`
+        # is the whole-page cache; see the comment in settings.py.
+        self.assertNotIn(
+            "django.middleware.cache.UpdateCacheMiddleware", settings.MIDDLEWARE
+        )
+        self.assertNotIn(
+            "django.middleware.cache.FetchFromCacheMiddleware", settings.MIDDLEWARE
         )

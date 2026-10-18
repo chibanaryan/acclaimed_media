@@ -61,44 +61,42 @@ Not worth doing as parity:
    `--musicbrainz` fills genres for the albums with no Discogs master - three
    of them in the previous release, unknown in this one.
 
-## Production: the dyno is over its memory quota
+## Production: the dyno was over its memory quota
 
-11. **R14s are constant, not occasional.** As of 2026-10-18 the web dyno
-    averages **96.4%** of its 512 MB quota, peaks at **112.7% (576 MB)**, and
-    fires R14 in dense clusters right through the day, with H27 (client
-    request interrupted) alongside - requests dying while the dyno swaps.
+11. ~~**R14s are constant, not occasional.**~~ Diagnosed and fixed on
+    2026-10-18. The roadmap's reading was right: a **baseline footprint
+    larger than the quota**, not a leak. Measured, rather than guessed:
 
-    The shape matters: this is **not** the sawtooth a classic leak draws
-    (climb, restart, low floor, climb again). The line sits flat at ~460-470
-    MB across a full 24 hours, including immediately after the deploys and
-    restarts at ~3AM and ~3PM, and swap never exceeds 10 MB. That reads as a
-    **baseline footprint larger than the quota** - several gunicorn workers
-    each holding a big resident set - rather than something growing
-    unboundedly over hours. Two recent changes plausibly raised the floor:
-    the move of `default` to Postgres `DatabaseCache`, and the 1000-album
-    release.
+    - Production, from the Heroku metrics API over 24 h: RSS pinned at
+      496-533 MB in every hourly bucket against a 512 MB quota, swap up to
+      86 MB, total peaking at 604 MB (112.6%), and up to 663 k pages paged
+      in per hour.
+    - One worker locally, prod-shaped settings: 110 MB at boot (79 MB of
+      imports, ~30 MB of it `sentry_sdk`), 161 MB after one `GET /`, and a
+      **flat plateau at ~200 MB** from 50 renders out to 1000. 3 x 200 MB is
+      the 530 MB RSS + 86 MB swap production reported, so the arithmetic
+      closed and nothing was left to hunt.
+    - `--preload` was measured and rejected: a forked child touched ~160 MB
+      of the parent's pages within 20 requests, so copy-on-write saved
+      nothing (593 MB vs 585 MB).
 
-    Worth checking, roughly in order:
+    What shipped: `--workers 2` with `--max-requests 500`; the site-wide
+    `UpdateCacheMiddleware`/`FetchFromCacheMiddleware` pair deleted (it keyed
+    a copy of every page on every visitor's `Cookie` header and stored
+    nothing at all for a cookieless first-time visitor - all of the cost,
+    none of the benefit); `AnonymousResponseCacheMixin` bodies stored
+    deflated, which turns ~50 cacheable URLs x 1.4 MB into ~6 MB per worker;
+    the rate-limit counters moved to their own `ratelimit` alias so page
+    bodies can no longer cull them; Sentry tracing sampled at 0.1 with
+    profiling off; and one needless full copy of each album cover's bytes
+    removed from `AlbumCoverView`. See AGENTS.md, "Production memory budget".
 
-    - ~~Whether gunicorn recycles workers~~ - it does. The `Procfile` runs
-      `--workers 3 --max-requests 1000 --max-requests-jitter 50` on a 512 MB
-      Basic dyno, so each worker gets ~170 MB and is already replaced every
-      ~1000 requests. Recycling being configured *and* the floor still
-      sitting at 460-470 MB is the strongest argument that this is baseline
-      footprint rather than an unbounded leak: a leak would be cut back
-      every recycle. The lever to test first is therefore the worker count,
-      not the recycling.
-    - Per-worker RSS at boot vs. after serving traffic. That one measurement
-      separates "baseline too big" (buy a bigger dyno, or drop a worker)
-      from "grows without bound" (find the retainer).
-    - The in-process retainers: the `local` LocMem alias holds **whole
-      rendered pages** (`CACHE_MIDDLEWARE_ALIAS`,
-      `AnonymousResponseCacheMixin`) and its `MAX_ENTRIES` is per process,
-      so three workers hold three copies; and `/api/music/all/` builds the
-      entire 1000-album payload per request.
-
-    Deliberately not guessed at further without measurements. Start with
-    `heroku config`, the `Procfile`, and `heroku ps -a`.
+    Still open, in the order the measurements favour: the rankings page is
+    **1.4 MB of HTML** - 100 games each emitted as both desktop and mobile
+    markup - and that render is what leaves ~45 MB of unreturnable arenas in
+    every worker. Halving it is the next real lever, then
+    `--worker-class gthread` for concurrency without a third heap, then
+    Standard-2X (1 GB, $50/mo vs Basic's $7).
 
 ## Housekeeping
 

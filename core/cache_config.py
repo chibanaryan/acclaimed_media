@@ -1,23 +1,27 @@
 """Cache backend selection, shared by ``settings`` and its tests.
 
-There are two aliases, deliberately.
+There are three aliases, deliberately.
 
 ``default`` is the **shared** cache. In production it is Django's
-``DatabaseCache`` on the Postgres we already run, so the three gunicorn
-workers and whatever one-off dyno a management command lands in all read the
-same entries. That is what makes ``music.views._invalidate_music_caches``
-mean anything: under ``LocMemCache`` every process held its own copy and an
-invalidation reached exactly one of them, so a metadata refresh left stale
-genre and artist filter options behind for up to their 24-hour TTL.
+``DatabaseCache`` on the Postgres we already run, so the gunicorn workers and
+whatever one-off dyno a management command lands in all read the same entries.
+That is what makes ``music.views._invalidate_music_caches`` mean anything:
+under ``LocMemCache`` every process held its own copy and an invalidation
+reached exactly one of them, so a metadata refresh left stale genre and artist
+filter options behind for up to their 24-hour TTL.
 
-``local`` is a per-process cache and has to stay one. It holds whole rendered
-pages - ``UpdateCacheMiddleware``/``FetchFromCacheMiddleware``, which
-``settings`` installs in production, and
-``core.mixins.AnonymousResponseCacheMixin`` - plus the per-IP rate-limit
-counters in ``games.middleware``. Those are large or high-churn and none of
-them needs cross-process agreement: a crawler working through the SEO URLs
-would otherwise push every page's HTML into Postgres and cull the handful of
-shared entries straight back out of it.
+``local`` is a per-process cache and has to stay one. It holds the whole
+rendered pages of ``core.mixins.AnonymousResponseCacheMixin`` - entire HTML
+bodies, keyed by URL - which are large and need no cross-process agreement: on
+a shared backend a crawler working through the SEO URLs would push every page's
+HTML into Postgres and cull the handful of shared entries straight back out of
+it.
+
+``ratelimit`` holds the per-IP counters in ``games.middleware``. They are
+per-process for the same reason, but they are tiny and there are thousands of
+them, so they get their own alias rather than sharing ``local``'s entry budget:
+page bodies and counters culled each other out of one 500-entry LocMem, which
+degraded rate limiting under exactly the crawler load it exists to stop.
 """
 
 import environ
@@ -32,8 +36,16 @@ DATABASE_BACKEND = "django.core.cache.backends.db.DatabaseCache"
 # on almost every write.
 DATABASE_CACHE_OPTIONS = {"MAX_ENTRIES": 5000, "CULL_FREQUENCY": 4}
 
-# Whole-page HTML, keyed by URL. Bounded so a crawler cannot grow the heap.
+# Whole-page HTML, keyed by URL. Only the two views using
+# `AnonymousResponseCacheMixin` write here, and both decline any request with
+# a query string, so this is a handful of keys - but each is a whole page
+# (the home page is ~1.4 MB of HTML), and the dyno has 512 MB for every
+# worker together, so the ceiling stays low.
 LOCAL_CACHE_OPTIONS = {"MAX_ENTRIES": 500}
+
+# One or two integer counters per client IP per hour. A distributed crawl
+# needs thousands of them and they cost a few bytes each.
+RATELIMIT_CACHE_OPTIONS = {"MAX_ENTRIES": 5000}
 
 
 def build_default_cache(cache_url, *, debug, test_mode, base_dir):
@@ -57,7 +69,7 @@ def build_default_cache(cache_url, *, debug, test_mode, base_dir):
 
 
 def build_caches(cache_url, *, debug, test_mode, base_dir):
-    """Return the whole ``CACHES`` setting: a shared alias and a local one."""
+    """Return the whole ``CACHES`` setting: a shared alias and two local ones."""
     return {
         "default": build_default_cache(
             cache_url, debug=debug, test_mode=test_mode, base_dir=base_dir
@@ -66,5 +78,10 @@ def build_caches(cache_url, *, debug, test_mode, base_dir):
             "BACKEND": LOCMEM_BACKEND,
             "LOCATION": "local",
             "OPTIONS": dict(LOCAL_CACHE_OPTIONS),
+        },
+        "ratelimit": {
+            "BACKEND": LOCMEM_BACKEND,
+            "LOCATION": "ratelimit",
+            "OPTIONS": dict(RATELIMIT_CACHE_OPTIONS),
         },
     }

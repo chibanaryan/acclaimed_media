@@ -1,5 +1,7 @@
 """Reusable view mixins for the multi-media platform."""
 
+import zlib
+
 from django.contrib.auth.mixins import UserPassesTestMixin
 from django.core.cache import caches
 from django.core.paginator import EmptyPage, Paginator
@@ -52,6 +54,13 @@ class AnonymousResponseCacheMixin:
     shared backend a crawler would both bloat it and cull the small shared
     entries - the filter options and counts - straight out of it. Nothing
     here needs cross-process agreement; see `core.cache_config`.
+
+    The body is stored deflated. These pages are big - the rankings page is
+    ~1.4 MB of HTML - and there are ~50 cacheable URLs between the home page
+    and the SEO landing pages, which at full size is 60-70 MB in every
+    gunicorn worker on a 512 MB dyno. Deflate cuts that by about 15x, and
+    inflating on a hit costs a few milliseconds against the ~300 ms the
+    render it replaces takes.
     """
 
     page_cache_timeout = None
@@ -140,8 +149,8 @@ class AnonymousResponseCacheMixin:
         # request/context)
         cached_payload = cache.get(cache_key)
         if cached_payload is not None:
-            if isinstance(cached_payload, dict) and "content" in cached_payload:
-                content = cached_payload.get("content", b"")
+            if isinstance(cached_payload, dict) and "body" in cached_payload:
+                content = zlib.decompress(cached_payload["body"])
                 status = cached_payload.get("status", 200)
                 content_type = cached_payload.get("content_type")
                 response = HttpResponse(
@@ -152,7 +161,8 @@ class AnonymousResponseCacheMixin:
                 self._apply_cached_headers(response, cached_payload.get("headers"))
                 self._apply_cached_cookies(response, cached_payload.get("cookies"))
                 return response
-            # Drop legacy cached payloads (response objects) and rebuild.
+            # Drop anything older - response objects, and the uncompressed
+            # `content` payloads this replaced - and rebuild.
             cache.delete(cache_key)
 
         # Generate response and cache it
@@ -165,7 +175,9 @@ class AnonymousResponseCacheMixin:
             cache.set(
                 cache_key,
                 {
-                    "content": response.content,
+                    # Level 1: the saving over level 6 is a few percent on
+                    # HTML this repetitive, and this runs in the request.
+                    "body": zlib.compress(response.content, 1),
                     "status": response.status_code,
                     "content_type": response.get("Content-Type"),
                     "headers": self._serialize_headers(response),

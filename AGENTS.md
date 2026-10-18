@@ -737,23 +737,40 @@ copy.
 
 ## Caching
 
-Two aliases, defined by `core/cache_config.py` (which `settings.py` calls):
+Three aliases, defined by `core/cache_config.py` (which `settings.py` calls):
 
 - **`default` is shared across processes.** In production it is Django's
   `DatabaseCache` on the existing Postgres (`CACHE_URL=dbcache://cache_table`),
-  so the three gunicorn workers and any one-off dyno see the same entries. That
+  so the gunicorn workers and any one-off dyno see the same entries. That
   is what makes `music.views._invalidate_music_caches()` mean anything: under
   `LocMemCache` each process had its own copy and an invalidation reached
   exactly one of them, so a metadata refresh left stale filter options behind
   for up to their 24-hour TTL. Local dev stays on LocMem; `createcachetable
   cache_table` runs in the Heroku release phase and is idempotent.
-- **`local` is per-process, and must stay that way.** It holds whole rendered
-  pages (`CACHE_MIDDLEWARE_ALIAS`, `core.mixins.AnonymousResponseCacheMixin`)
-  and the per-IP rate-limit counters in `games.middleware`. Those are large or
-  high-churn and need no cross-process agreement: on the shared backend a
-  crawler would push every page's HTML into Postgres and cull the small shared
-  entries straight back out. `MAX_ENTRIES` is set explicitly for both, since
-  Django's default of 300 culls a third of the cache on almost every write.
+- **`local` is per-process, and must stay that way.** It holds the whole
+  rendered pages of `core.mixins.AnonymousResponseCacheMixin`. They are large
+  and need no cross-process agreement: on the shared backend a crawler would
+  push every page's HTML into Postgres and cull the small shared entries
+  straight back out. The bodies are stored **deflated** - the rankings page is
+  ~1.4 MB of HTML and there are ~50 cacheable URLs between the home page and
+  the SEO landing pages, which uncompressed is 60-70 MB in every worker.
+- **`ratelimit` is per-process too**, and holds the per-IP counters in
+  `games.middleware`. It was carved out of `local` on 2026-10-18: page bodies
+  and counters were culling each other out of one 500-entry LocMem, so a crawl
+  wide enough to matter evicted the counters meant to stop it.
+
+`MAX_ENTRIES` is set explicitly for all three, since Django's default of 300
+culls a third of the cache on almost every write.
+
+**There is deliberately no site-wide `UpdateCacheMiddleware` /
+`FetchFromCacheMiddleware`.** Every page varies on `Cookie` - the auth-aware
+chrome and the CSRF token see to that - so Django keyed a separate copy of
+every page on every visitor's cookie header, while storing nothing at all for
+a first-time visitor who has none (it skips the write when the response sets
+cookies and the request carried none). Three workers' worth of per-visitor
+HTML, at 1.4 MB each for any client that did not send `Accept-Encoding: gzip`,
+was most of why the dyno sat over its 512 MB quota. See "Production memory
+budget" below.
 
 Music's cache keys all live in `music/config.py` as `CACHE_KEYS`, which
 `_invalidate_music_caches()` iterates - add a cached value there or it will not
@@ -763,6 +780,34 @@ invalidates the whole set.
 `/music/cover/` is exempt from rate limiting (`RATE_LIMIT_EXEMPT_PREFIXES`): it
 is a static asset in all but the URL, and one rankings page requests up to a
 hundred of them against a 120/minute budget.
+
+## Production memory budget
+
+The web dyno is a Basic one: **512 MB for every gunicorn worker together**.
+Measured on 2026-10-18, one worker boots at ~110 MB (79 MB of imports, ~30 MB
+of it `sentry_sdk`) and plateaus at **~200 MB** once it has rendered a page or
+two - flat from ~50 renders out to 1000, so there is no leak to hunt. The
+rankings page is 1.4 MB of HTML, and the ~45 MB a worker never returns after
+its first render is allocator arenas, not live data.
+
+That arithmetic sets the shape of the `Procfile`:
+
+- **`--workers 2`.** 2 x 200 MB leaves ~110 MB of headroom; three workers
+  needed ~570 MB and the dyno had been swapping and firing R14 all day.
+- **No `--preload`.** Measured with a fork test: a child touched ~160 MB of
+  the parent's pages within 20 requests, because CPython refcounts dirty the
+  page holding every object they read. Copy-on-write saved nothing (593 MB
+  preloaded vs 585 MB not).
+- **`--timeout 600` stays.** The games importer streams progress over SSE and
+  a shorter timeout kills that mid-import.
+- `--max-requests 500` is a guard against slow growth, not a memory lever: a
+  recycled worker is back at the plateau within ~15 page renders.
+
+Anything that grows the rendered page, the boot imports, or a per-process
+cache is spending from that 512 MB twice over. `heroku ps`, and the
+metrics API (`api.metrics.heroku.com/apps/<id>/formation/web/metrics/memory
+?start_time=..&end_time=..&step=1h&process_type=web`, with
+`memory.rss.bytes.max` and `memory.swap.bytes.max`), are how to check it.
 
 ## Configuration
 
