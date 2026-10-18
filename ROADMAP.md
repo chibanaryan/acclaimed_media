@@ -80,9 +80,14 @@ Not worth doing as parity:
 
     Worth checking, roughly in order:
 
-    - `WEB_CONCURRENCY` / worker count against a 512 MB quota, and whether
-      gunicorn recycles workers at all (`--max-requests`). Three workers on
-      512 MB leaves ~170 MB each.
+    - ~~Whether gunicorn recycles workers~~ - it does. The `Procfile` runs
+      `--workers 3 --max-requests 1000 --max-requests-jitter 50` on a 512 MB
+      Basic dyno, so each worker gets ~170 MB and is already replaced every
+      ~1000 requests. Recycling being configured *and* the floor still
+      sitting at 460-470 MB is the strongest argument that this is baseline
+      footprint rather than an unbounded leak: a leak would be cut back
+      every recycle. The lever to test first is therefore the worker count,
+      not the recycling.
     - Per-worker RSS at boot vs. after serving traffic. That one measurement
       separates "baseline too big" (buy a bigger dyno, or drop a worker)
       from "grows without bound" (find the retainer).
@@ -96,6 +101,20 @@ Not worth doing as parity:
     `heroku config`, the `Procfile`, and `heroku ps -a`.
 
 ## Housekeeping
+
+12. **A POST to any `/music/` URL answers 403, not 404.** `CsrfViewMiddleware`
+    runs after URL resolution and before the view, so it rejects an
+    anonymous POST before `StaffOnlyMixin` can 404 it - which distinguishes
+    "this path resolves" from "it does not" and so slightly undercuts the
+    section's "looks absent" property. Pre-existing rather than new: the
+    `<slug:slug>/` catch-all has always done it, and
+    `/music/nonexistent-slug/` answers 403 too. Every **GET** still 404s,
+    which is what hides the section in practice, and seeing this at all
+    means already guessing that `/music/` exists. Fixable with a
+    `CSRF_FAILURE_VIEW` that 404s for music paths, or by moving the staff
+    check ahead of CSRF in middleware. Noted because
+    `music/tests/test_views.py` asserts 404 here and passes: the Django test
+    client does not enforce CSRF, so no test sees the production answer.
 
 9. `FORUM_ENABLED` is still set as a Heroku config var; the forum was removed
    in 2026-10-17. `MEDIA_URL` / `MEDIA_ROOT` have no consumer either.
