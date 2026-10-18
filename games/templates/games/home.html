@@ -3,12 +3,15 @@
 {% load humanize %}
 {% load static %}
 
-{% block title %}{% if seo_title %}{{ seo_title }} | Acclaimed Video Games{% else %}Acclaimed Video Games{% endif %}{% endblock %}
+{# `seo_title` is set only by the SEO landing views; `filter_title` is #}
+{# the heading this page composes from the filter state, so the tab #}
+{# title tracks the filters as the album page's does. #}
+{% block title %}{% firstof seo_title filter_title as page_title %}{% if page_title %}{{ page_title }} | Acclaimed Video Games{% else %}Acclaimed Video Games{% endif %}{% endblock %}
 
 {% block meta_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}{{ block.super }}{% endif %}{% endblock %}
-{% block og_title %}{% if seo_title %}{{ seo_title }} | Acclaimed Video Games{% else %}{{ block.super }}{% endif %}{% endblock %}
+{% block og_title %}{% firstof seo_title filter_title as page_title %}{% if page_title %}{{ page_title }} | Acclaimed Video Games{% else %}{{ block.super }}{% endif %}{% endblock %}
 {% block og_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}{{ block.super }}{% endif %}{% endblock %}
-{% block twitter_title %}{% if seo_title %}{{ seo_title }} | Acclaimed Video Games{% else %}{{ block.super }}{% endif %}{% endblock %}
+{% block twitter_title %}{% firstof seo_title filter_title as page_title %}{% if page_title %}{{ page_title }} | Acclaimed Video Games{% else %}{{ block.super }}{% endif %}{% endblock %}
 {% block twitter_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}{{ block.super }}{% endif %}{% endblock %}
 {% block structured_data %}{% if itemlist_json %}{{ itemlist_json|safe }}{% else %}{{ block.super }}{% endif %}{% endblock %}
 
@@ -18,7 +21,7 @@
     {# rankings page; this file keeps the platform, series and playtime ones. #}
     <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/filter-subcomponents.min.js" %}?v=1');</script>
     <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "games/js/filter-subcomponents.min.js" %}?v=2');</script>
-    <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "games/js/filter-component.min.js" %}?v=7');</script>
+    <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "games/js/filter-component.min.js" %}?v=8');</script>
 {% endblock %}
 
 {% block extra_head %}

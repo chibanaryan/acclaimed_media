@@ -761,6 +761,73 @@ Two decisions worth knowing before changing any of it:
 `Album.thumbnail` and `Album.image` are what the pages render and prefer the local
 copy.
 
+## Music query budgets
+
+`/music/` cost 443 queries and `/music/artists/` 305, measured against the
+1000-album corpus. Both were one-shape N+1s, and both are now pinned by
+`music/tests/test_views.py::MusicQueryBudgetTests`:
+
+| page | before | after |
+|---|---|---|
+| `/music/` | 443 | 26 |
+| `/music/?genres=<root>` | 439 | 16 |
+| `/music/artists/` | 305 | 6 |
+| `/api/music/all/` | 1218 | 10 |
+
+- **`core/services/genre_tree.py` answers the hierarchy in one query.**
+  `descendants_by_id(pairs)` maps every genre id to the ids below it from a
+  single `(id, parent_id)` fetch. `MusicGenre.get_descendant_ids` still
+  exists for one-off use, but nothing on a hot path calls it:
+  `prefetch_related("children")` populates only the rows it fetched, so
+  recursing into a child instance's own `children` is a query per node.
+  The map is returned in **arrival** order, not the post-order the walk
+  resolves nodes in, because callers iterate it to build the counts dict
+  the page serializes - and that dict's order has to stay the manager's.
+  It carries a cycle guard the games copy lacks.
+- **Deliberately uncached.** Games caches descendant ids per genre with
+  signal invalidation because its hot path asks for the few ids the reader
+  selected; music's needs the whole table, where ~200 round trips to the
+  shared cache lose to one SELECT of 200 two-column rows.
+- **`ArtistListView` prefetches `albums` with the MusicBrainz row joined.**
+  Needed because both row halves read `artist.albums.first` - the mobile
+  card block runs it a second time, which is why it was 200 album selects
+  for 100 rows. `{% with best=artist.albums.first %}` does resolve off the
+  prefetch cache (measured), so no template change was needed.
+- **`/api/music/all/` had the worst N+1 on the site and nothing recorded
+  it**: the album loop reads `album.thumbnail` while the queryset prefetched
+  only `artists` and `genres`, so 1000 albums each lazy-loaded their
+  MusicBrainz row.
+- **Add a filter dimension here and the facet passes multiply.** Build the
+  map once per request - `AlbumHomePageView._descendants` - and pass it in;
+  every consumer takes an optional `descendants=` and builds its own only
+  when called standalone.
+
+## The rankings heading and the tab title
+
+Both sections compose a heading from the filter state and reuse it as the
+document title. Three traps, all of which have bitten:
+
+- **A genre clicked in a row does not go through the filter component.**
+  `album-client-filtering.js` answers `add-genre` by writing the hidden
+  select and re-rendering from the engine. `filters` lives on
+  `mediaListControls`, and the heading and the sidebar genre tree are both
+  built from it, so the row handler announces `genres-selected` and the
+  component listens. Without that the list filtered while the heading went
+  on naming the unfiltered page, and a reload "fixed" it because the server
+  composes the heading from the URL. Games has no such bug: it routes
+  `add-genre` through `component.addGenre`.
+  `core/tests/test_static_bundles.py` pins the event name from both ends,
+  minified copies included.
+- **The document title is not free on either path.** `games/home.html` used
+  `seo_title`, which only the SEO landing views set, so the tab title never
+  moved. It now falls back to `filter_title`, as music's always did. Nothing
+  set `document.title` during client-side filtering in either section;
+  `base.html` publishes one `window.documentTitleSuffix` and both filter
+  components rebuild `heading + suffix`.
+- **The script cache-busters are hand-maintained.** `filter-component.min.js`
+  and `media-list-controls.min.js` are loaded with `?v=N` literals. A JS fix
+  that does not bump them reaches nobody who has visited before.
+
 ## Caching
 
 Three aliases, defined by `core/cache_config.py` (which `settings.py` calls):

@@ -5,7 +5,9 @@ suite also asserts that an anonymous visitor gets 404 rather than 403.
 """
 
 from django.core.cache import cache
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from core import constants as core_constants
@@ -1342,3 +1344,152 @@ class ArtistDetailListenButtonTests(MusicDataMixin, TestCase):
         albums = list(response.context["artist"].albums.all())
         self.assertTrue(albums)
         self.assertTrue(albums[0].is_listened_by_user)
+
+
+class MusicQueryBudgetTests(MusicDataMixin, TestCase):
+    """The music pages cost a constant number of queries, not one per row.
+
+    `/music/` cost 443 queries and `/music/artists/` 305, measured against
+    the 1000-album corpus: 418 identical `music_musicgenre` selects from
+    walking the genre tree through `children`, and 200 `music_album` plus 100
+    `music_musicbrainzalbumdata` selects from `artist.albums.first` and the
+    thumbnail behind it.
+
+    An absolute count drifts for unrelated reasons, so each page is pinned
+    two ways: the offending SQL shape must be absent, and adding rows must
+    not add queries. The second is what actually catches a reintroduction -
+    `games/tests/test_main_views.py` pins its own N+1s the same way.
+    """
+
+    # The `children.all()` lookup, which nothing else emits.
+    GENRE_WALK = 'music_musicgenre"."parent_id" ='
+    # `artist.albums.first` against an unprefetched reverse M2M.
+    ALBUM_PER_ARTIST = 'music_album_artists"."artist_id" ='
+    # A lazy load of the OneToOne `Album.thumbnail` reads: a lookup by pk.
+    # Joined through `select_related` the row arrives with the album instead.
+    # Matching the table alone would also catch the legitimate cover-art
+    # COUNT(*) in `compute_album_data_version`.
+    METADATA_LAZY_LOAD = 'music_musicbrainzalbumdata"."id" ='
+
+    def _capture(self, url):
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        return [query["sql"] for query in captured.captured_queries]
+
+    def _matching(self, sqls, *fragments):
+        return [sql for sql in sqls if all(f in sql for f in fragments)]
+
+    def _add_genres(self, count):
+        """A three-level tree, so a per-node walk has somewhere to recurse.
+
+        Names carry the current row count so a second call does not collide
+        with the first on the unique slug.
+        """
+        start = models.MusicGenre.objects.count()
+        roots = []
+        for index in range(start, start + count):
+            root = models.MusicGenre.objects.create(name=f"Root Genre {index:03d}")
+            child = models.MusicGenre.objects.create(
+                name=f"Style {index:03d}", parent=root
+            )
+            models.MusicGenre.objects.create(name=f"Substyle {index:03d}", parent=child)
+            self.revolver.genres.add(child)
+            roots.append(root)
+        return roots
+
+    def _add_artists(self, count):
+        start = models.Artist.objects.count()
+        for index in range(start, start + count):
+            artist = models.Artist.objects.create(
+                name=f"Budget Act {index:03d}", slug=f"budget-act-{index:03d}"
+            )
+            for album_index in range(2):
+                album = models.Album.objects.create(
+                    name=f"Budget LP {index:03d}-{album_index}",
+                    rank=500 + index * 2 + album_index,
+                )
+                album.artists.set([artist])
+                models.MusicBrainzAlbumData.objects.create(
+                    album=album,
+                    is_primary=True,
+                    cover_art_release_mbid=f"rel-{index}-{album_index}",
+                    cover_art_image_id=f"img-{index}-{album_index}",
+                    cover_art_stored=True,
+                )
+                album.primary_musicbrainz_album_data = (
+                    models.MusicBrainzAlbumData.objects.filter(album=album).first()
+                )
+                album.save(update_fields=["primary_musicbrainz_album_data"])
+
+    def test_the_rankings_page_never_walks_the_genre_tree_per_node(self):
+        self._add_genres(10)
+        clear_all_caches()
+        sqls = self._capture(reverse("music:home"))
+        self.assertEqual(self._matching(sqls, self.GENRE_WALK), [])
+
+    def test_the_rankings_page_cost_does_not_grow_with_the_genre_count(self):
+        self._add_genres(3)
+        clear_all_caches()
+        before = self._capture(reverse("music:home"))
+        self._add_genres(30)
+        # Without this the second render reads the cached filter options and
+        # the invariant would pass whatever the tree did.
+        clear_all_caches()
+        after = self._capture(reverse("music:home"))
+        self.assertEqual(
+            len(self._matching(after, 'FROM "music_musicgenre"')),
+            len(self._matching(before, 'FROM "music_musicgenre"')),
+        )
+
+    def test_a_genre_filter_never_walks_the_tree_per_node(self):
+        root = self._add_genres(5)[0]
+        clear_all_caches()
+        sqls = self._capture(f"{reverse('music:home')}?genres={root.id}")
+        self.assertEqual(self._matching(sqls, self.GENRE_WALK), [])
+
+    def test_the_artist_list_fetches_its_albums_in_one_query(self):
+        self._add_artists(12)
+        clear_all_caches()
+        sqls = self._capture(reverse("music:artist-list"))
+        self.assertEqual(self._matching(sqls, self.ALBUM_PER_ARTIST, "LIMIT 1"), [])
+        self.assertEqual(self._matching(sqls, self.METADATA_LAZY_LOAD), [])
+
+    def test_the_artist_list_cost_does_not_grow_with_the_artist_count(self):
+        self._add_artists(3)
+        clear_all_caches()
+        before = self._capture(reverse("music:artist-list"))
+        self._add_artists(30)
+        clear_all_caches()
+        after = self._capture(reverse("music:artist-list"))
+        self.assertEqual(len(after), len(before))
+
+    def test_the_artist_append_partial_has_the_same_budget(self):
+        # Load More renders the same row partial, so it needs the same
+        # prefetch - and it is a separate view call that could miss it.
+        self._add_artists(12)
+        clear_all_caches()
+        sqls = self._capture(f"{reverse('music:artist-list')}?append=true&page=1")
+        self.assertEqual(self._matching(sqls, self.ALBUM_PER_ARTIST, "LIMIT 1"), [])
+        self.assertEqual(self._matching(sqls, self.METADATA_LAZY_LOAD), [])
+
+    def test_the_bulk_payload_neither_walks_genres_nor_loads_covers_lazily(self):
+        self._add_genres(5)
+        self._add_artists(5)
+        clear_all_caches()
+        sqls = self._capture(reverse("music-api:album-all-data"))
+        self.assertEqual(self._matching(sqls, self.GENRE_WALK), [])
+        self.assertEqual(self._matching(sqls, self.METADATA_LAZY_LOAD), [])
+
+    def test_the_pages_stay_inside_a_loose_ceiling(self):
+        self._add_genres(10)
+        self._add_artists(12)
+        clear_all_caches()
+        for url, ceiling in (
+            (reverse("music:home"), 40),
+            (reverse("music:artist-list"), 20),
+            (reverse("music-api:album-all-data"), 20),
+        ):
+            with self.subTest(url=url):
+                clear_all_caches()
+                self.assertLessEqual(len(self._capture(url)), ceiling)

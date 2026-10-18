@@ -420,3 +420,78 @@ class ListenStatusFacetTests(MusicDataMixin, TestCase):
             entry["year"] for entry in response.context["year_counts"] if entry["count"]
         }
         self.assertEqual(years, {1966, 1979})
+
+
+class GenreDescendantMapTests(MusicDataMixin, TestCase):
+    """The shared descendant map replaced a walk through `children`.
+
+    The walk cost one query per genre visited - 418 of them on a `/music/`
+    render. These pin that threading the map through changed none of the
+    answers, which is the only thing that made the swap safe.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.electronic = models.MusicGenre.objects.create(name="Electronic")
+        self.ambient = models.MusicGenre.objects.create(
+            name="Ambient", parent=self.electronic
+        )
+        self.dark_ambient = models.MusicGenre.objects.create(
+            name="Dark Ambient", parent=self.ambient
+        )
+        self.kid_a.genres.set([self.electronic, self.ambient])
+        self.rust.genres.set([self.dark_ambient])
+
+    def test_passing_the_map_gives_the_same_counts_as_building_one(self):
+        built = views._genre_counts(models.Album.objects.all())
+        shared = views._genre_counts(
+            models.Album.objects.all(), views._genre_descendant_map()
+        )
+        self.assertEqual(built, shared)
+        # And the key order, since the counts are serialized into the page
+        # for the shared tree to read.
+        self.assertEqual(list(built), list(shared))
+
+    def test_passing_the_map_gives_the_same_tree_as_building_one(self):
+        self.assertEqual(
+            views.genre_tree_options(),
+            views.genre_tree_options(views._genre_descendant_map()),
+        )
+
+    def test_the_map_agrees_with_the_per_instance_walk(self):
+        # `MusicGenre.get_descendant_ids` stays on the model for one-off use;
+        # it is the contract the map has to reproduce, ordering included.
+        descendants = views._genre_descendant_map()
+        for genre in models.MusicGenre.objects.all():
+            with self.subTest(genre=genre.name):
+                self.assertEqual(
+                    descendants[genre.id],
+                    genre.get_descendant_ids(include_self=False),
+                )
+
+    def test_expansion_reaches_a_grandchild_style(self):
+        # Selecting Electronic has to mean Dark Ambient too, two levels down.
+        self.assertEqual(
+            views.expand_genre_ids([self.electronic.id]),
+            sorted([self.electronic.id, self.ambient.id, self.dark_ambient.id]),
+        )
+
+    def test_expansion_keeps_an_id_that_is_not_a_genre(self):
+        # It used to survive because the seed is the selection itself and the
+        # table lookup simply found nothing. An unknown id has to go on
+        # matching no album rather than being dropped, which would silently
+        # widen the filter to everything.
+        self.assertEqual(views.expand_genre_ids([999999]), [999999])
+        self.assertEqual(
+            views.expand_genre_ids([self.rock.id, 999999]),
+            sorted([self.rock.id, 999999]),
+        )
+
+    def test_expansion_matches_the_shared_map(self):
+        shared = views._genre_descendant_map()
+        for genre in models.MusicGenre.objects.all():
+            with self.subTest(genre=genre.name):
+                self.assertEqual(
+                    views.expand_genre_ids([genre.id]),
+                    views.expand_genre_ids([genre.id], shared),
+                )

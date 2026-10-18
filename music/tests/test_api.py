@@ -449,6 +449,36 @@ class AlbumAllDataAPITests(MusicAPITestMixin, TestCase):
         self.assertEqual(by_id[self.genre.id]["d"], [self.child_genre.id])
         self.assertEqual(by_id[self.child_genre.id]["p"], self.genre.id)
 
+    def test_a_grandchild_follows_its_parent_in_the_descendant_list(self):
+        """`"d"` is depth first and excludes the genre itself.
+
+        `AlbumFilterEngine._expandGenres` reads this list straight, so its
+        order and its exclude-self shape are the contract - they survived the
+        switch from walking `children` to one in-memory map, and this pins
+        that they keep surviving.
+        """
+        grandchild = models.MusicGenre.objects.create(
+            name="Dark Ambient", parent=self.child_genre
+        )
+        data = self.payload(self.url())
+        by_id = {entry["id"]: entry for entry in data["genres"]}
+        self.assertEqual(
+            by_id[self.genre.id]["d"], [self.child_genre.id, grandchild.id]
+        )
+        self.assertEqual(by_id[self.child_genre.id]["d"], [grandchild.id])
+        self.assertEqual(by_id[grandchild.id]["d"], [])
+
+    def test_the_descendants_match_the_per_instance_walk(self):
+        models.MusicGenre.objects.create(name="Dark Ambient", parent=self.child_genre)
+        data = self.payload(self.url())
+        by_id = {entry["id"]: entry for entry in data["genres"]}
+        for genre in models.MusicGenre.objects.all():
+            with self.subTest(genre=genre.name):
+                self.assertEqual(
+                    by_id[genre.id]["d"],
+                    genre.get_descendant_ids(include_self=False),
+                )
+
     def test_version_is_a_short_hash(self):
         data = self.payload(self.url())
         self.assertEqual(len(data["version"]), 12)

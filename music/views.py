@@ -29,6 +29,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
 from django.http import Http404, HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, render
+from django.utils.functional import cached_property
 from django.utils.text import slugify
 from django.views import View
 from django.views.generic import DetailView, ListView
@@ -36,6 +37,7 @@ from django.views.generic import DetailView, ListView
 from core import constants as core_constants
 from core.cache_helpers import get_year_bounds
 from core.mixins import HTMXPartialMixin, RobustPaginationMixin, StaffOnlyMixin
+from core.services import genre_tree
 from music import config, models
 from music.forms import MusicImportForm
 from music.services import caching, import_handler
@@ -271,7 +273,7 @@ def _reverse_order(field):
     return field.desc()
 
 
-def apply_album_filters(queryset, params, skip=(), user=None):
+def apply_album_filters(queryset, params, skip=(), user=None, descendants=None):
     """Apply the rankings page's filters to ``queryset``.
 
     ``skip`` leaves a dimension out, which is how the facet counts beside the
@@ -282,6 +284,10 @@ def apply_album_filters(queryset, params, skip=(), user=None):
 
     ``user`` is only needed for the ``listened`` dimension, and is last with
     a default so the three-positional call shape stays valid.
+
+    ``descendants`` is an already-built genre descendant map, passed in by a
+    caller that filters more than once per request so the table is walked
+    once rather than per call. Left out, the genre dimension builds its own.
     """
     q = params.get("q")
     if q and "q" not in skip:
@@ -308,7 +314,7 @@ def apply_album_filters(queryset, params, skip=(), user=None):
         genre_ids = _parse_id_list(params.get("genres"))
         if genre_ids:
             queryset = queryset.filter(
-                genres__id__in=expand_genre_ids(genre_ids)
+                genres__id__in=expand_genre_ids(genre_ids, descendants)
             ).distinct()
 
     if "listened" not in skip:
@@ -317,7 +323,18 @@ def apply_album_filters(queryset, params, skip=(), user=None):
     return queryset
 
 
-def expand_genre_ids(genre_ids):
+def _genre_descendant_map():
+    """``{genre_id: [descendant ids]}`` for the whole taxonomy, in one query.
+
+    Walking the tree through the ORM instead is what made this page cost 418
+    identical ``music_musicgenre`` selects: ``prefetch_related("children")``
+    populates the rows it fetched, but recursing into a *child* instance's
+    own ``children`` is unprefetched, so it is a query per node visited.
+    """
+    return genre_tree.fetch_descendants_by_id(models.MusicGenre.objects.all())
+
+
+def expand_genre_ids(genre_ids, descendants=None):
     """Add every descendant of the selected genres.
 
     Selecting "Rock" means rock, including the styles filed under it -
@@ -325,12 +342,16 @@ def expand_genre_ids(genre_ids):
     and what the count beside the row says. Matching the ids literally made
     a root match only the albums tagged with the bare root name, so picking
     Rock dropped almost everything the reader would call rock.
+
+    An id that is not a genre at all stays in the result, as it did when this
+    read the table directly: the seed is the selection itself, so an unknown
+    id simply matches no album rather than being silently dropped.
     """
+    if descendants is None:
+        descendants = _genre_descendant_map()
     expanded = set(genre_ids)
-    for genre in models.MusicGenre.objects.filter(id__in=genre_ids).prefetch_related(
-        "children"
-    ):
-        expanded.update(genre.get_descendant_ids(include_self=True))
+    for genre_id in genre_ids:
+        expanded.update(descendants.get(genre_id, ()))
     return sorted(expanded)
 
 
@@ -360,7 +381,7 @@ def _year_counts(queryset, min_year, max_year):
     ]
 
 
-def _genre_counts(queryset):
+def _genre_counts(queryset, descendants=None):
     """Albums per genre, counting each genre's whole subtree.
 
     The number beside a row has to be what selecting that row gives, and
@@ -368,20 +389,24 @@ def _genre_counts(queryset):
     in the browser (which is what the tree used to do) counts an album
     tagged both "Classical" and "Modern Classical" twice - the page said
     Classical had 2 albums when it had one.
+
+    ``descendants`` is the shared genre map; the key order it iterates in is
+    the manager's own, so the counts dict comes out ordered as it always was.
     """
+    if descendants is None:
+        descendants = _genre_descendant_map()
     pairs = list(queryset.exclude(genres__isnull=True).values_list("id", "genres__id"))
     albums_by_genre = defaultdict(set)
     for album_id, genre_id in pairs:
         albums_by_genre[genre_id].add(album_id)
 
     counts = {}
-    for genre in models.MusicGenre.objects.prefetch_related("children"):
-        subtree = genre.get_descendant_ids(include_self=True)
+    for genre_id, descendant_ids in descendants.items():
         albums = set()
-        for genre_id in subtree:
-            albums |= albums_by_genre.get(genre_id, set())
+        for subtree_id in (genre_id, *descendant_ids):
+            albums |= albums_by_genre.get(subtree_id, set())
         if albums:
-            counts[str(genre.id)] = len(albums)
+            counts[str(genre_id)] = len(albums)
     return counts
 
 
@@ -421,14 +446,14 @@ def _cached_genre_options():
     return options
 
 
-def genre_tree_options():
+def genre_tree_options(descendants=None):
     """The genre options shaped for ``core/includes/_genre_filter.html``.
 
     The shared tree reads ``level``, ``parent_id`` and a count; it prefers
     ``filtered_count`` when one has been pushed in, and falls back to
     ``item_count`` - the equivalent of games' ``game_count``.
     """
-    subtree_counts = _genre_counts(models.Album.objects.all())
+    subtree_counts = _genre_counts(models.Album.objects.all(), descendants)
     return [
         {
             "id": option["id"],
@@ -547,6 +572,16 @@ class AlbumHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
             or self.request.GET.get("partial") == "true"
         )
 
+    @cached_property
+    def _descendants(self):
+        """The genre descendant map, built once for the whole request.
+
+        ``get_queryset`` runs before ``get_context_data`` under ``ListView``
+        and both filter, so this cannot be a local in either one: the three
+        consumers between them would each walk the table.
+        """
+        return _genre_descendant_map()
+
     def get_template_names(self):
         """Serve the right fragment for HTMX, the full page otherwise."""
         if self.request.GET.get("append") == "true":
@@ -566,6 +601,7 @@ class AlbumHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
             .with_listen_status(self.request.user),
             self.request.GET,
             user=self.request.user,
+            descendants=self._descendants,
         )
         return _apply_sort(
             qs,
@@ -590,7 +626,7 @@ class AlbumHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
         genres = _cached_genre_options()
         context["genres"] = genres
         context["genre_groups"] = group_genre_options(genres)
-        context["genre_tree"] = genre_tree_options()
+        context["genre_tree"] = genre_tree_options(self._descendants)
         context["genre_category_icons"] = music_filters.MUSIC_GENRE_CATEGORY_ICONS
         context["default_genre_icon"] = music_filters.DEFAULT_GENRE_ICON
         context.update(_cached_hero_stats())
@@ -604,15 +640,24 @@ class AlbumHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
         base = models.Album.objects.with_listen_status(self.request.user)
         context["year_counts"] = _year_counts(
             apply_album_filters(
-                base, self.request.GET, skip=("year",), user=self.request.user
+                base,
+                self.request.GET,
+                skip=("year",),
+                user=self.request.user,
+                descendants=self._descendants,
             ),
             min_year,
             max_year,
         )
         context["genre_counts"] = _genre_counts(
             apply_album_filters(
-                base, self.request.GET, skip=("genres",), user=self.request.user
-            )
+                base,
+                self.request.GET,
+                skip=("genres",),
+                user=self.request.user,
+                descendants=self._descendants,
+            ),
+            self._descendants,
         )
 
         # Where the filtered albums sit across the whole ranking, binned
@@ -945,7 +990,20 @@ class ArtistListView(StaffOnlyMixin, RobustPaginationMixin, HTMXPartialMixin, Li
             )
             .filter(albums_count__gt=0)
             .select_related("parent")
-            .prefetch_related("subsidiaries")
+            .prefetch_related(
+                "subsidiaries",
+                # Both row halves read `artist.albums.first` for the top
+                # album, and the desktop one then reads its `thumbnail`,
+                # which goes through `primary_musicbrainz_album_data`. Left
+                # unprefetched that is two album selects and one metadata
+                # select per artist - 300 queries for a 100-row page.
+                Prefetch(
+                    "albums",
+                    queryset=models.Album.objects.select_related(
+                        "primary_musicbrainz_album_data"
+                    ).order_by("rank"),
+                ),
+            )
         )
 
         q = self.request.GET.get("q")

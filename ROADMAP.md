@@ -98,36 +98,50 @@ Not worth doing as parity:
     `--worker-class gthread` for concurrency without a third heap, then
     Standard-2X (1 GB, $50/mo vs Basic's $7).
 
-13. **Every music page costs 300-450 queries.** Measured 2026-10-18 against
-    the real 1000-album database, logged in as staff:
+13. ~~**Every music page costs 300-450 queries.**~~ Fixed 2026-10-18.
+    Measured before and after against the real 1000-album database, logged
+    in as staff:
 
-    | page | queries |
-    |---|---|
-    | `/music/` | 442 |
-    | `/music/?genres=109` | 439 |
-    | `/music/artists/` | 306 |
-    | `/` (games home, for scale) | 112 |
-    | `/music/lists/` | 8 |
+    | page | before | after |
+    |---|---|---|
+    | `/music/` | 443 | 26 |
+    | `/music/?genres=<root>` | 439 | 16 |
+    | `/music/artists/` | 305 | 6 |
+    | `/music/artists/?append=true` | 205 | 6 |
+    | `/api/music/all/` | **1218** | 10 |
 
-    Two separate N+1s, each one shape repeated:
+    Both N+1s were as the roadmap described, with two corrections worth
+    keeping:
 
-    - `/music/` issues **418 identical `music_musicgenre` selects**. The
-      genre tree walks `children` per genre rather than fetching the table
-      once; `MusicGenre` is ~200 rows and the whole tree would fit in one
-      query. Note the sidebar's genre options are cached, so this is the
-      cost of a *cache miss* - which every filter change is, since the
-      counts are per-filter.
-    - `/music/artists/` issues **200 `music_album` selects plus 100
-      `music_musicbrainzalbumdata`** for 100 rows: `artist.albums.first` in
-      `_artist_row.html` is unprefetched, and the top album's artwork then
-      looks up its metadata row one artist at a time.
+    - **The 418 genre selects were not a cache-miss cost.** Only the flat
+      `.values()` list is cached; `genre_tree_options()` and the facet
+      `_genre_counts()` were never cached, so every request paid all 418.
+    - **`/api/music/all/` was worse than any page and went unrecorded**: the
+      album loop read `album.thumbnail` while the queryset prefetched only
+      `artists` and `genres`, so all 1000 albums lazy-loaded their
+      MusicBrainz row. One `select_related`.
 
-    Neither is a correctness bug and both are fast individually on a warm
-    database - but it is 400 round trips to Postgres per page view on a dyno
-    with two workers, and it is the obvious reason `/music/` is the slowest
-    page on the site. `Prefetch` on the artist list and a single-query genre
-    tree are the fixes; `games/views.py` already does the equivalent for
-    platforms and genres.
+    `core/services/genre_tree.py` now answers the whole hierarchy in one
+    query, and `ArtistListView` carries a `Prefetch`. Output is
+    byte-identical across eleven pages, so no `SCHEMA_VERSION` bump. See
+    DEVLOG.md and AGENTS.md, "Music query budgets".
+
+    Left for whoever is next in these files:
+
+    - **`games/api/views.py:753-801` still has its own hand-rolled copy** of
+      the descendant walk, and `games/models.py:411-445` caches descendant
+      ids per genre with signal invalidation to work around the per-instance
+      walk being its hot path. Both can now fold onto the shared helper.
+      `books/api/views.py:489` has the identical N+1, unfixed - books is
+      deprioritized.
+    - **`/` (games home) issues 75 `games_wikipediagenre` selects** of its
+      own, inside its 112. Smaller than music's was and not measured
+      further.
+    - **Mobile Load More on `/music/artists/` appends into the wrong
+      container.** `_artist_list_results.html:89` targets
+      `#artist-list-container`, the desktop `<tbody>`, rather than
+      `#artist-list-container-mobile`, so it never extends the mobile card
+      list. Pre-existing and unrelated to query counts.
 
 ## Housekeeping
 
@@ -154,6 +168,17 @@ Not worth doing as parity:
 
 ## Known divergences, deliberate for now
 
+- **The games rankings heading ignores the search query, on both sides.**
+  `_build_filter_title` and `_buildDynamicTitle` both leave `?q=` out, so
+  searching does not change the heading; music names the query instead
+  ("Albums matching ..."). The two games halves agree with each other, which
+  is the property that matters, so this is a wording difference rather than
+  a bug. Align only if the album phrasing is judged better.
+- **The album page's sub-heading counts are corpus-wide, not filtered.**
+  "The top 1,000 most recommended albums across 54 critic lists" stays put
+  while the heading above it narrows to a genre. Games has no filtered
+  equivalent either, and the filtered count is already shown on the results
+  line.
 - **The browser's `facets()` still emits only the years it has albums
   for**, while the server now sends every year in the corpus range. The
   shared year grid normalises a short update against the structure it was

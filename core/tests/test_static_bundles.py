@@ -94,3 +94,66 @@ class BundleContentsTests(SimpleTestCase):
                         f"reorder the bundle sources so the base class "
                         f"comes first.",
                     )
+
+
+class RowGenreClickReachesTheHeadingTests(SimpleTestCase):
+    """A genre clicked in an album row has to reach the Alpine controls.
+
+    `album-client-filtering.js` answers `add-genre` by writing the hidden
+    `genres` select and re-rendering from the engine, which filters the list
+    and pushes the URL. But `filters` lives on `mediaListControls`, and both
+    the heading and the sidebar's genre tree are built from it - so setting
+    the select alone filtered the list while the heading went on naming the
+    unfiltered page. Reloading appeared to fix it, because the server then
+    composed the heading from the URL.
+
+    The two halves are in different files and neither reads the other, so
+    this checks the event name still joins them up. A rename on one side
+    only would leave the list filtering with a stale heading again, and
+    nothing else in the suite would notice.
+    """
+
+    EVENT = "genres-selected"
+
+    def _source(self, relative_path):
+        path = Path(settings.BASE_DIR) / relative_path
+        self.assertTrue(path.exists(), f"missing {relative_path}")
+        return path.read_text()
+
+    def test_the_row_handler_announces_the_selection(self):
+        source = self._source("music/static/music/js/album-client-filtering.js")
+        handler = source.split("'add-genre'", 1)
+        self.assertEqual(len(handler), 2, "no add-genre handler to check")
+        self.assertIn(
+            self.EVENT,
+            handler[1][:900],
+            "the add-genre handler no longer announces the selection, so the "
+            "heading and the genre tree will not follow it",
+        )
+
+    def test_the_controls_component_listens_and_updates_the_title(self):
+        source = self._source("core/static/core/js/media-list-controls.js")
+        self.assertIn(f"'{self.EVENT}'", source)
+        listener = source.split("_genresSelectedListener = ", 1)
+        self.assertEqual(len(listener), 2, "no listener to check")
+        body = listener[1][:500]
+        self.assertIn("filters.genres", body)
+        self.assertIn("_applyTitle", body)
+
+    def test_the_listener_is_registered_and_torn_down(self):
+        source = self._source("core/static/core/js/media-list-controls.js")
+        self.assertIn(f"addEventListener(\n                '{self.EVENT}'", source)
+        self.assertIn(
+            f"removeEventListener(\n                    '{self.EVENT}'", source
+        )
+
+    def test_the_minified_copies_carry_it(self):
+        # The page loads the minified files, so a stale `.min.js` would ship
+        # the bug with the fix sitting in the source beside it.
+        for path in (
+            "core/static/core/js/media-list-controls.min.js",
+            "music/static/music/js/album-client-filtering.min.js",
+            "music/static/music/js/music-client-side-filtering.bundle.min.js",
+        ):
+            with self.subTest(path=path):
+                self.assertIn(self.EVENT, self._source(path))

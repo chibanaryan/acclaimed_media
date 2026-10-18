@@ -1153,6 +1153,13 @@ document.addEventListener('alpine:init', () => {
             if (mobileTitle) {
                 mobileTitle.textContent = dynamicTitle;
             }
+            // The server composes the document title from this same heading,
+            // so it has to follow the heading here as well - otherwise the
+            // tab, a bookmark and a shared link all keep whatever the filter
+            // state was at page load.
+            if (window.documentTitleSuffix) {
+                document.title = dynamicTitle + window.documentTitleSuffix;
+            }
 
             if (state.facets) {
                 const yearCountsArray = [];

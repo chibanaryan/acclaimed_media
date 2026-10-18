@@ -555,6 +555,12 @@ function initAlbumFiltering() {
         const genreId = event.detail && event.detail.genreId;
         if (!select || !genreId) return;
         select.value = String(genreId);
+        // `filters` lives on the Alpine controls component, and the heading
+        // and the sidebar's genre tree are both built from it. Setting the
+        // select alone left them showing the previous selection.
+        window.dispatchEvent(new CustomEvent('genres-selected', {
+            detail: { genres: [String(genreId)] },
+        }));
 
         if (!ready) {
             select.dispatchEvent(new Event('change', { bubbles: true }));

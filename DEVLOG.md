@@ -1,5 +1,53 @@
 # Developer Log
 
+## 2026-10-18 (music query counts; the filtered heading)
+
+- **`/music/` cost 443 queries and now costs 26**, `/music/artists/` 305 and
+  now 6, `/api/music/all/` **1218** and now 10. Two one-shape N+1s:
+  `prefetch_related("children")` populates only the rows it fetched, so
+  recursing into a child's own `children` is a query per genre - and
+  `_genre_counts` walked all 223 twice per render. On the artist list
+  `artist.albums.first` was unprefetched and the row then read `thumbnail`
+  through an unjoined OneToOne
+- **The roadmap had two things wrong here.** The 418 genre selects were not
+  "the cost of a cache miss" - only the flat `.values()` list is cached, so
+  every request paid all of them. And `/api/music/all/` had the worst N+1 on
+  the site, unrecorded: 1000 albums each lazy-loading a MusicBrainz row from
+  a missing `select_related`
+- **`core/services/genre_tree.py` answers the hierarchy in one query**, with
+  a cycle guard the games copy lacks. It returns the map in *arrival* order
+  rather than the post-order the walk resolves nodes in, because callers
+  iterate it to build the counts dict the page serializes. Deliberately
+  uncached: games caches per genre because its hot path wants a few ids;
+  music's wants the whole table, where 200 cache round trips lose to one
+  SELECT of 200 rows
+- **The artist list took a `Prefetch`, not games' bulk-fetch-and-attach**, so
+  no template changed and both row halves, the HTMX partial and
+  `?append=true` were fixed at once. The mobile card block runs
+  `albums.first` a second time, which is why it was 200 selects for 100 rows
+- **Output is byte-identical across eleven pages** once CSRF tokens and
+  toolbar timings are masked, so no `SCHEMA_VERSION` bump. The budgets are
+  pinned by SQL shape plus "adding rows adds no queries" rather than by a
+  number, and every new test fails against the previous code
+- **A genre clicked in an album row filtered the list but not the heading.**
+  `album-client-filtering.js` answers `add-genre` by writing the hidden
+  select and re-rendering from the engine; `filters` lives on
+  `mediaListControls`, which owns the heading *and* the sidebar genre tree.
+  So Rock albums showed under "Most Acclaimed Albums of All Time" with
+  nothing selected in the sidebar, and a reload appeared to fix it because
+  the server composes the heading from the URL. The row now announces
+  `genres-selected` and the component listens. Games was never affected - it
+  routes the event through `component.addGenre`
+- **The games tab title never tracked filters at all.** `<title>` came from
+  `seo_title`, which only the SEO landing views set, and nothing in the
+  codebase set `document.title` during client-side filtering in either
+  section. `base.html` now publishes one `window.documentTitleSuffix` and
+  both filter components rebuild `heading + suffix`. Search stays out of the
+  games heading on both sides, as before
+- **Both script cache-busters bumped** (`filter-component.min.js` to `?v=8`,
+  `media-list-controls.min.js` to `?v=3`). They are hand-maintained, so a JS
+  fix that forgets them reaches nobody who has visited before
+
 ## 2026-10-18 (music genre icons)
 
 - **Every music root genre has its own glyph.** Three were doubled up -

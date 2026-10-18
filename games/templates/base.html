@@ -14,6 +14,10 @@
     {# Content Security Policy is set via CSPMiddleware with nonce support #}
     {# Note: 'unsafe-eval' is required for Alpine.js x-data expressions #}
     <title>{% block title %}Acclaimed Video Games{% endblock %}</title>
+    {# The site suffix a filterable page appends to its heading to rebuild #}
+    {# the document title client-side. One definition, so the server and #}
+    {# the two filter components cannot drift on the separator. #}
+    <script nonce="{{ csp_nonce }}">window.documentTitleSuffix = ' | Acclaimed Video Games';</script>
 
     {# CRITICAL: Early preload for LCP images - must be before other resources #}
     {% block early_preload %}{% endblock %}

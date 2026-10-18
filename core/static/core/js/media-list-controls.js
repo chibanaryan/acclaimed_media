@@ -109,11 +109,29 @@ function mediaListControlsData(config) {
         defaultSort: settings.sort || 'rank',
         _commitTimer: null,
         _popstateListener: null,
+        _genresSelectedListener: null,
 
         init() {
             this._applyViewMode();
             this._popstateListener = () => this._syncFromUrl();
             window.addEventListener('popstate', this._popstateListener);
+
+            // A genre clicked in a row filters the list without going
+            // through this component - the row's handler writes the form
+            // and re-renders directly, which the engine reads. This
+            // component still owns `filters`, which the heading and the
+            // sidebar's genre tree are both built from, so without being
+            // told it kept showing the previous selection: the list
+            // filtered, the heading did not, and a refresh "fixed" it
+            // because the server then rendered the heading from the URL.
+            this._genresSelectedListener = event => {
+                const ids = (event.detail && event.detail.genres) || [];
+                this.filters.genres = ids.map(String);
+                this._applyTitle();
+            };
+            window.addEventListener(
+                'genres-selected', this._genresSelectedListener
+            );
 
             // The year grid and the genre tree read their counts from
             // events, not from the page, so the counts the server just
@@ -140,6 +158,12 @@ function mediaListControlsData(config) {
             if (this._popstateListener) {
                 window.removeEventListener('popstate', this._popstateListener);
                 this._popstateListener = null;
+            }
+            if (this._genresSelectedListener) {
+                window.removeEventListener(
+                    'genres-selected', this._genresSelectedListener
+                );
+                this._genresSelectedListener = null;
             }
             if (this._swapListener) {
                 document.body.removeEventListener('htmx:afterSwap', this._swapListener);
@@ -391,6 +415,13 @@ function mediaListControlsData(config) {
                 const el = document.getElementById(id);
                 if (el) el.textContent = title;
             });
+            // The document title is composed from the same heading
+            // server-side, so it has to follow the heading here too -
+            // otherwise the tab, a bookmark and a shared link all keep
+            // whatever the filter state was when the page was loaded.
+            if (window.documentTitleSuffix) {
+                document.title = title + window.documentTitleSuffix;
+            }
         },
 
         /**

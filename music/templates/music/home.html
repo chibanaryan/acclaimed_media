@@ -15,7 +15,7 @@
 {# The shared filter sidebar components and the page's own filter state, both #}
 {# loaded before Alpine core as the games rankings page loads its own. #}
 <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/filter-subcomponents.min.js" %}?v=1');</script>
-<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/media-list-controls.min.js" %}?v=2');</script>
+<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/media-list-controls.min.js" %}?v=3');</script>
 {# Keeps the tracking id Sets current after an HTMX button swap. Loaded here #}
 {# rather than in the filtering bundle because the album detail page swaps #}
 {# the same button and loads no bundle at all. #}

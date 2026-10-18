@@ -16,6 +16,7 @@ from rest_framework.views import APIView, Response
 
 from core import constants as core_constants
 from core.permissions import IsStaffOrHide
+from core.services import genre_tree
 
 from .. import models
 from ..services.data_version import compute_album_data_version
@@ -72,7 +73,8 @@ class AlbumAllDataView(StaffReadAPIMixin, APIView):
 
     def get(self, request):
         albums = (
-            models.Album.objects.prefetch_related("artists", "genres")
+            models.Album.objects.select_related("primary_musicbrainz_album_data")
+            .prefetch_related("artists", "genres")
             .with_list_count()
             .order_by("rank")
         )
@@ -127,16 +129,26 @@ class AlbumAllDataView(StaffReadAPIMixin, APIView):
                 }
             )
 
+        # One fetch for the table, one in-memory walk for the descendants.
+        # Recursing through `children` instead cost a query per genre, and
+        # `values()` keeps the manager's ordering, so "d" comes out exactly
+        # as it did - depth first, excluding the genre itself.
+        genre_rows = list(
+            models.MusicGenre.objects.values("id", "name", "slug", "parent_id", "level")
+        )
+        descendants = genre_tree.descendants_by_id(
+            (row["id"], row["parent_id"]) for row in genre_rows
+        )
         genres_data = [
             {
-                "id": genre.id,
-                "n": genre.name,
-                "s": genre.slug,
-                "p": genre.parent_id,
-                "l": genre.level,
-                "d": genre.get_descendant_ids(include_self=False),
+                "id": row["id"],
+                "n": row["name"],
+                "s": row["slug"],
+                "p": row["parent_id"],
+                "l": row["level"],
+                "d": descendants.get(row["id"], []),
             }
-            for genre in models.MusicGenre.objects.prefetch_related("children")
+            for row in genre_rows
         ]
 
         return Response(

@@ -4338,3 +4338,81 @@ class PlatformVirtualIdTests(TestCase):
         result = _expand_platform_virtual_ids(f"mfr-nintendo,{self.pc.id}", platforms)
         self.assertIn(self.nes.id, result)
         self.assertIn(self.pc.id, result)
+
+
+class HomePageDocumentTitleTest(TestCase):
+    """The browser tab title tracks the filter state.
+
+    It did not: `games/home.html` composed `<title>` from `seo_title`, which
+    only the SEO landing views set, so the rankings page kept the bare
+    "Acclaimed Video Games" however it was filtered - while the `<h1>` beside
+    it, built from the same `filter_title`, updated correctly. Filtering by a
+    genre therefore left the tab, a bookmark and a shared link all naming the
+    unfiltered page. The album page already used `filter_title` here.
+    """
+
+    def setUp(self):
+        clear_all_caches()
+        self.genre, _ = WikipediaGenre.objects.get_or_create(
+            name="Action", defaults={"slug": "action"}
+        )
+        self.platform = Platform.objects.create(name="NES", code="NES")
+        # The years have to span more than the window under test, or
+        # `_build_time_window` correctly calls a range that covers the whole
+        # corpus "All Time" and the test would be asserting the wrong thing.
+        for index, year in enumerate((1985, 1992, 1995, 2010)):
+            game = Game.objects.create(
+                name=f"Title Game {index}", rank=index + 1, year_of_release=year
+            )
+            game.wikipedia_genres.add(self.genre)
+            game.platforms.add(self.platform)
+
+    def _title(self, url):
+        html = self.client.get(url).content.decode()
+        match = re.search(r"<title>(.*?)</title>", html, re.S)
+        self.assertIsNotNone(match, f"no <title> for {url}")
+        return match.group(1).strip()
+
+    def test_a_genre_filter_reaches_the_document_title(self):
+        self.assertIn("Action", self._title(f"/?genres={self.genre.id}"))
+
+    def test_the_document_title_matches_the_heading(self):
+        # The two are composed from the same `filter_title`, so a divergence
+        # means one of them stopped reading it.
+        url = f"/?genres={self.genre.id}"
+        html = self.client.get(url).content.decode()
+        heading = re.search(
+            r'id="search-title"[^>]*>\s*(.*?)\s*</h1>', html, re.S
+        ).group(1)
+        self.assertTrue(self._title(url).startswith(heading))
+
+    def test_a_year_range_reaches_the_document_title(self):
+        self.assertIn("1990s", self._title("/?start=1990&end=1999"))
+
+    def test_the_genre_property_link_from_a_game_page_names_the_genre(self):
+        # The link a game detail page's genre badge points at - the report
+        # that turned this up.
+        game = Game.objects.first()
+        title = self._title(f"/?genres={self.genre.id}&highlight={game.id}")
+        self.assertIn("Action", title)
+
+    def test_an_seo_landing_page_still_prefers_its_own_title(self):
+        # `seo_title` has to keep winning where it is set, or the landing
+        # pages lose their hand-built titles.
+        clear_all_caches()
+        self.assertIn(
+            "Most Acclaimed Action Games of All Time", self._title("/games/action/")
+        )
+
+    def test_every_page_keeps_the_site_suffix(self):
+        for url in ("/", f"/?genres={self.genre.id}", "/?start=1990&end=1999"):
+            with self.subTest(url=url):
+                clear_all_caches()
+                self.assertTrue(self._title(url).endswith("| Acclaimed Video Games"))
+
+    def test_the_client_side_suffix_is_published_for_the_filter_components(self):
+        # Both filter components rebuild the title as `heading + suffix` when
+        # filtering happens in the browser, so the suffix has to be on the
+        # page for them to read.
+        html = self.client.get("/").content.decode()
+        self.assertIn("window.documentTitleSuffix = ' | Acclaimed Video Games';", html)
