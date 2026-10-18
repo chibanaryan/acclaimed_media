@@ -1,5 +1,21 @@
 # Developer Log
 
+## 2026-10-18 (music genre icons)
+
+- **Every music root genre has its own glyph.** Three were doubled up -
+  `guitar-electric` for Rock and Metal, `guitar-acoustic` for Blues and Folk,
+  and R&B sitting on `DEFAULT_GENRE_ICON` itself, so a name that fell out of
+  the map was indistinguishable from one still in it. Metal took `skull`,
+  Blues `piano`, Country `violin` (its `guitar-pick` rendered as a solid
+  blob), Funk `music-clef-bass`, Hip Hop `boombox` and R&B the freed
+  `microphone-variant`. `test_every_root_gets_its_own_glyph` pins both
+  rules: no duplicate, and none equal to the fallback
+- **Glyph names mislead at row size.** `record-player` was the obvious pick
+  for Hip Hop and is unusable: at the 18px a filter row gives it, it and
+  `cassette` collapse into a featureless horizontal slab. `boombox` survives
+  because its two speaker circles stay open. Candidates have to be rendered
+  from the rebuilt subset font and looked at, not chosen from the name
+
 ## 2026-10-18 (web dyno memory)
 
 - **The dyno is back inside its 512 MB quota.** It had been running at

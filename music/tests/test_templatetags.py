@@ -99,7 +99,7 @@ class MusicGenreIconTests(TestCase):
         )
 
     def test_a_string_genre_name_is_accepted(self):
-        self.assertEqual(music_filters.music_genre_icon("Metal"), "mdi-guitar-electric")
+        self.assertEqual(music_filters.music_genre_icon("Metal"), "mdi-skull")
         self.assertEqual(
             music_filters.music_genre_icon("Unknown"),
             music_filters.DEFAULT_GENRE_ICON,
@@ -109,6 +109,19 @@ class MusicGenreIconTests(TestCase):
         self.assertEqual(
             music_filters.music_genre_icon(None), music_filters.DEFAULT_GENRE_ICON
         )
+
+    def test_every_root_gets_its_own_glyph(self):
+        """Two roots sharing an icon makes the column decoration, not data.
+
+        Rock and Metal both carried mdi-guitar-electric, and Blues and Folk
+        both mdi-guitar-acoustic. The fallback is held out too: R&B was
+        mapped to it, so a genre that had dropped out of the map looked
+        exactly like one that had not.
+        """
+        icons = list(music_filters.MUSIC_GENRE_CATEGORY_ICONS.values())
+        duplicated = sorted({icon for icon in icons if icons.count(icon) > 1})
+        self.assertEqual(duplicated, [])
+        self.assertNotIn(music_filters.DEFAULT_GENRE_ICON, icons)
 
     def test_every_mapped_icon_is_declared_in_the_font_subset(self):
         """Every genre icon must have a codepoint, or it renders as a box.
