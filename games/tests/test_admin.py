@@ -5,6 +5,7 @@ from django.test import Client, RequestFactory, TestCase
 
 from core.models import User
 from games import admin, models
+from music import models as music_models
 
 
 class GameAdminTests(TestCase):
@@ -798,3 +799,150 @@ class AdditionalAdminCoverageTests(TestCase):
             user_admin.want_to_play_count(annotated_user),
             annotated_user._want_to_play_count,
         )
+
+
+class UserAdminAlbumTrackingTests(TestCase):
+    """The album tracking counts and summaries on the User admin.
+
+    These mirror the game ones; what is worth pinning is that the counts are
+    scalar subqueries, so two users' album rows cannot cross-multiply, and
+    that an album row orphaned by a reimport still renders.
+    """
+
+    def setUp(self):
+        self.site = AdminSite()
+        self.request = RequestFactory().get("/admin/")
+        self.user = User.objects.create_user(
+            username="album-admin",
+            email="album-admin@example.com",
+            password="pass",
+            is_staff=True,
+            is_superuser=True,
+        )
+        self.request.user = self.user
+        self.admin = admin.UserAdmin(User, self.site)
+        self.album = music_models.Album.objects.create(
+            name="Pet Sounds", rank=1, slug="pet-sounds", wikidata_id="Q212863"
+        )
+        self.other = music_models.Album.objects.create(
+            name="London Calling", rank=2, slug="london-calling", wikidata_id="Q19003"
+        )
+
+    def _annotated(self):
+        return self.admin.get_queryset(self.request).get(pk=self.user.pk)
+
+    def test_counts_are_zero_with_nothing_tracked(self):
+        annotated = self._annotated()
+
+        self.assertEqual(self.admin.listened_albums_count(annotated), 0)
+        self.assertEqual(self.admin.want_to_listen_count(annotated), 0)
+
+    def test_counts_reflect_the_tracked_albums(self):
+        music_models.ListenedAlbum.objects.create(
+            user=self.user, album=self.album, wikidata_id="Q212863"
+        )
+        music_models.WantToListenAlbum.objects.create(
+            user=self.user, album=self.other, wikidata_id="Q19003"
+        )
+
+        annotated = self._annotated()
+
+        self.assertEqual(self.admin.listened_albums_count(annotated), 1)
+        self.assertEqual(self.admin.want_to_listen_count(annotated), 1)
+
+    def test_a_count_does_not_multiply_across_the_other_relations(self):
+        # Two listened albums and two want-to-listen rows: joined rather than
+        # subqueried, each count would come back as four.
+        for album in (self.album, self.other):
+            music_models.ListenedAlbum.objects.create(
+                user=self.user, album=album, wikidata_id=album.wikidata_id
+            )
+        third = music_models.Album.objects.create(
+            name="Revolver", rank=3, slug="revolver", wikidata_id="Q163182"
+        )
+        fourth = music_models.Album.objects.create(
+            name="Kid A", rank=4, slug="kid-a", wikidata_id="Q105261"
+        )
+        for album in (third, fourth):
+            music_models.WantToListenAlbum.objects.create(
+                user=self.user, album=album, wikidata_id=album.wikidata_id
+            )
+        game = models.Game.objects.create(
+            name="Joined Game", rank=1, igdb_id=4242, year_of_release=2020
+        )
+        models.PlayedGame.objects.create(user=self.user, game=game, igdb_id=4242)
+
+        annotated = self._annotated()
+
+        self.assertEqual(self.admin.listened_albums_count(annotated), 2)
+        self.assertEqual(self.admin.want_to_listen_count(annotated), 2)
+        self.assertEqual(self.admin.played_games_count(annotated), 1)
+        self.assertEqual(self.admin.want_to_play_count(annotated), 0)
+
+    def test_another_users_rows_are_not_counted(self):
+        stranger = User.objects.create_user(username="stranger", password="pw")
+        music_models.ListenedAlbum.objects.create(
+            user=stranger, album=self.album, wikidata_id="Q212863"
+        )
+
+        self.assertEqual(self.admin.listened_albums_count(self._annotated()), 0)
+
+    def test_summaries_are_empty_with_nothing_tracked(self):
+        self.assertEqual(self.admin.listened_albums_list(self.user), "None")
+        self.assertEqual(self.admin.want_to_listen_list(self.user), "None")
+
+    def test_summaries_name_the_albums(self):
+        music_models.ListenedAlbum.objects.create(
+            user=self.user, album=self.album, wikidata_id="Q212863"
+        )
+        music_models.WantToListenAlbum.objects.create(
+            user=self.user, album=self.other, wikidata_id="Q19003"
+        )
+
+        listened = self.admin.listened_albums_list(self.user)
+        wanted = self.admin.want_to_listen_list(self.user)
+
+        self.assertIn("Pet Sounds", listened)
+        self.assertIn("1</strong> total", listened)
+        self.assertIn("London Calling", wanted)
+
+    def test_a_row_orphaned_by_a_reimport_falls_back_to_its_wikidata_id(self):
+        music_models.ListenedAlbum.objects.create(
+            user=self.user, album=None, wikidata_id="Q212863"
+        )
+
+        self.assertIn("(wikidata Q212863)", self.admin.listened_albums_list(self.user))
+
+    def test_the_change_page_renders_the_album_tracking_section(self):
+        music_models.ListenedAlbum.objects.create(
+            user=self.user, album=self.album, wikidata_id="Q212863"
+        )
+        client = Client()
+        client.force_login(self.user)
+
+        response = client.get(f"/admin/core/user/{self.user.pk}/change/")
+
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn("Album Tracking", content)
+        self.assertIn("Pet Sounds", content)
+        # Read-only summaries, not editable formsets.
+        self.assertNotIn("listenedalbum_set-TOTAL_FORMS", content)
+
+    def test_the_changelist_shows_and_sorts_by_the_album_columns(self):
+        music_models.ListenedAlbum.objects.create(
+            user=self.user, album=self.album, wikidata_id="Q212863"
+        )
+        client = Client()
+        client.force_login(self.user)
+
+        response = client.get("/admin/core/user/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn("Listened", content)
+        self.assertIn("Want to Listen", content)
+
+        # The columns are sortable because they name their annotation.
+        listened_column = self.admin.list_display.index("listened_albums_count") + 1
+        sorted_response = client.get(f"/admin/core/user/?o={listened_column}")
+        self.assertEqual(sorted_response.status_code, 200)

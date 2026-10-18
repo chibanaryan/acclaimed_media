@@ -1,11 +1,14 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from django.db.models import Count
+from django.db.models import Count, IntegerField, OuterRef, Subquery
+from django.db.models.functions import Coalesce
 from django.forms import ModelForm
 from django.http import HttpRequest
 from django.utils.html import format_html, format_html_join
 
 from core.models import User
+from music import models as music_models
+
 from . import models
 
 
@@ -525,6 +528,28 @@ class EmailAddressInline(admin.TabularInline):
         return False
 
 
+def _tracking_count(model):
+    """A scalar count of one user's rows in `model`, for annotating UserAdmin.
+
+    A ``Count("relation")`` per tracking model would LEFT JOIN each one onto
+    the same queryset, and multi-valued joins multiply: a user with 822
+    listened albums and 178 want-to-listen rows makes 146k intermediate rows
+    before ``distinct=True`` collapses them again. One correlated subquery
+    per count stays one row per user.
+    """
+    return Coalesce(
+        Subquery(
+            model.objects.filter(user=OuterRef("pk"))
+            .order_by()
+            .values("user")
+            .annotate(total=Count("pk"))
+            .values("total")[:1],
+            output_field=IntegerField(),
+        ),
+        0,
+    )
+
+
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     """Admin interface for custom User model with subscription fields."""
@@ -537,6 +562,8 @@ class UserAdmin(BaseUserAdmin):
         "email_verified_display",
         "played_games_count",
         "want_to_play_count",
+        "listened_albums_count",
+        "want_to_listen_count",
         "date_joined",
     ]
     list_filter = [
@@ -574,6 +601,15 @@ class UserAdmin(BaseUserAdmin):
                 ),
             },
         ),
+        (
+            "Album Tracking",
+            {
+                "fields": (
+                    "listened_albums_list",
+                    "want_to_listen_list",
+                ),
+            },
+        ),
     )
 
     readonly_fields = [
@@ -581,13 +617,17 @@ class UserAdmin(BaseUserAdmin):
         "date_subscribed",
         "played_games_list",
         "want_to_play_list",
+        "listened_albums_list",
+        "want_to_listen_list",
     ]
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         return qs.annotate(
-            _played_games_count=Count("played_games", distinct=True),
-            _want_to_play_count=Count("want_to_play_games", distinct=True),
+            _played_games_count=_tracking_count(models.PlayedGame),
+            _want_to_play_count=_tracking_count(models.WantToPlayGame),
+            _listened_albums_count=_tracking_count(music_models.ListenedAlbum),
+            _want_to_listen_count=_tracking_count(music_models.WantToListenAlbum),
         )
 
     @admin.display(description="Email Verified", boolean=True)
@@ -605,22 +645,53 @@ class UserAdmin(BaseUserAdmin):
         """Show count of games marked as want to play."""
         return obj._want_to_play_count
 
+    @admin.display(description="Listened", ordering="_listened_albums_count")
+    def listened_albums_count(self, obj):
+        """Show count of albums marked as listened."""
+        return obj._listened_albums_count
+
+    @admin.display(description="Want to Listen", ordering="_want_to_listen_count")
+    def want_to_listen_count(self, obj):
+        """Show count of albums marked as want to listen."""
+        return obj._want_to_listen_count
+
     # Cap the read-only lists so the change page stays small for power users.
     _TRACKING_LIST_CAP = 100
 
-    def _tracking_summary(self, queryset):
-        """Render a read-only, capped list of tracked games (no form fields)."""
+    def _tracking_summary(
+        self,
+        queryset,
+        item_field="game",
+        external_field="igdb_id",
+        external_label="igdb",
+    ):
+        """Render a read-only, capped list of tracked items (no form fields).
+
+        ``item_field`` is the FK to the media item and ``external_field``
+        the id it survives a reimport by - ``game``/``igdb_id`` for games,
+        ``album``/``wikidata_id`` for albums. The FK is nullable in both, so
+        a row orphaned by a reimport falls back to naming its external id,
+        labelled ``external_label``, rather than raising.
+        """
         total = queryset.count()
         if not total:
             return "None"
-        rows = queryset.select_related("game").order_by("-created")[
+        rows = queryset.select_related(item_field).order_by("-created")[
             : self._TRACKING_LIST_CAP
         ]
         items = format_html_join(
             "\n",
             "<li>{}</li>",
             (
-                (row.game.name if row.game else "(igdb {})".format(row.igdb_id),)
+                (
+                    (
+                        getattr(row, item_field).name
+                        if getattr(row, item_field)
+                        else "({} {})".format(
+                            external_label, getattr(row, external_field)
+                        )
+                    ),
+                )
                 for row in rows
             ),
         )
@@ -644,3 +715,17 @@ class UserAdmin(BaseUserAdmin):
     def want_to_play_list(self, obj):
         """Read-only summary of games the user wants to play."""
         return self._tracking_summary(obj.want_to_play_games.all())
+
+    @admin.display(description="Listened albums")
+    def listened_albums_list(self, obj):
+        """Read-only summary of albums the user marked as listened."""
+        return self._tracking_summary(
+            obj.listenedalbum_set.all(), "album", "wikidata_id", "wikidata"
+        )
+
+    @admin.display(description="Want to listen")
+    def want_to_listen_list(self, obj):
+        """Read-only summary of albums the user wants to listen to."""
+        return self._tracking_summary(
+            obj.wanttolistenalbum_set.all(), "album", "wikidata_id", "wikidata"
+        )

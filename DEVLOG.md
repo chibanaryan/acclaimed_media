@@ -16,6 +16,27 @@
   because its two speaker circles stay open. Candidates have to be rendered
   from the rebuilt subset font and looked at, not chosen from the name
 
+## 2026-10-18 (bulk listen marking; admin tracking columns)
+
+- **`mark_albums_listened` marks a collection in one go.** Importing listens
+  matched elsewhere - a RateYourMusic export - meant several hundred toggle
+  requests through the web. The command takes the Wikidata ids that matching
+  produced and does only the database half, with the toggle's semantics: one
+  transaction, `update_or_create` on the `unique_together`, want-to-listen
+  cleared for the same album, caches dropped on commit. Re-running is
+  harmless, and an id already marked keeps its original `created` timestamp
+- **The matching deliberately stays outside it.** Deciding that an export's
+  "E·MO·TION" is our "Emotion" is a judgement call for whoever is looking at
+  both lists, not something to bury in a management command
+- **The User admin carries all four tracking counts**, with a read-only
+  capped list of each and the same orphan fallback the game lists have: a row
+  whose album a reimport removed names its Wikidata id rather than raising
+- **Those counts are correlated subqueries now.** Four `Count(..., distinct=True)`
+  annotations join four multi-valued relations onto one queryset and multiply:
+  822 listened albums and 178 want-to-listen rows made 146k intermediate rows
+  before `distinct` collapsed them again. One subquery each stays one row per
+  user
+
 ## 2026-10-18 (web dyno memory)
 
 - **The dyno is back inside its 512 MB quota.** It had been running at

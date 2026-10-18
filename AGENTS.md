@@ -412,8 +412,34 @@ server-side and the scope registry in `media-tracking.js` does client-side.
 
 Per-user cache keys cannot live in `CACHE_KEYS`, which is a flat tuple an
 import iterates. They are templates in `PER_USER_CACHE_KEY_TEMPLATES`, dropped
-by `caching.invalidate_listen_caches(user_id)` at the only two moments they
-can go stale: a toggle, and the reconnection pass after an import.
+by `caching.invalidate_listen_caches(user_id)` at the only three moments they
+can go stale: a toggle, the reconnection pass after an import, and the bulk
+command below.
+
+**Marking a collection in bulk**, for importing listens matched elsewhere
+(a RateYourMusic export, say) without several hundred web requests:
+
+```bash
+python manage.py mark_albums_listened --user <name> --ids Q212863,Q19003
+python manage.py mark_albums_listened --user <name> --ids-file ids.txt --dry-run
+```
+
+The matching stays outside the command. Deciding that an export's
+"E·MO·TION" is our "Emotion" is a judgement call for whoever is looking at
+both lists; the command takes the Wikidata ids that judgement produced and
+does only the database half, with the toggle's own semantics - one
+transaction, `update_or_create` on the `unique_together`, any
+want-to-listen row for the same album cleared, and the per-user caches
+dropped on commit. An id already marked is left alone, so a mark the user
+made themselves keeps its `created` timestamp, and ids are matched against
+every id an album carries rather than just the primary one.
+
+**The User admin shows all four tracking counts** (played, want to play,
+listened, want to listen) with a read-only capped list of each. The counts
+are correlated subqueries, not `Count("relation", distinct=True)`: four
+multi-valued joins on one queryset multiply, and a user with 822 listened
+albums and 178 want-to-listen rows produced 146k intermediate rows before
+`distinct` collapsed them again.
 
 ### Template Architecture
 
