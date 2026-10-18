@@ -21,6 +21,12 @@ class StaffUserTestMixin:
 
     def setUp(self):
         super().setUp()
+        # The sidebar's filter options and the per-user listened id sets are
+        # cached, and `conftest.py` only clears caches for pytest. Under
+        # `manage.py test` one test's cached genre tree was being served to
+        # the next, which is how a genre created in setUp went missing from
+        # the options it was supposed to appear in.
+        clear_all_caches()
         self.staff_user = User.objects.create_user(
             username="musicstaff", password="musicpass", is_staff=True
         )
