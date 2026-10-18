@@ -754,6 +754,15 @@ Three aliases, defined by `core/cache_config.py` (which `settings.py` calls):
   straight back out. The bodies are stored **deflated** - the rankings page is
   ~1.4 MB of HTML and there are ~50 cacheable URLs between the home page and
   the SEO landing pages, which uncompressed is 60-70 MB in every worker.
+  A cached page's **CSRF token cannot be cached with it**. It is masked from
+  the secret in one visitor's cookie, so replaying it hands the next visitor a
+  token their own cookie will not match - and a cache hit renders no template,
+  so nothing calls `get_token` and no cookie is set at all. `base.html`'s
+  contact form therefore 403'd for anyone whose first page was a cached one.
+  The mixin swaps the token for a NUL-delimited sentinel on the way in and
+  mints a fresh one per request on the way out, so the page stays cacheable
+  and the secret stays per-visitor. A page gaining a second independent token
+  would need more than the single `replace`.
 - **`ratelimit` is per-process too**, and holds the per-IP counters in
   `games.middleware`. It was carved out of `local` on 2026-10-18: page bodies
   and counters were culling each other out of one 500-entry LocMem, so a crawl

@@ -30,6 +30,14 @@
   had been sharing `local`'s 500 entries with whole rendered pages, so a
   crawl wide enough to matter culled out the counters meant to stop it. They
   have their own `ratelimit` alias
+- **The contact form works again from a cached page.** Its CSRF token was
+  being cached with the rest of the body, so a visitor served the cached home
+  page got a token minted from someone else's secret - and no cookie at all,
+  since a cache hit renders no template and so never calls `get_token`. Every
+  such submission 403'd, silently, for anyone whose first page was `/` or one
+  of the 48 SEO landing pages. The token is now swapped for a sentinel on the
+  way into the cache and minted per request on the way out. Pre-existing, and
+  found while verifying the deploy
 - Sentry now samples tracing at 0.1 with profiling off - not a memory fix
   (the SDK's ~30 MB per worker is the import, not the sampling) but it was
   tracing and profiling every single request. `AlbumCoverView` also stopped

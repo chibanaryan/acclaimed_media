@@ -4,6 +4,7 @@ Tests for main site views (Django + HTMX + Alpine.js).
 Comprehensive test coverage for all user-facing views.
 """
 
+import re
 import zlib
 from unittest import mock
 
@@ -12,7 +13,7 @@ from django.contrib.sites.models import Site
 from django.core.cache import caches
 from django.db import connection
 from django.http import HttpResponse, StreamingHttpResponse
-from django.test import TestCase
+from django.test import Client, TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
@@ -345,6 +346,39 @@ class HomePageViewTest(TestCase):
         )
         self.assertEqual(response["X-Cache-Hit"], "1")
         self.assertNotEqual(response["Content-Type"], "application/json")
+
+    def test_the_contact_form_works_from_a_cached_home_page(self):
+        """A visitor whose first page is the cached home page can still post.
+
+        The home page carries `base.html`'s contact form. Its CSRF token used
+        to be cached with the rest of the body, so a later visitor got a token
+        minted from someone else's secret and - since a cache hit renders no
+        template - no cookie at all. Every such submission 403'd.
+        """
+        warm = Client(enforce_csrf_checks=True)
+        warm.get(reverse("home"), secure=True)  # populate the cache
+
+        visitor = Client(enforce_csrf_checks=True)
+        page = visitor.get(reverse("home"), secure=True)
+        self.assertIn("csrftoken", page.cookies)
+        token = re.search(
+            r'name="csrfmiddlewaretoken" value="([^"]+)"', page.content.decode()
+        ).group(1)
+
+        response = visitor.post(
+            reverse("contact"),
+            {
+                "name": "Test Visitor",
+                "email": "visitor@example.com",
+                "category": "general",
+                "message": "Hello from a cached page",
+                "csrfmiddlewaretoken": token,
+            },
+            secure=True,
+            HTTP_REFERER="https://testserver/",
+        )
+        self.assertNotEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 302)
 
     def test_home_page_legacy_cache_payload_is_evicted(self):
         cache_key = f"home_page:{config.CACHE_VERSION}:default"

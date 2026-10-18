@@ -1,11 +1,14 @@
 """Reusable view mixins for the multi-media platform."""
 
+import re
 import zlib
 
+from django.conf import settings
 from django.contrib.auth.mixins import UserPassesTestMixin
 from django.core.cache import caches
 from django.core.paginator import EmptyPage, Paginator
 from django.http import Http404, HttpResponse
+from django.middleware.csrf import get_token
 
 
 class RobustPaginationMixin:
@@ -65,6 +68,19 @@ class AnonymousResponseCacheMixin:
 
     page_cache_timeout = None
     page_cache_alias = "local"
+
+    # A render's CSRF token cannot be cached with the rest of the page: it is
+    # masked from the secret in *that* visitor's cookie, so replaying it hands
+    # every later visitor a token their own cookie will not match - and the
+    # cache hit does not render a template, so nothing calls `get_token` and
+    # no cookie is set at all. The contact form in `base.html` therefore 403'd
+    # for anyone whose first page was a cached one. The token is swapped for a
+    # sentinel on the way in and re-minted per request on the way out, which
+    # keeps the page cacheable and the secret per-visitor. NUL bytes cannot
+    # occur in the rendered HTML, so the sentinel cannot collide with it.
+    CSRF_TOKEN_SENTINEL = b"\x00csrf-token\x00"
+    CSRF_INPUT_RE = re.compile(rb'name="csrfmiddlewaretoken" value="([^"]+)"')
+
     CACHE_HEADER_SKIP = {
         "content-length",
         "content-type",
@@ -84,10 +100,36 @@ class AnonymousResponseCacheMixin:
             headers[name] = value
         return headers
 
+    @classmethod
+    def _stash_csrf_token(cls, content):
+        """Swap this render's CSRF token for the sentinel, if it has one."""
+        match = cls.CSRF_INPUT_RE.search(content)
+        if match is None:
+            return content
+        # Replace the value itself, not the input tag, so the copy in
+        # `base.html`'s `hx-headers` is caught by the same pass.
+        return content.replace(match.group(1), cls.CSRF_TOKEN_SENTINEL)
+
+    @classmethod
+    def _restore_csrf_token(cls, request, content):
+        """Mint a token for this request in place of the sentinel.
+
+        `get_token` marks the cookie for update, so `CsrfViewMiddleware`
+        sets it on the way out - whether the visitor arrived with one or not.
+        """
+        if cls.CSRF_TOKEN_SENTINEL not in content:
+            return content
+        return content.replace(cls.CSRF_TOKEN_SENTINEL, get_token(request).encode())
+
     @staticmethod
     def _serialize_cookies(response):
         cookies = {}
         for name, morsel in response.cookies.items():
+            if name == settings.CSRF_COOKIE_NAME:
+                # Never replay one visitor's CSRF secret to another. Nothing
+                # puts it here today - `CsrfViewMiddleware` runs after this -
+                # but a middleware reorder should not become a shared secret.
+                continue
             max_age = morsel["max-age"] or None
             if max_age is not None:
                 try:
@@ -150,7 +192,9 @@ class AnonymousResponseCacheMixin:
         cached_payload = cache.get(cache_key)
         if cached_payload is not None:
             if isinstance(cached_payload, dict) and "body" in cached_payload:
-                content = zlib.decompress(cached_payload["body"])
+                content = self._restore_csrf_token(
+                    request, zlib.decompress(cached_payload["body"])
+                )
                 status = cached_payload.get("status", 200)
                 content_type = cached_payload.get("content_type")
                 response = HttpResponse(
@@ -177,7 +221,7 @@ class AnonymousResponseCacheMixin:
                 {
                     # Level 1: the saving over level 6 is a few percent on
                     # HTML this repetitive, and this runs in the request.
-                    "body": zlib.compress(response.content, 1),
+                    "body": zlib.compress(self._stash_csrf_token(response.content), 1),
                     "status": response.status_code,
                     "content_type": response.get("Content-Type"),
                     "headers": self._serialize_headers(response),
