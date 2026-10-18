@@ -36,7 +36,7 @@ from core.cache_helpers import get_year_bounds
 from core.mixins import HTMXPartialMixin, RobustPaginationMixin, StaffOnlyMixin
 from music import config, models
 from music.forms import MusicImportForm
-from music.services import import_handler
+from music.services import caching, import_handler
 from core.services import ranking, titles
 from games.models import SiteMetadata
 from music.templatetags import music_filters
@@ -1184,4 +1184,4 @@ def _metadata_gaps():
 
 def _invalidate_music_caches():
     """Drop the cached filter options and counts after a data change."""
-    cache.delete_many(list(config.CACHE_KEYS))
+    caching.invalidate_music_caches()

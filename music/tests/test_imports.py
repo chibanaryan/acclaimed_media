@@ -14,6 +14,11 @@ from django.test import TestCase
 from core import constants as core_constants
 from music import models
 from music.services import import_handler
+from django.core.cache import cache
+from django.urls import reverse
+from games.models import SiteMetadata
+from music import config
+from music.tests.test_views import StaffUserTestMixin
 
 FIXTURE_DIR = Path(settings.BASE_DIR) / "acclaimedgames" / "test_input_files" / "music"
 
@@ -550,3 +555,51 @@ def _read_fixture_rows(filename):
     """Read a release TSV into a list of column lists."""
     with (FIXTURE_DIR / filename).open(encoding="utf-8-sig") as handle:
         return [line.rstrip("\r\n").split("\t") for line in handle if line.strip()]
+
+
+class ImportInvalidatesCachesTests(StaffUserTestMixin, TestCase):
+    """An import has to drop the counts it just made wrong.
+
+    Only the import *page* used to invalidate, so a command-line import left
+    the rankings heading reading "The top 500 most recommended albums across
+    54 critic lists" for up to 24 hours after the release grew to 1000.
+    """
+
+    def _import_release(self):
+        with (
+            (FIXTURE_DIR / "ListData.txt").open(encoding="utf-8-sig") as lists_file,
+            (FIXTURE_DIR / "WebRankings.txt").open(encoding="utf-8-sig") as albums_file,
+            (FIXTURE_DIR / "ListPositions.txt").open(
+                encoding="utf-8-sig"
+            ) as positions_file,
+        ):
+            return import_handler.import_batch(lists_file, albums_file, positions_file)
+
+    def test_the_import_drops_every_cached_key(self):
+        for key in config.CACHE_KEYS:
+            cache.set(key, "stale", 600)
+        self._import_release()
+        for key in config.CACHE_KEYS:
+            with self.subTest(key=key):
+                self.assertIsNone(cache.get(key))
+
+    def test_the_heading_counts_are_right_straight_after_an_import(self):
+        # The symptom, end to end: cache the old counts, import a bigger
+        # release, and the page must not still be describing the old one.
+        self.client.get(reverse("music:home"))
+        self._import_release()
+        response = self.client.get(reverse("music:home"))
+        self.assertEqual(response.context["album_count"], models.Album.objects.count())
+        self.assertEqual(
+            response.context["list_count"], models.MusicList.objects.count()
+        )
+        self.assertEqual(
+            response.context["publication_count"],
+            models.MusicPublication.objects.count(),
+        )
+
+    def test_the_import_stamps_the_update_time(self):
+        self._import_release()
+        self.assertIsNotNone(
+            SiteMetadata.get_instance(config.SITE_METADATA_KEY).last_full_update
+        )

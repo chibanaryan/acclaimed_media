@@ -28,6 +28,7 @@ from core import constants as core_constants
 from core.services.ranking import update_year_decade_ranks
 from games.models import SiteMetadata
 from music import config, models
+from music.services.caching import invalidate_music_caches
 
 logger = logging.getLogger(__name__)
 
@@ -415,5 +416,10 @@ def import_batch(
         # Stamp when the rankings were last replaced, which the album
         # rankings heading shows the way the games home page shows its own.
         SiteMetadata.stamp_update(config.SITE_METADATA_KEY)
+
+    # Outside the transaction: the cached counts describe rows that no longer
+    # exist, and dropping them inside would race a reader that repopulates
+    # the cache from the pre-commit state.
+    invalidate_music_caches()
 
     return (True, " | ".join(messages))
