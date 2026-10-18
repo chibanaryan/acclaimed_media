@@ -24,7 +24,7 @@ playtime, series).
 Not worth doing as parity:
 
 - **Artist detail has no related-acts panel** where developer detail has a
-  subsidiary filter. 0 of 616 artists in this corpus have sub-acts, so the
+  subsidiary filter. 0 of 629 artists in this corpus have sub-acts, so the
   panel would always be empty. Revisit only if the metadata pass starts
   filling `Artist.parent`.
 - **Games' source-lists page still carries its own inline sort control**
@@ -98,6 +98,37 @@ Not worth doing as parity:
     `--worker-class gthread` for concurrency without a third heap, then
     Standard-2X (1 GB, $50/mo vs Basic's $7).
 
+13. **Every music page costs 300-450 queries.** Measured 2026-10-18 against
+    the real 1000-album database, logged in as staff:
+
+    | page | queries |
+    |---|---|
+    | `/music/` | 442 |
+    | `/music/?genres=109` | 439 |
+    | `/music/artists/` | 306 |
+    | `/` (games home, for scale) | 112 |
+    | `/music/lists/` | 8 |
+
+    Two separate N+1s, each one shape repeated:
+
+    - `/music/` issues **418 identical `music_musicgenre` selects**. The
+      genre tree walks `children` per genre rather than fetching the table
+      once; `MusicGenre` is ~200 rows and the whole tree would fit in one
+      query. Note the sidebar's genre options are cached, so this is the
+      cost of a *cache miss* - which every filter change is, since the
+      counts are per-filter.
+    - `/music/artists/` issues **200 `music_album` selects plus 100
+      `music_musicbrainzalbumdata`** for 100 rows: `artist.albums.first` in
+      `_artist_row.html` is unprefetched, and the top album's artwork then
+      looks up its metadata row one artist at a time.
+
+    Neither is a correctness bug and both are fast individually on a warm
+    database - but it is 400 round trips to Postgres per page view on a dyno
+    with two workers, and it is the obvious reason `/music/` is the slowest
+    page on the site. `Prefetch` on the artist list and a single-query genre
+    tree are the fixes; `games/views.py` already does the equivalent for
+    platforms and genres.
+
 ## Housekeeping
 
 12. **A POST to any `/music/` URL answers 403, not 404.** `CsrfViewMiddleware`
@@ -120,6 +151,16 @@ Not worth doing as parity:
     commit, on top of pytest. It has earned its keep - it caught a cache
     isolation bug pytest's conftest hid - but it is undocumented and roughly
     doubles commit time.
+
+## Known divergences, deliberate for now
+
+- **The browser's `facets()` still emits only the years it has albums
+  for**, while the server now sends every year in the corpus range. The
+  shared year grid normalises a short update against the structure it was
+  seeded with, so the grid is correct either way - but the two sides no
+  longer produce the same array for the same filter, which is exactly what
+  the parity check in AGENTS.md ("Music client-side filtering") exists to
+  catch. Worth aligning next time that file is open.
 
 ## Explicitly not doing
 
