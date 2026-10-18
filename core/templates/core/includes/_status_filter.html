@@ -1,0 +1,68 @@
+{# User-tracking status filter: a multi-select row of toggle buttons. #}
+{# #}
+{# Games carries this markup twice, verbatim, in its sidebar and its mobile #}
+{# sheet; this is one definition for both, with the options supplied rather #}
+{# than written in. Games can adopt it by passing status_param='played' and #}
+{# its own labels - the yes/want/no value triple is already shared. #}
+{# #}
+{# Props: #}
+{#   status_param - the filter's parameter and Alpine key ('listened') #}
+{#   status_label - the section heading ('Listen Status') #}
+{#   status_icon - the mdi class beside that heading #}
+{#   status_options - [{value, label, title, icon}], in display order #}
+{#   signed_out_hint - the title on the disabled buttons #}
+{#   mobile - truthy for the bottom-sheet sizing #}
+{# #}
+{# Contract: an enclosing Alpine component exposing filters, #}
+{# debouncedFilterUpdate(), toggleStatusValue(key, value) and #}
+{# resetStatus(key). core's mediaListControls provides all four. #}
+{# #}
+{# status_param is interpolated into Alpine expressions below. It comes from #}
+{# a literal at the call site and must never be fed from a request. #}
+{# Keep every template comment on a single line. #}
+<div class="{% if mobile %}space-y-2{% else %}mb-4 pb-3 border-b border-base-100{% endif %}">
+    <div class="flex items-center gap-2 mb-2">
+        <span class="mdi {{ status_icon }} text-xl text-accent"></span>
+        <span class="font-bold text-base">{{ status_label }}</span>
+        {% if user.is_authenticated %}
+        <button type="button"
+                class="btn btn-ghost btn-xs ml-auto text-base-content/70 hover:text-error"
+                @click="resetStatus('{{ status_param }}')"
+                title="Clear {{ status_label|lower }}"
+                x-cloak
+                x-show="(filters.{{ status_param }} || []).length > 0">
+            <span class="mdi mdi-close text-xs"></span>
+            <span>Clear</span>
+        </button>
+        {% endif %}
+    </div>
+    <div class="flex justify-center">
+        <div class="join" title="{{ status_label }} (multi-select)">
+            <button type="button"
+                    class="join-item btn {% if mobile %}btn-md{% else %}btn-sm{% endif %}"
+                    :class="{ 'btn-primary': !(filters.{{ status_param }} || []).length }"
+                    @click="filters.{{ status_param }} = []; debouncedFilterUpdate()">All</button>
+            {% for option in status_options %}
+            {% if user.is_authenticated %}
+            <button type="button"
+                    class="join-item btn {% if mobile %}btn-md{% else %}btn-sm{% endif %}"
+                    :class="{ 'btn-primary': (filters.{{ status_param }} || []).includes('{{ option.value }}') }"
+                    @click="toggleStatusValue('{{ status_param }}', '{{ option.value }}')"
+                    title="{{ option.title }}"
+                    aria-label="Filter by {{ option.title|lower }}">
+                <span class="mdi {{ option.icon }}" aria-hidden="true"></span>
+                <span>{{ option.label }}</span>
+            </button>
+            {% else %}
+            <button type="button"
+                    class="join-item btn {% if mobile %}btn-md{% else %}btn-sm{% endif %} opacity-40 cursor-not-allowed"
+                    title="{{ signed_out_hint }}"
+                    aria-label="{{ signed_out_hint }}">
+                <span class="mdi {{ option.icon }}" aria-hidden="true"></span>
+                <span>{{ option.label }}</span>
+            </button>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+</div>

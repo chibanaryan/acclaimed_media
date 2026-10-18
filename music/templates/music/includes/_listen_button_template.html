@@ -1,0 +1,6 @@
+{# The album listen-status button as an empty skeleton, for cloning. #}
+{# #}
+{# The same constants _listen_button.html passes, over the core clone twin. #}
+{# Rendered with no context at all, inside a <template> in music/home.html. #}
+{# Keep every template comment on a single line. #}
+{% include 'core/includes/_tracking_button_template.html' with tracking_scope='album' tracked_icon='mdi-album' tracked_icon_class='text-accent' wanted_icon='mdi-record-circle' wanted_icon_class='text-warning' untracked_icon='mdi-record-circle-outline' untracked_icon_class='text-base-content/30' tracked_label='Listened' wanted_label='Want to Listen' untracked_label='Untracked' %}

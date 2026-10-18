@@ -12,6 +12,35 @@
 {% extends 'core/includes/_base_media_row.html' %}
 {% load music_filters %}
 
+{# The listen-status column, filling the shared row's tracking hooks. It is #}
+{# 48px wide to match the games rows exactly, and the core row places it #}
+{# outside .media-row so the row's hover effect does not cover it. #}
+{# #}
+{# The container is emitted for an authenticated reader OR when there is no #}
+{# item - the second arm is the clone case, where no user is in context, and #}
+{# without it the <template> would carry no slot for the renderer to fill. #}
+{# Note Django binds `and` tighter than `or`, which is what makes that read. #}
+{% block tracking_button %}
+{% if not hide_tracking_button and user.is_authenticated or not item %}
+<div class="w-12 min-w-12 max-w-12 shrink-0 flex items-center justify-center" data-slot="tracking-column">
+    {% if item %}{% include 'music/includes/_listen_button.html' with album=item is_tracked=item.is_listened_by_user is_wanted=item.is_want_to_listen_by_user %}{% endif %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block mobile_tracking_button %}
+{% if not hide_tracking_button and user.is_authenticated or not item %}
+<div class="w-8 h-8 min-w-8 max-w-8 shrink-0 flex items-center justify-center" data-slot="tracking-column-mobile">
+    {% if item %}{% include 'music/includes/_listen_button.html' with album=item is_tracked=item.is_listened_by_user is_wanted=item.is_want_to_listen_by_user %}{% endif %}
+</div>
+{% endif %}
+{% endblock %}
+
+{# The mobile root needs a third grid column whenever that button is there. #}
+{# The clone always gets one (there is no item), and the renderer narrows it #}
+{# back to 'auto 1fr' when it drops the container, as games' renderer does. #}
+{% block mobile_grid_style %}style="grid-template-columns: {% if not hide_tracking_button and user.is_authenticated or not item %}auto {% endif %}auto 1fr;"{% endblock %}
+
 {# Sleeves are square and shown whole: `media-thumb-whole` swaps the shared #}
 {# row's portrait 90:128 box and object-fit:cover, which cropped the top and #}
 {# bottom off every cover. #}

@@ -1,9 +1,12 @@
 """Tests for the music models."""
 
+from django.contrib.auth.models import AnonymousUser
+from django.db import transaction
 from django.db.utils import IntegrityError
 from django.test import TestCase
 
 from core import constants as core_constants
+from core.models import User
 from music import models
 
 
@@ -551,3 +554,138 @@ class AlbumCoverUrlTests(TestCase):
                 [album.thumbnail for album in albums],
                 ["/music/cover/rel-1/img-1-250.jpg"],
             )
+
+
+class AlbumTrackingModelTests(TestCase):
+    """`ListenedAlbum` / `WantToListenAlbum`, and what survives a reimport."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="listener", password="pw")
+        self.album = models.Album.objects.create(
+            name="Doolittle", rank=1, slug="doolittle", wikidata_id="Q123"
+        )
+
+    def test_str_names_the_album(self):
+        row = models.ListenedAlbum.objects.create(
+            user=self.user, album=self.album, wikidata_id="Q123"
+        )
+        self.assertEqual(str(row), "listener listened to Doolittle")
+
+    def test_want_to_listen_str_names_the_album(self):
+        row = models.WantToListenAlbum.objects.create(
+            user=self.user, album=self.album, wikidata_id="Q123"
+        )
+        self.assertEqual(str(row), "listener wants to listen to Doolittle")
+
+    def test_str_falls_back_to_the_wikidata_id_when_orphaned(self):
+        # What an admin sees between an import and the reconnection pass.
+        for model_class, verb in (
+            (models.ListenedAlbum, "listened to"),
+            (models.WantToListenAlbum, "wants to listen to"),
+        ):
+            with self.subTest(model=model_class.__name__):
+                row = model_class.objects.create(
+                    user=self.user, album=None, wikidata_id="Q999"
+                )
+                self.assertEqual(str(row), f"listener {verb} Wikidata:Q999")
+
+    def test_a_user_cannot_track_one_album_twice(self):
+        for model_class in (models.ListenedAlbum, models.WantToListenAlbum):
+            with self.subTest(model=model_class.__name__):
+                model_class.objects.create(
+                    user=self.user, album=self.album, wikidata_id="Q123"
+                )
+                with self.assertRaises(IntegrityError):
+                    with transaction.atomic():
+                        model_class.objects.create(
+                            user=self.user, album=self.album, wikidata_id="Q123"
+                        )
+
+    def test_two_users_can_track_the_same_album(self):
+        other = User.objects.create_user(username="other", password="pw")
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=self.album, wikidata_id="Q123"
+        )
+        models.ListenedAlbum.objects.create(
+            user=other, album=self.album, wikidata_id="Q123"
+        )
+        self.assertEqual(models.ListenedAlbum.objects.count(), 2)
+
+    def test_deleting_the_album_orphans_the_row_rather_than_deleting_it(self):
+        # The whole reason the external id is stored: an import deletes every
+        # album, and the collection has to outlive that.
+        row = models.ListenedAlbum.objects.create(
+            user=self.user, album=self.album, wikidata_id="Q123"
+        )
+        self.album.delete()
+        row.refresh_from_db()
+        self.assertIsNone(row.album)
+        self.assertEqual(row.wikidata_id, "Q123")
+
+    def test_deleting_the_user_deletes_the_row(self):
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=self.album, wikidata_id="Q123"
+        )
+        self.user.delete()
+        self.assertEqual(models.ListenedAlbum.objects.count(), 0)
+
+
+class AlbumListenStatusAnnotationTests(TestCase):
+    """`AlbumQuerySet.with_listen_status`."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="listener", password="pw")
+        self.listened = models.Album.objects.create(
+            name="Doolittle", rank=1, slug="doolittle", wikidata_id="Q1"
+        )
+        self.wanted = models.Album.objects.create(
+            name="Surfer Rosa", rank=2, slug="surfer-rosa", wikidata_id="Q2"
+        )
+        self.untracked = models.Album.objects.create(
+            name="Bossanova", rank=3, slug="bossanova", wikidata_id="Q3"
+        )
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=self.listened, wikidata_id="Q1"
+        )
+        models.WantToListenAlbum.objects.create(
+            user=self.user, album=self.wanted, wikidata_id="Q2"
+        )
+
+    def _annotated(self):
+        return {
+            album.slug: album
+            for album in models.Album.objects.with_listen_status(self.user)
+        }
+
+    def test_it_annotates_both_flags(self):
+        albums = self._annotated()
+        self.assertTrue(albums["doolittle"].is_listened_by_user)
+        self.assertFalse(albums["doolittle"].is_want_to_listen_by_user)
+        self.assertTrue(albums["surfer-rosa"].is_want_to_listen_by_user)
+        self.assertFalse(albums["surfer-rosa"].is_listened_by_user)
+        self.assertFalse(albums["bossanova"].is_listened_by_user)
+        self.assertFalse(albums["bossanova"].is_want_to_listen_by_user)
+
+    def test_another_users_tracking_does_not_leak(self):
+        other = User.objects.create_user(username="other", password="pw")
+        albums = {
+            album.slug: album
+            for album in models.Album.objects.with_listen_status(other)
+        }
+        self.assertFalse(albums["doolittle"].is_listened_by_user)
+
+    def test_an_orphaned_row_does_not_annotate(self):
+        # No FK, nothing to join on - which is why the id sets filter these
+        # out too, rather than showing a row the page cannot mark.
+        models.ListenedAlbum.objects.filter(album=self.listened).update(album=None)
+        self.assertFalse(self._annotated()["doolittle"].is_listened_by_user)
+
+    def test_it_is_a_no_op_for_an_anonymous_user(self):
+        # The annotations are absent rather than False, so anything filtering
+        # on them has to guard the same way.
+        albums = models.Album.objects.with_listen_status(AnonymousUser())
+        self.assertFalse(hasattr(albums.first(), "is_listened_by_user"))
+
+    def test_it_is_a_no_op_for_no_user(self):
+        albums = models.Album.objects.with_listen_status(None)
+        self.assertFalse(hasattr(albums.first(), "is_listened_by_user"))

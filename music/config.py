@@ -35,8 +35,10 @@ DEFAULT_MIN_YEAR = 1950  # The supplied rankings start at 1955
 # =============================================================================
 
 # Every key carries CACHE_VERSION, so one bump invalidates the whole set, and
-# every key appears in CACHE_KEYS, which `music.views._invalidate_music_caches`
-# iterates - a new cached option cannot be added without being invalidated too.
+# every *global* key appears in CACHE_KEYS, which
+# `music.views._invalidate_music_caches` iterates - a new cached option cannot
+# be added without being invalidated too. Per-user values cannot be
+# enumerated that way; they live in PER_USER_CACHE_KEY_TEMPLATES below.
 CACHE_KEY_YEAR_STATS = f"{CACHE_VERSION}:album_year_stats"
 CACHE_KEY_ARTIST_OPTIONS = f"{CACHE_VERSION}:music_artist_options"
 CACHE_KEY_GENRE_OPTIONS = f"{CACHE_VERSION}:music_genre_options"
@@ -50,6 +52,61 @@ CACHE_KEYS = (
     CACHE_KEY_HERO_STATS,
     CACHE_KEY_TOTAL_ALBUM_COUNT,
 )
+
+# Per-user tracking id sets. These are *templates*, not keys: there is one key
+# per user, so they cannot go in CACHE_KEYS and an import cannot blanket
+# invalidate them. `music.services.caching.invalidate_listen_caches(user_id)`
+# drops them at the only two moments they can go stale - a toggle, and the
+# reconnection pass after an import. A new per-user cached value belongs in
+# this tuple for the same reason a new global one belongs in CACHE_KEYS.
+CACHE_KEY_LISTENED_ALBUMS = f"{CACHE_VERSION}:listened_albums_{{user_id}}"
+CACHE_KEY_WANT_TO_LISTEN_ALBUMS = f"{CACHE_VERSION}:want_to_listen_albums_{{user_id}}"
+
+PER_USER_CACHE_KEY_TEMPLATES = (
+    CACHE_KEY_LISTENED_ALBUMS,
+    CACHE_KEY_WANT_TO_LISTEN_ALBUMS,
+)
+
+CACHE_TIMEOUT_TRACKING = CACHE_TIMEOUT_5_MINUTES
+
+# =============================================================================
+# Listen Status
+# =============================================================================
+
+# The Listen Status control's options, in the order the sidebar shows them.
+#
+# Two vocabularies, as games has: `value` is the filter's (`?listened=yes`),
+# `status` is the toggle's (`?status=listened`, and what the button writes
+# into data-status). `?listened=yes` reads correctly in a URL and
+# data-status="listened" reads correctly on an element, so neither spelling
+# is forced to serve both. This table is the only place the two are mapped
+# server-side; `core/static/core/js/media-tracking.js` holds the client's.
+LISTEN_STATUS_OPTIONS = (
+    {
+        "value": "no",
+        "status": "none",
+        "label": "Untracked",
+        "title": "Untracked",
+        "icon": "mdi-record-circle-outline",
+    },
+    {
+        "value": "want",
+        "status": "want",
+        "label": "Want",
+        "title": "Want to Listen",
+        "icon": "mdi-record-circle",
+    },
+    {
+        "value": "yes",
+        "status": "listened",
+        "label": "Listened",
+        "title": "Listened",
+        "icon": "mdi-album",
+    },
+)
+
+LISTEN_FILTER_VALUES = tuple(option["value"] for option in LISTEN_STATUS_OPTIONS)
+LISTEN_TOGGLE_STATUSES = tuple(option["status"] for option in LISTEN_STATUS_OPTIONS)
 
 # =============================================================================
 # Import Settings

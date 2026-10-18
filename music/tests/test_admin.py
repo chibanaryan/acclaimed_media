@@ -262,3 +262,63 @@ class MetadataAdminTests(TestCase):
             with self.subTest(model=model.__name__):
                 url = reverse(f"admin:music_{model._meta.model_name}_changelist")
                 self.assertEqual(self.client.get(url).status_code, 200)
+
+
+class TrackingAdminTests(TestCase):
+    """The tracking admins, and how they show a row an import orphaned."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="listener", password="pw")
+        self.album = models.Album.objects.create(
+            name="Doolittle", rank=1, slug="doolittle", wikidata_id="Q123"
+        )
+
+    def test_a_connected_row_shows_the_album_name(self):
+        for model_class in (models.ListenedAlbum, models.WantToListenAlbum):
+            with self.subTest(model=model_class.__name__):
+                row = model_class.objects.create(
+                    user=self.user, album=self.album, wikidata_id="Q123"
+                )
+                admin_obj = site._registry[model_class]
+                self.assertEqual(admin_obj.album_name(row), "Doolittle")
+                self.assertEqual(admin_obj.link_status(row), "Connected")
+                row.delete()
+
+    def test_an_orphaned_row_shows_the_id_it_is_waiting_on(self):
+        # What an admin sees between an import and the reconnection pass -
+        # and the signal that the pass has not run.
+        for model_class in (models.ListenedAlbum, models.WantToListenAlbum):
+            with self.subTest(model=model_class.__name__):
+                row = model_class.objects.create(
+                    user=self.user, album=None, wikidata_id="Q999"
+                )
+                admin_obj = site._registry[model_class]
+                self.assertEqual(admin_obj.album_name(row), "(orphaned) Wikidata:Q999")
+                self.assertEqual(admin_obj.link_status(row), "Orphaned")
+                row.delete()
+
+    def test_the_changelists_load(self):
+        staff = User.objects.create_user(
+            username="admin", password="pw", is_staff=True, is_superuser=True
+        )
+        self.client.login(username="admin", password="pw")
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=self.album, wikidata_id="Q123"
+        )
+        models.WantToListenAlbum.objects.create(
+            user=staff, album=self.album, wikidata_id="Q123"
+        )
+
+        for model_class in (models.ListenedAlbum, models.WantToListenAlbum):
+            with self.subTest(model=model_class.__name__):
+                url = reverse(f"admin:music_{model_class._meta.model_name}_changelist")
+                self.assertEqual(self.client.get(url).status_code, 200)
+
+    def test_the_admins_search_by_user_and_album(self):
+        # So a support question about one person's collection is answerable.
+        for model_class in (models.ListenedAlbum, models.WantToListenAlbum):
+            with self.subTest(model=model_class.__name__):
+                fields = site._registry[model_class].search_fields
+                self.assertIn("user__username", fields)
+                self.assertIn("album__name", fields)
+                self.assertIn("wikidata_id", fields)

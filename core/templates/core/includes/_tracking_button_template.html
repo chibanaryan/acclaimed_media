@@ -1,0 +1,91 @@
+{# The tracking button as an empty skeleton, for a JS renderer to clone. #}
+{# #}
+{# The twin of _tracking_button.html: same structure, all three states #}
+{# present and hidden, every varying piece behind a data-slot the renderer #}
+{# writes. It is rendered with no item and no user, so nothing here may sit #}
+{# behind a condition on either - a slot inside {% if %} vanishes from the #}
+{# clone and the renderer silently has nowhere to write. #}
+{# #}
+{# Props: the icon, label and tip triples, plus tracking_scope. No item and #}
+{# no URLs: the renderer fills data-item-id, data-status and the three #}
+{# hx-post attributes per row, because they differ per item. #}
+{# #}
+{# The dropdown opens upward (bottom-full), the list-row position; the #}
+{# detail page renders the real partial at size='large' instead. #}
+{# Keep every template comment on a single line. #}
+<div class="tracking-button-wrapper relative"
+     x-data="{ open: false, zHigh: false }"
+     x-effect="if (open) { zHigh = true } else { setTimeout(() => zHigh = false, 100) }"
+     :class="{ 'z-[9999]': zHigh, 'z-10': !zHigh }"
+     @click.away="open = false"
+     @close-tracking-dropdowns.window="if ($event.detail !== $el) open = false"
+     data-slot="tracking-wrapper"
+     data-tracking-scope="{{ tracking_scope }}"
+     data-item-id=""
+     data-status="none"
+     data-size="row"
+     onclick="event.stopPropagation()">
+    <button @click="$dispatch('close-tracking-dropdowns', $el.closest('.tracking-button-wrapper')); open = !open"
+            class="tracking-button desktop:tooltip desktop:tooltip-top flex items-center justify-center shrink-0 cursor-pointer h-8 w-8 min-w-8"
+            data-tip=""
+            data-slot="tracking-button"
+            aria-label="{{ untracked_label }} - click to change"
+            aria-haspopup="true"
+            :aria-expanded="open">
+        <span class="flex items-center justify-center w-6 h-6 hidden" data-slot="tracked-icon">
+            <span class="mdi {{ tracked_icon }} text-2xl {{ tracked_icon_class }}"></span>
+        </span>
+        <span class="flex items-center justify-center w-6 h-6 hidden" data-slot="wanted-icon">
+            <span class="mdi {{ wanted_icon }} text-2xl {{ wanted_icon_class }}"></span>
+        </span>
+        <span class="flex items-center justify-center w-6 h-6" data-slot="untracked-icon">
+            <span class="mdi {{ untracked_icon }} text-2xl {{ untracked_icon_class }}"></span>
+        </span>
+    </button>
+    <ul x-show="open" x-cloak
+        x-transition:enter="transition ease-out duration-100"
+        x-transition:enter-start="opacity-0 scale-95"
+        x-transition:enter-end="opacity-100 scale-100"
+        x-transition:leave="transition ease-in duration-75"
+        x-transition:leave-start="opacity-100 scale-100"
+        x-transition:leave-end="opacity-0 scale-95"
+        class="absolute bottom-full mb-1 left-0 menu bg-base-100 rounded-box shadow-lg p-1 min-w-max"
+        data-slot="dropdown-menu">
+        <li data-slot="menu-tracked">
+            <button type="button"
+                class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
+                data-slot="btn-tracked"
+                hx-swap="outerHTML"
+                hx-target="closest .tracking-button-wrapper">
+                <span class="w-5 h-5 flex items-center justify-center">
+                    <span class="mdi {{ tracked_icon }} text-xl {{ tracked_icon_class }}"></span>
+                </span>
+                <span>{{ tracked_label }}</span>
+            </button>
+        </li>
+        <li data-slot="menu-wanted">
+            <button type="button"
+                class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
+                data-slot="btn-wanted"
+                hx-swap="outerHTML"
+                hx-target="closest .tracking-button-wrapper">
+                <span class="w-5 h-5 flex items-center justify-center">
+                    <span class="mdi {{ wanted_icon }} text-xl {{ wanted_icon_class }}"></span>
+                </span>
+                <span>{{ wanted_label }}</span>
+            </button>
+        </li>
+        <li data-slot="menu-untracked" class="hidden">
+            <button type="button"
+                class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
+                data-slot="btn-untracked"
+                hx-swap="outerHTML"
+                hx-target="closest .tracking-button-wrapper">
+                <span class="w-5 h-5 flex items-center justify-center">
+                    <span class="mdi {{ untracked_icon }} text-xl {{ untracked_icon_class }}"></span>
+                </span>
+                <span>{{ untracked_label }}</span>
+            </button>
+        </li>
+    </ul>
+</div>

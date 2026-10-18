@@ -12,12 +12,12 @@ from django.conf import settings
 from django.test import TestCase
 
 from core import constants as core_constants
-from music import models
+from core.models import User
+from music import config, models
 from music.services import import_handler
 from django.core.cache import cache
 from django.urls import reverse
 from games.models import SiteMetadata
-from music import config
 from music.tests.test_views import StaffUserTestMixin
 
 FIXTURE_DIR = Path(settings.BASE_DIR) / "acclaimedgames" / "test_input_files" / "music"
@@ -603,3 +603,94 @@ class ImportInvalidatesCachesTests(StaffUserTestMixin, TestCase):
         self.assertIsNotNone(
             SiteMetadata.get_instance(config.SITE_METADATA_KEY).last_full_update
         )
+
+
+class ImportReconnectsTrackingTests(TestCase):
+    """An import replaces every album, and must not empty a collection.
+
+    The rows survive the delete because their album FK nulls rather than
+    cascading, but they are useless until something points them at the new
+    rows - so the importer runs the reconnection pass itself.
+    """
+
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username="listener", password="pw")
+        import_handler.import_albums(StringIO(ALBUMS_TSV))
+
+    def test_a_reimport_re_adopts_a_tracked_album(self):
+        album = models.Album.objects.get(rank=1)
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=album, wikidata_id=album.wikidata_id
+        )
+
+        import_handler.import_albums(StringIO(ALBUMS_TSV))
+
+        row = models.ListenedAlbum.objects.get()
+        self.assertIsNotNone(row.album)
+        self.assertEqual(row.album.name, "Pet Sounds")
+        # A different row object than before: every album was replaced.
+        self.assertNotEqual(row.album_id, album.id)
+
+    def test_a_reimport_re_adopts_both_kinds_of_row(self):
+        listened = models.Album.objects.get(rank=1)
+        wanted = models.Album.objects.get(rank=2)
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=listened, wikidata_id=listened.wikidata_id
+        )
+        models.WantToListenAlbum.objects.create(
+            user=self.user, album=wanted, wikidata_id=wanted.wikidata_id
+        )
+
+        import_handler.import_albums(StringIO(ALBUMS_TSV))
+
+        self.assertEqual(models.ListenedAlbum.objects.get().album.name, "Pet Sounds")
+        self.assertEqual(models.WantToListenAlbum.objects.get().album.name, "Déjà Vu")
+
+    def test_a_reimport_normalizes_a_secondary_wikidata_id(self):
+        # Rust Never Sleeps carries two ids in the fixture; a row stored
+        # under the second has to find its way home and then be renamed to
+        # the primary, or the next import orphans it again.
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=None, wikidata_id="Q999999"
+        )
+
+        import_handler.import_albums(StringIO(ALBUMS_TSV))
+
+        row = models.ListenedAlbum.objects.get()
+        self.assertEqual(row.album.name, "Rust Never Sleeps")
+        self.assertEqual(row.wikidata_id, "Q1140313")
+
+    def test_a_reimport_merges_two_rows_that_now_point_at_one_album(self):
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=None, wikidata_id="Q1140313"
+        )
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=None, wikidata_id="Q999999"
+        )
+
+        import_handler.import_albums(StringIO(ALBUMS_TSV))
+
+        self.assertEqual(models.ListenedAlbum.objects.count(), 1)
+        self.assertEqual(
+            models.ListenedAlbum.objects.get().album.name, "Rust Never Sleeps"
+        )
+
+    def test_a_reimport_leaves_an_untracked_database_alone(self):
+        # The common case, and the reason the pass is behind an existence
+        # check rather than run unconditionally.
+        success, _ = import_handler.import_albums(StringIO(ALBUMS_TSV))
+        self.assertTrue(success)
+        self.assertEqual(models.ListenedAlbum.objects.count(), 0)
+
+    def test_a_reimport_drops_the_affected_users_caches(self):
+        album = models.Album.objects.get(rank=1)
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=album, wikidata_id=album.wikidata_id
+        )
+        key = config.CACHE_KEY_LISTENED_ALBUMS.format(user_id=self.user.id)
+        cache.set(key, [album.id], 300)
+
+        import_handler.import_albums(StringIO(ALBUMS_TSV))
+
+        self.assertIsNone(cache.get(key))

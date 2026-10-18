@@ -190,12 +190,21 @@ class AlbumClientSideFiltering {
                 .map(part => parseInt(part.trim(), 10))
                 .filter(Number.isFinite);
 
+        // The status values are words, not ids, so they get their own
+        // reader rather than going through `ids`.
+        const words = name =>
+            text(name)
+                .split(',')
+                .map(part => part.trim())
+                .filter(Boolean);
+
         return {
             q: text('q'),
             start: number('start'),
             end: number('end'),
             artists: ids('artists'),
             genres: ids('genres'),
+            listened: words('listened'),
             sort: text('sort') || 'rank',
             dir: text('dir') || 'asc'
         };
@@ -214,7 +223,8 @@ class AlbumClientSideFiltering {
             current.start !== undefined ||
             current.end !== undefined ||
             (current.artists && current.artists.length) ||
-            (current.genres && current.genres.length)
+            (current.genres && current.genres.length) ||
+            (current.listened && current.listened.length)
         );
     }
 
@@ -355,6 +365,9 @@ class AlbumClientSideFiltering {
         if (filters.end !== undefined) params.set('end', filters.end);
         if (filters.artists.length) params.set('artists', filters.artists.join(','));
         if (filters.genres.length) params.set('genres', filters.genres.join(','));
+        if (filters.listened.length) {
+            params.set('listened', filters.listened.join(','));
+        }
         if (filters.sort && filters.sort !== 'rank') params.set('sort', filters.sort);
         if (filters.dir && filters.dir !== 'asc') params.set('dir', filters.dir);
 
@@ -505,8 +518,18 @@ function initAlbumFiltering() {
     const csf = getAlbumClientSideFiltering();
     let ready = false;
 
+    // Stop the server round-trip for anything the engine can answer itself,
+    // once it can. Only GETs: these listeners sit on the form and on the
+    // results container, so every HTMX request raised by anything *inside*
+    // the results bubbles through them - including a row's listen-status
+    // POST, which has to reach the server and which cancelling here would
+    // silently swallow the moment the bundle finished loading.
     const suppressHtmx = event => {
-        if (ready) event.preventDefault();
+        if (!ready) return;
+        const detail = event.detail || {};
+        const verb = (detail.requestConfig && detail.requestConfig.verb) || 'get';
+        if (verb.toLowerCase() !== 'get') return;
+        event.preventDefault();
     };
     form.addEventListener('htmx:beforeRequest', suppressHtmx);
     results.addEventListener('htmx:beforeRequest', suppressHtmx);
@@ -539,6 +562,16 @@ function initAlbumFiltering() {
         }
         const highlight = parseInt(event.detail.itemId, 10);
         rerender({ highlightId: Number.isFinite(highlight) ? highlight : null });
+    });
+
+    // A toggle can change whether a row still belongs in the results.
+    // media-tracking.js has already updated the Sets the engine reads by the
+    // time this fires, so re-filtering is all that is needed.
+    window.addEventListener('album-status-changed', () => {
+        if (!ready) return;
+        const filters = csf.readFilters(form);
+        if (!filters.listened.length) return;
+        rerender({ push: false, highlightId: currentHighlight() });
     });
 
     csf.init().then(ok => {
@@ -582,7 +615,9 @@ function initAlbumFiltering() {
         window.addEventListener('popstate', () => {
             // The URL moved under us; re-read it into the form and re-render.
             const params = new URLSearchParams(window.location.search);
-            ['q', 'start', 'end', 'artists', 'genres', 'sort', 'dir'].forEach(name => {
+            [
+                'q', 'start', 'end', 'artists', 'genres', 'listened', 'sort', 'dir'
+            ].forEach(name => {
                 const field = form.querySelector(`[name="${name}"]`);
                 if (field) field.value = params.get(name) || '';
             });

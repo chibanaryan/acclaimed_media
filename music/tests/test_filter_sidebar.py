@@ -8,9 +8,11 @@ particular shape, and need facet counts that respond to the other filters.
 """
 
 from bs4 import BeautifulSoup
+from django.contrib.auth.models import AnonymousUser
 from django.test import TestCase
 from django.urls import reverse
 
+from core.models import User
 from music import models, views
 from music.tests.test_views import MusicDataMixin
 
@@ -252,3 +254,136 @@ class AlbumDownloadTests(MusicDataMixin, TestCase):
     def test_anonymous_callers_get_404(self):
         self.client.logout()
         self.assertEqual(self.client.get(reverse("music:download")).status_code, 404)
+
+
+class ListenStatusFilterTests(MusicDataMixin, TestCase):
+    """The listen-status dimension of `apply_album_filters`."""
+
+    def setUp(self):
+        super().setUp()
+        models.ListenedAlbum.objects.create(
+            user=self.staff_user, album=self.revolver, wikidata_id="Q-revolver"
+        )
+        models.WantToListenAlbum.objects.create(
+            user=self.staff_user, album=self.rust, wikidata_id="Q-rust"
+        )
+        # Kid A is tracked by neither.
+
+    def _names(self, params, **kwargs):
+        base = models.Album.objects.with_listen_status(self.staff_user)
+        kwargs.setdefault("user", self.staff_user)
+        return sorted(
+            views.apply_album_filters(base, params, **kwargs).values_list(
+                "name", flat=True
+            )
+        )
+
+    def test_listened_shows_only_what_was_listened_to(self):
+        self.assertEqual(self._names({"listened": "yes"}), ["Revolver"])
+
+    def test_want_shows_only_the_backlog(self):
+        self.assertEqual(self._names({"listened": "want"}), ["Rust Never Sleeps"])
+
+    def test_untracked_shows_what_is_tracked_by_neither(self):
+        self.assertEqual(self._names({"listened": "no"}), ["Kid A"])
+
+    def test_several_statuses_are_or_ed_together(self):
+        # The point of the multi-select: the backlog and the untracked read
+        # as "everything I have not heard".
+        self.assertEqual(
+            self._names({"listened": "want,no"}),
+            ["Kid A", "Rust Never Sleeps"],
+        )
+
+    def test_all_three_statuses_match_everything(self):
+        self.assertEqual(
+            self._names({"listened": "yes,want,no"}),
+            ["Kid A", "Revolver", "Rust Never Sleeps"],
+        )
+
+    def test_an_unknown_value_is_ignored(self):
+        # A hand-edited URL narrows nothing rather than erroring.
+        self.assertEqual(len(self._names({"listened": "sideways"})), 3)
+
+    def test_an_unknown_value_among_known_ones_is_dropped(self):
+        self.assertEqual(self._names({"listened": "yes,sideways"}), ["Revolver"])
+
+    def test_an_empty_value_is_ignored(self):
+        self.assertEqual(len(self._names({"listened": ""})), 3)
+
+    def test_whitespace_is_tolerated(self):
+        self.assertEqual(
+            self._names({"listened": " yes , want "}),
+            ["Revolver", "Rust Never Sleeps"],
+        )
+
+    def test_the_dimension_can_be_skipped(self):
+        self.assertEqual(len(self._names({"listened": "yes"}, skip=("listened",))), 3)
+
+    def test_another_users_tracking_does_not_show(self):
+        stranger = User.objects.create_user(username="stranger", password="pw")
+        base = models.Album.objects.with_listen_status(stranger)
+        names = sorted(
+            views.apply_album_filters(
+                base, {"listened": "yes"}, user=stranger
+            ).values_list("name", flat=True)
+        )
+        self.assertEqual(names, [])
+
+    def test_it_is_a_no_op_without_a_user(self):
+        # The three-positional call shape the facet counts used before this
+        # dimension existed, and which the other tests here still use.
+        base = models.Album.objects.all()
+        self.assertEqual(len(views.apply_album_filters(base, {"listened": "yes"})), 3)
+
+    def test_it_is_a_no_op_for_an_anonymous_user(self):
+        base = models.Album.objects.all()
+        self.assertEqual(
+            len(
+                views.apply_album_filters(
+                    base, {"listened": "yes"}, user=AnonymousUser()
+                )
+            ),
+            3,
+        )
+
+    def test_it_combines_with_another_dimension(self):
+        self.assertEqual(
+            self._names({"listened": "yes,want", "start": "1970"}),
+            ["Rust Never Sleeps"],
+        )
+
+
+class ListenStatusFacetTests(MusicDataMixin, TestCase):
+    """The year and genre counts respect the status filter."""
+
+    def setUp(self):
+        super().setUp()
+        models.ListenedAlbum.objects.create(
+            user=self.staff_user, album=self.revolver, wikidata_id="Q-revolver"
+        )
+        models.WantToListenAlbum.objects.create(
+            user=self.staff_user, album=self.rust, wikidata_id="Q-rust"
+        )
+
+    def test_the_year_counts_respect_the_status_filter(self):
+        # `listened` is left out of neither skip tuple, so a year cell counts
+        # what the status filter leaves - otherwise clicking 1979 under
+        # "Listened" would promise a row and deliver none.
+        response = self.client.get(reverse("music:home") + "?listened=yes")
+        years = {entry["year"] for entry in response.context["year_counts"]}
+        self.assertEqual(years, {1966})
+
+    def test_the_genre_counts_respect_the_status_filter(self):
+        response = self.client.get(reverse("music:home") + "?listened=yes")
+        counts = response.context["genre_counts"]
+        self.assertEqual(counts.get(str(self.rock.id)), 1)
+
+    def test_the_year_counts_ignore_the_year_filter_itself(self):
+        # The existing rule, re-checked alongside a status filter: a year
+        # cell is counted with the year dimension left out.
+        response = self.client.get(
+            reverse("music:home") + "?listened=yes,want&start=1979&end=1979"
+        )
+        years = {entry["year"] for entry in response.context["year_counts"]}
+        self.assertEqual(years, {1966, 1979})

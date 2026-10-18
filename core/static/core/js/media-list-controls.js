@@ -74,6 +74,10 @@ function buildTimeWindow(start, end, minYear, maxYear) {
 function mediaListControlsData(config) {
     const settings = config || {};
     const stored = readJsonScript(settings.filtersDataId || 'filters-data', null);
+    // The tracking status filter's parameter name. A section without one
+    // leaves the key present and empty, which every branch below reads as
+    // "no status filter", so nothing has to special-case its absence.
+    const statusKey = settings.statusKey || 'listened';
 
     return {
         minYear: settings.minYear || 0,
@@ -85,6 +89,10 @@ function mediaListControlsData(config) {
                 start: settings.minYear || null,
                 end: settings.maxYear || null,
                 genres: [],
+                // A user-tracking status filter, as an array of the values
+                // the server accepts. Named for its parameter, which is the
+                // section's: `listened` on the album rankings.
+                [statusKey]: [],
                 sort: settings.sort || 'rank',
                 sortDirection: settings.dir || 'asc'
             },
@@ -215,6 +223,29 @@ function mediaListControlsData(config) {
             this.debouncedFilterUpdate();
         },
 
+        /**
+         * Add or remove one value of a multi-select status filter.
+         *
+         * Games' `togglePlayedStatus` with the key supplied, so the shared
+         * status control can drive whichever parameter a section uses.
+         */
+        toggleStatusValue(key, value) {
+            const current = this.filters[key] || [];
+            const index = current.indexOf(value);
+            if (index === -1) {
+                current.push(value);
+            } else {
+                current.splice(index, 1);
+            }
+            this.filters[key] = current;
+            this.debouncedFilterUpdate();
+        },
+
+        resetStatus(key) {
+            this.filters[key] = [];
+            this.debouncedFilterUpdate();
+        },
+
         resetYears() {
             this.filters.start = this.minYear;
             this.filters.end = this.maxYear;
@@ -231,6 +262,7 @@ function mediaListControlsData(config) {
         resetAllFilters() {
             this.filters.q = '';
             this.filters.genres = [];
+            this.filters[statusKey] = [];
             this.filters.start = this.minYear;
             this.filters.end = this.maxYear;
             const form = this._form();
@@ -249,6 +281,7 @@ function mediaListControlsData(config) {
             return Boolean(
                 this.filters.q ||
                 this.filters.genres.length ||
+                (this.filters[statusKey] || []).length ||
                 (artist && artist.value) ||
                 this.hasYearFilter()
             );
@@ -292,6 +325,9 @@ function mediaListControlsData(config) {
             if (this.filters.genres.length) {
                 params.set('genres', this.filters.genres.join(','));
             }
+            if ((this.filters[statusKey] || []).length) {
+                params.set(statusKey, this.filters[statusKey].join(','));
+            }
             if (this.filters.sort && this.filters.sort !== this.defaultSort) {
                 params.set('sort', this.filters.sort);
             }
@@ -333,8 +369,19 @@ function mediaListControlsData(config) {
                 this.maxYear
             );
             const timeSuffix = window_ ? ' of ' + window_ : '';
+
+            // Mirrors the status suffix `_filter_title` appends. Without it
+            // the heading would change the moment filtering moved from the
+            // server to the browser.
+            const statuses = this.filters[statusKey] || [];
+            const labels = (settings.statusOptions || [])
+                .filter(option => statuses.includes(option.value))
+                .map(option => option.title);
+            const statusSuffix = labels.length ? ': ' + joinNames(labels) : '';
+
             const noun = settings.titleNoun || 'Items';
-            return `Most Acclaimed${genreLabel} ${noun}${timeSuffix}`;
+            return `Most Acclaimed${genreLabel} ${noun}` +
+                `${timeSuffix}${statusSuffix}`;
         },
 
         /** @private */
@@ -366,6 +413,7 @@ function mediaListControlsData(config) {
             setField('start', hasYears ? this.filters.start : '');
             setField('end', hasYears ? this.filters.end : '');
             setField('genres', this.filters.genres.join(','));
+            setField(statusKey, (this.filters[statusKey] || []).join(','));
             setField('sort', this.filters.sort);
             setField('dir', this.filters.sortDirection);
 
@@ -387,6 +435,9 @@ function mediaListControlsData(config) {
             this.filters.start = number('start', this.minYear);
             this.filters.end = number('end', this.maxYear);
             this.filters.genres = (params.get('genres') || '')
+                .split(',')
+                .filter(Boolean);
+            this.filters[statusKey] = (params.get(statusKey) || '')
                 .split(',')
                 .filter(Boolean);
             this.filters.sort = params.get('sort') || this.defaultSort;

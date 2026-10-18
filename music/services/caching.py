@@ -21,3 +21,18 @@ def invalidate_music_caches() -> None:
     being listed there is a value nothing can invalidate.
     """
     cache.delete_many(list(config.CACHE_KEYS))
+
+
+def invalidate_listen_caches(user_id: int) -> None:
+    """Drop one user's cached tracking id sets.
+
+    Separate from `invalidate_music_caches` because these keys are per-user:
+    there is no enumerable set of them, so they are dropped by the two things
+    that can change them rather than by a blanket sweep.
+    """
+    cache.delete_many(
+        [
+            template.format(user_id=user_id)
+            for template in config.PER_USER_CACHE_KEY_TEMPLATES
+        ]
+    )

@@ -1,0 +1,120 @@
+{# A media item's user-tracking button: a three-state dropdown, HTMX-swapped. #}
+{# #}
+{# One definition for every section. Games and books each grew their own #}
+{# copy of this markup, differing only in their verbs, their icons and their #}
+{# toggle URL; this is that markup with those three things lifted out, so a #}
+{# third section does not become a third copy. Games and books still carry #}
+{# theirs and can move onto this one unchanged. #}
+{# #}
+{# Props: #}
+{#   item - the media item; only item.id is read #}
+{#   external_id - the stable id the tracking row stores. The button does not #}
+{#     render without one, because the toggle has nothing to key the row on. #}
+{#   tracking_scope - 'album'; the key core/js/media-tracking.js looks up to #}
+{#     find which global Sets to maintain after a swap #}
+{#   toggle_url_name - resolved POSITIONALLY as {% url name item.id %}, since #}
+{#     {% url %} cannot take a dynamic kwarg name. A section's toggle route #}
+{#     must therefore take the item's pk as its one positional argument. #}
+{#   is_tracked / is_wanted - the current state, mutually exclusive #}
+{#   tracked_status - the 'done' value for ?status= ('listened', 'played') #}
+{#   tracked_icon / wanted_icon / untracked_icon and their _class twins #}
+{#   tracked_label / wanted_label / untracked_label - the dropdown rows #}
+{#   tracked_tip / wanted_tip / untracked_tip - tooltip and aria-label #}
+{#   size - 'large' for a detail page, anything else for a list row #}
+{#   just_toggled - set by the toggle view, to play the appear animation #}
+{# #}
+{# 'want' and 'none' are hard-coded: only the done verb varies by medium. #}
+{# Unlike games' and books' versions this ships no inline <script>. The #}
+{# global Sets are kept up to date by one delegated listener instead. #}
+{# Keep every template comment on a single line - Django only strips those. #}
+{% if user.is_authenticated and external_id %}
+<div class="tracking-button-wrapper relative"
+    x-data="{ open: false, zHigh: false }"
+    x-effect="if (open) { zHigh = true } else { setTimeout(() => zHigh = false, 100) }"
+    :class="{ 'z-[9999]': zHigh, 'z-10': !zHigh }"
+    @click.away="open = false"
+    @close-tracking-dropdowns.window="if ($event.detail !== $el) open = false"
+    data-tracking-scope="{{ tracking_scope }}"
+    data-item-id="{{ item.id }}"
+    data-status="{% if is_tracked %}{{ tracked_status }}{% elif is_wanted %}want{% else %}none{% endif %}"
+    data-size="{% if size == 'large' %}large{% else %}row{% endif %}"
+    onclick="event.stopPropagation()">
+
+    {# Current state, and the dropdown trigger #}
+    <button
+        @click="$dispatch('close-tracking-dropdowns', $el.closest('.tracking-button-wrapper')); open = !open"
+        class="tracking-button desktop:tooltip {% if size == 'large' %}desktop:tooltip-bottom{% else %}desktop:tooltip-top{% endif %} flex items-center justify-center shrink-0 cursor-pointer {% if size == 'large' %}h-12 w-12 min-w-12{% else %}h-8 w-8 min-w-8{% endif %}"
+        data-tip="{% if is_tracked %}{{ tracked_tip }}{% elif is_wanted %}{{ wanted_tip }}{% else %}{{ untracked_tip }}{% endif %}"
+        aria-label="{% if is_tracked %}{{ tracked_label }}{% elif is_wanted %}{{ wanted_label }}{% else %}{{ untracked_label }}{% endif %} - click to change"
+        aria-haspopup="true"
+        :aria-expanded="open">
+        <span class="flex items-center justify-center {% if size == 'large' %}w-10 h-10{% else %}w-6 h-6{% endif %}{% if just_toggled and is_tracked %} star-appear{% elif is_tracked %} star-idle{% elif just_toggled and is_wanted %} star-appear{% endif %}">
+            {% if is_tracked %}
+            <span class="mdi {{ tracked_icon }} {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} {{ tracked_icon_class }}"></span>
+            {% elif is_wanted %}
+            <span class="mdi {{ wanted_icon }} {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} {{ wanted_icon_class }}"></span>
+            {% else %}
+            <span class="mdi {{ untracked_icon }} {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} {{ untracked_icon_class }}"></span>
+            {% endif %}
+        </span>
+    </button>
+
+    {# The dropdown offers only the states this item is not already in. #}
+    {# It opens upward in a list row and downward on a detail page, where #}
+    {# the button sits in the heading and has nothing above it. #}
+    <ul x-show="open" x-cloak
+        x-transition:enter="transition ease-out duration-100"
+        x-transition:enter-start="opacity-0 scale-95"
+        x-transition:enter-end="opacity-100 scale-100"
+        x-transition:leave="transition ease-in duration-75"
+        x-transition:leave-start="opacity-100 scale-100"
+        x-transition:leave-end="opacity-0 scale-95"
+        class="absolute {% if size == 'large' %}top-full mt-1{% else %}bottom-full mb-1{% endif %} left-0 menu bg-base-100 rounded-box shadow-lg p-1 min-w-max">
+        {% if not is_tracked %}
+        <li>
+            <button type="button"
+                class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
+                hx-post="{% url toggle_url_name item.id %}?status={{ tracked_status }}{% if size == 'large' %}&size=large{% endif %}"
+                hx-target="closest .tracking-button-wrapper"
+                hx-swap="outerHTML"
+                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+                <span class="w-5 h-5 flex items-center justify-center">
+                    <span class="mdi {{ tracked_icon }} text-xl {{ tracked_icon_class }}"></span>
+                </span>
+                <span>{{ tracked_label }}</span>
+            </button>
+        </li>
+        {% endif %}
+        {% if not is_wanted %}
+        <li>
+            <button type="button"
+                class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
+                hx-post="{% url toggle_url_name item.id %}?status=want{% if size == 'large' %}&size=large{% endif %}"
+                hx-target="closest .tracking-button-wrapper"
+                hx-swap="outerHTML"
+                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+                <span class="w-5 h-5 flex items-center justify-center">
+                    <span class="mdi {{ wanted_icon }} text-xl {{ wanted_icon_class }}"></span>
+                </span>
+                <span>{{ wanted_label }}</span>
+            </button>
+        </li>
+        {% endif %}
+        {% if is_tracked or is_wanted %}
+        <li>
+            <button type="button"
+                class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
+                hx-post="{% url toggle_url_name item.id %}?status=none{% if size == 'large' %}&size=large{% endif %}"
+                hx-target="closest .tracking-button-wrapper"
+                hx-swap="outerHTML"
+                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+                <span class="w-5 h-5 flex items-center justify-center">
+                    <span class="mdi {{ untracked_icon }} text-xl {{ untracked_icon_class }}"></span>
+                </span>
+                <span>{{ untracked_label }}</span>
+            </button>
+        </li>
+        {% endif %}
+    </ul>
+</div>
+{% endif %}

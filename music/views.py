@@ -25,8 +25,10 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Count, Max, Min, Prefetch, Q
 from django.db.models.functions import Lower
-from django.http import Http404, HttpResponse
-from django.shortcuts import render
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db import transaction
+from django.http import Http404, HttpResponse, HttpResponseBadRequest
+from django.shortcuts import get_object_or_404, render
 from django.utils.text import slugify
 from django.views import View
 from django.views.generic import DetailView, ListView
@@ -134,8 +136,58 @@ def _filter_title(params, min_year=None, max_year=None, genres=None, artists=Non
         window = ""
 
     time_suffix = f" of {window}" if window else ""
-    title = f"Most Acclaimed{genre_label} Albums{artist_label}{time_suffix}"
+
+    # Games appends ": Played" by hand and so handles only one value, which
+    # is a latent bug there since the parameter is multi-select. Join them.
+    statuses = _parse_status_list(params.get("listened"), config.LISTEN_FILTER_VALUES)
+    status_suffix = ""
+    if statuses:
+        chosen = [
+            option["title"]
+            for option in config.LISTEN_STATUS_OPTIONS
+            if option["value"] in statuses
+        ]
+        status_suffix = f": {titles.join_names(chosen)}"
+
+    title = (
+        f"Most Acclaimed{genre_label} Albums{artist_label}"
+        f"{time_suffix}{status_suffix}"
+    )
     return " ".join(title.split())
+
+
+def _get_listened_album_ids(user):
+    """The album ids this user has marked as listened to, cached briefly.
+
+    Album ids rather than Wikidata ids because this set is joined against the
+    client-side payload, which carries the album pk. Rows orphaned by a
+    reimport are left out until the reconnection pass re-adopts them -
+    without the FK there is no id to join on.
+    """
+    key = config.CACHE_KEY_LISTENED_ALBUMS.format(user_id=user.id)
+    ids = cache.get(key)
+    if ids is None:
+        ids = list(
+            models.ListenedAlbum.objects.filter(
+                user=user, album__isnull=False
+            ).values_list("album_id", flat=True)
+        )
+        cache.set(key, ids, config.CACHE_TIMEOUT_TRACKING)
+    return ids
+
+
+def _get_want_to_listen_album_ids(user):
+    """The album ids this user wants to listen to, cached briefly."""
+    key = config.CACHE_KEY_WANT_TO_LISTEN_ALBUMS.format(user_id=user.id)
+    ids = cache.get(key)
+    if ids is None:
+        ids = list(
+            models.WantToListenAlbum.objects.filter(
+                user=user, album__isnull=False
+            ).values_list("album_id", flat=True)
+        )
+        cache.set(key, ids, config.CACHE_TIMEOUT_TRACKING)
+    return ids
 
 
 def _get_year_bounds():
@@ -169,6 +221,41 @@ def _parse_int(raw):
         return None
 
 
+def _parse_status_list(raw, allowed):
+    """Parse a comma-separated status parameter, dropping unknown values.
+
+    Multi-select, as games' ``played`` is: ``listened=want,no`` asks for the
+    backlog and the untracked together. An unrecognised value is ignored
+    rather than failing, so a hand-edited URL narrows nothing instead of
+    erroring.
+    """
+    if not raw:
+        return []
+    return [part.strip() for part in raw.split(",") if part.strip() in allowed]
+
+
+def _apply_listen_filter(queryset, user, listened_param):
+    """Filter by listen status.
+
+    Requires ``with_listen_status(user)`` to have annotated the queryset.
+    Both guards matter: the annotations do not exist for an anonymous user,
+    so filtering on them would raise.
+    """
+    statuses = _parse_status_list(listened_param, config.LISTEN_FILTER_VALUES)
+    if not statuses or not user or not user.is_authenticated:
+        return queryset
+
+    q_filter = Q()
+    for status in statuses:
+        if status == "yes":
+            q_filter |= Q(is_listened_by_user=True)
+        elif status == "want":
+            q_filter |= Q(is_want_to_listen_by_user=True)
+        else:  # "no" - tracked by neither
+            q_filter |= Q(is_listened_by_user=False, is_want_to_listen_by_user=False)
+    return queryset.filter(q_filter)
+
+
 def _apply_sort(queryset, sorts, sort, direction, default):
     """Order a queryset by one of ``sorts``, flipping the primary field."""
     fields = sorts.get(sort) or sorts[default]
@@ -184,13 +271,17 @@ def _reverse_order(field):
     return field.desc()
 
 
-def apply_album_filters(queryset, params, skip=()):
+def apply_album_filters(queryset, params, skip=(), user=None):
     """Apply the rankings page's filters to ``queryset``.
 
     ``skip`` leaves a dimension out, which is how the facet counts beside the
     year cells and the genre rows are worked out: the count under "1975" is
     how many albums that year has under the *other* filters, not how many are
-    showing right now.
+    showing right now. The dimensions are ``q``, ``year``, ``artists``,
+    ``genres`` and ``listened``.
+
+    ``user`` is only needed for the ``listened`` dimension, and is last with
+    a default so the three-positional call shape stays valid.
     """
     q = params.get("q")
     if q and "q" not in skip:
@@ -219,6 +310,9 @@ def apply_album_filters(queryset, params, skip=()):
             queryset = queryset.filter(
                 genres__id__in=expand_genre_ids(genre_ids)
             ).distinct()
+
+    if "listened" not in skip:
+        queryset = _apply_listen_filter(queryset, user, params.get("listened"))
 
     return queryset
 
@@ -452,8 +546,11 @@ class AlbumHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
 
     def get_queryset(self):
         qs = apply_album_filters(
-            models.Album.objects.with_relations().with_list_count(),
+            models.Album.objects.with_relations()
+            .with_list_count()
+            .with_listen_status(self.request.user),
             self.request.GET,
+            user=self.request.user,
         )
         return _apply_sort(
             qs,
@@ -486,12 +583,19 @@ class AlbumHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
         # Facet counts for the shared year grid and genre tree. Each is
         # counted with its own dimension left out, so a year cell says how
         # many albums that year would give under the other filters.
-        base = models.Album.objects.all()
+        # `listened` is deliberately not skipped in either pass: a year
+        # cell should count what the status filter leaves, the way games'
+        # client-side facet pass gates its year counts on passesPlayed.
+        base = models.Album.objects.with_listen_status(self.request.user)
         context["year_counts"] = _year_counts(
-            apply_album_filters(base, self.request.GET, skip=("year",))
+            apply_album_filters(
+                base, self.request.GET, skip=("year",), user=self.request.user
+            )
         )
         context["genre_counts"] = _genre_counts(
-            apply_album_filters(base, self.request.GET, skip=("genres",))
+            apply_album_filters(
+                base, self.request.GET, skip=("genres",), user=self.request.user
+            )
         )
 
         # Where the filtered albums sit across the whole ranking, binned
@@ -527,11 +631,13 @@ class AlbumHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
         context["current_end"] = self.request.GET.get("end", "")
         context["current_artists"] = self.request.GET.get("artists", "")
         context["current_genres"] = self.request.GET.get("genres", "")
+        context["current_listened"] = self.request.GET.get("listened", "")
+        context["listen_status_options"] = config.LISTEN_STATUS_OPTIONS
         context["current_sort"] = self.request.GET.get("sort", "rank")
         context["current_dir"] = self.request.GET.get("dir", "asc")
         context["is_filtered"] = any(
             self.request.GET.get(param)
-            for param in ("q", "start", "end", "artists", "genres")
+            for param in ("q", "start", "end", "artists", "genres", "listened")
         )
         context["filter_title"] = _filter_title(
             self.request.GET,
@@ -552,6 +658,9 @@ class AlbumHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
                 str(genre_id)
                 for genre_id in _parse_id_list(self.request.GET.get("genres"))
             ],
+            "listened": _parse_status_list(
+                self.request.GET.get("listened"), config.LISTEN_FILTER_VALUES
+            ),
             "sort": context["current_sort"],
             "sortDirection": context["current_dir"],
         }
@@ -565,6 +674,16 @@ class AlbumHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
         # without asking - which is why there is no `version/` endpoint.
         context["enable_client_filtering"] = True
         context["album_data_version"] = compute_album_data_version()
+
+        # Tracking state is rendered into the page per request, never into
+        # the bulk payload: that payload is held in sessionStorage keyed only
+        # on album_data_version, so two users sharing a browser session share
+        # it. Games does the same for the same reason.
+        if self.request.user.is_authenticated:
+            context["listened_album_ids"] = _get_listened_album_ids(self.request.user)
+            context["want_to_listen_album_ids"] = _get_want_to_listen_album_ids(
+                self.request.user
+            )
 
         # Sorts for the shared results-header controls
         # (core/includes/_media_list_controls.html), the same partial the
@@ -598,8 +717,11 @@ class AlbumDownloadView(StaffOnlyMixin, View):
         min_year, max_year = _get_year_bounds()
         albums = _apply_sort(
             apply_album_filters(
-                models.Album.objects.with_relations().with_list_count(),
+                models.Album.objects.with_relations()
+                .with_list_count()
+                .with_listen_status(request.user),
                 request.GET,
+                user=request.user,
             ),
             ALBUM_SORTS,
             request.GET.get("sort", "rank"),
@@ -643,6 +765,68 @@ class AlbumDownloadView(StaffOnlyMixin, View):
                     album.list_count,
                 ]
             )
+        return response
+
+
+class ToggleListenedAlbumView(StaffOnlyMixin, LoginRequiredMixin, View):
+    """Set an album's listen status, answering with the re-rendered button.
+
+    ``?status=none|want|listened`` sets a status directly. Games also carries
+    a legacy cycle for a bare POST; the dropdown here only ever sets a status
+    outright, so a cycle would be a second code path nothing reaches.
+
+    ``StaffOnlyMixin`` comes first deliberately: a signed-out visitor should
+    get the section's 404, not a login redirect advertising that the URL
+    exists.
+
+    Two things games and books both get wrong here are fixed. The delete and
+    the write run in one transaction, so a failure between them cannot leave
+    a user who was tracking the album tracking nothing. And the write is an
+    ``update_or_create`` keyed on the ``unique_together``, so a double-click
+    cannot race into an IntegrityError - and a row orphaned by a reimport is
+    re-adopted on the spot rather than waiting for the next import's pass.
+    """
+
+    def post(self, request, album_id):
+        album = get_object_or_404(models.Album, pk=album_id)
+        target = request.GET.get("status")
+        if not album.wikidata_id or target not in config.LISTEN_TOGGLE_STATUSES:
+            return HttpResponseBadRequest("Unknown status")
+
+        key = {"user": request.user, "wikidata_id": album.wikidata_id}
+        with transaction.atomic():
+            if target == "listened":
+                models.WantToListenAlbum.objects.filter(**key).delete()
+                models.ListenedAlbum.objects.update_or_create(
+                    **key, defaults={"album": album}
+                )
+            elif target == "want":
+                models.ListenedAlbum.objects.filter(**key).delete()
+                models.WantToListenAlbum.objects.update_or_create(
+                    **key, defaults={"album": album}
+                )
+            else:
+                models.ListenedAlbum.objects.filter(**key).delete()
+                models.WantToListenAlbum.objects.filter(**key).delete()
+
+        # After the commit, not inside it: a rolled-back transaction must not
+        # leave the cache reflecting a write that did not happen.
+        user_id = request.user.id
+        transaction.on_commit(lambda: caching.invalidate_listen_caches(user_id))
+
+        response = render(
+            request,
+            "music/includes/_listen_button.html",
+            {
+                "album": album,
+                "is_tracked": target == "listened",
+                "is_wanted": target == "want",
+                "size": request.GET.get("size"),
+                "just_toggled": True,
+            },
+        )
+        # A button swap is not navigation.
+        response["HX-Push-Url"] = "false"
         return response
 
 
@@ -700,11 +884,20 @@ class AlbumDetailView(StaffOnlyMixin, DetailView):
                 year_released=album.year_released
             ).count()
 
+        if self.request.user.is_authenticated:
+            context["is_listened"] = models.ListenedAlbum.objects.filter(
+                user=self.request.user, album=album
+            ).exists()
+            context["is_want_to_listen"] = models.WantToListenAlbum.objects.filter(
+                user=self.request.user, album=album
+            ).exists()
+
         if album.artists.exists():
             context["related_albums"] = (
                 models.Album.objects.filter(artists__in=album.artists.all())
                 .exclude(id=album.id)
                 .distinct()
+                .with_listen_status(self.request.user)
                 .order_by("rank")[:10]
             )
 
@@ -792,6 +985,7 @@ class ArtistDetailView(StaffOnlyMixin, DetailView):
                 "albums",
                 queryset=models.Album.objects.with_relations()
                 .with_list_count()
+                .with_listen_status(self.request.user)
                 .order_by("rank"),
             ),
         )

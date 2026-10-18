@@ -273,3 +273,56 @@ class AlbumCoverAdmin(admin.ModelAdmin):
             '<img src="{}" width="200" height="200" style="object-fit:contain">',
             obj.album.thumbnail if obj.album else "",
         )
+
+
+@admin.register(models.ListenedAlbum)
+class ListenedAlbumAdmin(admin.ModelAdmin):
+    """Albums users have marked as listened to.
+
+    `raw_id_fields` rather than the `autocomplete_fields` the metadata
+    admins use: a tracking changelist can hold a row per user per album, and
+    an autocomplete widget loads its options per row.
+    """
+
+    list_display = ["user", "album_name", "wikidata_id", "created", "link_status"]
+    list_filter = ["created"]
+    search_fields = ["user__username", "user__email", "album__name", "wikidata_id"]
+    raw_id_fields = ["user", "album"]
+    readonly_fields = ["created"]
+    ordering = ["-created"]
+
+    @admin.display(description="Album")
+    def album_name(self, obj):
+        """The album's name, or the id it is waiting to be reconnected by."""
+        if obj.album:
+            return obj.album.name
+        return f"(orphaned) Wikidata:{obj.wikidata_id}"
+
+    @admin.display(description="Status")
+    def link_status(self, obj):
+        """Whether an import has left this row waiting for its album."""
+        return "Connected" if obj.album else "Orphaned"
+
+
+@admin.register(models.WantToListenAlbum)
+class WantToListenAlbumAdmin(admin.ModelAdmin):
+    """Albums users want to listen to."""
+
+    list_display = ["user", "album_name", "wikidata_id", "created", "link_status"]
+    list_filter = ["created"]
+    search_fields = ["user__username", "user__email", "album__name", "wikidata_id"]
+    raw_id_fields = ["user", "album"]
+    readonly_fields = ["created"]
+    ordering = ["-created"]
+
+    @admin.display(description="Album")
+    def album_name(self, obj):
+        """The album's name, or the id it is waiting to be reconnected by."""
+        if obj.album:
+            return obj.album.name
+        return f"(orphaned) Wikidata:{obj.wikidata_id}"
+
+    @admin.display(description="Status")
+    def link_status(self, obj):
+        """Whether an import has left this row waiting for its album."""
+        return "Connected" if obj.album else "Orphaned"

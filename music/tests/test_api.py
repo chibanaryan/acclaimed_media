@@ -387,6 +387,29 @@ class AlbumAllDataAPITests(MusicAPITestMixin, TestCase):
         self.assertEqual(album["g"], [self.genre.id])
         self.assertEqual(album["lc"], 1)
 
+    def test_the_payload_carries_no_per_user_state(self):
+        # Deliberately absent. The bundle caches this payload in
+        # sessionStorage keyed only on its version, with no user in the key,
+        # so a listened flag here would be served to whoever used the
+        # browser session next. The album pk is the join key instead, and the
+        # page renders window.listenedAlbumIds per request.
+        models.ListenedAlbum.objects.create(
+            user=self.staff_user, album=self.kid_a, wikidata_id="Q-kid-a"
+        )
+        album = self.payload(self.url())["albums"][0]
+        for key in ("listened", "l", "tracked", "w", "wikidata_id"):
+            with self.subTest(key=key):
+                self.assertNotIn(key, album)
+
+    def test_the_payload_version_does_not_depend_on_the_user(self):
+        # Corollary of the above: the key is version-only, so the version had
+        # better not be either, or every user would miss the cache.
+        before = self.payload(self.url())["version"]
+        models.ListenedAlbum.objects.create(
+            user=self.staff_user, album=self.kid_a, wikidata_id="Q-kid-a"
+        )
+        self.assertEqual(self.payload(self.url())["version"], before)
+
     def test_name_normalized_is_sent_for_the_text_search(self):
         # The server's `q` searches name_normalized too, so the client needs
         # it rather than reimplementing unidecode in the browser.

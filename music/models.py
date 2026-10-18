@@ -10,7 +10,7 @@ from functools import cached_property
 from typing import Any, List, Optional
 
 from django.db import models
-from django.db.models import Count
+from django.db.models import Count, Exists, OuterRef
 from django.urls import reverse
 from django.utils.text import slugify
 
@@ -21,6 +21,7 @@ from core.models import (
     ListMembershipBase,
     MediaItemBase,
     PublicationBase,
+    UserTrackingBase,
 )
 from music import config
 
@@ -172,6 +173,24 @@ class AlbumQuerySet(models.QuerySet):
     def with_list_count(self) -> "AlbumQuerySet":
         """Annotate how many source lists each album appears on."""
         return self.annotate(list_count=Count("lists", distinct=True))
+
+    def with_listen_status(self, user) -> "AlbumQuerySet":
+        """Annotate listened / want-to-listen status for ``user``.
+
+        A no-op for an anonymous user, so callers that filter on the
+        annotations must guard the same way rather than assume they exist.
+        """
+        if not user or not user.is_authenticated:
+            return self
+
+        return self.annotate(
+            is_listened_by_user=Exists(
+                ListenedAlbum.objects.filter(user=user, album=OuterRef("pk"))
+            ),
+            is_want_to_listen_by_user=Exists(
+                WantToListenAlbum.objects.filter(user=user, album=OuterRef("pk"))
+            ),
+        )
 
 
 class Album(MediaItemBase):
@@ -427,6 +446,75 @@ class AlbumListMembership(ListMembershipBase):
 
     def __str__(self) -> str:
         return f"{self.list} - {self.album} - {self.rank}"
+
+
+class ListenedAlbum(UserTrackingBase):
+    """Tracks albums a user has marked as listened to.
+
+    Hybrid FK + external id, as ``books.models.ReadBook`` is: the FK is what
+    queries join on, and ``wikidata_id`` is what survives an import. Every
+    import replaces every ``Album`` row, so without the external id a
+    reimport would silently empty everybody's collection; with it,
+    ``music.services.user_tracking_service`` re-adopts the rows afterwards.
+    """
+
+    album = models.ForeignKey(
+        "Album",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="listened_by",
+    )
+    wikidata_id = models.CharField(
+        max_length=20,
+        db_index=True,
+        help_text="Wikidata QID, for reconnection after an album reimport",
+    )
+
+    class Meta:
+        db_table = "music_listenedalbum"
+        unique_together = [("user", "wikidata_id")]
+        indexes = [models.Index(fields=["user", "album"])]
+        verbose_name = "Listened Album"
+        verbose_name_plural = "Listened Albums"
+
+    def __str__(self) -> str:
+        label = self.album.name if self.album else f"Wikidata:{self.wikidata_id}"
+        return f"{self.user.username} listened to {label}"
+
+
+class WantToListenAlbum(UserTrackingBase):
+    """Tracks albums a user wants to listen to.
+
+    Mutually exclusive with :class:`ListenedAlbum`. The exclusivity is
+    enforced by the toggle view rather than by a constraint, as games and
+    books also do - the two are separate tables, so no single constraint
+    spans them.
+    """
+
+    album = models.ForeignKey(
+        "Album",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="want_to_listen_by",
+    )
+    wikidata_id = models.CharField(
+        max_length=20,
+        db_index=True,
+        help_text="Wikidata QID, for reconnection after an album reimport",
+    )
+
+    class Meta:
+        db_table = "music_wanttolistenalbum"
+        unique_together = [("user", "wikidata_id")]
+        indexes = [models.Index(fields=["user", "album"])]
+        verbose_name = "Want to Listen Album"
+        verbose_name_plural = "Want to Listen Albums"
+
+    def __str__(self) -> str:
+        label = self.album.name if self.album else f"Wikidata:{self.wikidata_id}"
+        return f"{self.user.username} wants to listen to {label}"
 
 
 class WikipediaAlbumData(ExternalDataBase):

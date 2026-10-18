@@ -11,6 +11,13 @@ urlpatterns = [
     path("search/", views.AlbumSearchView.as_view(), name="search"),
     # The current filter state as a CSV, as the games sidebar offers
     path("download/", views.AlbumDownloadView.as_view(), name="download"),
+    # Toggle an album's listen status (HTMX endpoint). Before <slug:slug>/
+    # so a numeric id is never read as an album slug.
+    path(
+        "<int:album_id>/toggle-listened/",
+        views.ToggleListenedAlbumView.as_view(),
+        name="toggle-listened",
+    ),
     # Source lists behind the rankings
     path("lists/", views.MusicListListView.as_view(), name="list-list"),
     # Data import (staff only, like every music route)

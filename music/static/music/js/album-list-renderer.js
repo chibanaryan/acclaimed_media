@@ -28,7 +28,10 @@ class AlbumListRenderer extends BaseMediaListRenderer {
         this._templates = {
             desktop: document.getElementById('desktop-row-template'),
             mobile: document.getElementById('mobile-row-template'),
-            grid: document.getElementById('grid-card-template')
+            grid: document.getElementById('grid-card-template'),
+            // Optional: absent when nobody is signed in, and the rows still
+            // render without it.
+            trackingButton: document.getElementById('tracking-button-template')
         };
 
         if (!this._templates.desktop || !this._templates.mobile) {
@@ -37,6 +40,126 @@ class AlbumListRenderer extends BaseMediaListRenderer {
             console.warn('Album row templates not found; keeping server-rendered rows');
             this._templates = null;
         }
+    }
+
+    /**
+     * This album's listen status, from the Sets the page rendered.
+     * @private
+     */
+    _albumStatus(albumId) {
+        if (window.listenedAlbumIds && window.listenedAlbumIds.has(albumId)) {
+            return 'listened';
+        }
+        if (window.wantToListenAlbumIds && window.wantToListenAlbumIds.has(albumId)) {
+            return 'want';
+        }
+        return 'none';
+    }
+
+    /**
+     * Build one listen button by cloning `_listen_button_template.html`.
+     *
+     * Returns null for an anonymous reader, which is also what the server
+     * does - the caller then drops the whole column, so the row has the same
+     * shape either way.
+     *
+     * Unlike games there is no string-building fallback: every row here is
+     * cloned from a template, and `_initTemplates` already keeps the
+     * server's rows when one is missing, so a second copy of this markup
+     * would have no path that reached it.
+     *
+     * @private
+     * @returns {Element|null}
+     */
+    _renderTrackingButtonDOM(album) {
+        if (!window.isAuthenticated) return null;
+        this._initTemplates();
+        if (!this._templates || !this._templates.trackingButton) return null;
+
+        const wrapper = this._templates.trackingButton.content
+            .cloneNode(true).firstElementChild;
+        if (!wrapper) return null;
+
+        const status = this._albumStatus(album.id);
+        wrapper.dataset.itemId = String(album.id);
+        wrapper.dataset.status = status;
+
+        const tips = {
+            listened: 'You have listened to this album!',
+            want: 'You want to listen to this album!',
+            none: "You aren't tracking this album."
+        };
+        const labels = {
+            listened: 'Listened',
+            want: 'Want to Listen',
+            none: 'Untracked'
+        };
+        const button = wrapper.querySelector('[data-slot="tracking-button"]');
+        if (button) {
+            button.setAttribute('data-tip', tips[status]);
+            button.setAttribute('aria-label', `${labels[status]} - click to change`);
+        }
+
+        // Show the icon for the current state and hide the other two.
+        const icons = {
+            listened: 'tracked-icon',
+            want: 'wanted-icon',
+            none: 'untracked-icon'
+        };
+        Object.keys(icons).forEach(key => {
+            const icon = wrapper.querySelector(`[data-slot="${icons[key]}"]`);
+            if (icon) icon.classList.toggle('hidden', key !== status);
+        });
+
+        // The server writes these URLs with {% url %}; the template cannot,
+        // because it is rendered once with no album.
+        const csrf = this._getCsrfToken();
+        const targets = {
+            'btn-tracked': 'listened',
+            'btn-wanted': 'want',
+            'btn-untracked': 'none'
+        };
+        Object.keys(targets).forEach(slot => {
+            const el = wrapper.querySelector(`[data-slot="${slot}"]`);
+            if (!el) return;
+            el.setAttribute(
+                'hx-post',
+                `/music/${album.id}/toggle-listened/?status=${targets[slot]}`
+            );
+            el.setAttribute('hx-headers', `{"X-CSRFToken": "${csrf}"}`);
+        });
+
+        // Offer only the states this album is not already in.
+        const menus = {
+            listened: 'menu-tracked',
+            want: 'menu-wanted',
+            none: 'menu-untracked'
+        };
+        Object.keys(menus).forEach(key => {
+            const item = wrapper.querySelector(`[data-slot="${menus[key]}"]`);
+            if (item) item.classList.toggle('hidden', key === status);
+        });
+
+        return wrapper;
+    }
+
+    /**
+     * Fill or drop a row's tracking column.
+     *
+     * @private
+     * @returns {boolean} whether the column survived
+     */
+    _fillTrackingButton(row, album, slot) {
+        const container = row.querySelector(`[data-slot="${slot}"]`);
+        if (!container) return false;
+
+        const button = this._renderTrackingButtonDOM(album);
+        if (!button) {
+            container.remove();
+            return false;
+        }
+        container.appendChild(button);
+        return true;
     }
 
     /**
@@ -276,6 +399,8 @@ class AlbumListRenderer extends BaseMediaListRenderer {
             withCredit: false
         });
 
+        this._fillTrackingButton(row, album, 'tracking-column');
+
         return row;
     }
 
@@ -323,6 +448,14 @@ class AlbumListRenderer extends BaseMediaListRenderer {
         // Mobile credit is the published text, not links.
         const mobileAlbum = Object.assign({}, album, { artists: [] });
         this._fillMeta(row, mobileAlbum, 'meta-mobile', { withGenres: false });
+
+        // The template always reserves the button's column, because it is
+        // rendered with no user. Narrow it back when there is no button, as
+        // games' renderer does.
+        const hasButton = this._fillTrackingButton(
+            row, album, 'tracking-column-mobile'
+        );
+        row.style.gridTemplateColumns = hasButton ? 'auto auto 1fr' : 'auto 1fr';
 
         return row;
     }
@@ -411,13 +544,37 @@ AlbumListRenderer.SLOTS = [
     'name',
     'year',
     'meta-row',
+    'tracking-column',
     'root-mobile',
     'rank-mobile',
     'thumbnail-mobile',
     'thumbnail-mobile-placeholder',
     'title-mobile',
     'year-mobile',
-    'meta-mobile'
+    'meta-mobile',
+    'tracking-column-mobile'
+];
+
+/**
+ * The slots inside the tracking button, checked against its own template.
+ *
+ * Separate from SLOTS because these live in
+ * `_listen_button_template.html`, not in the row: a slot listed in SLOTS
+ * has to be emitted by `_album_row.html`, which this one is not.
+ */
+AlbumListRenderer.TRACKING_SLOTS = [
+    'tracking-wrapper',
+    'tracking-button',
+    'tracked-icon',
+    'wanted-icon',
+    'untracked-icon',
+    'dropdown-menu',
+    'menu-tracked',
+    'menu-wanted',
+    'menu-untracked',
+    'btn-tracked',
+    'btn-wanted',
+    'btn-untracked'
 ];
 
 /** The slots the grid card renderer fills, checked the same way. */

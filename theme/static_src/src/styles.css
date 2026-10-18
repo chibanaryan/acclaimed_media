@@ -1381,22 +1381,36 @@ input[type="number"] {
   filter: drop-shadow(0 0 12px rgba(250, 204, 21, 1)) !important;
 }
 
-/* Star button hover effect - subtle scale and glow boost */
-.played-button-wrapper {
+/* Tracking button hover effect - subtle scale and glow boost.
+   One rule set for both families, through selector lists, for the same
+   reason the row rules use them: games queries .played-button-wrapper and
+   music queries .tracking-button-wrapper, and a second copy of these four
+   rules is how album rows ended up without a hover state the last time. */
+.played-button-wrapper,
+.tracking-button-wrapper {
   transition: transform 0.15s ease-out;
 }
 
-.played-button-wrapper:hover {
+.played-button-wrapper:hover,
+.tracking-button-wrapper:hover {
   transform: scale(1.15);
 }
 
-.played-button-wrapper:hover img {
+.played-button-wrapper:hover img,
+.tracking-button-wrapper:hover img {
   filter: drop-shadow(0 0 10px rgba(250, 204, 21, 1));
 }
 
-/* Unplayed star hover - make it more visible */
-.played-button-wrapper:hover .mdi-star-outline {
+/* The untracked icon is dimmed until hovered, in both vocabularies: a star
+   outline for games, an empty record for albums. */
+.played-button-wrapper:hover .mdi-star-outline,
+.tracking-button-wrapper:hover .mdi-record-circle-outline {
   color: oklch(var(--bc) / 0.5);
+}
+
+/* The listened record gets the same glow the played star's image has. */
+.tracking-button-wrapper:hover .mdi-album {
+  filter: drop-shadow(0 0 10px oklch(var(--a) / 0.9));
 }
 
 /* =============================================================================

@@ -28,6 +28,7 @@ from core import constants as core_constants
 from core.services.ranking import update_year_decade_ranks
 from games.models import SiteMetadata
 from music import config, models
+from music.services import user_tracking_service
 from music.services.caching import invalidate_music_caches
 
 logger = logging.getLogger(__name__)
@@ -230,6 +231,9 @@ def import_albums(
     models.Album.objects.all().delete()
 
     artist_cache: Dict[str, models.Artist] = {}
+    # Every Wikidata id each album carries, for the tracking reconnection
+    # pass below. Built here because the loop already has the ids parsed.
+    id_to_album: Dict[str, models.Album] = {}
     count = 0
     for index, row in enumerate(rows):
         if len(row) < 4:
@@ -252,6 +256,9 @@ def import_albums(
             all_wikidata_ids=all_wikidata_ids,
         )
 
+        for wikidata_id in all_wikidata_ids:
+            id_to_album[wikidata_id] = album
+
         artist_objs = []
         for artist_name in split_artist_credit(artist_credit):
             artist = artist_cache.get(artist_name)
@@ -271,6 +278,15 @@ def import_albums(
                 "progress",
                 {"current": index + 1, "total": total, "album_name": name},
             )
+
+    # The delete above orphaned every tracking row; re-adopt them by the
+    # external id they kept. Guarded by one cheap query, because the common
+    # case is a database where nobody has tracked anything yet.
+    if (
+        models.ListenedAlbum.objects.exists()
+        or models.WantToListenAlbum.objects.exists()
+    ):
+        user_tracking_service.reconnect_tracking_records(id_to_album)
 
     albums_ranked, years_processed = update_year_decade_ranks(
         models.Album, "music_album", "year_released"

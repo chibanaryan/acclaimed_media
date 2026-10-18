@@ -1,0 +1,11 @@
+{# The status filter as a bottom-sheet accordion section. #}
+{# #}
+{# Named to match _mobile_filter_time.html and _mobile_filter_genres.html, #}
+{# the two sections it sits beside. Unlike those it needs no Alpine #}
+{# component of its own: the buttons are a flat multi-select, so the shared #}
+{# control is rendered directly with the sheet's sizing. #}
+{# Props: as _status_filter.html. #}
+{# Keep every template comment on a single line. #}
+<div class="space-y-3">
+    {% include 'core/includes/_status_filter.html' with mobile=True %}
+</div>

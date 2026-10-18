@@ -89,6 +89,10 @@ class AlbumFilterEngine {
      *            genres: Object<string, number>}}
      */
     facets(filters = {}) {
+        // Only the year and genre dimensions are neutralised, so the listen
+        // status still applies to both passes - which is what makes a year
+        // cell's count agree with what selecting that year would give. The
+        // server does the same by not listing `listened` in either `skip`.
         const withoutYears = this.filter(
             Object.assign({}, filters, { start: null, end: null })
         );
@@ -163,8 +167,35 @@ class AlbumFilterEngine {
      * @param {number} [filters.end] - inclusive release-year ceiling
      * @param {number[]} [filters.artists] - artist ids, OR-ed
      * @param {number[]} [filters.genres] - genre ids, OR-ed
+     * @param {string[]} [filters.listened] - 'yes' | 'want' | 'no', OR-ed
      * @returns {Array} Matching albums
      */
+    /**
+     * Whether an album passes the listen-status filter.
+     *
+     * Mirrors `music.views._apply_listen_filter`. The state is read from the
+     * two global Sets the page renders, not from the album payload: that
+     * payload is shared between whoever uses the browser session, so it
+     * carries nothing per-user. Games needs a `game.i` guard because an IGDB
+     * id may be missing; the album pk is always there.
+     *
+     * @private
+     */
+    _passesListenStatus(album, listened) {
+        if (!listened || !listened.length || !window.isAuthenticated) return true;
+
+        const done = window.listenedAlbumIds && window.listenedAlbumIds.has(album.id);
+        const want =
+            window.wantToListenAlbumIds && window.wantToListenAlbumIds.has(album.id);
+
+        return listened.some(status => {
+            if (status === 'yes') return Boolean(done);
+            if (status === 'want') return Boolean(want);
+            if (status === 'no') return !done && !want;
+            return false;
+        });
+    }
+
     filter(filters = {}) {
         const query = filters.q ? filters.q.trim().toLowerCase() : '';
         const start = Number.isFinite(filters.start) ? filters.start : null;
@@ -194,6 +225,10 @@ class AlbumFilterEngine {
             // Rock means rock, not just the albums tagged with the bare
             // word. See `_expandGenres`.
             if (genreIds.length && !genreIds.some(id => album.g.includes(id))) {
+                return false;
+            }
+
+            if (!this._passesListenStatus(album, filters.listened)) {
                 return false;
             }
 

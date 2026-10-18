@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load humanize music_filters %}
+{% load humanize music_filters static %}
 
 {# Head blocks follow the games detail page's conventions: the same #}
 {# "<name> | Acclaimed Video Games" title shape, an og:image of the artwork #}
@@ -29,6 +29,8 @@
 {% block content %}
 {% if album %}
 <h1 class="text-3xl font-bold mb-4 flex items-center gap-3 flex-wrap">
+    {# The large listen button, where the games detail page puts its own #}
+    {% include 'music/includes/_listen_button.html' with is_tracked=is_listened is_wanted=is_want_to_listen size='large' %}
     <span>{{ album.name }}{% if album.year_released %} ({{ album.year_released }}){% endif %}</span>
     <span class="badge badge-warning badge-sm">Beta</span>
 </h1>
@@ -36,6 +38,20 @@
 {# a game - so the credit reads as a subtitle under the title rather than #}
 {# as one more row in the properties table. #}
 <p class="text-xl font-semibold -mt-2 mb-4">{% artist_links album 'link link-accent' %}</p>
+
+{% block pre_alpine %}
+{# The button here is HTMX-swapped like the rows', so the same listener has #}
+{# to keep the tracking Sets current. This page loads no filtering bundle. #}
+<script src="{% static 'core/js/media-tracking.min.js' %}?v=1" nonce="{{ csp_nonce }}"></script>
+<script nonce="{{ csp_nonce }}">
+window.MediaTracking.register('album', {
+    doneSet: 'listenedAlbumIds',
+    wantSet: 'wantToListenAlbumIds',
+    doneStatus: 'listened',
+    event: 'album-status-changed'
+});
+</script>
+{% endblock %}
 
 {% block extra_head %}
     {% if album.image %}

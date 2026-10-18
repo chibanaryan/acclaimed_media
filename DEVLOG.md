@@ -1,5 +1,44 @@
 # Developer Log
 
+## 2026-10-18 (album tracking)
+
+- **Albums can be tracked.** `ListenedAlbum` / `WantToListenAlbum` on
+  `core.models.UserTrackingBase`, a staff-only POST toggle at
+  `/music/<id>/toggle-listened/`, the 48px column on both row halves, a
+  Listen Status filter in the sidebar and the mobile sheet, and the large
+  button on the album page. This was the last structural difference between
+  the games and music sections
+- **The button and the status filter are shared, not copied.** Games and
+  books each carry a near-identical tracking button and games duplicates its
+  status filter between the sidebar and the mobile sheet;
+  `core/includes/_tracking_button.html` and `_status_filter.html` take the
+  verbs, icons and route as parameters instead. Music is the first user and
+  games and books are untouched, so nothing regressed to find out
+- **No inline script ships with a button swap.** Games and books each send a
+  `<script>` inside the swapped partial that mutates the global id Sets and
+  then deletes its own earlier copies to stop them accumulating.
+  `core/js/media-tracking.js` is one delegated listener, and a page registers
+  what its scope means
+- **Tracking rows survive a reimport.** An import deletes every `Album`, so
+  the rows keep the album's Wikidata id beside a nullable FK and
+  `reconnect_tracking_records` re-adopts them afterwards in one bulk pass -
+  normalising a secondary id to the primary, and merging two rows that now
+  point at one album. Games' per-album service would have been ~4000 extra
+  queries inside a web request
+- **Two bugs that only a browser could find.** `htmx:afterSwap` hands you the
+  element the swap *replaced*, so reading `data-status` there left the id
+  Sets one toggle behind for ever; and the client-side filter's HTMX
+  suppressor sits on `#album-results-container`, so it was cancelling every
+  row's toggle POST - but only once the bundle had loaded, which made it look
+  intermittent. The listener now reads the request, the suppressor now only
+  cancels GETs, and both are pinned by source tests
+- **Icons are a vinyl record**: an outline when untracked, filled and
+  accented once listened, a plus for the backlog. `mdi-album-outline` does
+  not exist in MDI 7.4.47, so untracked is `mdi-record-circle-outline`, the
+  one glyph added to the subset font
+- Verified against the real 1000-album database in Chrome, including the
+  client/server parity check over eight filter and sort combinations
+
 ## 2026-10-18 (music/games parity; shared ranking components; 1000-album release)
 
 - **The rankings pages now render the same chrome from `core/`.** The year

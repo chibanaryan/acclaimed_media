@@ -1,0 +1,13 @@
+{# The album listen-status button. #}
+{# #}
+{# A wrapper over core/includes/_tracking_button.html supplying music's #}
+{# verbs, icons and route, so no call site has to name that partial's whole #}
+{# contract. Icons are one vinyl record at three fills, as games' three are #}
+{# one star: a hollow ring untracked, a solid disc for the backlog, and the #}
+{# labelled accent record once listened. A plus-in-a-circle sat in the #}
+{# middle first and read as an orange blob at row size, being the only one #}
+{# of the three that was not a record; MDI has no record-with-a-plus. #}
+{# #}
+{# Props: album, is_tracked, is_wanted, and optionally size and just_toggled. #}
+{# Keep every template comment on a single line. #}
+{% include 'core/includes/_tracking_button.html' with item=album external_id=album.wikidata_id tracking_scope='album' toggle_url_name='music:toggle-listened' tracked_status='listened' tracked_icon='mdi-album' tracked_icon_class='text-accent' wanted_icon='mdi-record-circle' wanted_icon_class='text-warning' untracked_icon='mdi-record-circle-outline' untracked_icon_class='text-base-content/30' tracked_label='Listened' wanted_label='Want to Listen' untracked_label='Untracked' tracked_tip='You have listened to this album!' wanted_tip='You want to listen to this album!' untracked_tip="You aren't tracking this album." %}

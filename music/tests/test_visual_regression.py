@@ -59,6 +59,7 @@ DESKTOP_SLOTS = {
     "year-link",
     "year",
     "meta-row",
+    "tracking-column",
 }
 
 MOBILE_SLOTS = {
@@ -69,6 +70,7 @@ MOBILE_SLOTS = {
     "title-mobile",
     "year-mobile",
     "meta-mobile",
+    "tracking-column-mobile",
 }
 
 
@@ -83,9 +85,30 @@ def row_slots(variant=None):
     return slots(render_to_string("music/includes/_album_row.html", context))
 
 
+TRACKING_SLOTS = {
+    "tracking-wrapper",
+    "tracking-button",
+    "tracked-icon",
+    "wanted-icon",
+    "untracked-icon",
+    "dropdown-menu",
+    "menu-tracked",
+    "menu-wanted",
+    "menu-untracked",
+    "btn-tracked",
+    "btn-wanted",
+    "btn-untracked",
+}
+
+
 def grid_slots():
     """The slots `_album_card_grid.html` emits with no album."""
     return slots(render_to_string("music/includes/_album_card_grid.html", {}))
+
+
+def tracking_slots():
+    """The slots `_listen_button_template.html` emits with no album."""
+    return slots(render_to_string("music/includes/_listen_button_template.html", {}))
 
 
 class EmptyRowTemplateTests(TestCase):
@@ -312,3 +335,145 @@ class RankedPageGridTests(TestCase):
         self.assertTrue(soup.select('[aria-label="Grid view"]'))
         self.assertTrue(soup.select('[aria-label="List view"]'))
         self.assertTrue(soup.select(".jump-to-rank-input"))
+
+
+class EmptyTrackingButtonTemplateTests(TestCase):
+    """The listen button as it is rendered into a <template>, with nothing."""
+
+    def test_the_empty_button_carries_every_slot(self):
+        self.assertEqual(TRACKING_SLOTS - tracking_slots(), set())
+
+    def test_all_three_states_are_present_at_once(self):
+        # The renderer shows one and hides the others, so all three have to
+        # exist in the clone; rendering only the current state would leave it
+        # with nothing to switch to.
+        html = render_to_string("music/includes/_listen_button_template.html", {})
+        soup = BeautifulSoup(html, "html.parser")
+        for slot in ("tracked-icon", "wanted-icon", "untracked-icon"):
+            with self.subTest(slot=slot):
+                self.assertIsNotNone(soup.select_one(f'[data-slot="{slot}"]'))
+
+    def test_it_carries_no_item_id_to_start_with(self):
+        # The renderer writes one per row. A value here would mean every
+        # clone posted to the same album.
+        html = render_to_string("music/includes/_listen_button_template.html", {})
+        soup = BeautifulSoup(html, "html.parser")
+        wrapper = soup.select_one('[data-slot="tracking-wrapper"]')
+        self.assertEqual(wrapper["data-item-id"], "")
+        self.assertEqual(wrapper["data-status"], "none")
+
+    def test_it_names_the_scope_the_sync_listener_looks_up(self):
+        # media-tracking.js finds its config by this attribute; without it
+        # the Sets stop being updated and the status filter goes stale.
+        html = render_to_string("music/includes/_listen_button_template.html", {})
+        soup = BeautifulSoup(html, "html.parser")
+        wrapper = soup.select_one('[data-slot="tracking-wrapper"]')
+        self.assertEqual(wrapper["data-tracking-scope"], "album")
+
+    def test_it_ships_no_inline_script(self):
+        # Games and books each ship a sync script inside the swapped markup.
+        # This one is replaced by a single delegated listener, which is what
+        # keeps the partial free of inline script.
+        html = render_to_string("music/includes/_listen_button_template.html", {})
+        self.assertNotIn("<script", html)
+
+
+class TrackingRendererContractTests(TestCase):
+    """The renderer must not reach for a button slot the template omits."""
+
+    def _declared_tracking_slots(self):
+        source = RENDERER.read_text()
+        block = re.search(
+            r"AlbumListRenderer\.TRACKING_SLOTS = \[(.*?)\];", source, re.S
+        )
+        self.assertIsNotNone(block, "AlbumListRenderer.TRACKING_SLOTS is gone")
+        return set(re.findall(r"'([a-z-]+)'", block.group(1)))
+
+    def test_the_template_emits_every_slot_the_renderer_declares(self):
+        self.assertEqual(self._declared_tracking_slots() - tracking_slots(), set())
+
+    def test_the_button_slots_are_declared_apart_from_the_row_slots(self):
+        # They live in a different template, so a slot listed in SLOTS would
+        # be looked for in `_album_row.html` and not found there.
+        source = RENDERER.read_text()
+        block = re.search(r"AlbumListRenderer\.SLOTS = \[(.*?)\];", source, re.S)
+        declared_rows = set(re.findall(r"'([a-z-]+)'", block.group(1)))
+        self.assertEqual(declared_rows & self._declared_tracking_slots(), set())
+
+
+class TrackingColumnTests(TestCase):
+    """Where the button sits in a row, and how much room it is given."""
+
+    def test_the_column_is_emitted_with_no_album_and_no_user(self):
+        # This is the clone case. Without the `or not item` arm of the guard
+        # the <template> would carry no column and the renderer would have
+        # nowhere to put the button.
+        self.assertIn("tracking-column", row_slots("desktop"))
+        self.assertIn("tracking-column-mobile", row_slots("mobile"))
+
+    def test_the_desktop_column_is_the_width_the_games_rows_use(self):
+        # 48px, so an album row and a game row line up down the page.
+        html = render_to_string(
+            "music/includes/_album_row.html", {"row_variant": "desktop"}
+        )
+        soup = BeautifulSoup(html, "html.parser")
+        column = soup.select_one('[data-slot="tracking-column"]')
+        for width in ("w-12", "min-w-12", "max-w-12"):
+            with self.subTest(width=width):
+                self.assertIn(width, column["class"])
+
+    def test_the_button_sits_outside_the_hovered_row(self):
+        # The core row places the block outside .media-row on purpose: the
+        # row's hover effect would otherwise cover the button. Nothing else
+        # pins that, so moving the block would go unnoticed.
+        html = render_to_string(
+            "music/includes/_album_row.html", {"row_variant": "desktop"}
+        )
+        soup = BeautifulSoup(html, "html.parser")
+        column = soup.select_one('[data-slot="tracking-column"]')
+        self.assertIsNone(column.find_parent(attrs={"data-slot": "media-row"}))
+        self.assertIsNotNone(column.find_parent(attrs={"data-slot": "root"}))
+
+    def test_the_mobile_row_reserves_a_column_for_the_button(self):
+        html = render_to_string(
+            "music/includes/_album_row.html", {"row_variant": "mobile"}
+        )
+        soup = BeautifulSoup(html, "html.parser")
+        root = soup.select_one('[data-slot="root-mobile"]')
+        self.assertIn("auto auto 1fr", root["style"])
+
+    def test_a_real_row_narrows_again_when_the_button_is_hidden(self):
+        # The flag only means anything on a row that has an album: with no
+        # album the guard's `or not item` arm keeps the column, which is the
+        # clone case and deliberate. With one, the grid has to go back to two
+        # columns or the thumbnail is pushed off centre.
+        album = models.Album.objects.create(
+            name="Doolittle", rank=1, slug="doolittle", year_released=1989
+        )
+        html = render_to_string(
+            "music/includes/_album_row.html",
+            {"row_variant": "mobile", "item": album, "hide_tracking_button": True},
+        )
+        soup = BeautifulSoup(html, "html.parser")
+        root = soup.select_one('[data-slot="root-mobile"]')
+        self.assertIn("grid-template-columns: auto 1fr", root["style"])
+        self.assertNotIn("auto auto 1fr", root["style"])
+
+    def test_a_real_row_with_the_button_hidden_omits_the_column(self):
+        album = models.Album.objects.create(
+            name="Surfer Rosa", rank=2, slug="surfer-rosa", year_released=1988
+        )
+        html = render_to_string(
+            "music/includes/_album_row.html",
+            {"row_variant": "desktop", "item": album, "hide_tracking_button": True},
+        )
+        self.assertNotIn("tracking-column", slots(html))
+
+    def test_the_clone_keeps_the_column_even_with_the_flag_set(self):
+        # The contradictory combination, spelled out: a <template> is
+        # rendered with no context at all, so it must never lose the column.
+        html = render_to_string(
+            "music/includes/_album_row.html",
+            {"row_variant": "desktop", "hide_tracking_button": True},
+        )
+        self.assertIn("tracking-column", slots(html))

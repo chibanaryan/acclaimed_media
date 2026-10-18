@@ -10,15 +10,16 @@ A mechanical diff of the games and music feature sets (every `aria-label`,
 Everything else either matches or is genuinely games-only (platforms,
 playtime, series).
 
-1. **Album tracking: `ListenedAlbum` / `WantToListenAlbum`.** The last
-   structural difference. It unlocks the Game Status filter's equivalent, the
-   star column at the left of every row, and the tracking button on the detail
-   page - which is why games rows reserve 48px that album rows do not. Model
-   the pair on `PlayedGame` / `WantToPlayGame`; the row renderer already has
-   the slot pattern. ~1 session.
+1. ~~**Album tracking: `ListenedAlbum` / `WantToListenAlbum`.**~~ Done
+   2026-10-18. The models, the toggle endpoint, the 48px column on both row
+   halves, the Listen Status filter server- and client-side, and the detail
+   page button. The button and the status filter were built as shared
+   `core/` partials rather than a third copy of games'; games and books are
+   untouched and can migrate to them. See AGENTS.md, "Album tracking".
 2. **Saved filters.** Games has `SavedFilter`, the Saved dropdown, and the
    save/rename/delete modals in both the sidebar and the mobile sheet. Music
    has none. Worth less than tracking: the album filter state is smaller.
+   **Now the top parity item.**
 
 Not worth doing as parity:
 
@@ -29,6 +30,10 @@ Not worth doing as parity:
 - **Games' source-lists page still carries its own inline sort control**
   rather than `core/includes/_entity_sort_controls.html`. It looks identical;
   it is the last un-shared duplicate, so it is tidying, not parity.
+- **Migrating games and books onto `core/includes/_tracking_button.html`**
+  and `_status_filter.html`. The shared partials exist and are parameterised
+  for it, but games' tracking button is working code with a 743-line suite
+  behind it; the duplication costs nothing until one of them changes.
 
 ## Music: before it can launch publicly
 
@@ -55,6 +60,40 @@ Not worth doing as parity:
 8. **The MusicBrainz pass is opt-in and has never run on the new release.**
    `--musicbrainz` fills genres for the albums with no Discogs master - three
    of them in the previous release, unknown in this one.
+
+## Production: the dyno is over its memory quota
+
+11. **R14s are constant, not occasional.** As of 2026-10-18 the web dyno
+    averages **96.4%** of its 512 MB quota, peaks at **112.7% (576 MB)**, and
+    fires R14 in dense clusters right through the day, with H27 (client
+    request interrupted) alongside - requests dying while the dyno swaps.
+
+    The shape matters: this is **not** the sawtooth a classic leak draws
+    (climb, restart, low floor, climb again). The line sits flat at ~460-470
+    MB across a full 24 hours, including immediately after the deploys and
+    restarts at ~3AM and ~3PM, and swap never exceeds 10 MB. That reads as a
+    **baseline footprint larger than the quota** - several gunicorn workers
+    each holding a big resident set - rather than something growing
+    unboundedly over hours. Two recent changes plausibly raised the floor:
+    the move of `default` to Postgres `DatabaseCache`, and the 1000-album
+    release.
+
+    Worth checking, roughly in order:
+
+    - `WEB_CONCURRENCY` / worker count against a 512 MB quota, and whether
+      gunicorn recycles workers at all (`--max-requests`). Three workers on
+      512 MB leaves ~170 MB each.
+    - Per-worker RSS at boot vs. after serving traffic. That one measurement
+      separates "baseline too big" (buy a bigger dyno, or drop a worker)
+      from "grows without bound" (find the retainer).
+    - The in-process retainers: the `local` LocMem alias holds **whole
+      rendered pages** (`CACHE_MIDDLEWARE_ALIAS`,
+      `AnonymousResponseCacheMixin`) and its `MAX_ENTRIES` is per process,
+      so three workers hold three copies; and `/api/music/all/` builds the
+      entire 1000-album payload per request.
+
+    Deliberately not guessed at further without measurements. Start with
+    `heroku config`, the `Procfile`, and `heroku ps -a`.
 
 ## Housekeeping
 

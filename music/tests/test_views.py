@@ -1087,3 +1087,252 @@ class ArtistSortTests(MusicDataMixin, TestCase):
         # none, so these pages could not empty their own search.
         page = self.client.get(reverse("music:artist-list")).content.decode()
         self.assertIn('aria-label="Clear search"', page)
+
+
+class ListenStatusPageTests(MusicDataMixin, TestCase):
+    """What the rankings page renders once tracking exists."""
+
+    def setUp(self):
+        super().setUp()
+        # The button needs an external id to key its row on, so the shared
+        # fixture's albums - which carry none - get one here.
+        for album, qid in (
+            (self.revolver, "Q-revolver"),
+            (self.rust, "Q-rust"),
+            (self.kid_a, "Q-kid-a"),
+        ):
+            album.wikidata_id = qid
+            album.save(update_fields=["wikidata_id"])
+
+        models.ListenedAlbum.objects.create(
+            user=self.staff_user, album=self.revolver, wikidata_id="Q-revolver"
+        )
+        models.WantToListenAlbum.objects.create(
+            user=self.staff_user, album=self.rust, wikidata_id="Q-rust"
+        )
+        self.url = reverse("music:home")
+
+    def test_the_status_filter_counts_as_filtering(self):
+        # Which is what switches the rank column from all-time positions to
+        # positions within the filtered set.
+        response = self.client.get(self.url + "?listened=yes")
+        self.assertTrue(response.context["is_filtered"])
+        self.assertEqual(response.context["show_rank"], "filtered")
+
+    def test_an_absent_status_filter_is_not_filtering(self):
+        response = self.client.get(self.url)
+        self.assertFalse(response.context["is_filtered"])
+        self.assertEqual(response.context["show_rank"], "alltime")
+
+    def test_the_heading_names_the_status(self):
+        response = self.client.get(self.url + "?listened=yes")
+        self.assertIn(": Listened", response.context["filter_title"])
+
+    def test_the_heading_joins_several_statuses(self):
+        # Games appends one label by hand and so cannot say this, although
+        # its parameter is multi-select too.
+        response = self.client.get(self.url + "?listened=no,yes")
+        self.assertIn(": Untracked and Listened", response.context["filter_title"])
+
+    def test_the_heading_joins_three_statuses(self):
+        response = self.client.get(self.url + "?listened=no,want,yes")
+        self.assertIn(
+            ": Untracked, Want to Listen, and Listened",
+            response.context["filter_title"],
+        )
+
+    def test_the_heading_keeps_the_year_window_too(self):
+        response = self.client.get(self.url + "?listened=yes&start=1960&end=1969")
+        title = response.context["filter_title"]
+        self.assertIn("of the 1960s", title)
+        self.assertIn(": Listened", title)
+
+    def test_an_unknown_status_leaves_the_heading_alone(self):
+        response = self.client.get(self.url + "?listened=sideways")
+        self.assertNotIn(":", response.context["filter_title"])
+
+    def test_the_state_is_echoed_back_for_the_form(self):
+        response = self.client.get(self.url + "?listened=yes,want")
+        self.assertEqual(response.context["current_listened"], "yes,want")
+        self.assertEqual(response.context["filters"]["listened"], ["yes", "want"])
+
+    def test_an_unknown_status_is_dropped_from_the_alpine_state(self):
+        response = self.client.get(self.url + "?listened=sideways")
+        self.assertEqual(response.context["filters"]["listened"], [])
+
+    def test_the_status_options_reach_the_template(self):
+        response = self.client.get(self.url)
+        values = [o["value"] for o in response.context["listen_status_options"]]
+        self.assertEqual(values, ["no", "want", "yes"])
+
+    def test_the_page_renders_the_tracking_id_sets(self):
+        # The client-side predicate reads these, which is why they are album
+        # pks and not Wikidata ids.
+        response = self.client.get(self.url)
+        html = response.content.decode()
+        self.assertIn(f"window.listenedAlbumIds = new Set([{self.revolver.id}])", html)
+        self.assertIn(f"window.wantToListenAlbumIds = new Set([{self.rust.id}])", html)
+        self.assertIn("window.isAuthenticated = true", html)
+
+    def test_an_orphaned_row_is_left_out_of_the_sets(self):
+        # Between an import and the reconnection pass there is no album id
+        # to put in the set.
+        models.ListenedAlbum.objects.filter(album=self.revolver).update(album=None)
+        response = self.client.get(self.url)
+        self.assertIn(
+            "window.listenedAlbumIds = new Set([])", response.content.decode()
+        )
+
+    def test_the_sidebar_renders_the_status_control(self):
+        response = self.client.get(self.url)
+        html = response.content.decode()
+        self.assertIn("Listen Status", html)
+        self.assertIn("toggleStatusValue('listened', 'yes')", html)
+        self.assertIn('name="listened"', html)
+
+    def test_the_sidebar_offers_every_status(self):
+        response = self.client.get(self.url)
+        html = response.content.decode()
+        for option in config.LISTEN_STATUS_OPTIONS:
+            with self.subTest(status=option["value"]):
+                self.assertIn(
+                    f"toggleStatusValue('listened', '{option['value']}')", html
+                )
+
+    def test_the_row_renders_the_button_for_a_tracked_album(self):
+        response = self.client.get(self.url)
+        html = response.content.decode()
+        self.assertIn('data-tracking-scope="album"', html)
+        self.assertIn(f'data-item-id="{self.revolver.id}"', html)
+        self.assertIn('data-status="listened"', html)
+        self.assertIn('data-status="want"', html)
+        self.assertIn('data-status="none"', html)
+
+    def test_the_button_template_is_declared_for_cloning(self):
+        response = self.client.get(self.url)
+        self.assertContains(response, 'id="tracking-button-template"')
+
+    def test_the_sync_listener_is_loaded_and_registered(self):
+        # Not part of the filtering bundle, so it is here in its own right.
+        response = self.client.get(self.url)
+        html = response.content.decode()
+        self.assertIn("media-tracking.min.js", html)
+        self.assertIn("window.MediaTracking.register('album'", html)
+
+    def test_the_download_respects_the_status_filter(self):
+        response = self.client.get(reverse("music:download") + "?listened=yes")
+        body = response.content.decode()
+        self.assertIn("Revolver", body)
+        self.assertNotIn("Kid A", body)
+
+    def test_the_rank_distribution_respects_the_status_filter(self):
+        response = self.client.get(self.url + "?listened=yes")
+        total = sum(b["count"] for b in response.context["rank_distribution"])
+        self.assertEqual(total, 1)
+
+    def test_the_results_are_filtered(self):
+        response = self.client.get(self.url + "?listened=want")
+        names = [album.name for album in response.context["albums"]]
+        self.assertEqual(names, ["Rust Never Sleeps"])
+
+
+class ListenStatusAnonymousPageTests(MusicDataMixin, TestCase):
+    """The control is visible but inert without a sign-in."""
+
+    def test_the_sets_are_empty_for_a_user_who_tracks_nothing(self):
+        response = self.client.get(reverse("music:home"))
+        html = response.content.decode()
+        self.assertIn("window.listenedAlbumIds = new Set([])", html)
+        self.assertIn("window.wantToListenAlbumIds = new Set([])", html)
+
+    def test_the_status_filter_does_nothing_for_an_untracking_user(self):
+        response = self.client.get(reverse("music:home") + "?listened=yes")
+        self.assertEqual(len(response.context["albums"]), 0)
+
+
+class AlbumDetailListenButtonTests(MusicDataMixin, TestCase):
+    """The large button on an album page."""
+
+    def setUp(self):
+        super().setUp()
+        self.revolver.wikidata_id = "Q-revolver"
+        self.revolver.save()
+        self.url = reverse("music:album-detail", args=[self.revolver.slug])
+
+    def test_the_flags_reach_the_template(self):
+        models.ListenedAlbum.objects.create(
+            user=self.staff_user, album=self.revolver, wikidata_id="Q-revolver"
+        )
+        response = self.client.get(self.url)
+        self.assertTrue(response.context["is_listened"])
+        self.assertFalse(response.context["is_want_to_listen"])
+
+    def test_the_want_flag_reaches_the_template(self):
+        models.WantToListenAlbum.objects.create(
+            user=self.staff_user, album=self.revolver, wikidata_id="Q-revolver"
+        )
+        response = self.client.get(self.url)
+        self.assertTrue(response.context["is_want_to_listen"])
+        self.assertFalse(response.context["is_listened"])
+
+    def test_the_page_renders_the_button_at_the_large_size(self):
+        response = self.client.get(self.url)
+        html = response.content.decode()
+        self.assertIn("h-12 w-12", html)
+        self.assertIn("size=large", html)
+
+    def test_the_menu_opens_downward_on_a_detail_page(self):
+        # The button is in the heading, with nothing above it to open into.
+        html = self.client.get(self.url).content.decode()
+        self.assertIn("top-full", html)
+
+    def test_the_page_loads_the_sync_listener_itself(self):
+        # It loads no filtering bundle, so the listener has to come from here
+        # or the Sets would go stale after a toggle.
+        html = self.client.get(self.url).content.decode()
+        self.assertIn("media-tracking.min.js", html)
+
+    def test_no_button_without_a_wikidata_id(self):
+        # Nothing to key a tracking row on.
+        self.kid_a.wikidata_id = None
+        self.kid_a.save()
+        response = self.client.get(
+            reverse("music:album-detail", args=[self.kid_a.slug])
+        )
+        self.assertNotIn("tracking-button-wrapper", response.content.decode())
+
+    def test_the_related_albums_carry_the_listen_annotation(self):
+        # They render the same row partial, so without the annotation every
+        # button there would read "untracked".
+        models.ListenedAlbum.objects.create(
+            user=self.staff_user, album=self.rust, wikidata_id="Q-rust"
+        )
+        other = models.Album.objects.create(
+            name="Harvest", rank=9, year_released=1972, wikidata_id="Q-harvest"
+        )
+        other.artists.set([self.young])
+        self.rust.wikidata_id = "Q-rust"
+        self.rust.save()
+
+        response = self.client.get(reverse("music:album-detail", args=[other.slug]))
+        related = list(response.context["related_albums"])
+        self.assertTrue(
+            any(getattr(album, "is_listened_by_user", False) for album in related)
+        )
+
+
+class ArtistDetailListenButtonTests(MusicDataMixin, TestCase):
+    """The artist page renders the same rows, so it needs the annotation."""
+
+    def test_the_prefetched_albums_carry_the_listen_annotation(self):
+        self.revolver.wikidata_id = "Q-revolver"
+        self.revolver.save()
+        models.ListenedAlbum.objects.create(
+            user=self.staff_user, album=self.revolver, wikidata_id="Q-revolver"
+        )
+        response = self.client.get(
+            reverse("music:artist-detail", args=[self.beatles.slug])
+        )
+        albums = list(response.context["artist"].albums.all())
+        self.assertTrue(albums)
+        self.assertTrue(albums[0].is_listened_by_user)

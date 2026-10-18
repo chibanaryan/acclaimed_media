@@ -11,6 +11,11 @@
 {# When item is not provided, renders empty template structure for JS cloning #}
 {# with data-slot attributes for client-side population. #}
 {# #}
+{#   mobile_grid_style (block) - the mobile root's grid-template-columns. A #}
+{#     row that fills mobile_tracking_button needs a third column, and a #}
+{#     block is the only way to vary it: the <template> elements a page #}
+{#     clones are included with `only`, so no context reaches them. #}
+{# #}
 {#   row_variant (optional) - '' renders both halves (the default, and what #}
 {#     games and books use), 'desktop' or 'mobile' renders just that one. #}
 {#     BaseMediaListRenderer._initTemplates wants a separate <template> per #}
@@ -85,7 +90,7 @@
 <div class="media-row media-card-mobile desktop:hidden grid items-center gap-3 p-2 bg-base-200 rounded-lg mb-2 cursor-pointer {% if item and highlight and item.id == highlight %}is-highlighted{% endif %}"
      {% if item %}id="{{ media_type }}-{{ item.id }}-mobile"{% endif %}
      data-slot="root-mobile"
-     style="grid-template-columns: auto 1fr;"
+     {% block mobile_grid_style %}style="grid-template-columns: auto 1fr;"{% endblock %}
      {% if item %}onclick="window.location.href='{{ item.get_absolute_url }}'"{% endif %}>
     
     {% block mobile_tracking_button %}{% endblock %}

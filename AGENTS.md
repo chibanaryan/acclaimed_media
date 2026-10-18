@@ -1,6 +1,6 @@
 # AGENTS.md (Canonical)
 
-Last synchronized: 2026-02-21
+Last synchronized: 2026-10-18
 
 This file is the canonical instruction source for Codex in this repository.
 
@@ -206,6 +206,13 @@ Music-specific models (staff-only beta):
 - **AlbumCover** - the cover-art bytes at two sizes, keyed by the Cover Art Archive's
   own release MBID, image id and size rather than by album, so they also outlive an
   import
+- **ListenedAlbum / WantToListenAlbum** - per-user tracking on
+  `core.models.UserTrackingBase`, as books' pair is and games' predates. Each
+  keeps a nullable `album` FK **and** the album's `wikidata_id`, because an
+  import deletes every `Album`: the rows survive on `SET_NULL` and
+  `music.services.user_tracking_service` re-adopts them by that id afterwards.
+  Mutual exclusivity is enforced by the toggle view, not by a constraint -
+  they are separate tables, so no one constraint spans them
 
 ### API Architecture
 
@@ -276,11 +283,14 @@ the hover.
 | `core/includes/_list_type_group.html` | one group of list appearances on a detail page |
 | `core/includes/_rank_distribution.html` | where the filtered items sit across the ranking |
 | `core/includes/_search_box.html` | the standard search input, with its clear button |
+| `core/includes/_tracking_button.html` | the three-state tracking dropdown, and `_tracking_button_template.html`, its clone twin |
+| `core/includes/_status_filter.html`, `_mobile_filter_status.html` | the tracking status filter |
 | `core/services/titles.py` | the heading's wording: `join_names`, `build_time_window` |
 | `core/services/ranking.py` | `rank_distribution`, the chart's binning |
 | `core/js/filter-subcomponents.js` | `yearGridComponent`, `genreFilterComponent` and their mobile forms |
 | `core/js/media-list-controls.js` | `mediaListControls`, `entityListControls` |
 | `core/js/media-search.js` | `createMediaSearchData`, for a section's search box |
+| `core/js/media-tracking.js` | `MediaTracking`, which keeps the tracking id Sets current after a button swap |
 
 The templates are the contract. Each binds to an Alpine component exposing
 `filters`, `genres`, `initialized`, `debouncedFilterUpdate()`,
@@ -349,6 +359,62 @@ sort combinations, compare the engine's ordered ids against
 `GET /music/?<same query>&partial=true`. Unit tests cannot catch a divergence
 here, because both sides can be self-consistently wrong.
 
+### Album tracking
+
+`ListenedAlbum` / `WantToListenAlbum` mirror games' `PlayedGame` /
+`WantToPlayGame`, with four deliberate differences:
+
+- **The button is one shared partial.** Games and books each carry their own
+  near-identical copy; `core/includes/_tracking_button.html` takes the verbs,
+  icons and route as parameters and `music/includes/_listen_button.html` is a
+  thin wrapper supplying music's. It resolves the route **positionally**
+  (`{% url toggle_url_name item.id %}`) because `{% url %}` cannot take a
+  dynamic kwarg name - so a section's toggle route must take the item's pk as
+  its one positional argument. Games and books are unchanged and can migrate.
+- **No inline sync script.** Both other sections ship a `<script>` *inside*
+  every swapped partial, which mutates the global Sets and then deletes its
+  own earlier copies so they do not pile up. `core/js/media-tracking.js` is
+  one delegated listener instead, and a page registers what its scope means.
+- **The toggle is atomic.** The delete and the write run in one transaction
+  and the write is an `update_or_create` keyed on the `unique_together`, so a
+  double-click cannot race into an `IntegrityError` - and a row orphaned by a
+  reimport is re-adopted on the spot. The cache is dropped in
+  `transaction.on_commit`, so a rolled-back write cannot clear it.
+- **Nothing per-user goes in `/api/music/all/`.** That payload is held in
+  `sessionStorage` keyed only on its version, so two people sharing a browser
+  session share it. The client joins on the album pk, which the payload
+  already carries, and the page renders `window.listenedAlbumIds` /
+  `window.wantToListenAlbumIds` per request - so there is no new payload key
+  and no `SCHEMA_VERSION` bump.
+
+Two traps worth knowing, both of which only appear in a real browser and are
+now pinned by `core/tests/test_media_tracking.py` and the source tests in
+`music/tests/test_tracking.py`:
+
+- **`htmx:afterSwap` is too early to read the new state.** With
+  `hx-swap="outerHTML"` the swap *replaces* the target, so `detail.target` is
+  by then the detached old element, still carrying its pre-swap
+  `data-status`. `media-tracking.js` listens on `htmx:afterRequest` and takes
+  the new status from the request's own `?status=`.
+- **The client-side filter suppressor must only cancel GETs.**
+  `album-client-filtering.js` cancels HTMX requests once the engine can answer
+  them locally, with listeners on the form and on
+  `#album-results-container`. Every row sits inside that container, so a
+  row's toggle POST bubbles through the same listener - and cancelling it made
+  the button do nothing at all, but only once the bundle had loaded, which is
+  why it looked intermittent.
+
+Two filter vocabularies, as games has: `?listened=yes|want|no` (multi-select,
+comma-joined) for filtering, and `?status=listened|want|none` for the toggle.
+`?listened=yes` reads correctly in a URL and `data-status="listened"` reads
+correctly on an element; `music/config.py:LISTEN_STATUS_OPTIONS` maps the two
+server-side and the scope registry in `media-tracking.js` does client-side.
+
+Per-user cache keys cannot live in `CACHE_KEYS`, which is a flat tuple an
+import iterates. They are templates in `PER_USER_CACHE_KEY_TEMPLATES`, dropped
+by `caching.invalidate_listen_caches(user_id)` at the only two moments they
+can go stale: a toggle, and the reconnection pass after an import.
+
 ### Template Architecture
 
 The application uses Django templates with server-side rendering:
@@ -415,6 +481,8 @@ the main site - reach them by URL):
 - `/music/artists/<slug>/` - Artist detail with ranked albums
 - `/music/lists/` - The published source lists behind the rankings
 - `/music/import/` - Staff import for the three release files
+- `/music/<album_id>/toggle-listened/` - POST, `?status=none|want|listened`,
+  answering with the re-rendered button for HTMX to swap
 - `/music/cover/<release_mbid>/<image_id>-<size>.jpg` - Cover art served from our own
   store, cached a year and immutable
 
@@ -511,6 +579,7 @@ The home page game rankings use a **dual-rendering architecture** that requires 
 | `music/templates/music/includes/_album_card_grid.html` | `AlbumListRenderer._renderGridCard` |
 | `games/templates/games/includes/_game_card_grid.html` | `GameListRenderer._renderGridCard` |
 | `core/templates/core/includes/_base_media_row.html` | `core/static/core/js/base-renderer.js` |
+| `core/templates/core/includes/_tracking_button_template.html` | `AlbumListRenderer._renderTrackingButtonDOM` / `TRACKING_SLOTS` |
 
 Music renders one partial for both halves: `_base_media_row.html` takes a
 `row_variant` of `'desktop'` or `'mobile'` so `music/home.html` can put each
@@ -592,6 +661,15 @@ from the games files:
   `ARTISTS_WITH_COMMAS` (`Crosby, Stills & Nash` and friends).
 
 Unranked lists record every member at rank 1, matching the games convention.
+
+**An import re-adopts tracking rows.** It deletes every `Album`, which
+orphans every `ListenedAlbum` / `WantToListenAlbum`, so `import_albums` runs
+`music.services.user_tracking_service.reconnect_tracking_records` afterwards
+and reconnects them by Wikidata id - normalising a secondary id to the
+primary and merging two rows that now point at one album, earliest kept.
+Without it a reimport would look exactly like losing everyone's collection.
+The pass is behind a one-query existence check, so an untracked database
+pays nothing.
 
 **An import does not fetch metadata.** It replaces every `Album` row, and the
 external data rows survive on `on_delete=SET_NULL` - they are re-attached by
