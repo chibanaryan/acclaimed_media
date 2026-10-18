@@ -4,11 +4,12 @@ import importlib
 import json
 import re
 
-from django.core.cache import cache
+from django.core.cache import caches
 from django.test import TestCase
 
 from core.mixins import AnonymousResponseCacheMixin
 from core.models import User
+from core.tests.utils import clear_all_caches
 from games import config
 from games.models import Game, Platform, WikipediaGenre
 from games.services import landing_pages
@@ -68,7 +69,7 @@ class LandingPageDataMixin:
         cls.rpg_game.platforms.add(cls.pc)
 
     def setUp(self):
-        cache.clear()
+        clear_all_caches()
 
 
 class LandingPagesServiceTests(LandingPageDataMixin, TestCase):
@@ -240,11 +241,11 @@ class LandingPageViewTests(LandingPageDataMixin, TestCase):
     def test_anonymous_responses_are_cached(self):
         self.client.get("/games/action/")
         cache_key = f"landing_page:{config.CACHE_VERSION}:/games/action/"
-        payload = cache.get(cache_key)
+        payload = caches["local"].get(cache_key)
         self.assertIsNotNone(payload)
         # Prove the second request is served from the cache
         payload["content"] = b"CACHED MARKER"
-        cache.set(cache_key, payload, 60)
+        caches["local"].set(cache_key, payload, 60)
         response = self.client.get("/games/action/")
         self.assertEqual(response.content, b"CACHED MARKER")
 
@@ -258,25 +259,25 @@ class LandingPageViewTests(LandingPageDataMixin, TestCase):
         response = self.client.get("/games/action/")
         self.assertEqual(response.status_code, 200)
         cache_key = f"landing_page:{config.CACHE_VERSION}:/games/action/"
-        self.assertIsNone(cache.get(cache_key))
+        self.assertIsNone(caches["local"].get(cache_key))
 
     def test_query_strings_bypass_the_cache(self):
         response = self.client.get("/games/action/?utm_source=x")
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(
-            cache.get(f"landing_page:{config.CACHE_VERSION}:/games/action/")
+            caches["local"].get(f"landing_page:{config.CACHE_VERSION}:/games/action/")
         )
 
     def test_top_index_is_cached_for_anonymous_users(self):
         self.client.get("/games/browse/")
         cache_key = f"landing_page:{config.CACHE_VERSION}:/games/browse/"
-        self.assertIsNotNone(cache.get(cache_key))
+        self.assertIsNotNone(caches["local"].get(cache_key))
 
     def test_top_index_query_strings_bypass_the_cache(self):
         response = self.client.get("/games/browse/?utm_source=x")
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(
-            cache.get(f"landing_page:{config.CACHE_VERSION}:/games/browse/")
+            caches["local"].get(f"landing_page:{config.CACHE_VERSION}:/games/browse/")
         )
 
     def test_seo_url_map_is_embedded_for_client_side_filtering(self):

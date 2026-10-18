@@ -3,6 +3,7 @@
 from django.core.cache import cache
 from django.test import TestCase
 
+from core.tests.utils import clear_all_caches
 from games.models import Developer, Game
 from games.services.developer_service import (
     DEVELOPER_HIERARCHY_CACHE_KEY,
@@ -19,11 +20,11 @@ class DeveloperServiceTests(TestCase):
 
     def setUp(self):
         """Clear cache before each test."""
-        cache.clear()
+        clear_all_caches()
 
     def tearDown(self):
         """Clear cache after each test."""
-        cache.clear()
+        clear_all_caches()
 
     def test_get_developer_hierarchy_caches_result(self):
         """Test that hierarchy data is cached after first call."""
@@ -66,7 +67,7 @@ class ComputeHierarchyTests(TestCase):
 
     def setUp(self):
         """Clear cache before each test."""
-        cache.clear()
+        clear_all_caches()
 
     def test_compute_hierarchy_empty_database(self):
         """Test hierarchy computation with no developers."""
@@ -324,7 +325,7 @@ class DeveloperHierarchyIntegrationTests(TestCase):
 
     def setUp(self):
         """Clear cache before each test."""
-        cache.clear()
+        clear_all_caches()
 
     def test_full_hierarchy_workflow(self):
         """Test complete workflow with multiple developers and games."""
@@ -383,7 +384,7 @@ class DeveloperHierarchyIntegrationTests(TestCase):
 
     def test_get_hierarchy_recomputes_after_invalidation(self):
         """Test that hierarchy is recomputed after cache invalidation."""
-        cache.clear()
+        clear_all_caches()
 
         # Create developer with game
         dev = Developer.objects.create(name="Dev", igdb_id=1)

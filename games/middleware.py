@@ -5,7 +5,7 @@ Middleware for HTMX history support, rate limiting, and response compression.
 import logging
 import time
 
-from django.core.cache import cache
+from django.core.cache import caches
 from django.http import HttpResponse
 from django.middleware.gzip import GZipMiddleware
 
@@ -18,7 +18,14 @@ from games.config import (
 
 logger = logging.getLogger(__name__)
 
-# Paths exempt from rate limiting
+# Paths exempt from rate limiting.
+#
+# `/music/cover/` is here because it is a static asset in everything but the
+# URL: immutable bytes from our own store, served with a year's cache. A
+# single album rankings page asks for up to a hundred of them, so counting
+# them against a 120/minute budget meant one page load nearly exhausted it
+# and the next one 429'd - and client-side filtering makes that worse, since
+# every filter change renders another hundred rows.
 RATE_LIMIT_EXEMPT_PREFIXES = (
     "/robots.txt",
     "/sitemap.xml",
@@ -26,6 +33,7 @@ RATE_LIMIT_EXEMPT_PREFIXES = (
     "/admin/",
     "/static/",
     "/accounts/",
+    "/music/cover/",
 )
 
 
@@ -34,11 +42,29 @@ class RateLimitMiddleware:
     Fixed-window rate limiting per IP address.
 
     Blocks IPs that exceed per-minute or per-hour thresholds.
-    Uses Django's cache backend (Redis in production).
+
+    The counters live in the per-process ``local`` cache rather than the
+    shared ``default`` one. Three cache operations run on every non-exempt
+    request and the keys are per-IP-per-minute, so on a database-backed cache
+    this would add writes to Postgres on every hit from every crawler and
+    churn the shared entries out through culling. The cost is that each
+    gunicorn worker counts independently, so the effective limit is looser
+    than the configured one by the worker count - which is how this has
+    always behaved, LocMemCache being per-process too.
     """
 
     def __init__(self, get_response):
         self.get_response = get_response
+
+    @property
+    def cache(self):
+        """The counter cache, resolved per access.
+
+        Resolved here rather than held from ``__init__`` so that a test's
+        ``override_settings(CACHES=...)`` applies: middleware is instantiated
+        once per handler, long before any such override.
+        """
+        return caches["local"]
 
     def __call__(self, request):
         path = request.path
@@ -52,7 +78,7 @@ class RateLimitMiddleware:
 
         try:
             # Check if IP is currently blocked
-            if cache.get(block_key):
+            if self.cache.get(block_key):
                 return HttpResponse(
                     "Rate limit exceeded. Try again later.",
                     status=429,
@@ -73,7 +99,7 @@ class RateLimitMiddleware:
         # Check thresholds
         if minute_count > RATE_LIMIT_PER_MINUTE or hour_count > RATE_LIMIT_PER_HOUR:
             try:
-                cache.set(block_key, True, timeout=RATE_LIMIT_BLOCK_DURATION)
+                self.cache.set(block_key, True, timeout=RATE_LIMIT_BLOCK_DURATION)
             except Exception:
                 pass
             exceeded = (
@@ -96,14 +122,13 @@ class RateLimitMiddleware:
 
         return self.get_response(request)
 
-    @staticmethod
-    def _incr(key, timeout):
+    def _incr(self, key, timeout):
         """Atomically increment a cache counter, creating it if needed."""
         try:
-            return cache.incr(key)
+            return self.cache.incr(key)
         except ValueError:
             # Key doesn't exist yet — create it
-            cache.set(key, 1, timeout=timeout)
+            self.cache.set(key, 1, timeout=timeout)
             return 1
 
     @staticmethod

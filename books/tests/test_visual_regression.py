@@ -21,6 +21,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
 
+from core.tests.utils import clear_all_caches
 from books import models
 
 
@@ -36,6 +37,11 @@ class StaffClientMixin:
 
     def setUp(self):
         super().setUp()
+        # Books' home view caches hero counts and the reader's book
+        # ids, so a test that renders it leaves entries behind for the
+        # next one. pytest's conftest clears caches between tests;
+        # this keeps the suite correct under Django's runner too.
+        clear_all_caches()
         self.client = Client()
         # Create staff user for accessing books views
         self.staff_user = User.objects.create_user(

@@ -2,10 +2,10 @@
 
 import time
 
-from django.core.cache import cache
 from django.test import TestCase
 
 from core.models import User
+from core.tests.utils import clear_all_caches
 from games.models import Game, PlayedGame, WantToPlayGame
 from games.services.user_tracking_service import reconnect_tracking_records
 
@@ -27,7 +27,7 @@ class ReconnectTrackingRecordsTests(TestCase):
         )
 
     def setUp(self):
-        cache.clear()
+        clear_all_caches()
 
     def test_reconnect_orphaned_record_primary_id(self):
         """Test reconnecting orphaned record via primary IGDB ID."""

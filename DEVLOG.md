@@ -1,5 +1,46 @@
 # Developer Log
 
+## 2026-10-17 (shared cache; client-side filtering for music; books stack repaired)
+
+- **Move the shared cache onto Postgres.** Production ran `locmemcache://` on one
+  dyno with three gunicorn workers, so `_invalidate_music_caches()` cleared one
+  process of four and a metadata refresh left stale genre and artist options for
+  up to 24 hours. `core/cache_config.py` now builds two aliases: `default`, which
+  is `DatabaseCache` on the existing Postgres in production, and `local`, a
+  per-process cache holding whole rendered pages and the rate-limit counters -
+  those are large or high-churn and would otherwise push every anonymous page's
+  HTML into Postgres and cull the shared entries back out. `MAX_ENTRIES` is set
+  explicitly; Django's default of 300 culls a third of the cache per write
+- **Client-side filtering for `/music/`.** `/api/music/all/` serves the whole
+  corpus (500 albums, 38 KB gzipped) and `music/static/music/js/` filters, sorts
+  and renders in the browser, ending a full HTMX round trip per filter change on
+  100-row pages. No IndexedDB and no `version/` endpoint: at this size neither
+  pays for itself. It is progressive enhancement - the HTMX sidebar keeps working
+  until the bundle has data, and if it never does
+- The payload carries `nn` (`name_normalized`) and `ni` (the server's own
+  `Lower(name)` position) so client and server agree exactly: reimplementing
+  `unidecode` in JS would drift, and no comparator reproduces a database
+  collation - `localeCompare` files "Ágætis byrjun" with the A's where SQLite
+  sorts it past Z. Verified by comparing the engine's output against
+  `?partial=true` over 22 filter and sort combinations
+- **Repair the books client-side stack, which had never run.** Its template
+  referenced a bundle filename the build script does not write (a render-time
+  error under manifest storage, not a 404), the bundle omitted the base class its
+  renderer extends, the view never set `enable_client_filtering` or the four
+  context variables the page renders, and - found while verifying - all 13 books
+  API read views named `IsStaffOrHide` without an authenticator, so with
+  `DEFAULT_AUTHENTICATION_CLASSES` empty the entire read API 404'd for a real
+  staff session. Existing tests missed that because `force_authenticate` bypasses
+  authentication
+- Exempt `/music/cover/` from rate limiting. One rankings page requests up to a
+  hundred covers against a 120/minute budget, so a second page load 429'd - and
+  client-side filtering re-renders a hundred rows per filter change
+- New guards for the mistakes above: `core/tests/test_static_bundles.py` (every
+  referenced bundle exists; every bundle defines the base classes its members
+  extend), `music/tests/test_visual_regression.py` (the row emits every slot the
+  renderer declares, including when rendered empty for a `<template>`), a
+  session-login test for the books API, and `core/tests/test_cache_config.py`
+
 ## 2026-10-17 (music metadata pipeline; import views staff-gated)
 
 - **Gate the games import views on staff.** `ImportView`, `IGDBProgressView`,

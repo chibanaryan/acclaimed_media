@@ -3,6 +3,7 @@
 from django.core.cache import cache
 from django.test import TestCase
 
+from core.tests.utils import clear_all_caches
 from games import config
 from games.models import Developer, Game, WikipediaGenre
 from games.signals import invalidate_genre_descendant_cache
@@ -13,11 +14,11 @@ class DeveloperCacheInvalidationSignalTests(TestCase):
 
     def setUp(self):
         """Clear cache before each test."""
-        cache.clear()
+        clear_all_caches()
 
     def tearDown(self):
         """Clear cache after each test."""
-        cache.clear()
+        clear_all_caches()
 
     def test_developer_save_invalidates_cache(self):
         """Test that saving a developer invalidates the hierarchy cache."""
@@ -96,11 +97,11 @@ class GameDeveloperM2MSignalTests(TestCase):
 
     def setUp(self):
         """Clear cache before each test."""
-        cache.clear()
+        clear_all_caches()
 
     def tearDown(self):
         """Clear cache after each test."""
-        cache.clear()
+        clear_all_caches()
 
     def test_adding_developer_to_game_invalidates_cache(self):
         """Test that adding a developer to a game invalidates cache."""
@@ -201,7 +202,7 @@ class WikipediaGenreCacheInvalidationTests(TestCase):
 
     def setUp(self):
         """Clear cache before each test."""
-        cache.clear()
+        clear_all_caches()
         # Use unique counter for each test to avoid slug collisions
         import uuid
 
@@ -209,7 +210,7 @@ class WikipediaGenreCacheInvalidationTests(TestCase):
 
     def tearDown(self):
         """Clear cache after each test."""
-        cache.clear()
+        clear_all_caches()
 
     def test_genre_save_invalidates_own_cache(self):
         """Test that saving a genre invalidates its descendant cache."""
@@ -278,14 +279,14 @@ class InvalidateGenreDescendantCacheTests(TestCase):
 
     def setUp(self):
         """Clear cache before each test."""
-        cache.clear()
+        clear_all_caches()
         import uuid
 
         self.unique_id = uuid.uuid4().hex[:8]
 
     def tearDown(self):
         """Clear cache after each test."""
-        cache.clear()
+        clear_all_caches()
 
     def test_invalidate_specific_genre(self):
         """Test invalidating a specific genre's cache."""

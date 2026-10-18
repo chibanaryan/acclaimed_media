@@ -1,9 +1,9 @@
 """Tests for RateLimitMiddleware."""
 
 import time
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from django.core.cache import cache
+from django.core.cache import caches
 from django.test import TestCase, override_settings
 
 from games.config import (
@@ -12,34 +12,39 @@ from games.config import (
     RATE_LIMIT_PER_MINUTE,
 )
 
+LOCMEM = {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}
 
-@override_settings(
-    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
-)
+
+@override_settings(CACHES={"default": LOCMEM, "local": dict(LOCMEM, LOCATION="local")})
 class RateLimitMiddlewareTest(TestCase):
-    """Test rate limiting middleware."""
+    """Test rate limiting middleware.
+
+    The counters live on the per-process `local` alias, not `default` - see
+    `core.cache_config` for why - so the seeding helpers write there.
+    """
 
     def setUp(self):
-        cache.clear()
+        self.cache = caches["local"]
+        self.cache.clear()
 
     def tearDown(self):
-        cache.clear()
+        self.cache.clear()
 
     def _seed_minute_count(self, ip="127.0.0.1", count=RATE_LIMIT_PER_MINUTE):
         """Pre-seed the per-minute counter to just at the limit."""
         now = int(time.time())
         key = f"{RATE_LIMIT_CACHE_PREFIX}:min:{ip}:{now // 60}"
-        cache.set(key, count, timeout=60)
+        self.cache.set(key, count, timeout=60)
 
     def _seed_hour_count(self, ip="127.0.0.1", count=RATE_LIMIT_PER_HOUR):
         """Pre-seed the per-hour counter to just at the limit."""
         now = int(time.time())
         key = f"{RATE_LIMIT_CACHE_PREFIX}:hr:{ip}:{now // 3600}"
-        cache.set(key, count, timeout=3600)
+        self.cache.set(key, count, timeout=3600)
 
     def _block_ip(self, ip="127.0.0.1"):
         """Simulate a blocked IP."""
-        cache.set(f"{RATE_LIMIT_CACHE_PREFIX}:block:{ip}", True, timeout=300)
+        self.cache.set(f"{RATE_LIMIT_CACHE_PREFIX}:block:{ip}", True, timeout=300)
 
     def test_normal_request_passes(self):
         """Normal requests should return 200."""
@@ -55,6 +60,8 @@ class RateLimitMiddlewareTest(TestCase):
             "/admin/login/",
             "/static/test.css",
             "/accounts/login/",
+            # A hundred of these are requested per album rankings page.
+            "/music/cover/abc/123-250.jpg",
         ]
         for path in exempt_paths:
             self._block_ip()
@@ -62,7 +69,7 @@ class RateLimitMiddlewareTest(TestCase):
             self.assertNotEqual(
                 response.status_code, 429, f"Exempt path {path} was rate limited"
             )
-            cache.clear()
+            self.cache.clear()
 
     def test_per_minute_rate_limit_allows_up_to_threshold(self):
         """Requests at the per-minute limit should pass."""
@@ -122,8 +129,9 @@ class RateLimitMiddlewareTest(TestCase):
 
     def test_cache_failure_allows_request(self):
         """If cache is unavailable, requests should pass through."""
-        with patch("games.middleware.cache") as mock_cache:
-            mock_cache.get.side_effect = Exception("Cache unavailable")
+        broken = MagicMock()
+        broken.get.side_effect = Exception("Cache unavailable")
+        with patch("games.middleware.caches", new={"local": broken}):
             response = self.client.get("/")
             # Should not be 429 - graceful degradation
             self.assertNotEqual(response.status_code, 429)
@@ -138,7 +146,7 @@ class RateLimitMiddlewareTest(TestCase):
 
         # Verify block key exists
         block_key = f"{RATE_LIMIT_CACHE_PREFIX}:block:{ip}"
-        self.assertTrue(cache.get(block_key))
+        self.assertTrue(self.cache.get(block_key))
 
     def test_429_response_format(self):
         """429 response should have correct content type and message."""
@@ -159,14 +167,13 @@ class RateLimitMiddlewareTest(TestCase):
         Rate limiter should still return 429
         even if cache.set for block key fails.
         """
-        with patch("games.middleware.cache.get", return_value=None):
+        unwritable = MagicMock()
+        unwritable.get.return_value = None
+        unwritable.set.side_effect = Exception("cache write failed")
+        with patch("games.middleware.caches", new={"local": unwritable}):
             with patch(
                 "games.middleware.RateLimitMiddleware._incr",
                 side_effect=[RATE_LIMIT_PER_MINUTE + 1, 1],
             ):
-                with patch(
-                    "games.middleware.cache.set",
-                    side_effect=Exception("cache write failed"),
-                ):
-                    response = self.client.get("/")
+                response = self.client.get("/")
         self.assertEqual(response.status_code, 429)

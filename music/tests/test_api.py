@@ -10,6 +10,7 @@ anonymous and 404s.
 
 import json
 
+from django.db.models.functions import Lower
 from django.test import TestCase
 from django.urls import reverse
 
@@ -355,3 +356,114 @@ class MusicMetaAPITests(MusicAPITestMixin, TestCase):
     def test_anonymous_gets_404(self):
         self.client.logout()
         self.assertEqual(self.client.get(reverse("music-api:meta")).status_code, 404)
+
+
+class AlbumAllDataAPITests(MusicAPITestMixin, TestCase):
+    """The bulk payload the client-side filtering bundle runs on."""
+
+    def url(self):
+        return reverse("music-api:album-all-data")
+
+    def test_returns_every_album_in_rank_order(self):
+        data = self.payload(self.url())
+        self.assertEqual(sorted(data), ["albums", "artists", "genres", "version"])
+        self.assertEqual([album["r"] for album in data["albums"]], [1, 2])
+        self.assertEqual(
+            [album["n"] for album in data["albums"]], ["Kid A", "OK Computer"]
+        )
+
+    def test_album_fields_are_the_ones_the_renderer_reads(self):
+        data = self.payload(self.url())
+        album = data["albums"][0]
+        self.assertEqual(
+            sorted(album),
+            ["ar", "c", "g", "id", "lc", "n", "ni", "nn", "r", "s", "t", "y"],
+        )
+        self.assertEqual(album["id"], self.kid_a.id)
+        self.assertEqual(album["s"], "kid-a")
+        self.assertEqual(album["y"], 2000)
+        self.assertEqual(album["c"], "Radiohead")
+        self.assertEqual(album["ar"], [self.artist.id])
+        self.assertEqual(album["g"], [self.genre.id])
+        self.assertEqual(album["lc"], 1)
+
+    def test_name_normalized_is_sent_for_the_text_search(self):
+        # The server's `q` searches name_normalized too, so the client needs
+        # it rather than reimplementing unidecode in the browser.
+        album = models.Album.objects.create(name="Ágætis byrjun", rank=3)
+        data = self.payload(self.url())
+        sent = {entry["id"]: entry["nn"] for entry in data["albums"]}
+        self.assertEqual(sent[album.id], "Agaetis byrjun")
+        # Stored only when it differs from the name; sent as "" otherwise.
+        self.assertEqual(sent[self.kid_a.id], "")
+
+    def test_the_alphabetical_order_is_precomputed(self):
+        # The client sorts by this rather than recomputing `Lower(name)`:
+        # no JavaScript comparator reproduces a database collation, and
+        # local SQLite does not even agree with production Postgres.
+        models.Album.objects.create(name="Ágætis byrjun", rank=3)
+        data = self.payload(self.url())
+        by_position = sorted(data["albums"], key=lambda album: album["ni"])
+        self.assertEqual(
+            [album["n"] for album in by_position],
+            list(
+                models.Album.objects.order_by(Lower("name")).values_list(
+                    "name", flat=True
+                )
+            ),
+        )
+
+    def test_artists_are_a_lookup_table(self):
+        data = self.payload(self.url())
+        self.assertEqual(
+            data["artists"][str(self.artist.id)],
+            {"n": "Radiohead", "s": "radiohead"},
+        )
+
+    def test_genres_carry_their_descendants(self):
+        data = self.payload(self.url())
+        by_id = {entry["id"]: entry for entry in data["genres"]}
+        self.assertEqual(by_id[self.genre.id]["d"], [self.child_genre.id])
+        self.assertEqual(by_id[self.child_genre.id]["p"], self.genre.id)
+
+    def test_version_is_a_short_hash(self):
+        data = self.payload(self.url())
+        self.assertEqual(len(data["version"]), 12)
+
+    def test_version_changes_when_an_album_changes(self):
+        before = self.payload(self.url())["version"]
+        self.kid_a.name = "Kid A Mnesia"
+        self.kid_a.save()
+        self.assertNotEqual(self.payload(self.url())["version"], before)
+
+    def test_version_changes_when_a_genre_is_added(self):
+        before = self.payload(self.url())["version"]
+        models.MusicGenre.objects.create(name="Ambient")
+        self.assertNotEqual(self.payload(self.url())["version"], before)
+
+    def test_version_changes_when_cover_art_is_stored(self):
+        # Cover art is written to the MusicBrainz row, which does not touch
+        # Album.modified - so without this signal a client would hold a copy
+        # with missing covers and no way to know it was stale.
+        before = self.payload(self.url())["version"]
+        models.MusicBrainzAlbumData.objects.create(
+            album=self.kid_a, cover_art_stored=True
+        )
+        self.assertNotEqual(self.payload(self.url())["version"], before)
+
+    def test_anonymous_gets_404(self):
+        self.client.logout()
+        self.assertEqual(self.client.get(self.url()).status_code, 404)
+
+    def test_non_staff_gets_404(self):
+        User.objects.create_user(username="plain", password="plainpass")
+        self.client.login(username="plain", password="plainpass")
+        self.assertEqual(self.client.get(self.url()).status_code, 404)
+
+    def test_a_staff_response_is_not_replayed_to_anonymous_callers(self):
+        # The whole unreleased catalogue in one response: the reason these
+        # endpoints must never be wrapped in cache_page, which is consulted
+        # before permissions run.
+        self.payload(self.url())
+        self.client.logout()
+        self.assertEqual(self.client.get(self.url()).status_code, 404)

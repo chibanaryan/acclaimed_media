@@ -10,8 +10,14 @@
 {# #}
 {# When item is not provided, renders empty template structure for JS cloning #}
 {# with data-slot attributes for client-side population. #}
+{# #}
+{#   row_variant (optional) - '' renders both halves (the default, and what #}
+{#     games and books use), 'desktop' or 'mobile' renders just that one. #}
+{#     BaseMediaListRenderer._initTemplates wants a separate <template> per #}
+{#     half, so a page cloning this row declares two, one of each variant. #}
 
 {# Desktop Row Structure #}
+{% if row_variant != 'mobile' %}
 <div class="media-row-wrapper hidden desktop:flex items-center"
      {% if item %}id="{{ media_type }}-{{ item.id }}"{% endif %}
      data-slot="root">
@@ -68,8 +74,10 @@
         </div>
     </div>
 </div>
+{% endif %}
 
 {# Mobile Row Structure #}
+{% if row_variant != 'desktop' %}
 <div class="media-row media-card-mobile desktop:hidden grid items-center gap-3 p-2 bg-base-200 rounded-lg hover:bg-base-100 transition-colors mb-2 cursor-pointer {% if item and highlight and item.id == highlight %}is-highlighted{% endif %}"
      {% if item %}id="{{ media_type }}-{{ item.id }}-mobile"{% endif %}
      data-slot="root-mobile"
@@ -107,3 +115,4 @@
         </div>
     </div>
 </div>
+{% endif %}

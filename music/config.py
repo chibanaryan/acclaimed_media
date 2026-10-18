@@ -34,7 +34,24 @@ DEFAULT_MIN_YEAR = 1950  # The supplied rankings start at 1955
 # Cache Keys
 # =============================================================================
 
-CACHE_KEY_YEAR_STATS = "album_year_stats"
+# Every key carries CACHE_VERSION, so one bump invalidates the whole set, and
+# every key appears in CACHE_KEYS, which `music.views._invalidate_music_caches`
+# iterates - a new cached option cannot be added without being invalidated too.
+CACHE_KEY_YEAR_STATS = f"{CACHE_VERSION}:album_year_stats"
+CACHE_KEY_ARTIST_OPTIONS = f"{CACHE_VERSION}:music_artist_options"
+CACHE_KEY_GENRE_OPTIONS = f"{CACHE_VERSION}:music_genre_options"
+CACHE_KEY_DECADE_COUNTS = f"{CACHE_VERSION}:music_decade_counts"
+CACHE_KEY_HERO_STATS = f"{CACHE_VERSION}:music_hero_stats"
+CACHE_KEY_TOTAL_ALBUM_COUNT = f"{CACHE_VERSION}:total_album_count"
+
+CACHE_KEYS = (
+    CACHE_KEY_YEAR_STATS,
+    CACHE_KEY_ARTIST_OPTIONS,
+    CACHE_KEY_GENRE_OPTIONS,
+    CACHE_KEY_DECADE_COUNTS,
+    CACHE_KEY_HERO_STATS,
+    CACHE_KEY_TOTAL_ALBUM_COUNT,
+)
 
 # =============================================================================
 # Import Settings

@@ -239,10 +239,54 @@ Music API endpoints (staff-only):
 - `/api/music/lists/` - Source lists
 - `/api/music/genres/` - Music genres
 - `/api/music/meta/` - Counts and year/decade distributions
+- `/api/music/all/` - Every album in one payload, for client-side filtering
 
 **Note:** these endpoints carry no `cache_page` decorator on purpose. `cache_page`
 wraps `dispatch`, so it is consulted before permissions run and a staff response
 would be replayed to anonymous callers, defeating `IsStaffOrHide`.
+
+**Note:** every read view in `music/api/` and `books/api/` uses a
+`StaffReadAPIMixin` that names `SessionAuthentication`. `REST_FRAMEWORK`'s
+`DEFAULT_AUTHENTICATION_CLASSES` is empty project-wide, so a view declaring only
+`permission_classes = [IsStaffOrHide]` sees a logged-in staff member as anonymous
+and 404s. The books API shipped that way until 2026-10-17 - its whole read API
+was unreachable from a browser - and the tests missed it because
+`APIClient.force_authenticate` bypasses authentication entirely. Test staff API
+access with a real session login.
+
+### Music client-side filtering
+
+`/music/` filters in the browser. `/api/music/all/` returns the whole corpus
+(500 albums, ~100 KB of JSON, 38 KB gzipped), the bundle holds it in
+`sessionStorage` keyed by the data version the page renders into itself, and
+`music/static/music/js/` filters, sorts and renders locally. There is no
+IndexedDB layer and no `version/` endpoint: at this size neither pays for
+itself.
+
+It is progressive enhancement. The page is server-rendered and its HTMX sidebar
+filters server-side on its own; the bundle suppresses those requests only once
+it has data and a renderer, so a failed or slow bundle leaves a working page.
+
+Two payload fields exist to keep the client and the server agreeing exactly:
+
+- `nn` is `name_normalized`, the `unidecode(name)` column the server's `q`
+  searches alongside `name` and `artist_credit`. Sent rather than recomputed,
+  because reimplementing unidecode in the browser would be a second copy of the
+  rule that drifts.
+- `ni` is the album's position in the server's own `Lower(name)` ordering. No
+  JavaScript comparator reproduces a database collation: `localeCompare` files
+  "Ágætis byrjun" next to the A's while SQLite sorts it past Z, and punctuation
+  is weighted differently again. The client sorts alphabetically by this
+  integer, which also stops local SQLite disagreeing with production Postgres.
+
+The genre filter matches flat ids on both sides, with no hierarchy expansion,
+because `get_queryset` does: selecting a root genre matches only albums tagged
+with the root itself, which is also what the count beside that option reports.
+
+When changing the filters, re-run the parity check: for a spread of filter and
+sort combinations, compare the engine's ordered ids against
+`GET /music/?<same query>&partial=true`. Unit tests cannot catch a divergence
+here, because both sides can be self-consistently wrong.
 
 ### Template Architecture
 
@@ -402,6 +446,18 @@ The home page game rankings use a **dual-rendering architecture** that requires 
 | `games/templates/games/includes/_game_row_desktop.html` | `games/static/games/js/game-list-renderer.js` |
 | `games/templates/games/includes/_game_row_mobile.html` | (fallback string methods: `_renderDesktopRowString`, `_renderMobileRowString`) |
 | `games/templatetags/game_filters.py` | `_platformFamilies`, `_familyInfo` objects |
+| `music/templates/music/includes/_album_row.html` | `music/static/music/js/album-list-renderer.js` |
+| `core/templates/core/includes/_base_media_row.html` | `core/static/core/js/base-renderer.js` |
+
+Music renders one partial for both halves: `_base_media_row.html` takes a
+`row_variant` of `'desktop'` or `'mobile'` so `music/home.html` can put each
+half in its own `<template>`, which is what `BaseMediaListRenderer`
+`_initTemplates` expects. The renderer declares the slots it fills in
+`AlbumListRenderer.SLOTS`, and `music/tests/test_visual_regression.py` checks
+the template still emits every one of them - **including when the row is
+rendered with no album**, which is how a `<template>` is rendered. A slot
+placed inside `{% if item.something %}` disappears from the clone and the
+renderer silently has nowhere to write.
 
 **When Modifying Game Rows:**
 1. Update the Django template for server-rendered output
@@ -514,6 +570,35 @@ Two decisions worth knowing before changing any of it:
 `Album.thumbnail` and `Album.image` are what the pages render and prefer the local
 copy.
 
+## Caching
+
+Two aliases, defined by `core/cache_config.py` (which `settings.py` calls):
+
+- **`default` is shared across processes.** In production it is Django's
+  `DatabaseCache` on the existing Postgres (`CACHE_URL=dbcache://cache_table`),
+  so the three gunicorn workers and any one-off dyno see the same entries. That
+  is what makes `music.views._invalidate_music_caches()` mean anything: under
+  `LocMemCache` each process had its own copy and an invalidation reached
+  exactly one of them, so a metadata refresh left stale filter options behind
+  for up to their 24-hour TTL. Local dev stays on LocMem; `createcachetable
+  cache_table` runs in the Heroku release phase and is idempotent.
+- **`local` is per-process, and must stay that way.** It holds whole rendered
+  pages (`CACHE_MIDDLEWARE_ALIAS`, `core.mixins.AnonymousResponseCacheMixin`)
+  and the per-IP rate-limit counters in `games.middleware`. Those are large or
+  high-churn and need no cross-process agreement: on the shared backend a
+  crawler would push every page's HTML into Postgres and cull the small shared
+  entries straight back out. `MAX_ENTRIES` is set explicitly for both, since
+  Django's default of 300 culls a third of the cache on almost every write.
+
+Music's cache keys all live in `music/config.py` as `CACHE_KEYS`, which
+`_invalidate_music_caches()` iterates - add a cached value there or it will not
+be invalidated. Every key carries `CACHE_VERSION`, so bumping that string
+invalidates the whole set.
+
+`/music/cover/` is exempt from rate limiting (`RATE_LIMIT_EXEMPT_PREFIXES`): it
+is a static asset in all but the URL, and one rankings page requests up to a
+hundred of them against a 120/minute budget.
+
 ## Configuration
 
 ### Environment Variables
@@ -529,6 +614,9 @@ Environment variables are managed via django-environ (`.env` file):
 - `HARDCOVER_API_TOKEN` - Optional Hardcover API token for additional book metadata
 - `DISCOGS_TOKEN` - Optional Discogs personal access token; raises the music
   metadata rate limit above the 25 requests/minute anonymous tier
+- `CACHE_URL` - Cache backend URL. Production uses `dbcache://cache_table`;
+  local dev falls back to LocMem whatever this says, and tests set
+  `locmemcache://`. See the Caching section
 
 ### Configuration Files
 
@@ -653,9 +741,19 @@ JavaScript files in `games/static/games/js/` follow a specific workflow:
 - Minified files (e.g., `game-list-renderer.min.js`) are generated from source files
 - **Always edit the source `.js` file, never the `.min.js` file directly**
 
-**Bundle File:**
-- `client-side-filtering.bundle.min.js` combines multiple minified files for the home page
-- Bundle is created from: `game-cache.min.js`, `client-filter.min.js`, `game-list-renderer.min.js`, `client-filtering.min.js`
+**Bundle Files:** three, each built by `scripts/minify_js.sh` from minified
+sources in dependency order, and each starting with
+`core/static/core/js/base-renderer.min.js` - a bundle whose renderer extends
+`BaseMediaListRenderer` without it throws a `ReferenceError` as it loads, so
+nothing declared after that point registers either:
+
+- `games/static/games/js/client-side-filtering.bundle.min.js` - `base-renderer`, `game-cache`, `client-filter`, `game-list-renderer`, `client-filtering`
+- `books/static/books/js/book-client-side-filtering.bundle.min.js` - `base-renderer`, `book-cache`, `book-client-filter`, `book-list-renderer`, `book-client-filtering`
+- `music/static/music/js/music-client-side-filtering.bundle.min.js` - `base-renderer`, `album-filter`, `album-list-renderer`, `album-client-filtering`
+
+`core/tests/test_static_bundles.py` asserts that every bundle a template
+references exists and that each defines the base classes its members extend.
+Both of those failed silently in the books bundle until 2026-10-17.
 
 **After Editing JavaScript:**
 Run `/minify` or `./scripts/minify_js.sh`

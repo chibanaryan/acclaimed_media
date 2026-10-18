@@ -15,6 +15,8 @@ urlpatterns = [
     path("search/", views.AlbumSearchAPIView.as_view(), name="album-search"),
     # Albums
     path("", views.AlbumListView.as_view(), name="album-list"),
+    # Bulk payload for client-side filtering
+    path("all/", views.AlbumAllDataView.as_view(), name="album-all-data"),
     # Artists
     path("artists/", views.ArtistListView.as_view(), name="artist-list"),
     path(

@@ -1,9 +1,9 @@
 """Tests for percentile service."""
 
-from django.core.cache import cache
 from django.test import TestCase
 
 from core.models import User
+from core.tests.utils import clear_all_caches
 from games.models import Game, PlayedGame
 from games.services.percentile_service import (
     calculate_percentile,
@@ -16,7 +16,7 @@ class PercentileServiceTests(TestCase):
 
     def setUp(self):
         """Clear cache before each test."""
-        cache.clear()
+        clear_all_caches()
 
     def test_zero_played_returns_none_percentile(self):
         """User with 0 played games gets None percentile."""
@@ -140,7 +140,7 @@ class PercentileServiceTests(TestCase):
         self.assertEqual(len(dist1), len(dist2))
 
         # After cache clear, should see new user
-        cache.clear()
+        clear_all_caches()
         dist3 = get_played_games_distribution()
         self.assertEqual(len(dist3), 2)
 

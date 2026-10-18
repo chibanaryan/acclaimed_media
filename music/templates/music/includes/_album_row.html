@@ -1,40 +1,47 @@
 {# Album row - desktop and mobile, from the shared core row template. #}
-{# Props: album, show_rank ('alltime'|'filtered'|'none'), index, highlight #}
+{# Props: album, show_rank ('alltime'|'filtered'|'none'), index, highlight, #}
+{#   row_variant ('' | 'desktop' | 'mobile', passed through to the core row) #}
 {# The core template speaks in terms of `item`, so home.html includes this #}
-{# partial with `item=album`. Unlike the games and books rows this is not a #}
-{# dual-render template: music has no client-side renderer yet, so there is #}
-{# no JS cloning contract to keep in sync. #}
+{# partial with `item=album`. #}
+{# #}
+{# This is a dual-render template: with `item` it renders a row, and without #}
+{# one - which is how home.html renders it inside <template> - it renders the #}
+{# same structure empty, for music/static/music/js/album-list-renderer.js to #}
+{# clone and fill through the data-slot attributes. Both halves have to stay #}
+{# in step with that renderer; see the dual-rendering section of CLAUDE.md. #}
 {% extends 'core/includes/_base_media_row.html' %}
 {% load music_filters %}
 
 {# Sleeves are square and shown whole: `media-thumb-whole` swaps the shared #}
 {# row's portrait 90:128 box and object-fit:cover, which cropped the top and #}
 {# bottom off every cover. #}
+{# The img and the placeholder are both always emitted, one of them hidden, #}
+{# rather than one or the other. Rendered empty for a template clone, a #}
+{# condition on item.thumbnail would leave the clone with no thumbnail slot #}
+{# at all, and the renderer with nowhere to write the cover URL. #}
 {% block thumbnail %}
 <a {% if item %}href="{{ item.get_absolute_url }}"{% endif %} class="media-thumb-link media-thumb-whole" data-slot="thumb-link">
-    {% if item and item.thumbnail %}
-    <img src="{{ item.thumbnail }}" alt="{{ item.name }}"
+    <img {% if item and item.thumbnail %}src="{{ item.thumbnail }}" alt="{{ item.name }}"{% endif %}
          width="90" height="90" loading="lazy" decoding="async"
-         class="media-thumb" data-slot="thumbnail">
-    {% else %}
-    <span class="media-thumb-placeholder" aria-hidden="true">
+         class="media-thumb{% if item and not item.thumbnail %} hidden{% endif %}"
+         data-slot="thumbnail">
+    <span class="media-thumb-placeholder{% if not item or item.thumbnail %} hidden{% endif %}"
+          aria-hidden="true" data-slot="thumbnail-placeholder">
         <span class="mdi mdi-album text-lg"></span>
     </span>
-    {% endif %}
 </a>
 {% endblock %}
 
 {% block mobile_thumbnail %}
 <div class="media-thumb-mobile media-thumb-whole">
-    {% if item and item.thumbnail %}
-    <img src="{{ item.thumbnail }}" alt="{{ item.name }}"
+    <img {% if item and item.thumbnail %}src="{{ item.thumbnail }}" alt="{{ item.name }}"{% endif %}
          width="90" height="90" loading="lazy" decoding="async"
+         class="{% if item and not item.thumbnail %}hidden{% endif %}"
          data-slot="thumbnail-mobile">
-    {% else %}
-    <span class="media-thumb-placeholder" aria-hidden="true">
+    <span class="media-thumb-placeholder{% if not item or item.thumbnail %} hidden{% endif %}"
+          aria-hidden="true" data-slot="thumbnail-mobile-placeholder">
         <span class="mdi mdi-album text-base"></span>
     </span>
-    {% endif %}
 </div>
 {% endblock %}
 

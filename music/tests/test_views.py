@@ -4,12 +4,13 @@ Every music view is staff-only, so the tests authenticate as staff and each
 suite also asserts that an anonymous visitor gets 404 rather than 403.
 """
 
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
 from core import constants as core_constants
 from core.models import User
-from music import models, views
+from music import config, models, views
 from music.views import _decade_options, _filter_title, group_list_appearances
 
 
@@ -871,3 +872,72 @@ class GenreGroupingTests(TestCase):
         album.genres.set([genre])
         options = views._cached_genre_options()
         self.assertEqual(options[0]["albums_count"], 1)
+
+
+class ClientSideFilteringContextTests(MusicDataMixin, TestCase):
+    """What the rankings page hands the client-side filtering bundle."""
+
+    def test_client_side_filtering_is_enabled(self):
+        # The bundle's <script> and the <template> elements it clones are
+        # both gated on this flag.
+        response = self.client.get(reverse("music:home"))
+        self.assertTrue(response.context["enable_client_filtering"])
+
+    def test_the_album_data_version_is_rendered_into_the_page(self):
+        # This is what lets the client tell a stale copy of the bulk payload
+        # from a current one, which is why there is no version/ endpoint.
+        response = self.client.get(reverse("music:home"))
+        version = response.context["album_data_version"]
+        self.assertEqual(len(version), 12)
+        self.assertContains(response, f'window.albumDataVersion = "{version}"')
+
+    def test_the_row_templates_are_declared_for_cloning(self):
+        response = self.client.get(reverse("music:home"))
+        self.assertContains(response, 'id="desktop-row-template"')
+        self.assertContains(response, 'id="mobile-row-template"')
+
+
+class MusicCacheInvalidationTests(MusicDataMixin, TestCase):
+    """Every cached key has to be reachable from one invalidation call."""
+
+    def test_the_decade_counts_are_cached(self):
+        views._cached_decade_counts()
+        self.assertIsNotNone(cache.get(config.CACHE_KEY_DECADE_COUNTS))
+
+    def test_a_second_call_does_not_re_run_the_aggregate(self):
+        views._cached_decade_counts()
+        with self.assertNumQueries(0):
+            views._cached_decade_counts()
+
+    def test_decade_options_still_mark_the_selected_chip(self):
+        # Only the counts are cached; which chip is selected is per request.
+        first = _decade_options(1960, 1979, "1960", "1969")
+        second = _decade_options(1960, 1979, None, None)
+        self.assertTrue(first[0]["selected"])
+        self.assertFalse(second[0]["selected"])
+
+    def test_invalidation_clears_every_declared_key(self):
+        for key in config.CACHE_KEYS:
+            cache.set(key, "stale", 60)
+        views._invalidate_music_caches()
+        for key in config.CACHE_KEYS:
+            with self.subTest(key=key):
+                self.assertIsNone(cache.get(key))
+
+    def test_every_cached_key_is_declared_for_invalidation(self):
+        # Renders the page and the detail page, so each helper populates its
+        # key, then checks nothing was cached under a key the invalidation
+        # list does not know about.
+        self.client.get(reverse("music:home"))
+        self.client.get(
+            reverse("music:album-detail", kwargs={"slug": self.revolver.slug})
+        )
+        populated = [key for key in config.CACHE_KEYS if cache.get(key) is not None]
+        self.assertEqual(sorted(populated), sorted(config.CACHE_KEYS))
+
+    def test_every_key_carries_the_cache_version(self):
+        # One of them did not, so bumping CACHE_VERSION would have left the
+        # year bounds stale while invalidating everything else.
+        for key in config.CACHE_KEYS:
+            with self.subTest(key=key):
+                self.assertTrue(key.startswith(f"{config.CACHE_VERSION}:"))

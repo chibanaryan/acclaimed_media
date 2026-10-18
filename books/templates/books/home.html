@@ -18,8 +18,13 @@
     {% endif %}
     </script>
     {% if enable_client_filtering %}
-    {# Client-side filtering - will be added in Phase 6.1 #}
-    <script src="{% static 'books/js/book-client-filtering.bundle.min.js' %}?v=1" defer fetchpriority="low" nonce="{{ csp_nonce }}"></script>
+    {% comment %}
+    Client-side filtering. The filename has to match the bundle
+    scripts/minify_js.sh writes, which is book-client-SIDE-filtering: under
+    production's manifest static storage a name that is not in the manifest
+    raises while rendering rather than 404ing.
+    {% endcomment %}
+    <script src="{% static 'books/js/book-client-side-filtering.bundle.min.js' %}?v=2" defer fetchpriority="low" nonce="{{ csp_nonce }}"></script>
     {% endif %}
 {% endblock %}
 

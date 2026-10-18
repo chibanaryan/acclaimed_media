@@ -9,6 +9,7 @@ Comprehensive test coverage for:
 
 from django.test import TestCase
 
+from core.tests.utils import clear_all_caches
 from games.models import Game, WikipediaGenre
 from games.services.genre_normalizer import (
     canonicalize_genre_payload,
@@ -591,9 +592,8 @@ class HierarchicalGenreFilterTest(TestCase):
     def setUp(self):
         """Create test data with genre hierarchy and games."""
         # Clear cache to ensure no stale data from previous tests
-        from django.core.cache import cache
 
-        cache.clear()
+        clear_all_caches()
 
         # Create root categories
         self.action = WikipediaGenre.objects.create(

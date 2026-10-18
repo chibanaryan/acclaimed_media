@@ -15,29 +15,41 @@ Minify JavaScript source files and regenerate bundles for production.
 
 ## What It Does
 
-1. **Minifies source files**: For each `.js` file in `games/static/games/js/` that has a corresponding `.min.js` file, updates the minified version if the source is newer
+1. **Minifies source files**: every `.js` file in `games/static/games/js/`,
+   `books/static/books/js/`, `music/static/music/js/` and
+   `core/static/core/js/` whose `.min.js` is missing or older than the source
 
-2. **Regenerates the bundle**: Concatenates minified files into `client-side-filtering.bundle.min.js`:
-   - `game-cache.min.js`
-   - `client-filter.min.js`
-   - `game-list-renderer.min.js`
-   - `client-filtering.min.js`
+2. **Regenerates the three bundles**, in dependency order:
+
+   | Bundle | Members |
+   |---|---|
+   | `games/static/games/js/client-side-filtering.bundle.min.js` | `core/base-renderer`, `game-cache`, `client-filter`, `game-list-renderer`, `client-filtering` |
+   | `books/static/books/js/book-client-side-filtering.bundle.min.js` | `core/base-renderer`, `book-cache`, `book-client-filter`, `book-list-renderer`, `book-client-filtering` |
+   | `music/static/music/js/music-client-side-filtering.bundle.min.js` | `core/base-renderer`, `album-filter`, `album-list-renderer`, `album-client-filtering` |
 
 3. **Stages files for git**: Automatically runs `git add` on updated files
 
-## When to Run
+## Rules that have bitten before
 
-- After editing any JavaScript source file (`.js`, not `.min.js`)
-- Before committing changes that include JS modifications
-- When troubleshooting JS behavior differences between dev and production
+- **`core/base-renderer.min.js` must come first** in any bundle whose renderer
+  extends `BaseMediaListRenderer`. Omit it and the bundle throws a
+  `ReferenceError` as it loads, so nothing declared after that point registers
+  either - the books bundle shipped that way and its whole client layer was
+  dead.
+- **The bundle filename in the template must match the one the script writes.**
+  Under production's manifest static storage a `{% static %}` name that is not
+  in the manifest raises while rendering rather than 404ing.
+  `core/tests/test_static_assets.py` now asserts both of these.
+- A bundle is skipped loudly if any member is missing, rather than written
+  incomplete.
 
 ## File Locations
 
 | Type | Location |
 |------|----------|
-| Source files | `games/static/games/js/*.js` |
-| Minified files | `games/static/games/js/*.min.js` |
-| Bundle | `games/static/games/js/client-side-filtering.bundle.min.js` |
+| Source files | `{games,books,music}/static/*/js/*.js`, `core/static/core/js/*.js` |
+| Minified files | the same paths with `.min.js` |
+| Bundles | see the table above |
 | Script | `scripts/minify_js.sh` |
 
 ## Note

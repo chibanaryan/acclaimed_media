@@ -1,19 +1,22 @@
 """Shared pytest fixtures."""
 
 import pytest
-from django.core.cache import cache
+
+from core.tests.utils import clear_all_caches
 
 
 @pytest.fixture(autouse=True)
 def clear_cache_between_tests():
-    """Start every test with an empty cache.
+    """Start every test with every cache alias empty.
 
     `AnonymousResponseCacheMixin` stores rendered home/landing page responses
     in the locmem cache, which outlives the test database rollback. Without
     this, one test's rendered page can be served to another test that happens
     to share an xdist worker, which fails depending on how xdist distributes
-    the tests.
+    the tests. Both aliases are cleared because whole pages and the
+    rate-limit counters live on `local` while everything else is on
+    `default`; see `core.cache_config`.
     """
-    cache.clear()
+    clear_all_caches()
     yield
-    cache.clear()
+    clear_all_caches()

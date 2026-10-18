@@ -15,6 +15,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
+from core.tests.utils import clear_all_caches
 from books import models
 from books.views import invalidate_read_books_cache, invalidate_want_to_read_cache
 from core import constants as core_constants
@@ -28,6 +29,11 @@ class StaffUserTestMixin:
 
     def setUp(self):
         super().setUp()
+        # Books' home view caches hero counts and the reader's book
+        # ids, so a test that renders it leaves entries behind for the
+        # next one. pytest's conftest clears caches between tests;
+        # this keeps the suite correct under Django's runner too.
+        clear_all_caches()
         # Create staff user for accessing books views
         self.staff_user = User.objects.create_user(
             username="staffuser",
@@ -119,6 +125,31 @@ class BookHomePageViewTests(StaffUserTestMixin, TestCase):
         """Test context includes authors for filtering."""
         response = self.client.get(reverse("books:home"))
         self.assertIn("authors", response.context)
+
+    def test_context_includes_the_hero_counts_the_template_renders(self):
+        # home.html renders list_count and publication_count; the view never
+        # set either, so both rendered empty.
+        models.BookPublication.objects.create(name="The Times")
+        models.BookList.objects.create(name="Best Books", year=2020)
+        response = self.client.get(reverse("books:home"))
+        self.assertEqual(response.context["book_count"], 2)
+        self.assertEqual(response.context["list_count"], 1)
+        self.assertEqual(response.context["publication_count"], 1)
+
+    def test_context_enables_client_side_filtering(self):
+        # The bundle's <script> and the <template> elements it clones are
+        # both gated on this flag, so without it the whole client layer is
+        # dead markup.
+        response = self.client.get(reverse("books:home"))
+        self.assertTrue(response.context["enable_client_filtering"])
+
+    def test_context_includes_the_reader_s_book_ids(self):
+        # window.readBookIds / wantToReadBookIds are built from these.
+        models.ReadBook.objects.create(user=self.staff_user, goodreads_id="111")
+        models.WantToReadBook.objects.create(user=self.staff_user, goodreads_id="222")
+        response = self.client.get(reverse("books:home"))
+        self.assertEqual(list(response.context["read_book_ids"]), ["111"])
+        self.assertEqual(list(response.context["want_to_read_book_ids"]), ["222"])
 
     def test_search_filter(self):
         """Test search by name filter."""

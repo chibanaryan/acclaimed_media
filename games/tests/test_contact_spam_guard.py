@@ -2,9 +2,9 @@
 
 from unittest.mock import patch
 
-from django.core.cache import cache
 from django.test import RequestFactory, TestCase, override_settings
 
+from core.tests.utils import clear_all_caches
 from games import config
 from games.services import contact_spam_guard
 
@@ -17,10 +17,10 @@ class ContactSpamGuardTests(TestCase):
 
     def setUp(self):
         self.factory = RequestFactory()
-        cache.clear()
+        clear_all_caches()
 
     def tearDown(self):
-        cache.clear()
+        clear_all_caches()
 
     def _request(self, ip="127.0.0.1"):
         request = self.factory.post("/contact/")

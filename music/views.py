@@ -29,6 +29,7 @@ from core.mixins import HTMXPartialMixin, RobustPaginationMixin, StaffOnlyMixin
 from music import config, models
 from music.forms import MusicImportForm
 from music.services import import_handler
+from music.services.data_version import compute_album_data_version
 
 # The checked-in release files, offered as the import default so the page is
 # usable without hunting for them.
@@ -59,20 +60,33 @@ ARTIST_SORTS = {
 }
 
 
+def _cached_decade_counts():
+    """Return albums per decade, cached: it is a full-table aggregate.
+
+    Only the counts are cached. Which chip is selected depends on the current
+    request, so that is computed per request in ``_decade_options``.
+    """
+    counts = cache.get(config.CACHE_KEY_DECADE_COUNTS)
+    if counts is None:
+        counts = {}
+        for row in (
+            models.Album.objects.exclude(year_released__isnull=True)
+            .values("year_released")
+            .annotate(count=Count("id"))
+        ):
+            decade = (row["year_released"] // 10) * 10
+            counts[decade] = counts.get(decade, 0) + row["count"]
+        cache.set(config.CACHE_KEY_DECADE_COUNTS, counts, config.CACHE_TIMEOUT_24_HOURS)
+    return counts
+
+
 def _decade_options(min_year, max_year, current_start, current_end):
     """Decade quick-filters with album counts, for the sidebar.
 
     Mirrors the games year filter's role without the heatmap: the album data
     spans seven decades, so a row of chips covers it.
     """
-    counts = {}
-    for row in (
-        models.Album.objects.exclude(year_released__isnull=True)
-        .values("year_released")
-        .annotate(count=Count("id"))
-    ):
-        decade = (row["year_released"] // 10) * 10
-        counts[decade] = counts.get(decade, 0) + row["count"]
+    counts = _cached_decade_counts()
 
     options = []
     for decade in sorted(counts):
@@ -165,7 +179,7 @@ def _reverse_order(field):
 
 def _cached_artist_options():
     """Return the artist filter options: every artist with at least one album."""
-    cache_key = f"{config.CACHE_VERSION}:music_artist_options"
+    cache_key = config.CACHE_KEY_ARTIST_OPTIONS
     options = cache.get(cache_key)
     if options is None:
         options = list(
@@ -186,7 +200,7 @@ def _cached_genre_options():
     selected explicitly - annotating without naming it in ``values()`` leaves
     the template rendering a blank count.
     """
-    cache_key = f"{config.CACHE_VERSION}:music_genre_options"
+    cache_key = config.CACHE_KEY_GENRE_OPTIONS
     options = cache.get(cache_key)
     if options is None:
         options = list(
@@ -234,7 +248,7 @@ def group_genre_options(options):
 
 def _cached_hero_stats():
     """Return the counts shown in the page heading."""
-    cache_key = f"{config.CACHE_VERSION}:music_hero_stats"
+    cache_key = config.CACHE_KEY_HERO_STATS
     stats = cache.get(cache_key)
     if stats is None:
         stats = {
@@ -391,6 +405,13 @@ class AlbumHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
         context["highlight"] = _parse_int(self.request.GET.get("highlight"))
         context["query_string"] = self._filter_query_string()
 
+        # Client-side filtering. The bundle and the <template> elements it
+        # clones are both gated on this flag, and the version lets a client
+        # holding a copy of the bulk payload tell whether it is still current
+        # without asking - which is why there is no `version/` endpoint.
+        context["enable_client_filtering"] = True
+        context["album_data_version"] = compute_album_data_version()
+
         return context
 
     def _filter_query_string(self):
@@ -434,11 +455,11 @@ class AlbumDetailView(StaffOnlyMixin, DetailView):
         context["grouped_lists"] = group_list_appearances(album.lists.all())
         context["list_appearance_count"] = len(album.lists.all())
 
-        total_album_count = cache.get(f"{config.CACHE_VERSION}:total_album_count")
+        total_album_count = cache.get(config.CACHE_KEY_TOTAL_ALBUM_COUNT)
         if total_album_count is None:
             total_album_count = models.Album.objects.count()
             cache.set(
-                f"{config.CACHE_VERSION}:total_album_count",
+                config.CACHE_KEY_TOTAL_ALBUM_COUNT,
                 total_album_count,
                 config.CACHE_TIMEOUT_24_HOURS,
             )
@@ -775,12 +796,4 @@ def _music_counts():
 
 def _invalidate_music_caches():
     """Drop the cached filter options and counts after a data change."""
-    cache.delete_many(
-        [
-            config.CACHE_KEY_YEAR_STATS,
-            f"{config.CACHE_VERSION}:music_artist_options",
-            f"{config.CACHE_VERSION}:music_genre_options",
-            f"{config.CACHE_VERSION}:music_hero_stats",
-            f"{config.CACHE_VERSION}:total_album_count",
-        ]
-    )
+    cache.delete_many(list(config.CACHE_KEYS))

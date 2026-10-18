@@ -1,7 +1,7 @@
 """Reusable view mixins for the multi-media platform."""
 
 from django.contrib.auth.mixins import UserPassesTestMixin
-from django.core.cache import cache
+from django.core.cache import caches
 from django.core.paginator import EmptyPage, Paginator
 from django.http import Http404, HttpResponse
 
@@ -46,9 +46,16 @@ class AnonymousResponseCacheMixin:
     for the current request, or None to skip caching, and set
     `page_cache_timeout` (seconds). Only anonymous, non-HTMX GET requests
     are cached; only successful, non-streaming responses are stored.
+
+    Whole pages go to the per-process `local` alias, never to the shared
+    `default` cache: the values are entire HTML bodies keyed by URL, so on a
+    shared backend a crawler would both bloat it and cull the small shared
+    entries - the filter options and counts - straight out of it. Nothing
+    here needs cross-process agreement; see `core.cache_config`.
     """
 
     page_cache_timeout = None
+    page_cache_alias = "local"
     CACHE_HEADER_SKIP = {
         "content-length",
         "content-type",
@@ -126,6 +133,8 @@ class AnonymousResponseCacheMixin:
         cache_key = self.get_page_cache_key()
         if cache_key is None:
             return super().dispatch(request, *args, **kwargs)
+
+        cache = caches[self.page_cache_alias]
 
         # Check cache (store only rendered content to avoid retaining
         # request/context)

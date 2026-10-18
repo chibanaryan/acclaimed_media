@@ -1,11 +1,11 @@
 import importlib
 from unittest import mock
 
-from django.core.cache import cache
 from django.contrib.flatpages.models import FlatPage
 from django.test import TestCase
 from rest_framework.test import APIClient
 
+from core.tests.utils import clear_all_caches
 from .. import models
 from ..api import serializers
 
@@ -593,7 +593,7 @@ class GameAllDataViewTests(TestCase):
 
     def setUp(self):
         self.client = APIClient()
-        cache.clear()
+        clear_all_caches()
         self.platform = models.Platform.objects.create(code="PC", name="PC")
         self.root_dev = models.Developer.objects.create(
             name="Test Company", slug="test-company", igdb_id=100

@@ -33,7 +33,28 @@ from . import serializers
 # music/api/views.py, which never had the decorators.
 
 
-class BookListView(ListAPIView):
+class StaffReadAPIMixin:
+    """Authenticate by session, then allow staff only.
+
+    ``DEFAULT_AUTHENTICATION_CLASSES`` is empty project-wide, so a DRF view
+    that does not name an authenticator sees every request as anonymous -
+    which, combined with ``IsStaffOrHide``, 404s even for a logged-in staff
+    member holding a valid session cookie. Every read view here used to carry
+    a bare ``permission_classes = [IsStaffOrHide]``, so the whole read API was
+    unreachable from a browser; the client-side filtering bundle's fetch of
+    ``/api/books/all/`` would have 404'd. Tests missed it because
+    ``APIClient.force_authenticate`` bypasses authentication entirely.
+
+    Every view using this mixin is read-only, so CSRF enforcement on unsafe
+    methods never comes into play. ``music.api.views`` has the same mixin for
+    the same reason.
+    """
+
+    authentication_classes = [SessionAuthentication]
+    permission_classes = [IsStaffOrHide]
+
+
+class BookListView(StaffReadAPIMixin, ListAPIView):
     """
     List all books with filtering and search.
 
@@ -44,7 +65,6 @@ class BookListView(ListAPIView):
     - genres: Comma-separated genre IDs
     """
 
-    permission_classes = [IsStaffOrHide]
     serializer_class = serializers.BookSummarySerializer
     # Build search fields based on database vendor
     search_fields = ["name_normalized__icontains", "name__icontains"]
@@ -83,10 +103,9 @@ class BookListView(ListAPIView):
         return qs.distinct()
 
 
-class BookDetailView(RetrieveAPIView):
+class BookDetailView(StaffReadAPIMixin, RetrieveAPIView):
     """Get detailed book information including list appearances."""
 
-    permission_classes = [IsStaffOrHide]
     lookup_field = "slug"
     serializer_class = serializers.BookDetailSerializer
     queryset = models.Book.objects.select_related(
@@ -101,19 +120,17 @@ class BookDetailView(RetrieveAPIView):
     )
 
 
-class AuthorDetailView(RetrieveAPIView):
+class AuthorDetailView(StaffReadAPIMixin, RetrieveAPIView):
     """API endpoint for author details."""
 
-    permission_classes = [IsStaffOrHide]
     lookup_field = "slug"
     serializer_class = serializers.AuthorSerializer
     queryset = models.Author.objects.all()
 
 
-class AuthorListView(ListAPIView):
+class AuthorListView(StaffReadAPIMixin, ListAPIView):
     """API endpoint for listing authors."""
 
-    permission_classes = [IsStaffOrHide]
     serializer_class = serializers.AuthorSerializer
     search_fields = ["name__icontains"]
     if connection.vendor == "postgresql":
@@ -142,10 +159,9 @@ class AuthorListView(ListAPIView):
         return qs
 
 
-class AuthorDetailByIdView(RetrieveAPIView):
+class AuthorDetailByIdView(StaffReadAPIMixin, RetrieveAPIView):
     """API endpoint for author details by GoodReads ID."""
 
-    permission_classes = [IsStaffOrHide]
     lookup_field = "goodreads_id"
     serializer_class = serializers.AuthorSerializer
     queryset = models.Author.objects.annotate(
@@ -153,10 +169,9 @@ class AuthorDetailByIdView(RetrieveAPIView):
     )
 
 
-class BookListListView(ListAPIView):
+class BookListListView(StaffReadAPIMixin, ListAPIView):
     """List all book lists/rankings."""
 
-    permission_classes = [IsStaffOrHide]
     serializer_class = serializers.BookListSerializer
     filters = [
         utils.Filter(param="publisher", fields=["publisher_id"], coerce=int),
@@ -180,14 +195,12 @@ class BookListListView(ListAPIView):
         return qs
 
 
-class BookMetaView(APIView):
+class BookMetaView(StaffReadAPIMixin, APIView):
     """
     Metadata about the books database.
 
     Returns counts, year ranges, and statistics.
     """
-
-    permission_classes = [IsStaffOrHide]
 
     def get(self, *args, **kwargs):
         data = {}
@@ -260,18 +273,16 @@ class BookMetaView(APIView):
         return Response(data)
 
 
-class BookGenreListView(ListAPIView):
+class BookGenreListView(StaffReadAPIMixin, ListAPIView):
     """List all book genres (flat list with hierarchy metadata)."""
 
-    permission_classes = [IsStaffOrHide]
     serializer_class = serializers.BookGenreSerializer
     queryset = models.BookGenre.objects.all().order_by("level", "display_order", "name")
 
 
-class BookGenreTreeView(ListAPIView):
+class BookGenreTreeView(StaffReadAPIMixin, ListAPIView):
     """List book genres as hierarchical tree structure."""
 
-    permission_classes = [IsStaffOrHide]
     serializer_class = serializers.BookGenreTreeSerializer
 
     def get_queryset(self):
@@ -281,12 +292,10 @@ class BookGenreTreeView(ListAPIView):
         )
 
 
-class BookSearchAPIView(APIView):
+class BookSearchAPIView(StaffReadAPIMixin, APIView):
     """
     API endpoint for navbar search - returns JSON list of books matching query.
     """
-
-    permission_classes = [IsStaffOrHide]
 
     def get(self, request):
         from django.http import JsonResponse
@@ -326,12 +335,10 @@ class BookSearchAPIView(APIView):
         return JsonResponse({"results": results, "count": len(results)})
 
 
-class UnifiedBookSearchView(APIView):
+class UnifiedBookSearchView(StaffReadAPIMixin, APIView):
     """
     Unified search endpoint for navbar - returns both authors and books.
     """
-
-    permission_classes = [IsStaffOrHide]
 
     def get(self, request):
         from django.http import JsonResponse
@@ -414,23 +421,19 @@ def _compute_book_data_version():
     return hashlib.md5(version_string.encode()).hexdigest()[:12]
 
 
-class BookDataVersionView(APIView):
+class BookDataVersionView(StaffReadAPIMixin, APIView):
     """Lightweight endpoint returning only the data version hash."""
-
-    permission_classes = [IsStaffOrHide]
 
     def get(self, request):
         return Response({"version": _compute_book_data_version()})
 
 
-class BookAllDataView(APIView):
+class BookAllDataView(StaffReadAPIMixin, APIView):
     """
     Complete book data endpoint for client-side filtering.
 
     Returns all books with minimal payload for efficient client-side filtering.
     """
-
-    permission_classes = [IsStaffOrHide]
 
     def get(self, request):
         version = _compute_book_data_version()

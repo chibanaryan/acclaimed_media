@@ -18,10 +18,10 @@ Reference files that must stay in sync:
 
 from bs4 import BeautifulSoup
 from django.contrib.auth import get_user_model
-from django.core.cache import cache
 from django.test import Client, TestCase
 from django.urls import reverse
 
+from core.tests.utils import clear_all_caches
 from games import models
 
 
@@ -39,7 +39,7 @@ class TemplateStructureTests(TestCase):
     def setUp(self):
         # Clear all caches to ensure fresh responses
         # (home page caches full rendered responses for anonymous users)
-        cache.clear()
+        clear_all_caches()
         self.client = Client()
         self.developer = models.Developer.objects.create(
             name="Test Developer", slug="test-developer-struct"
@@ -162,7 +162,7 @@ class ServerRenderedOutputTests(TestCase):
 
     def setUp(self):
         # Clear all caches to ensure fresh responses
-        cache.clear()
+        clear_all_caches()
         self.client = Client()
         self.client.defaults["HTTP_X_REQUESTED_WITH"] = "XMLHttpRequest"
         self.developer = models.Developer.objects.create(
@@ -349,7 +349,7 @@ class GameWithoutOptionalFieldsTests(TestCase):
 
     def setUp(self):
         # Clear all caches to ensure fresh responses
-        cache.clear()
+        clear_all_caches()
         self.client = Client()
         # Create minimal game without optional fields
         self.game = models.Game.objects.create(
@@ -395,7 +395,7 @@ class MobileDesktopConsistencyTests(TestCase):
 
     def setUp(self):
         # Clear all caches to ensure fresh responses
-        cache.clear()
+        clear_all_caches()
         self.client = Client()
         self.developer = models.Developer.objects.create(
             name="Test Developer", slug="test-developer-consist"
@@ -515,7 +515,7 @@ class TemplateIDAttributeTests(TestCase):
     """
 
     def setUp(self):
-        cache.clear()
+        clear_all_caches()
         self.client = Client()
         self.game = models.Game.objects.create(
             name="ID Test Game",

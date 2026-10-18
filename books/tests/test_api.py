@@ -16,6 +16,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 
+from core.tests.utils import clear_all_caches
 from books import models
 
 
@@ -27,6 +28,11 @@ class StaffAPITestMixin:
 
     def setUp(self):
         super().setUp()
+        # Books' home view caches hero counts and the reader's book
+        # ids, so a test that renders it leaves entries behind for the
+        # next one. pytest's conftest clears caches between tests;
+        # this keeps the suite correct under Django's runner too.
+        clear_all_caches()
         self.client = APIClient()
         # Create staff user for accessing books API
         self.staff_user = User.objects.create_user(
@@ -769,3 +775,54 @@ class StaffOnlyResponsesAreNotCachedTests(TestCase):
         with open("books/api/views.py", encoding="utf-8") as handle:
             source = handle.read()
         self.assertNotIn("cache_page", source.replace("# ", "").split("Note on")[0])
+
+
+class SessionAuthenticatedAccessTests(TestCase):
+    """The read API has to work for a browser holding a session cookie.
+
+    Every other test in this module authenticates with
+    `APIClient.force_authenticate`, which bypasses authentication entirely -
+    so none of them noticed that these views named `IsStaffOrHide` without
+    naming an authenticator. With `DEFAULT_AUTHENTICATION_CLASSES` empty
+    project-wide, DRF saw every caller as anonymous and 404'd the whole read
+    API, including the `all/` endpoint the client-side filtering bundle
+    fetches. `StaffReadAPIMixin` is what fixes it; this is the test that
+    would have caught it.
+    """
+
+    READ_PATHS = [
+        "/api/books/",
+        "/api/books/all/",
+        "/api/books/version/",
+        "/api/books/meta/",
+        "/api/books/genres/",
+        "/api/books/genres/tree/",
+        "/api/books/authors/",
+        "/api/books/lists/",
+        "/api/books/search/?q=alpha",
+    ]
+
+    def setUp(self):
+        clear_all_caches()
+        self.staff_user = User.objects.create_user(
+            username="sessionstaff", password="sessionpass", is_staff=True
+        )
+        models.Book.objects.create(name="Alpha Book", rank=1, slug="alpha-book")
+
+    def test_a_staff_session_reaches_every_read_endpoint(self):
+        self.client.login(username="sessionstaff", password="sessionpass")
+        for path in self.READ_PATHS:
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, 200)
+
+    def test_an_anonymous_session_gets_404_everywhere(self):
+        for path in self.READ_PATHS:
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, 404)
+
+    def test_a_non_staff_session_gets_404_everywhere(self):
+        User.objects.create_user(username="reader", password="readerpass")
+        self.client.login(username="reader", password="readerpass")
+        for path in self.READ_PATHS:
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, 404)

@@ -5,6 +5,8 @@ import environ
 import sentry_sdk
 from sentry_sdk.integrations.django import DjangoIntegration
 
+from core.cache_config import build_caches
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 env = environ.Env(DEBUG=(bool, False))
@@ -233,29 +235,21 @@ INTERNAL_IPS = [
     "127.0.0.1",
 ]
 
-# Cache configuration
-cache_url = env("CACHE_URL", default=None)
-if DEBUG and not TEST_MODE and (not cache_url or cache_url.startswith("dbcache")):
-    # Avoid dbcache in local dev (requires createcachetable in each new worktree).
-    CACHES = {
-        "default": {
-            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        }
-    }
-elif cache_url:
-    CACHES = {
-        "default": env.cache(),
-    }
-else:
-    # Use file-based cache as default to persist across development server restarts
-    CACHES = {
-        "default": {
-            "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
-            "LOCATION": BASE_DIR / "django_cache",
-        }
-    }
+# Cache configuration. `core.cache_config` explains why there are two
+# aliases: `default` is shared across processes (DatabaseCache in production),
+# `local` is per-process and holds whole-page HTML and rate-limit counters.
+CACHES = build_caches(
+    env("CACHE_URL", default=None),
+    debug=DEBUG,
+    test_mode=TEST_MODE,
+    base_dir=BASE_DIR,
+)
 
 CACHE_MIDDLEWARE_SECONDS = 60 * 60
+# The whole-page middleware cache below must stay on the per-process alias.
+# Pointing it at `default` would send every anonymous page's full HTML into
+# Postgres and cull the shared filter options out of it.
+CACHE_MIDDLEWARE_ALIAS = "local"
 
 
 STATIC_URL = "/static/"

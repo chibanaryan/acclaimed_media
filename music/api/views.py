@@ -1,13 +1,15 @@
 """
 Music API views.
 
-Read-only and staff-only. The bulk ``all/`` and ``version/`` endpoints that
-feed client-side filtering are deliberately absent: there is no client-side
-filtering bundle for music yet, and an endpoint with no consumer is just
-surface area to maintain.
+Read-only and staff-only. ``all/`` is the bulk endpoint feeding the
+client-side filtering bundle; there is deliberately no ``version/`` endpoint
+beside it, because the album rankings page renders the same data version into
+the page itself, so the client can tell a stale copy from a current one
+without a second request.
 """
 
 from django.db.models import Count, Max, Min, Prefetch
+from django.db.models.functions import Lower
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.views import APIView, Response
@@ -16,6 +18,7 @@ from core import constants as core_constants
 from core.permissions import IsStaffOrHide
 
 from .. import models
+from ..services.data_version import compute_album_data_version
 from . import serializers
 
 
@@ -40,6 +43,101 @@ class StaffReadAPIMixin:
 # generated for a staff member is then replayed to anonymous callers, which
 # defeats `IsStaffOrHide` entirely. The dataset is 500 albums, so there is
 # nothing here worth that risk. Any future caching must vary on the user.
+
+
+class AlbumAllDataView(StaffReadAPIMixin, APIView):
+    """
+    Every album in one payload, for client-side filtering.
+
+    The whole corpus is 500 albums, which is about 100 KB of JSON and 38 KB
+    over the wire, so the client fetches it once and filters in the browser
+    instead of making an HTMX round trip per filter change. Field names are
+    single letters for the same reason they are in the games and books
+    equivalents: at this row count the key names are a real share of the
+    payload.
+
+    Artists and genres are sent as lookup tables rather than repeated inline,
+    since the renderer has to reproduce the ``artist_links`` template tag and
+    the genre filter has to resolve a root genre to its styles.
+    """
+
+    def get(self, request):
+        albums = (
+            models.Album.objects.prefetch_related("artists", "genres")
+            .with_list_count()
+            .order_by("rank")
+        )
+
+        # The alphabetical sort ships as a precomputed position rather than
+        # being recomputed in the browser. `Lower(name)` orders under the
+        # database's collation, and no JavaScript comparator reproduces that
+        # for every title: `localeCompare` files "Agaetis byrjun" next to the
+        # A's while SQLite sorts it past Z, and punctuation is weighted
+        # differently again. Sending the server's own ordering makes the two
+        # agree exactly, whatever the collation - and keeps local SQLite
+        # behaving like production Postgres.
+        name_order = {
+            album_id: position
+            for position, album_id in enumerate(
+                models.Album.objects.order_by(Lower("name")).values_list(
+                    "id", flat=True
+                )
+            )
+        }
+
+        albums_data = []
+        artists = {}
+
+        for album in albums:
+            artist_ids = []
+            for artist in album.artists.all():
+                artist_ids.append(artist.id)
+                if artist.id not in artists:
+                    artists[artist.id] = {"n": artist.name, "s": artist.slug}
+
+            albums_data.append(
+                {
+                    "id": album.id,
+                    "n": album.name,
+                    # The server's text search is `name OR name_normalized OR
+                    # artist_credit`, all three case-insensitive and none of
+                    # them accent-folded. `name_normalized` is `unidecode(name)`
+                    # and is stored only when it differs, so it is sent as it
+                    # is: reimplementing unidecode in the browser would be a
+                    # second, drifting copy of the rule.
+                    "nn": album.name_normalized or "",
+                    "s": album.slug,
+                    "r": album.rank,
+                    "y": album.year_released,
+                    "c": album.artist_credit,  # published credit
+                    "t": album.thumbnail,  # 250px cover, local copy preferred
+                    "ar": artist_ids,
+                    "g": [genre.id for genre in album.genres.all()],
+                    "lc": album.list_count,
+                    "ni": name_order[album.id],  # alphabetical position
+                }
+            )
+
+        genres_data = [
+            {
+                "id": genre.id,
+                "n": genre.name,
+                "s": genre.slug,
+                "p": genre.parent_id,
+                "l": genre.level,
+                "d": genre.get_descendant_ids(include_self=False),
+            }
+            for genre in models.MusicGenre.objects.prefetch_related("children")
+        ]
+
+        return Response(
+            {
+                "version": compute_album_data_version(),
+                "albums": albums_data,
+                "artists": artists,
+                "genres": genres_data,
+            }
+        )
 
 
 class AlbumListView(StaffReadAPIMixin, ListAPIView):

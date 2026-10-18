@@ -8,7 +8,7 @@ from unittest import mock
 
 from django.contrib.flatpages.models import FlatPage
 from django.contrib.sites.models import Site
-from django.core.cache import cache
+from django.core.cache import caches
 from django.db import connection
 from django.http import HttpResponse, StreamingHttpResponse
 from django.test import TestCase
@@ -16,6 +16,7 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from core.models import User
+from core.tests.utils import clear_all_caches
 from games import config
 from games import constants
 from games.models import (
@@ -41,7 +42,7 @@ class HomePageViewTest(TestCase):
     def setUp(self):
         # Clear all caches to ensure fresh responses
         # (home page caches full rendered responses for anonymous users)
-        cache.clear()
+        clear_all_caches()
 
         # Create test data
         self.site_metadata = SiteMetadata.objects.create()
@@ -294,7 +295,7 @@ class HomePageViewTest(TestCase):
 
     def test_home_page_cache_payload_preserves_headers_and_cookies(self):
         cache_key = f"home_page:{config.CACHE_VERSION}:default"
-        cache.set(
+        caches["local"].set(
             cache_key,
             {
                 "content": b"cached home",
@@ -346,10 +347,10 @@ class HomePageViewTest(TestCase):
 
     def test_home_page_legacy_cache_payload_is_evicted(self):
         cache_key = f"home_page:{config.CACHE_VERSION}:default"
-        cache.set(cache_key, "legacy", 60)
+        caches["local"].set(cache_key, "legacy", 60)
         response = self.client.get(reverse("home"))
         self.assertEqual(response.status_code, 200)
-        cached = cache.get(cache_key)
+        cached = caches["local"].get(cache_key)
         self.assertIsInstance(cached, dict)
         self.assertIn("content", cached)
 
@@ -362,13 +363,13 @@ class HomePageViewTest(TestCase):
         ):
             response = self.client.get(reverse("home"))
         self.assertTrue(response.streaming)
-        self.assertIsNone(cache.get(cache_key))
+        self.assertIsNone(caches["local"].get(cache_key))
 
     def test_home_page_query_string_not_cached(self):
         cache_key = f"home_page:{config.CACHE_VERSION}:default"
         response = self.client.get(reverse("home") + "?q=test")
         self.assertEqual(response.status_code, 200)
-        self.assertIsNone(cache.get(cache_key))
+        self.assertIsNone(caches["local"].get(cache_key))
 
     def test_sort_direction_parameter(self):
         """Test that sort direction parameter is accepted."""
@@ -452,7 +453,7 @@ class GameListViewTest(TestCase):
     def setUp(self):
         # Clear all caches to ensure fresh responses
         # (home page caches full rendered responses for anonymous users)
-        cache.clear()
+        clear_all_caches()
 
     def test_game_list_loads(self):
         """Test that game list page loads."""
@@ -743,7 +744,7 @@ class HomePageFilterTest(TestCase):
     def setUp(self):
         # Clear all caches to ensure fresh responses
         # (home page caches full rendered responses for anonymous users)
-        cache.clear()
+        clear_all_caches()
 
         # Create test games with different attributes
         self.game1 = Game.objects.create(
@@ -866,7 +867,7 @@ class HomePageFilterTest(TestCase):
         self.game2.series.add(zelda_series)
 
         # Clear series cache
-        cache.clear()
+        clear_all_caches()
 
         response = self.client.get(reverse("home") + f"?series={zelda_series.id}")
         self.assertEqual(response.status_code, 200)
@@ -1036,7 +1037,7 @@ class GameSearchPlayedFilterTest(TestCase):
     def setUp(self):
         # Clear all caches to ensure fresh responses
         # (home page caches full rendered responses for anonymous users)
-        cache.clear()
+        clear_all_caches()
 
         # Create test user
         self.user = User.objects.create_user(
@@ -1175,7 +1176,7 @@ class FilterCacheKeyTest(TestCase):
 
 class HomeFacetCacheTimeoutTest(TestCase):
     def setUp(self):
-        cache.clear()
+        clear_all_caches()
         self.platform = Platform.objects.create(code="PC", name="PC")
         self.genre = WikipediaGenre.objects.create(
             name="Timeout Genre", slug="timeout-genre"
@@ -1253,7 +1254,7 @@ class GameSearchLoadMoreTest(TestCase):
     def setUp(self):
         # Clear all caches to ensure fresh responses
         # (home page caches full rendered responses for anonymous users)
-        cache.clear()
+        clear_all_caches()
 
         # Create 150 test games to test pagination
         for i in range(150):
@@ -1487,7 +1488,7 @@ class DeveloperDetailViewTest(TestCase):
     """Test the developer detail view."""
 
     def setUp(self):
-        cache.clear()
+        clear_all_caches()
         self.dev = Developer.objects.create(name="Nintendo", slug="nintendo", igdb_id=1)
 
         # Create games for this developer

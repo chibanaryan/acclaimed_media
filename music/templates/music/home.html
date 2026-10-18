@@ -1,8 +1,24 @@
 {% extends 'base.html' %}
-{% load humanize music_filters %}
+{% load humanize static music_filters %}
 
 {% block title %}{{ filter_title|default:"Most Acclaimed Albums" }}{% endblock %}
 {% block meta_description %}Album rankings aggregated from {{ list_count }} published critics' lists.{% endblock %}
+
+{% block extra_head %}
+{% if enable_client_filtering %}
+{% comment %}
+Client-side filtering. The whole corpus is ~38 KB gzipped, so the bundle
+fetches it once and filters in the browser; until it has loaded, and if it
+fails to, the HTMX form below keeps filtering server-side.
+{% endcomment %}
+<script nonce="{{ csp_nonce }}">
+window.albumDataVersion = "{{ album_data_version }}";
+window.albumDataUrl = "{% url 'music-api:album-all-data' %}";
+</script>
+<script src="{% static 'music/js/music-client-side-filtering.bundle.min.js' %}?v=2"
+        defer fetchpriority="low" nonce="{{ csp_nonce }}"></script>
+{% endif %}
+{% endblock %}
 
 {% block content %}
 <div class="flex flex-col w-full">
@@ -190,4 +206,19 @@
     </div>
 </div>
 </div>
+
+{% comment %}
+Row structures for album-list-renderer.js to clone. Rendered with no `item`,
+so the markup is the empty skeleton plus its data-slot hooks - the same
+partial the server renders rows with, which is what keeps the two renderings
+in step.
+{% endcomment %}
+{% if enable_client_filtering %}
+<template id="desktop-row-template">
+    {% include 'music/includes/_album_row.html' with row_variant='desktop' only %}
+</template>
+<template id="mobile-row-template">
+    {% include 'music/includes/_album_row.html' with row_variant='mobile' only %}
+</template>
+{% endif %}
 {% endblock %}

@@ -263,16 +263,30 @@ class BookHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
             cache.set(authors_cache_key, authors_list, config.CACHE_TIMEOUT_24_HOURS)
         context["authors"] = authors_list
 
-        # Hero stats
-        stats_cache_key = "bookpage_hero_stats"
+        # Hero stats. The key is versioned because the shape of the cached
+        # dict has changed: `home.html` renders list_count and
+        # publication_count, which were never in it.
+        stats_cache_key = f"{config.CACHE_VERSION}:book_hero_stats"
         stats = cache.get(stats_cache_key)
         if stats is None:
             stats = {
                 "book_count": models.Book.objects.count(),
                 "author_count": models.Author.objects.count(),
+                "list_count": models.BookList.objects.count(),
+                "publication_count": models.BookPublication.objects.count(),
             }
             cache.set(stats_cache_key, stats, config.CACHE_TIMEOUT_24_HOURS)
         context.update(stats)
+
+        # The client-side filtering bundle and the <template> elements it
+        # clones are both gated on this flag.
+        context["enable_client_filtering"] = True
+
+        # Read state for the client-side renderer's read/want-to-read
+        # buttons. No anonymous branch: the view is StaffOnlyMixin, so there
+        # is always a logged-in user here.
+        context["read_book_ids"] = _get_read_book_ids(self.request.user)
+        context["want_to_read_book_ids"] = _get_want_to_read_book_ids(self.request.user)
 
         # Current filter state for UI
         context["current_q"] = self.request.GET.get("q", "")
