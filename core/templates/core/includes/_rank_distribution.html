@@ -1,6 +1,8 @@
-{# Rank Distribution Chart - Smooth SVG area chart showing game distribution across rankings #}
-{# Updates dynamically via rank-distribution-update events #}
-{# Pure vanilla JS - no Alpine.js dependency #}
+{# Rank distribution: where the filtered items sit across the rankings. #}
+{# Props: rank_distribution (bins), max_rank #}
+{# Updates dynamically via rank-distribution-update events; plain JS, no #}
+{# Alpine dependency, so any page can include it. #}
+{# Shared by the games and album rankings pages. #}
 {% load game_filters %}
 
 <div class="rank-distribution-section">

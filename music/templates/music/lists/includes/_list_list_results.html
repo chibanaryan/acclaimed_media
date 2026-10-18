@@ -1,41 +1,35 @@
-{# Source list results: count, filter bar, legend, rows. #}
+{# Source list results: count, controls, legend, publication groups. #}
 {# Rendered on first load and on every HTMX swap of #filter-results-wrapper. #}
+{# #}
+{# Laid out like games/templates/lists/includes/_list_list_full.html: the #}
+{# same count line, the same sort and filter row, the same badge legend and #}
+{# the same collapsible publication groups. This page used to render a flat #}
+{# card per list, so a publication's lists were scattered down the page. #}
 {% load humanize music_filters %}
 
 <h2 id="results-count" class="text-xl text-base-content/85 mb-4">
     {% if total_count %}
-        {{ music_lists|length|intcomma }} of {{ total_count|intcomma }} list{{ total_count|pluralize }}
+        {{ publication_count|intcomma }} publication{{ publication_count|pluralize }}
+        ({{ total_count|intcomma }} list{{ total_count|pluralize }})
     {% else %}
-        No lists found
+        No publications found
     {% endif %}
 </h2>
 
-<div class="flex flex-wrap items-center gap-2 mb-6 min-h-[2.5rem]">
-    {# Sort #}
-    <div class="flex items-center gap-1">
-        <span class="mdi mdi-sort text-base text-base-content/70"></span>
-        <select name="sort"
-                class="select select-bordered select-sm bg-base-200"
-                style="width: fit-content; max-width: 100%;"
-                aria-label="Sort lists by"
-                hx-get="{{ request.path }}"
-                hx-target="#filter-results-wrapper"
-                hx-trigger="change"
-                hx-swap="innerHTML"
-                hx-push-url="true"
-                hx-include="[name='type'], [name='q']">
-            <option value="order" {% if current_sort == 'order' %}selected{% endif %}>Source order</option>
-            <option value="year" {% if current_sort == 'year' %}selected{% endif %}>Year</option>
-            <option value="albums" {% if current_sort == 'albums' %}selected{% endif %}>Albums ranked</option>
-            <option value="publication" {% if current_sort == 'publication' %}selected{% endif %}>Publication</option>
-        </select>
-    </div>
+<div class="flex flex-wrap items-center gap-2 mb-6 min-h-[2.5rem]"
+     x-data="{ allExpanded: false }">
+    {# The sort state, as fields the search box's hx-include can send. #}
+    <input type="hidden" name="sort" :value="sort">
+    <input type="hidden" name="dir" :value="sortDirection">
+
+    {% include 'core/includes/_entity_sort_controls.html' with sort_options=sort_options default_sort_label='Source order' %}
 
     {# Separator #}
     <div class="w-px h-6 bg-base-content/20"></div>
 
     {# Type filter #}
-    <select name="type"
+    <select id="filter-list-type"
+            name="type"
             class="select select-bordered select-sm bg-base-200"
             style="width: fit-content; max-width: 100%;"
             aria-label="Filter by list type"
@@ -44,10 +38,10 @@
             hx-trigger="change"
             hx-swap="innerHTML"
             hx-push-url="true"
-            hx-include="[name='sort'], [name='q']">
+            hx-include="[name='year'], [name='sort'], [name='dir'], [name='q']">
         <option value="">All list types</option>
         {% for entry in list_types %}
-        {% if entry.count %}
+        {% if entry.count or current_type == entry.code %}
         <option value="{{ entry.code }}" {% if current_type == entry.code %}selected{% endif %}>
             {{ entry.label }} ({{ entry.count }})
         </option>
@@ -55,12 +49,42 @@
         {% endfor %}
     </select>
 
-    {% if current_type or current_q %}
+    {# Year filter #}
+    <select id="filter-list-year"
+            name="year"
+            class="select select-bordered select-sm bg-base-200"
+            style="width: fit-content; max-width: 100%;"
+            aria-label="Filter by year"
+            hx-get="{{ request.path }}"
+            hx-target="#filter-results-wrapper"
+            hx-trigger="change"
+            hx-swap="innerHTML"
+            hx-push-url="true"
+            hx-include="[name='year'], [name='type'], [name='sort'], [name='dir'], [name='q']">
+        <option value="">All years</option>
+        {% for entry in list_years %}
+        <option value="{{ entry.year }}" {% if current_year == entry.year|stringformat:"s" %}selected{% endif %}>
+            {{ entry.year }} ({{ entry.count }})
+        </option>
+        {% endfor %}
+    </select>
+
+    {% if current_type or current_year or current_q %}
     <a href="{% url 'music:list-list' %}" class="btn btn-ghost btn-sm">
         <span class="mdi mdi-close"></span>
         <span>Clear filters</span>
     </a>
     {% endif %}
+
+    {# Spacer, then expand/collapse all #}
+    <div class="flex-grow"></div>
+    <button type="button"
+            class="btn btn-ghost btn-sm text-base-content/70"
+            @click="allExpanded = !allExpanded; $dispatch(allExpanded ? 'publications-expand-all' : 'publications-collapse-all')"
+            :title="allExpanded ? 'Collapse all' : 'Expand all'">
+        <span class="mdi" :class="allExpanded ? 'mdi-unfold-less-horizontal' : 'mdi-unfold-more-horizontal'"></span>
+        <span x-text="allExpanded ? 'Collapse All' : 'Expand All'"></span>
+    </button>
 </div>
 
 {# Badge legend, matching the games source-lists page #}
@@ -72,33 +96,14 @@
 </div>
 
 <div id="results-container">
-    {% for source in music_lists %}
-    <div class="card bg-base-200 mb-2 publication-group">
-        <div class="flex items-center gap-3 p-3">
-            <span class="badge badge-sm {{ source.type|get_list_type_badge_class }} font-semibold shrink-0">
-                {{ source.type|get_list_type_label }}
-            </span>
-            <div class="min-w-0 flex-1">
-                <div class="font-semibold truncate">
-                    {% if source.url %}
-                    <a href="{{ source.url }}" target="_blank" rel="noopener" class="link link-hover">{{ source.name }}</a>
-                    {% else %}{{ source.name }}{% endif %}
-                </div>
-                <div class="text-sm text-base-content/70">
-                    {% if source.publisher %}{{ source.publisher.name }}{% else %}Unattributed{% endif %}
-                    &middot; {{ source.year }}
-                </div>
+    <div id="publication-groups-container" class="space-y-2">
+        {% for group in publication_groups %}
+            {% include 'core/includes/_publication_group.html' %}
+        {% empty %}
+            <div class="alert">
+                <span class="mdi mdi-album"></span>
+                <span>No lists match these filters.</span>
             </div>
-            <div class="text-right shrink-0">
-                <div class="font-semibold tabular-nums">{{ source.album_count }}</div>
-                <div class="text-xs text-base-content/70">album{{ source.album_count|pluralize }}</div>
-            </div>
-        </div>
+        {% endfor %}
     </div>
-    {% empty %}
-    <div class="alert">
-        <span class="mdi mdi-album"></span>
-        <span>No lists match these filters.</span>
-    </div>
-    {% endfor %}
 </div>

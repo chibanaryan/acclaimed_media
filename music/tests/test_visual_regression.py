@@ -28,9 +28,27 @@ from music import models
 
 RENDERER = Path(settings.BASE_DIR) / "music/static/music/js/album-list-renderer.js"
 
+GRID_SLOTS = {
+    "root-grid",
+    "rank-container",
+    "rank-grid",
+    "global-rank-grid",
+    "cover-link",
+    "cover",
+    "cover-placeholder",
+    "overlay",
+    "creator",
+    "genres-grid",
+    "list-count-grid",
+    "title-link-grid",
+    "name-grid",
+    "year-grid",
+}
+
 DESKTOP_SLOTS = {
     "root",
     "media-row",
+    "artist-credit-inline",
     "rank",
     "global-rank",
     "thumb-link",
@@ -63,6 +81,11 @@ def row_slots(variant=None):
     """The slots `_album_row.html` emits with no album, for one variant."""
     context = {"row_variant": variant} if variant else {}
     return slots(render_to_string("music/includes/_album_row.html", context))
+
+
+def grid_slots():
+    """The slots `_album_card_grid.html` emits with no album."""
+    return slots(render_to_string("music/includes/_album_card_grid.html", {}))
 
 
 class EmptyRowTemplateTests(TestCase):
@@ -136,19 +159,47 @@ class ServerRenderedRowTests(TestCase):
         found = slots(self._page())
         self.assertEqual((DESKTOP_SLOTS | MOBILE_SLOTS) - found, set())
 
-    def test_the_metadata_line_holds_the_credit_genres_and_list_count(self):
+    def test_the_metadata_line_holds_the_genres_and_list_count(self):
         soup = BeautifulSoup(self._page(), "html.parser")
         meta = soup.select_one('[data-slot="meta-row"]')
-        self.assertIn("Pixies", meta.get_text())
         self.assertIn("Alternative Rock", meta.get_text())
         self.assertIn("1 list", meta.get_text())
+        # The credit sits beside the title now, not in this line.
+        self.assertNotIn("Pixies", meta.get_text())
 
-    def test_the_artist_credit_is_a_link_to_the_artist(self):
+    def test_the_artist_credit_sits_beside_the_title_and_links(self):
         # `artist_links`, which the renderer reproduces.
         soup = BeautifulSoup(self._page(), "html.parser")
-        credit = soup.select_one('[data-slot="artist-credit"]')
+        credit = soup.select_one('[data-slot="artist-credit-inline"]')
+        self.assertIsNotNone(credit)
         link = credit.select_one("a")
         self.assertEqual(link["href"], "/music/artists/pixies/")
+        self.assertIn("Pixies", credit.get_text())
+
+    def test_the_credit_sits_on_its_own_line_below_the_title(self):
+        # Its own line, a size below the title and a step above the
+        # metadata: beside the title it was the first thing truncated, and
+        # on exactly the rows that needed it - the long ones.
+        soup = BeautifulSoup(self._page(), "html.parser")
+        title = soup.select_one('[data-slot="title-link"]')
+        credit = soup.select_one('[data-slot="artist-credit-inline"]')
+        meta = soup.select_one('[data-slot="meta-row"]')
+        self.assertIn("text-lg", title["class"])
+        self.assertIn("text-sm", credit["class"])
+        self.assertIn("font-semibold", credit["class"])
+        # A block of its own, not a span inside the title line.
+        self.assertEqual(credit.name, "div")
+        self.assertNotIn(credit, title.find_all())
+        self.assertNotIn("Pixies", meta.get_text())
+
+    def test_the_credit_is_indented_with_the_other_properties(self):
+        # The credit and the metadata line start at the same x; only the
+        # title hangs left of them.
+        soup = BeautifulSoup(self._page(), "html.parser")
+        credit = soup.select_one('[data-slot="artist-credit-inline"]')
+        meta = soup.select_one('[data-slot="meta-row"]')
+        self.assertIn("ml-4", credit["class"])
+        self.assertIn("ml-4", meta["class"])
 
     def test_the_row_ids_match_what_the_renderer_writes(self):
         page = self._page()
@@ -185,3 +236,79 @@ class RendererContractTests(TestCase):
             with self.subTest(variant=variant):
                 available = row_slots(variant)
                 self.assertEqual(self._declared_slots() & expected - available, set())
+
+
+class EmptyGridCardTemplateTests(TestCase):
+    """The grid card as it is rendered into a <template>, with no album."""
+
+    def test_the_empty_card_carries_every_slot(self):
+        self.assertEqual(GRID_SLOTS - grid_slots(), set())
+
+    def test_the_cover_slot_survives_having_no_cover(self):
+        # The same trap as the row's thumbnail: with the img inside a
+        # condition on the album's artwork, a clone would have nowhere to
+        # write the cover URL.
+        html = render_to_string("music/includes/_album_card_grid.html", {})
+        soup = BeautifulSoup(html, "html.parser")
+        img = soup.select_one('img[data-slot="cover"]')
+        self.assertIsNotNone(img)
+        self.assertIsNone(img.get("src"))
+
+    def test_the_card_is_marked_as_square_artwork(self):
+        # Sleeves are square; the shared card CSS reads the shape off this
+        # class, and without it covers render in the 90:128 box box art uses.
+        html = render_to_string("music/includes/_album_card_grid.html", {})
+        soup = BeautifulSoup(html, "html.parser")
+        card = soup.select_one(".media-card-grid")
+        self.assertIn("media-card-square", card["class"])
+
+
+class GridRendererContractTests(TestCase):
+    """The grid renderer must not reach for a slot the template omits."""
+
+    def _declared_grid_slots(self):
+        source = RENDERER.read_text()
+        block = re.search(r"AlbumListRenderer\.GRID_SLOTS = \[(.*?)\];", source, re.S)
+        self.assertIsNotNone(block, "AlbumListRenderer.GRID_SLOTS is gone")
+        return set(re.findall(r"'([a-z-]+)'", block.group(1)))
+
+    def test_the_template_emits_every_slot_the_renderer_declares(self):
+        self.assertEqual(self._declared_grid_slots() - grid_slots(), set())
+
+    def test_the_renderer_implements_the_grid_card(self):
+        # The base class throws from _renderGridCard, so a grid view that is
+        # offered but not implemented fails only when someone clicks it.
+        source = RENDERER.read_text()
+        self.assertIn("_renderGridCard(compactAlbum, index, showRank)", source)
+        self.assertNotIn("Albums have no grid view", source)
+
+
+class RankedPageGridTests(TestCase):
+    """The rankings page renders both views, as the games page does."""
+
+    def setUp(self):
+        self.staff_user = User.objects.create_user(
+            username="gridstaff", password="gridpass", is_staff=True
+        )
+        self.client.login(username="gridstaff", password="gridpass")
+        self.album = models.Album.objects.create(
+            name="Doolittle",
+            rank=1,
+            slug="doolittle",
+            artist_credit="Pixies",
+            year_released=1989,
+        )
+
+    def test_the_page_renders_rows_and_cards_and_the_grid_template(self):
+        page = self.client.get(reverse("music:home")).content.decode()
+        soup = BeautifulSoup(page, "html.parser")
+        self.assertTrue(soup.select(".media-row.desktop"))
+        self.assertTrue(soup.select(".media-grid .media-card-grid"))
+        self.assertTrue(soup.select("template#grid-card-template"))
+
+    def test_the_view_toggle_and_jump_box_are_present(self):
+        page = self.client.get(reverse("music:home")).content.decode()
+        soup = BeautifulSoup(page, "html.parser")
+        self.assertTrue(soup.select('[aria-label="Grid view"]'))
+        self.assertTrue(soup.select('[aria-label="List view"]'))
+        self.assertTrue(soup.select(".jump-to-rank-input"))

@@ -1,0 +1,65 @@
+{# Sort controls for an entity list (developers, artists, source lists). #}
+{# #}
+{# Props: #}
+{#   sort_options - list of {value, label} #}
+{#   default_sort_label - shown when `sort` matches no option #}
+{# #}
+{# Contract: the enclosing Alpine scope exposes `sort`, `sortDirection`, #}
+{#   updateSort(value) and toggleSortDirection(). #}
+{# #}
+{# The games developer list has had this custom dropdown plus a direction #}
+{# toggle for a long time; the music artist and source-list pages had two #}
+{# native selects instead, which is the most visible way those pages looked #}
+{# like a different site. Rankings pages use _media_list_controls.html, #}
+{# which adds the view toggle and jump-to-rank an entity list has no use for. #}
+{# Keep every template comment on a single line. #}
+<div class="flex items-center gap-3">
+    {# Desktop: custom dropdown #}
+    <div class="hidden desktop:flex items-center gap-2">
+        <div class="dropdown" x-data="{ sortOpen: false }" @click.away="sortOpen = false">
+            <button type="button"
+                    class="flex items-center gap-1 text-base-content/70 hover:text-base-content transition-colors cursor-pointer"
+                    @click="sortOpen = !sortOpen"
+                    aria-haspopup="true"
+                    :aria-expanded="sortOpen">
+                <span class="mdi mdi-sort text-base"></span>
+                <span class="text-sm" x-text="{% for option in sort_options %}sort === '{{ option.value }}' ? '{{ option.label }}' : {% endfor %}'{{ default_sort_label }}'">{{ default_sort_label }}</span>
+                <span class="mdi mdi-chevron-down text-xs"></span>
+            </button>
+            <ul x-show="sortOpen" x-cloak
+                class="dropdown-content menu menu-sm bg-base-200 rounded-box shadow-lg z-50 w-fit p-2 mt-1"
+                @click="sortOpen = false">
+                {% for option in sort_options %}
+                <li><button type="button" @click="updateSort('{{ option.value }}')" :class="sort === '{{ option.value }}' ? 'active' : ''">{{ option.label }}</button></li>
+                {% endfor %}
+            </ul>
+        </div>
+        {# Direction flip #}
+        <button type="button"
+                class="flex items-center gap-1 text-base-content/70 hover:text-base-content transition-colors cursor-pointer"
+                @click="toggleSortDirection()"
+                :title="sortDirection === 'asc' ? 'Ascending order' : 'Descending order'">
+            <span class="mdi text-base" :class="sortDirection === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending'"></span>
+            <span class="text-xs" x-text="sortDirection === 'asc' ? 'Asc' : 'Desc'"></span>
+        </button>
+    </div>
+    {# Mobile: native select, for touch #}
+    <div class="desktop:hidden flex items-center gap-1">
+        <span class="mdi mdi-sort text-base text-base-content/70"></span>
+        <select class="select select-sm select-bordered bg-base-200"
+                style="width: fit-content; max-width: 100%;"
+                aria-label="Sort by"
+                @change="updateSort($event.target.value)">
+            {% for option in sort_options %}
+            <option value="{{ option.value }}" :selected="sort === '{{ option.value }}'">{{ option.label }}</option>
+            {% endfor %}
+        </select>
+        {# Direction flip #}
+        <button type="button"
+                class="p-1 text-base-content/70 hover:text-base-content transition-colors"
+                @click="toggleSortDirection()"
+                :title="sortDirection === 'asc' ? 'Ascending order' : 'Descending order'">
+            <span class="mdi text-lg" :class="sortDirection === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending'"></span>
+        </button>
+    </div>
+</div>

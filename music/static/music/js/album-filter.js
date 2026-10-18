@@ -7,10 +7,11 @@
  * from whatever state the URL describes, so a divergence shows up as rows
  * changing under the reader for no reason.
  *
- * Deliberately smaller than the games and books engines: there are no facet
- * counts to compute (the counts beside the filter options are all-time
- * figures the server renders once) and no genre-hierarchy expansion - see
- * `filter()`.
+ * Smaller than the games engine: no genre-hierarchy expansion, for the
+ * reason `filter()` gives. It does compute facet counts, because the year
+ * heatmap and the genre tree the sidebar now shares with the games page
+ * expect the number beside each option to answer "how many would this leave
+ * me", which changes with every other filter.
  */
 class AlbumFilterEngine {
     /**
@@ -26,6 +27,21 @@ class AlbumFilterEngine {
             this._genresById[genre.id] = genre;
         });
 
+        // Each genre's ancestors, so an album tagged "Modern Classical" is
+        // counted under "Classical" exactly once - counting a genre and its
+        // children separately and adding them up said Classical had two
+        // albums when one album carried both names.
+        this._ancestorsById = {};
+        this.genres.forEach(genre => {
+            const chain = [];
+            let parent = genre.p;
+            while (parent && this._genresById[parent]) {
+                chain.push(parent);
+                parent = this._genresById[parent].p;
+            }
+            this._ancestorsById[genre.id] = chain;
+        });
+
         // One haystack per album, built once from exactly the three columns
         // the server's `q` searches - name, name_normalized, artist_credit -
         // lowercased and otherwise untouched. `icontains` is case-insensitive
@@ -38,6 +54,104 @@ class AlbumFilterEngine {
                 [album.n, album.nn, album.c].filter(Boolean).join(' ').toLowerCase()
             );
         });
+    }
+
+    /**
+     * Add every descendant of the selected genres.
+     *
+     * The payload gives each genre its descendant ids (`d`), so this is the
+     * same expansion `music.views.expand_genre_ids` does server-side.
+     * @private
+     */
+    _expandGenres(genreIds) {
+        if (!genreIds.length) return genreIds;
+        const expanded = new Set();
+        genreIds.forEach(id => {
+            expanded.add(Number(id));
+            const genre = this._genresById[id];
+            (genre && genre.d ? genre.d : []).forEach(child =>
+                expanded.add(Number(child))
+            );
+        });
+        return [...expanded];
+    }
+
+    /**
+     * Facet counts for the sidebar, each dimension counted with its own
+     * filter left out.
+     *
+     * Mirrors `apply_album_filters(..., skip=...)` in music/views.py: the
+     * count under a year cell is how many albums that year holds under the
+     * *other* filters, so selecting it never gives an empty page.
+     *
+     * @param {Object} filters
+     * @returns {{years: Array<{year: number, count: number}>,
+     *            genres: Object<string, number>}}
+     */
+    facets(filters = {}) {
+        const withoutYears = this.filter(
+            Object.assign({}, filters, { start: null, end: null })
+        );
+        const withoutGenres = this.filter(
+            Object.assign({}, filters, { genres: [] })
+        );
+
+        const yearCounts = new Map();
+        withoutYears.forEach(album => {
+            if (album.y === null || album.y === undefined) return;
+            yearCounts.set(album.y, (yearCounts.get(album.y) || 0) + 1);
+        });
+
+        // Counted per subtree and once per album, as `_genre_counts` does.
+        const genreCounts = {};
+        withoutGenres.forEach(album => {
+            const covered = new Set();
+            album.g.forEach(genreId => {
+                covered.add(genreId);
+                (this._ancestorsById[genreId] || []).forEach(ancestor =>
+                    covered.add(ancestor)
+                );
+            });
+            covered.forEach(genreId => {
+                genreCounts[genreId] = (genreCounts[genreId] || 0) + 1;
+            });
+        });
+
+        return {
+            years: [...yearCounts.entries()]
+                .sort((a, b) => a[0] - b[0])
+                .map(([year, count]) => ({ year, count })),
+            genres: genreCounts
+        };
+    }
+
+    /**
+     * Where the matching albums sit across the whole ranking.
+     *
+     * Mirrors `core.services.ranking.rank_distribution`: bins are built
+     * from the global maximum rank, not the filtered one, so the chart's
+     * axis does not move when the filters do.
+     */
+    rankDistribution(albums, binCount = 10) {
+        const maxRank = this.albums.reduce(
+            (highest, album) => Math.max(highest, album.r || 0),
+            0
+        );
+        if (!maxRank) return [];
+
+        const binSize = Math.ceil(maxRank / binCount);
+        const counts = new Array(binCount).fill(0);
+        albums.forEach(album => {
+            if (!album.r) return;
+            const index = Math.floor((album.r - 1) / binSize);
+            if (index >= 0 && index < binCount) counts[index] += 1;
+        });
+
+        return counts.map((count, index) => ({
+            binStart: index * binSize + 1,
+            binEnd: Math.min((index + 1) * binSize, maxRank),
+            count
+        }));
     }
 
     /**
@@ -56,7 +170,7 @@ class AlbumFilterEngine {
         const start = Number.isFinite(filters.start) ? filters.start : null;
         const end = Number.isFinite(filters.end) ? filters.end : null;
         const artistIds = filters.artists || [];
-        const genreIds = filters.genres || [];
+        const genreIds = this._expandGenres(filters.genres || []);
 
         return this.albums.filter(album => {
             if (query && !this._haystacks.get(album.id).includes(query)) {
@@ -75,11 +189,10 @@ class AlbumFilterEngine {
                 return false;
             }
 
-            // Flat id matching, no walk down the tree. The server filters
-            // `genres__id__in` without expanding descendants, so selecting a
-            // root genre matches only albums tagged with the root itself -
-            // which is also what the all-time count beside that option
-            // reports. Expanding here would disagree with both.
+            // Genre ids are already expanded to include each selected
+            // genre's styles, matching `apply_album_filters` - selecting
+            // Rock means rock, not just the albums tagged with the bare
+            // word. See `_expandGenres`.
             if (genreIds.length && !genreIds.some(id => album.g.includes(id))) {
                 return false;
             }

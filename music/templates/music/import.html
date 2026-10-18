@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load humanize music_filters %}
 
-{% block title %}Import Album Data{% endblock %}
+{% block title %}Import Album Data | Acclaimed Video Games{% endblock %}
 {% block meta_description %}Staff import for the album ranking release files.{% endblock %}
 
 {% block content %}
@@ -47,6 +47,42 @@
         <span>Publications: <span class="font-semibold tabular-nums">{{ counts.publications|intcomma }}</span></span>
         <span>List appearances: <span class="font-semibold tabular-nums">{{ counts.memberships|intcomma }}</span></span>
     </div>
+</div>
+
+{# Metadata state, as the games import page carries its "Metadata #}
+{# Operations" panel: an import replaces every album row, and the cover art #}
+{# and genres only come back when the metadata pass re-adopts them. #}
+<div class="card bg-base-200 p-4 mb-4">
+    <h2 class="font-semibold mb-2 flex items-center gap-2">
+        <span class="mdi mdi-database"></span>
+        Metadata
+    </h2>
+    {% if metadata.complete %}
+    <p class="text-sm text-base-content/70">
+        <span class="mdi mdi-check-circle text-success"></span>
+        Every album has Wikidata, cover art and genres.
+    </p>
+    {% else %}
+    <p class="text-sm text-base-content/70 mb-2">
+        An import replaces every album row. Covers and genres are re-attached
+        by external id when the metadata pass next runs, so the rankings show
+        placeholders and no genre filter until it does.
+    </p>
+    <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm mb-3">
+        <span>Missing Wikidata: <span class="font-semibold tabular-nums">{{ metadata.missing_wikidata|intcomma }}</span></span>
+        <span>Missing covers: <span class="font-semibold tabular-nums">{{ metadata.missing_covers|intcomma }}</span></span>
+        <span>Missing genres: <span class="font-semibold tabular-nums">{{ metadata.missing_genres|intcomma }}</span></span>
+    </div>
+    <div class="p-3 bg-base-100 rounded-lg">
+        <p class="text-xs font-semibold mb-1">
+            Run the metadata pass (about {{ metadata.estimated_minutes }} minute{{ metadata.estimated_minutes|pluralize }} at the anonymous Discogs rate):
+        </p>
+        <code class="text-xs break-all select-all">python manage.py fetch_album_metadata</code>
+        <p class="text-xs opacity-70 mt-2">
+            On production: <code class="select-all">heroku run -- python manage.py fetch_album_metadata</code>
+        </p>
+    </div>
+    {% endif %}
 </div>
 
 <form method="post" enctype="multipart/form-data" class="card bg-base-200 p-4">

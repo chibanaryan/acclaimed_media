@@ -1,12 +1,16 @@
 {% extends 'base.html' %}
 {% load humanize music_filters %}
 
-{% block title %}{{ artist.name }} - Acclaimed Albums{% endblock %}
+{% block title %}{{ artist.name }} | Acclaimed Video Games{% endblock %}
 {% block meta_description %}{{ artist.name }} has {{ albums_count }} album{{ albums_count|pluralize }} in the acclaimed album rankings.{% endblock %}
-{% block og_title %}{{ artist.name }}{% endblock %}
-{% block twitter_title %}{{ artist.name }}{% endblock %}
+{% block og_title %}{{ artist.name }} | Acclaimed Video Games{% endblock %}
+{% block twitter_title %}{{ artist.name }} | Acclaimed Video Games{% endblock %}
 
 {% block content %}
+{# Header row: the artist on the left, the rank distribution on the right at #}
+{# sidebar width, exactly as the developer detail page is laid out. #}
+<div class="flex items-start justify-between gap-6 mb-4">
+<div class="flex-1 min-w-0">
 <h1 class="text-3xl font-bold mb-2 flex items-center gap-3 flex-wrap">
     <span>{{ artist.name }}</span>
     <span class="badge badge-warning badge-sm">Beta</span>
@@ -20,6 +24,14 @@
     {% if artist.parent.slug %}<a href="{{ artist.parent.get_absolute_url }}" class="link link-hover">{{ artist.parent.name }}</a>
     {% else %}{{ artist.parent.name }}{% endif %}{% endif %}
 </p>
+
+</div>
+{% if rank_distribution %}
+<div class="hidden desktop:block" style="width: 357px; flex-shrink: 0;">
+    {% include 'core/includes/_rank_distribution.html' %}
+</div>
+{% endif %}
+</div>
 
 {% if artist.subsidiaries.all %}
 <div class="mb-4">

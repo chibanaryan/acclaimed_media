@@ -1,0 +1,73 @@
+{# Album grid card - the grid-view counterpart of _album_row.html. #}
+{# Props: item (optional), show_rank ('alltime'|'filtered'|'none'), index, #}
+{#   highlight #}
+{# #}
+{# Structured exactly like games/includes/_game_card_grid.html and styled by #}
+{# the same shared rules (.media-card-* alias .game-card-*). `item` absent #}
+{# renders the empty skeleton home.html puts in <template> for #}
+{# album-list-renderer.js to clone, so every data-slot has to exist outside #}
+{# any condition on the album - see the dual-rendering section of CLAUDE.md. #}
+{# Sleeves are square, which media-card-square sets. #}
+{# Keep every template comment on a single line. #}
+{% load music_filters %}
+<div class="media-card-grid media-card-square {% if item and highlight and item.id == highlight %}is-highlighted{% endif %}"
+     {% if item %}id="music-{{ item.id }}-grid"{% endif %}
+     data-slot="root-grid">
+    {# Cover with rank badge overlay #}
+    <div class="media-card-cover relative">
+        {# Rank badge - top left #}
+        {% if show_rank == 'alltime' or show_rank == 'filtered' or not item %}
+        <div class="media-card-rank" data-slot="rank-container">
+            <span class="badge" data-slot="rank-grid">
+                {% if item %}#{% if show_rank == 'filtered' %}{{ index|default:item.rank }}{% else %}{{ item.rank }}{% endif %}{% endif %}
+            </span>
+        </div>
+        {% endif %}
+        {# All-time rank - top right, shown when the badge is a filtered position #}
+        <span class="media-card-global-rank {% if show_rank != 'filtered' and item %}hidden{% endif %}" data-slot="global-rank-grid">{% if item %}#{{ item.rank }}{% endif %}</span>
+
+        {# Cover image. Both the img and the placeholder are always emitted, #}
+        {# one hidden, so a clone always has somewhere to write the cover. #}
+        <a {% if item %}href="{{ item.get_absolute_url }}"{% endif %}
+           class="block w-full h-full"
+           data-slot="cover-link">
+            <img {% if item and item.thumbnail %}src="{{ item.thumbnail }}" srcset="{{ item.thumbnail }} 1x, {{ item.image }} 2x" alt="{{ item.name }}"{% endif %}
+                 width="250" height="250"
+                 loading="lazy" decoding="async"
+                 class="w-full h-full{% if item and not item.thumbnail %} hidden{% endif %}"
+                 data-slot="cover">
+        </a>
+        <span class="media-thumb-placeholder absolute inset-0{% if not item or item.thumbnail %} hidden{% endif %}"
+              aria-hidden="true" data-slot="cover-placeholder">
+            <span class="mdi mdi-album text-3xl"></span>
+        </span>
+
+        {# Hover overlay with the album's details #}
+        <div class="media-card-overlay" data-slot="overlay">
+            <div class="media-card-overlay-content">
+                {% if item %}
+                    {% if item.artist_credit %}
+                    <div class="media-card-creator" data-slot="creator">{{ item.artist_credit }}</div>
+                    {% endif %}
+                    {% if item.genres.count > 0 %}
+                    <div class="media-card-genres" data-slot="genres-grid">{% for genre in item.genres.all %}{{ genre.name }}{% if not forloop.last %} / {% endif %}{% endfor %}</div>
+                    {% endif %}
+                    {% if item.list_count %}
+                    <div class="media-card-lists" data-slot="list-count-grid">{{ item.list_count }} list{{ item.list_count|pluralize }}</div>
+                    {% endif %}
+                {% else %}
+                    {# Empty slots for template cloning #}
+                    <div class="media-card-creator" data-slot="creator"></div>
+                    <div class="media-card-genres" data-slot="genres-grid"></div>
+                    <div class="media-card-lists" data-slot="list-count-grid"></div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {# Title and year below the cover #}
+    <div class="media-card-info">
+        <a {% if item %}href="{{ item.get_absolute_url }}"{% endif %} class="link link-hover" data-slot="title-link-grid"><span class="media-card-name" data-slot="name-grid">{% if item %}{{ item.name }}{% endif %}</span></a>
+        <span class="media-card-year" data-slot="year-grid">{% if item %}{{ item.year|default_if_none:"" }}{% endif %}</span>
+    </div>
+</div>

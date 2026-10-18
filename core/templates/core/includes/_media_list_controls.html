@@ -1,0 +1,173 @@
+{# Ranking-list controls: sort, sort direction, view mode, jump to rank. #}
+{# #}
+{# One definition for every ranking page. Games' and music's results headers #}
+{# were separately written and drifted - music lost the sort dropdown to a #}
+{# native select in the sidebar, and never had the view toggle or jump box - #}
+{# so this partial is the single source and each page passes its own sorts. #}
+{# #}
+{# Props: #}
+{#   sort_options - list of {value, label, label_expr (optional Alpine expr #}
+{#     for a label that depends on other filter state)} #}
+{#   default_sort_label - fallback when filters.sort matches no option #}
+{#   item_noun - 'Game' / 'Album', for the jump-to-rank placeholder #}
+{#   total_count, loaded_count - for the count line and the jump box bounds #}
+{#   empty_count_label - what the count line reads when nothing matched #}
+{#   show_view_toggle, show_jump_to_rank - default on #}
+{#   per_page - page size the jump box pages through, default 100 #}
+{# #}
+{# Contract: the enclosing element must be inside an Alpine component that #}
+{# exposes filters.sort, filters.sortDirection, updateSort(value), #}
+{# toggleSortDirection(), viewMode and setViewMode(mode). Games' #}
+{# filterComponent does; sections without one use core's mediaListControls. #}
+{# Keep every template comment on a single line - Django only strips those. #}
+{% load humanize %}
+
+{# Desktop: sort + result count + jump to rank #}
+<div class="hidden desktop:flex items-center justify-between gap-4 mb-2 text-sm">
+    {# Sort - left #}
+    <div class="flex items-center gap-2 flex-shrink-0">
+        <div class="dropdown" x-data="{ sortOpen: false }" @click.away="sortOpen = false">
+            <button type="button"
+                    class="flex items-center gap-1 text-base-content/70 hover:text-base-content transition-colors cursor-pointer"
+                    @click="sortOpen = !sortOpen"
+                    aria-haspopup="true"
+                    :aria-expanded="sortOpen">
+                <span class="mdi mdi-sort text-base" aria-hidden="true"></span>
+                <span class="text-sm" x-text="{% for option in sort_options %}filters.sort === '{{ option.value }}' ? {% if option.label_expr %}({{ option.label_expr|safe }}){% else %}'{{ option.label }}'{% endif %} : {% endfor %}'{{ default_sort_label }}'">{{ default_sort_label }}</span>
+                <span class="mdi mdi-chevron-down text-xs"></span>
+            </button>
+            <ul x-show="sortOpen" x-cloak
+                class="dropdown-content menu menu-sm bg-base-200 rounded-box shadow-lg z-50 w-fit p-2 mt-1"
+                @click="sortOpen = false">
+                {% for option in sort_options %}
+                <li><button type="button" @click="updateSort('{{ option.value }}')" :class="filters.sort === '{{ option.value }}' ? 'active' : ''">{{ option.label }}</button></li>
+                {% endfor %}
+            </ul>
+        </div>
+        {# Direction flip #}
+        <button type="button"
+                class="flex items-center gap-1 text-base-content/70 hover:text-base-content transition-colors cursor-pointer"
+                @click="toggleSortDirection()"
+                :title="(filters.sortDirection || 'asc') === 'asc' ? 'Ascending order' : 'Descending order'"
+                :aria-label="(filters.sortDirection || 'asc') === 'asc' ? 'Sort ascending, click to change' : 'Sort descending, click to change'">
+            <span class="mdi text-base" :class="(filters.sortDirection || 'asc') === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending'" aria-hidden="true"></span>
+            <span class="text-xs" x-text="(filters.sortDirection || 'asc') === 'asc' ? 'Asc' : 'Desc'"></span>
+        </button>
+        {% if show_view_toggle|default_if_none:True %}
+        {# View toggle #}
+        <div class="flex items-center border-l border-base-content/20 ml-2 pl-2">
+            <div class="tooltip tooltip-bottom" data-tip="List view">
+                <button type="button"
+                        class="btn btn-xs btn-ghost px-1.5"
+                        :class="viewMode === 'list' ? 'btn-active' : ''"
+                        @click="setViewMode('list')"
+                        aria-label="List view">
+                    <span class="mdi mdi-format-list-bulleted text-base" aria-hidden="true"></span>
+                </button>
+            </div>
+            <div class="tooltip tooltip-bottom" data-tip="Grid view">
+                <button type="button"
+                        class="btn btn-xs btn-ghost px-1.5"
+                        :class="viewMode === 'grid' ? 'btn-active' : ''"
+                        @click="setViewMode('grid')"
+                        aria-label="Grid view">
+                    <span class="mdi mdi-view-grid text-base" aria-hidden="true"></span>
+                </button>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {# Result count - middle #}
+    <div class="result-count text-base-content/70 whitespace-nowrap" data-result-count="desktop">
+        {% if total_count %}Showing <span id="loaded-count" class="loaded-count-value">{{ loaded_count|intcomma }}</span> of {{ total_count|intcomma }}{% else %}{{ empty_count_label|default_if_none:"" }}{% endif %}
+    </div>
+    {# Jump to rank - right #}
+    {% if show_jump_to_rank|default_if_none:True %}
+    <div class="flex items-center gap-2 flex-shrink-0 pr-4">
+        <input type="number"
+               min="1"
+               max="{{ total_count }}"
+               placeholder="{{ item_noun|default:'Item' }} #"
+               class="jump-to-rank-input input input-xs input-bordered w-20 text-center"
+               data-total="{{ total_count }}"
+               data-loaded="{{ loaded_count }}"
+               data-per-page="{{ per_page|default:100 }}"
+               aria-label="Enter rank number to jump to">
+        <button type="button"
+                class="jump-to-rank-btn btn btn-xs btn-primary btn-square"
+                title="Jump to rank"
+                aria-label="Jump to rank">
+            <span class="mdi mdi-arrow-down" aria-hidden="true"></span>
+        </button>
+    </div>
+    {% endif %}
+</div>
+
+{# Mobile: the same controls, with a native select for touch #}
+<div class="desktop:hidden flex items-center justify-between gap-2 mb-2 text-sm">
+    <div class="flex items-center gap-1 shrink-0">
+        <span class="mdi mdi-sort text-base text-base-content/70"></span>
+        <select class="select select-xs select-bordered bg-base-200"
+                aria-label="Sort by"
+                @change="updateSort($event.target.value)">
+            {% for option in sort_options %}
+            <option value="{{ option.value }}" :selected="filters.sort === '{{ option.value }}'">{{ option.label }}</option>
+            {% endfor %}
+        </select>
+        {# Direction flip #}
+        <button type="button"
+                class="p-1 text-base-content/70 hover:text-base-content transition-colors"
+                @click="toggleSortDirection()"
+                :title="(filters.sortDirection || 'asc') === 'asc' ? 'Ascending order' : 'Descending order'"
+                :aria-label="(filters.sortDirection || 'asc') === 'asc' ? 'Sort ascending, click to change' : 'Sort descending, click to change'">
+            <span class="mdi text-lg" :class="(filters.sortDirection || 'asc') === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending'" aria-hidden="true"></span>
+        </button>
+        {% if show_view_toggle|default_if_none:True %}
+        {# View toggle #}
+        <div class="flex items-center border-l border-base-content/20 ml-1 pl-1">
+            <div class="tooltip tooltip-bottom" data-tip="List view">
+                <button type="button"
+                        class="btn btn-sm btn-ghost px-2 min-h-10"
+                        :class="viewMode === 'list' ? 'btn-active' : ''"
+                        @click="setViewMode('list')"
+                        aria-label="List view">
+                    <span class="mdi mdi-format-list-bulleted text-base" aria-hidden="true"></span>
+                </button>
+            </div>
+            <div class="tooltip tooltip-bottom" data-tip="Grid view">
+                <button type="button"
+                        class="btn btn-sm btn-ghost px-2 min-h-10"
+                        :class="viewMode === 'grid' ? 'btn-active' : ''"
+                        @click="setViewMode('grid')"
+                        aria-label="Grid view">
+                    <span class="mdi mdi-view-grid text-base" aria-hidden="true"></span>
+                </button>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {# Result count - middle, can shrink #}
+    <div class="result-count text-base-content/70 text-xs truncate min-w-0" data-result-count="mobile">
+        {% if total_count %}<span class="loaded-count-value">{{ loaded_count|intcomma }}</span> of {{ total_count|intcomma }}{% endif %}
+    </div>
+    {# Jump to rank - right #}
+    {% if show_jump_to_rank|default_if_none:True %}
+    <div class="flex items-center gap-1 shrink-0">
+        <input type="number"
+               min="1"
+               max="{{ total_count }}"
+               placeholder="#"
+               aria-label="{{ item_noun|default:'Item' }} rank number"
+               class="jump-to-rank-input input input-sm input-bordered w-14 text-center"
+               data-total="{{ total_count }}"
+               data-loaded="{{ loaded_count }}"
+               data-per-page="{{ per_page|default:100 }}">
+        <button type="button"
+                class="jump-to-rank-btn btn btn-sm btn-primary btn-square min-h-10 min-w-10"
+                aria-label="Jump to rank"
+                title="Jump to rank">
+            <span class="mdi mdi-arrow-down" aria-hidden="true"></span>
+        </button>
+    </div>
+    {% endif %}
+</div>

@@ -1,10 +1,14 @@
-{# GenreFilter component - Hierarchical Tree Style with Wikipedia Genres #}
-{# Props: genres (list from parent with game_count, filtered_count, parent_id, level) #}
-{# Uses parent Alpine.js context for genres array and filters.genres (single-select) #}
+{# Hierarchical genre tree, shared by every ranking page. #}
+{# Props: genres (from the parent, each with parent_id, level, a count and #}
+{#   optionally filtered_count), item_noun_plural for the tooltips #}
+{# Uses the parent Alpine component's `genres` array and filters.genres. #}
+{# Replaces the flat <select> the album page used to carry, where a root #}
+{# genre and one of its styles looked exactly alike. #}
+{# Keep every template comment on a single line. #}
 {% load static %}
 
 <div class="genre-filter"
-     x-data="genreFilterComponent({ filters, genres })"
+     x-data="genreFilterComponent({ filters, genres{% if genre_icons_element %}, categoryIconsElementId: '{{ genre_icons_element }}', defaultCategoryIcon: '{{ default_genre_icon|default:"mdi-music-note" }}'{% endif %}{% if genre_counts_include_descendants %}, countsIncludeDescendants: true{% endif %} })"
      @genres-reset.window="handleReset()"
      @genres-toggle-expand.window="toggleAllExpanded()">
 
@@ -67,7 +71,7 @@
                                  'bg-error/20 text-error': hasZeroResults(genre.id)
                              }"
                              @click="toggleGenre(genre.id)"
-                             :title="genre.name + ' - ' + getEffectiveCount(genre) + ' games'">
+                             :title="genre.name + ' - ' + getEffectiveCount(genre) + ' {{ item_noun_plural|default:'games' }}'">
                             {# Genre Name #}
                             <span class="flex-1 truncate" x-text="genre.name"></span>
                             {# Game Count #}

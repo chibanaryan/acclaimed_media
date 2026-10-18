@@ -1,0 +1,1024 @@
+/**
+ * Shared filter sidebar components.
+ *
+ * The year heatmap grid and the hierarchical genre tree, as Alpine
+ * components. They started life in games/js/filter-subcomponents.js and were
+ * moved here unchanged when the album rankings page adopted them: a copy
+ * would have drifted, and the album page previously made do with a row of
+ * decade chips and a flat <select> that could not tell a root genre from one
+ * of its styles.
+ *
+ * Neither component knows what it is counting. Each takes:
+ *   filters  - the page's filter state, with .start/.end or .genres
+ *   genres   - [{id, name, level, parent_id, item_count|game_count,
+ *                filtered_count}]
+ *   minYear / maxYear, and callbacks for requesting an update
+ * and reads live counts from `year-counts-update` / `genre-counts-update`
+ * events, so facet counts shrink as other filters narrow the results.
+ *
+ * Registered as `yearGridComponent`, `genreFilterComponent` and their mobile
+ * equivalents. Load this before games/js/filter-subcomponents.js, which
+ * registers the components that are genuinely about games - platforms,
+ * series and playtime.
+ */
+(function () {
+    "use strict";
+
+    function readIconMap(elementId) {
+        var el = elementId && document.getElementById(elementId);
+        if (!el) {
+            return null;
+        }
+        try {
+            return JSON.parse(el.textContent);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function createGenreFilterComponent(config) {
+        var filters = config.filters;
+        var genres = config.genres;
+        // Each section's taxonomy has its own icons; the games ones are the
+        // default because this component started there. The map arrives in a
+        // JSON block rather than in the x-data attribute, whose double
+        // quotes JSON would close.
+        var categoryIcons = config.categoryIcons || readIconMap(config.categoryIconsElementId);
+        var defaultIcon = config.defaultCategoryIcon || "mdi-gamepad-variant";
+        // Whether a genre's count already covers its descendants. When it
+        // does, adding the children's counts to a root's counts albums
+        // tagged with both the root and one of its styles twice.
+        var countsIncludeDescendants = Boolean(config.countsIncludeDescendants);
+
+        return {
+            _genreCountsHandler: null,
+            countsReady: false,
+            expandedCategories: {},
+            categoryIcons: categoryIcons || {
+                Shooter: "mdi-crosshairs",
+                Action: "mdi-run-fast",
+                Adventure: "mdi-image-filter-hdr",
+                "Role-Playing": "mdi-wizard-hat",
+                Strategy: "mdi-chess-knight",
+                Simulation: "mdi-cog",
+                "Racing & Sports": "mdi-car-sports",
+                "Puzzle & Casual": "mdi-puzzle",
+                Other: "mdi-layers",
+            },
+
+            init: function () {
+                var self = this;
+                this._genreCountsHandler = function (event) {
+                    self.updateFilteredCounts(event.detail);
+                    self.countsReady = true;
+                };
+                window.addEventListener("genre-counts-update", this._genreCountsHandler);
+                this.loadExpandedState();
+            },
+
+            destroy: function () {
+                if (this._genreCountsHandler) {
+                    window.removeEventListener("genre-counts-update", this._genreCountsHandler);
+                }
+            },
+
+            loadExpandedState: function () {
+                try {
+                    var saved = localStorage.getItem("genreCategoriesExpanded");
+                    if (saved) {
+                        this.expandedCategories = JSON.parse(saved);
+                    }
+                } catch (e) {
+                    this.expandedCategories = {};
+                }
+            },
+
+            saveExpandedState: function () {
+                localStorage.setItem("genreCategoriesExpanded", JSON.stringify(this.expandedCategories));
+            },
+
+            toggleCategoryExpanded: function (categoryId) {
+                this.expandedCategories[categoryId] = !this.expandedCategories[categoryId];
+                this.saveExpandedState();
+            },
+
+            isCategoryExpanded: function (categoryId) {
+                if (this.expandedCategories[categoryId] === undefined) {
+                    return this.hasCategoryOrChildrenSelected(categoryId);
+                }
+                return this.expandedCategories[categoryId];
+            },
+
+            updateFilteredCounts: function (countMap) {
+                genres.forEach(function (g) {
+                    g.filtered_count = countMap[String(g.id)] || 0;
+                });
+            },
+
+            get rootCategories() {
+                var self = this;
+                return genres
+                    .filter(function (g) {
+                        return g.level === 0;
+                    })
+                    .sort(function (a, b) {
+                        return self.getCategoryTotalGameCount(b.id) - self.getCategoryTotalGameCount(a.id);
+                    });
+            },
+
+            getCategoryTotalGameCount: function (categoryId) {
+                var category = genres.find(function (g) {
+                    return String(g.id) === String(categoryId);
+                });
+                var categoryCount = category ? this.getEffectiveCount(category) : 0;
+                if (countsIncludeDescendants) {
+                    return categoryCount;
+                }
+                var children = genres.filter(function (g) {
+                    return String(g.parent_id) === String(categoryId);
+                });
+                var self = this;
+                var childrenCount = children.reduce(function (sum, c) {
+                    return sum + self.getEffectiveCount(c);
+                }, 0);
+                return categoryCount + childrenCount;
+            },
+
+            getChildren: function (parentId) {
+                var self = this;
+                return genres
+                    .filter(function (g) {
+                        return String(g.parent_id) === String(parentId);
+                    })
+                    .sort(function (a, b) {
+                        return self.getEffectiveCount(b) - self.getEffectiveCount(a);
+                    });
+            },
+
+            getDescendantIds: function (genreId) {
+                var children = this.getChildren(genreId);
+                var ids = children.map(function (c) {
+                    return String(c.id);
+                });
+                for (var i = 0; i < children.length; i++) {
+                    ids = ids.concat(this.getDescendantIds(children[i].id));
+                }
+                return ids;
+            },
+
+            isGenreAvailable: function (genreId) {
+                var genre = genres.find(function (g) {
+                    return String(g.id) === String(genreId);
+                });
+                if (!genre) {
+                    return false;
+                }
+                var count = this.getEffectiveCount(genre);
+                return count > 0 || this.isGenreSelected(genreId);
+            },
+
+            hasZeroResults: function (genreId) {
+                var genre = genres.find(function (g) {
+                    return String(g.id) === String(genreId);
+                });
+                if (!genre) {
+                    return false;
+                }
+                var count = this.getEffectiveCount(genre);
+                return count === 0 && this.isGenreSelected(genreId);
+            },
+
+            getEffectiveCount: function (genre) {
+                if (genre.filtered_count !== undefined) {
+                    return genre.filtered_count;
+                }
+                // `game_count` is what the games payload calls it; anything
+                // else counts something other than games.
+                return genre.item_count !== undefined ? genre.item_count : genre.game_count;
+            },
+
+            getCategoryTotalCount: function (categoryId) {
+                var category = genres.find(function (g) {
+                    return String(g.id) === String(categoryId);
+                });
+                var categoryCount = category ? this.getEffectiveCount(category) : 0;
+                if (countsIncludeDescendants) {
+                    return categoryCount;
+                }
+                var children = this.getChildren(categoryId);
+                var self = this;
+                var childrenCount = children.reduce(function (sum, c) {
+                    return sum + self.getEffectiveCount(c);
+                }, 0);
+                return categoryCount + childrenCount;
+            },
+
+            isCategoryAvailable: function (categoryId) {
+                var category = genres.find(function (g) {
+                    return String(g.id) === String(categoryId);
+                });
+                if (category && this.getEffectiveCount(category) > 0) {
+                    return true;
+                }
+                var children = this.getChildren(categoryId);
+                var self = this;
+                return children.some(function (c) {
+                    return self.isGenreAvailable(c.id);
+                });
+            },
+
+            isGenreSelected: function (genreId) {
+                return filters.genres.includes(String(genreId));
+            },
+
+            isCategorySelected: function (categoryId) {
+                return filters.genres.includes(String(categoryId));
+            },
+
+            hasSelectedChildren: function (categoryId) {
+                var childIds = this.getDescendantIds(categoryId);
+                return childIds.some(function (id) {
+                    return filters.genres.includes(id);
+                });
+            },
+
+            hasCategoryOrChildrenSelected: function (categoryId) {
+                return this.isCategorySelected(categoryId) || this.hasSelectedChildren(categoryId);
+            },
+
+            allChildrenSelected: function (categoryId) {
+                var self = this;
+                var children = this.getChildren(categoryId).filter(function (c) {
+                    return self.isGenreAvailable(c.id);
+                });
+                if (children.length === 0) {
+                    return false;
+                }
+                return children.every(function (c) {
+                    return filters.genres.includes(String(c.id));
+                });
+            },
+
+            findGenreParent: function (genreId) {
+                var genre = genres.find(function (g) {
+                    return String(g.id) === String(genreId);
+                });
+                if (!genre || !genre.parent_id) {
+                    return null;
+                }
+                return genres.find(function (g) {
+                    return String(g.id) === String(genre.parent_id);
+                });
+            },
+
+            toggleGenre: function (genreId) {
+                var id = String(genreId);
+                var genre = genres.find(function (g) {
+                    return String(g.id) === id;
+                });
+                if (genre && genre.parent_id) {
+                    var parentId = String(genre.parent_id);
+                    if (filters.genres.includes(parentId)) {
+                        filters.genres = filters.genres.filter(function (gid) {
+                            return gid !== parentId;
+                        });
+                        if (!filters.genres.includes(id)) {
+                            filters.genres.push(id);
+                        }
+                        this.dispatchFilterChange();
+                        return;
+                    }
+                    if (this.allChildrenSelected(parentId)) {
+                        var siblingIds = this.getChildren(parentId).map(function (c) {
+                            return String(c.id);
+                        });
+                        filters.genres = filters.genres.filter(function (gid) {
+                            return !siblingIds.includes(gid);
+                        });
+                        filters.genres.push(id);
+                        this.dispatchFilterChange();
+                        return;
+                    }
+                }
+                var idx = filters.genres.indexOf(id);
+                if (idx > -1) {
+                    filters.genres.splice(idx, 1);
+                } else {
+                    filters.genres.push(id);
+                }
+                this.dispatchFilterChange();
+            },
+
+            toggleCategorySelection: function (categoryId) {
+                var id = String(categoryId);
+                if (this.expandedCategories[id] === undefined) {
+                    this.expandedCategories[id] = this.hasCategoryOrChildrenSelected(id);
+                }
+                var idx = filters.genres.indexOf(id);
+                if (idx > -1) {
+                    filters.genres.splice(idx, 1);
+                } else {
+                    var descendantIds = this.getDescendantIds(categoryId);
+                    filters.genres = filters.genres.filter(function (gid) {
+                        return !descendantIds.includes(gid);
+                    });
+                    filters.genres.push(id);
+                }
+                this.dispatchFilterChange();
+            },
+
+            dispatchFilterChange: function () {
+                var selectedItems = genres.filter(function (g) {
+                    return filters.genres.includes(String(g.id));
+                });
+                this.$dispatch("filter-changed", { type: "genres", items: selectedItems });
+            },
+
+            getSelectedCount: function () {
+                return filters.genres.length;
+            },
+
+            getCategoryIcon: function (name) {
+                return this.categoryIcons[name] || defaultIcon;
+            },
+
+            handleReset: function () {
+                this.expandedCategories = {};
+                localStorage.removeItem("genreCategoriesExpanded");
+            },
+
+            areAllExpanded: function () {
+                var categories = this.rootCategories;
+                for (var i = 0; i < categories.length; i++) {
+                    if (!this.expandedCategories[categories[i].id]) {
+                        return false;
+                    }
+                }
+                return true;
+            },
+
+            toggleAllExpanded: function () {
+                var shouldExpand = !this.areAllExpanded();
+                var categories = this.rootCategories;
+                for (var i = 0; i < categories.length; i++) {
+                    this.expandedCategories[categories[i].id] = shouldExpand;
+                }
+                this.saveExpandedState();
+            },
+        };
+    }
+
+    function createYearGridComponent(config) {
+        var filters = config.filters;
+        var minYear = config.minYear;
+        var maxYear = config.maxYear;
+        var requestFilterUpdate =
+            typeof config.requestFilterUpdate === "function" ? config.requestFilterUpdate : function () {};
+        var isApplyingSavedFilter =
+            typeof config.isApplyingSavedFilter === "function" ? config.isApplyingSavedFilter : function () { return false; };
+
+        return {
+            yearCounts: [],
+            originalYearCounts: [],
+            maxCount: 0,
+            originalMaxCount: 0,
+            decades: [],
+            dragStart: null,
+            dragAnchorEnd: null,
+            dragEnd: null,
+            isDragging: false,
+            isDraggingDecade: false,
+            isDraggingToDecade: false,
+            lastClicked: null,
+            wasAlreadySelected: false,
+            _yearCountsHandler: null,
+            _yearOriginalCountsHandler: null,
+            _yearSet: null,
+            _minCount: 0,
+            _decadeStructure: null,
+
+            init: function () {
+                var self = this;
+                var dataEl = document.getElementById("year-counts-data");
+                if (dataEl) {
+                    this.yearCounts = JSON.parse(dataEl.textContent);
+                    this.originalYearCounts = this.yearCounts.slice();
+                    this._rebuildCaches();
+                    this.maxCount = Math.max.apply(
+                        null,
+                        this.yearCounts.map(function (y) {
+                            return y.count;
+                        }).concat([1])
+                    );
+                    this.originalMaxCount = this.maxCount;
+                    this.buildDecades();
+                }
+
+                var setupListeners = function () {
+                    self._yearOriginalCountsHandler = function (event) {
+                        if (!Array.isArray(event.detail) || event.detail.length === 0) {
+                            return;
+                        }
+                        self.originalYearCounts = event.detail;
+                        self._rebuildCaches();
+                        self.originalMaxCount = Math.max.apply(
+                            null,
+                            event.detail.map(function (y) {
+                                return y.count;
+                            }).concat([1])
+                        );
+                        self.maxCount = self.originalMaxCount;
+                    };
+                    window.addEventListener("year-original-counts-update", self._yearOriginalCountsHandler);
+
+                    self._yearCountsHandler = function (event) {
+                        if (!Array.isArray(event.detail) || event.detail.length === 0) {
+                            return;
+                        }
+                        if (event.detail.length !== self.originalYearCounts.length) {
+                            var newCountMap = {};
+                            event.detail.forEach(function (yc) {
+                                if (yc && typeof yc.year === "number") {
+                                    newCountMap[yc.year] = yc.count || 0;
+                                }
+                            });
+                            self.yearCounts = self.originalYearCounts.map(function (yc) {
+                                return {
+                                    year: yc.year,
+                                    count: newCountMap[yc.year] !== undefined ? newCountMap[yc.year] : 0,
+                                };
+                            });
+                        } else {
+                            self.yearCounts = event.detail;
+                        }
+                        self.maxCount = self.originalMaxCount;
+                        self.buildDecades();
+                    };
+                    window.addEventListener("year-counts-update", self._yearCountsHandler);
+                };
+
+                if ("requestIdleCallback" in window) {
+                    requestIdleCallback(setupListeners, { timeout: 200 });
+                } else {
+                    setTimeout(setupListeners, 50);
+                }
+            },
+
+            destroy: function () {
+                if (this._yearCountsHandler) {
+                    window.removeEventListener("year-counts-update", this._yearCountsHandler);
+                }
+                if (this._yearOriginalCountsHandler) {
+                    window.removeEventListener("year-original-counts-update", this._yearOriginalCountsHandler);
+                }
+            },
+
+            handleReset: function () {
+                this.lastClicked = null;
+            },
+
+            _rebuildCaches: function () {
+                this._yearSet = new Set(
+                    this.originalYearCounts.map(function (yc) {
+                        return yc.year;
+                    })
+                );
+                var nonZero = this.originalYearCounts.filter(function (yc) {
+                    return yc.count > 0;
+                });
+                this._minCount =
+                    nonZero.length > 0
+                        ? Math.min.apply(
+                              null,
+                              nonZero.map(function (yc) {
+                                  return yc.count;
+                              })
+                          )
+                        : 0;
+                this._decadeStructure = null;
+            },
+
+            getMinCount: function () {
+                return this._minCount;
+            },
+
+            buildDecades: function () {
+                var self = this;
+                var currentCountMap = {};
+                this.yearCounts.forEach(function (yc) {
+                    currentCountMap[yc.year] = yc.count;
+                });
+
+                if (this._decadeStructure) {
+                    this.decades = this._decadeStructure.map(function (decade) {
+                        return {
+                            start: decade.start,
+                            label: decade.label,
+                            cells: decade.cells.map(function (cell) {
+                                if (!cell.year) {
+                                    return cell;
+                                }
+                                var currentCount = currentCountMap[cell.year] || 0;
+                                return {
+                                    year: cell.year,
+                                    count: currentCount,
+                                    originalCount: cell.originalCount,
+                                    available: currentCount > 0,
+                                };
+                            }),
+                        };
+                    });
+                    return;
+                }
+
+                var originalCountMap = {};
+                this.originalYearCounts.forEach(function (yc) {
+                    originalCountMap[yc.year] = yc.count;
+                });
+
+                var decadeMap = {};
+                this.originalYearCounts.forEach(function (yc) {
+                    var decadeStart = Math.floor(yc.year / 10) * 10;
+                    if (!decadeMap[decadeStart]) {
+                        decadeMap[decadeStart] = { maxOriginalPos: 0 };
+                    }
+                    var position = yc.year % 10;
+                    decadeMap[decadeStart][position] = {
+                        year: yc.year,
+                        originalCount: yc.count || 0,
+                    };
+                    if (position > decadeMap[decadeStart].maxOriginalPos) {
+                        decadeMap[decadeStart].maxOriginalPos = position;
+                    }
+                });
+
+                var decadeStarts = Object.keys(decadeMap)
+                    .map(Number)
+                    .sort(function (a, b) {
+                        return b - a;
+                    });
+
+                this._decadeStructure = decadeStarts.map(function (ds) {
+                    var maxPos = decadeMap[ds].maxOriginalPos || 0;
+                    var cells = [];
+                    for (var i = 0; i < 10; i++) {
+                        if (i > maxPos) {
+                            cells.push({ hidden: true });
+                        } else if (decadeMap[ds][i]) {
+                            cells.push({
+                                year: decadeMap[ds][i].year,
+                                originalCount: decadeMap[ds][i].originalCount,
+                            });
+                        } else {
+                            cells.push({
+                                year: ds + i,
+                                originalCount: 0,
+                            });
+                        }
+                    }
+                    return { start: ds, label: ds + "s", cells: cells };
+                });
+
+                this.decades = this._decadeStructure.map(function (decade) {
+                    return {
+                        start: decade.start,
+                        label: decade.label,
+                        cells: decade.cells.map(function (cell) {
+                            if (!cell.year) {
+                                return cell;
+                            }
+                            var currentCount = currentCountMap[cell.year] || 0;
+                            return {
+                                year: cell.year,
+                                count: currentCount,
+                                originalCount: cell.originalCount,
+                                available: currentCount > 0,
+                            };
+                        }),
+                    };
+                });
+            },
+
+            isYearAvailable: function (year) {
+                var yearData = this.yearCounts.find(function (yc) {
+                    return yc.year === year;
+                });
+                return yearData && yearData.count > 0;
+            },
+
+            getOpacity: function (count) {
+                if (count === 0) {
+                    return "5%";
+                }
+                var normalized = count / this.maxCount;
+                var opacity = 0.2 + normalized * 0.8;
+                return Math.round(opacity * 100) + "%";
+            },
+
+            getYearLabel: function (year) {
+                return String(year).slice(-2);
+            },
+
+            isInRange: function (year) {
+                if (this.isDragging) {
+                    var min = Math.min(this.dragStart, this.dragAnchorEnd, this.dragEnd);
+                    var max = Math.max(this.dragStart, this.dragAnchorEnd, this.dragEnd);
+                    return year >= min && year <= max;
+                }
+                if (isApplyingSavedFilter()) {
+                    return false;
+                }
+                if (filters.start === minYear && filters.end === maxYear) {
+                    return false;
+                }
+                return year >= filters.start && year <= filters.end;
+            },
+
+            isDecadeSelected: function (decadeStart) {
+                if (this.isDragging) {
+                    return false;
+                }
+                if (isApplyingSavedFilter()) {
+                    return false;
+                }
+                if (filters.start === minYear && filters.end === maxYear) {
+                    return false;
+                }
+                var isDecadeAligned = filters.start % 10 === 0 && filters.end % 10 === 9;
+                if (!isDecadeAligned) {
+                    return false;
+                }
+                return decadeStart >= filters.start && decadeStart + 9 <= filters.end;
+            },
+
+            isDecadeInDragRange: function (decadeStart) {
+                if (!this.isDragging || !this.isDraggingDecade) {
+                    return false;
+                }
+                if (!this.isDraggingToDecade) {
+                    return decadeStart === this.dragStart;
+                }
+                var min = Math.min(this.dragStart, this.dragEnd);
+                var max = Math.max(this.dragStart, this.dragEnd);
+                return decadeStart >= min && decadeStart <= max;
+            },
+
+            selectDecade: function (decadeStart, event) {
+                if (event && event.shiftKey && this.lastClicked !== null) {
+                    filters.start = Math.min(this.lastClicked, decadeStart);
+                    filters.end = Math.max(this.lastClicked, decadeStart + 9);
+                    requestFilterUpdate();
+                } else if (this.wasAlreadySelected) {
+                    filters.start = minYear;
+                    filters.end = maxYear;
+                    this.lastClicked = null;
+                    this.wasAlreadySelected = false;
+                    requestFilterUpdate();
+                } else {
+                    this.lastClicked = decadeStart;
+                }
+            },
+
+            startDragDecade: function (decadeStart, event) {
+                event.preventDefault();
+                this.isDragging = true;
+                this.isDraggingDecade = true;
+                this.isDraggingToDecade = true;
+                this.dragStart = decadeStart;
+                this.dragAnchorEnd = decadeStart + 9;
+                this.dragEnd = decadeStart + 9;
+                this.wasAlreadySelected = filters.start === decadeStart && filters.end === decadeStart + 9;
+                this.dispatchPreview();
+            },
+
+            updateDragDecade: function (decadeStart) {
+                if (this.isDragging) {
+                    this.isDraggingToDecade = true;
+                    this.dragEnd = decadeStart < this.dragStart ? decadeStart : decadeStart + 9;
+                    this.dispatchPreview();
+                }
+            },
+
+            selectYear: function (year, event) {
+                if (event && event.shiftKey && this.lastClicked !== null) {
+                    filters.start = Math.min(this.lastClicked, year);
+                    filters.end = Math.max(this.lastClicked, year);
+                    requestFilterUpdate();
+                } else if (this.wasAlreadySelected) {
+                    filters.start = minYear;
+                    filters.end = maxYear;
+                    this.lastClicked = null;
+                    this.wasAlreadySelected = false;
+                    requestFilterUpdate();
+                } else {
+                    this.lastClicked = year;
+                }
+            },
+
+            startDrag: function (year, event) {
+                event.preventDefault();
+                this.isDragging = true;
+                this.dragStart = year;
+                this.dragAnchorEnd = year;
+                this.dragEnd = year;
+                this.wasAlreadySelected = filters.start === year && filters.end === year;
+                this.dispatchPreview();
+            },
+
+            updateDrag: function (year) {
+                if (this.isDragging) {
+                    this.isDraggingToDecade = false;
+                    this.dragEnd = year;
+                    this.dispatchPreview();
+                }
+            },
+
+            endDrag: function () {
+                if (this.isDragging) {
+                    filters.start = Math.min(this.dragStart, this.dragAnchorEnd, this.dragEnd);
+                    filters.end = Math.max(this.dragStart, this.dragAnchorEnd, this.dragEnd);
+                    requestFilterUpdate();
+                }
+                this.isDragging = false;
+                this.isDraggingDecade = false;
+                this.isDraggingToDecade = false;
+                this.dragStart = null;
+                this.dragAnchorEnd = null;
+                this.dragEnd = null;
+                window.dispatchEvent(new CustomEvent("year-preview", { detail: { active: false } }));
+            },
+
+            cancelDrag: function () {
+                this.isDragging = false;
+                this.isDraggingDecade = false;
+                this.isDraggingToDecade = false;
+                this.dragStart = null;
+                this.dragAnchorEnd = null;
+                this.dragEnd = null;
+                window.dispatchEvent(new CustomEvent("year-preview", { detail: { active: false } }));
+            },
+
+            dispatchPreview: function () {
+                if (this.isDragging) {
+                    var min = Math.min(this.dragStart, this.dragAnchorEnd, this.dragEnd);
+                    var max = Math.max(this.dragStart, this.dragAnchorEnd, this.dragEnd);
+                    window.dispatchEvent(
+                        new CustomEvent("year-preview", { detail: { active: true, start: min, end: max } })
+                    );
+                }
+            },
+
+            getDecadeCount: function (decade) {
+                return decade.cells
+                    .filter(function (c) {
+                        return c && c.year && !c.hidden;
+                    })
+                    .reduce(function (sum, c) {
+                        return sum + (c.count || 0);
+                    }, 0);
+            },
+
+            yearExists: function (year) {
+                return this._yearSet && this._yearSet.has(year);
+            },
+
+            hasSelectedAbove: function (year) {
+                var aboveYear = year + 10;
+                return this.yearExists(aboveYear) && this.isInRange(aboveYear);
+            },
+
+            hasSelectedBelow: function (year) {
+                var belowYear = year - 10;
+                return this.yearExists(belowYear) && this.isInRange(belowYear);
+            },
+
+            hasSelectedRight: function (year) {
+                var position = year % 10;
+                if (position === 9) {
+                    return false;
+                }
+                return this.yearExists(year + 1) && this.isInRange(year + 1);
+            },
+
+            hasSelectedLeft: function (year) {
+                var position = year % 10;
+                if (position === 0) {
+                    var decadeStart = Math.floor(year / 10) * 10;
+                    return this.isDecadeSelected(decadeStart) || this.isDecadeInDragRange(decadeStart);
+                }
+                return this.isInRange(year - 1);
+            },
+
+            decadeHasSelectedAbove: function (decadeStart) {
+                var aboveDecade = decadeStart + 10;
+                return this.isDecadeSelected(aboveDecade) || this.isDecadeInDragRange(aboveDecade);
+            },
+
+            decadeHasSelectedBelow: function (decadeStart) {
+                var belowDecade = decadeStart - 10;
+                return this.isDecadeSelected(belowDecade) || this.isDecadeInDragRange(belowDecade);
+            },
+
+            decadeHasSelectedRight: function (decadeStart) {
+                return this.isInRange(decadeStart);
+            },
+
+            hasSelectedDiagonalBR: function (year) {
+                var diagYear = year + 1 - 10;
+                var position = year % 10;
+                if (position === 9) {
+                    return false;
+                }
+                return this.yearExists(diagYear) && this.isInRange(diagYear);
+            },
+
+            hasSelectedDiagonalBL: function (year) {
+                var diagYear = year - 1 - 10;
+                var position = year % 10;
+                if (position === 0) {
+                    return false;
+                }
+                return this.yearExists(diagYear) && this.isInRange(diagYear);
+            },
+
+            hasSelectedDiagonalTR: function (year) {
+                var diagYear = year + 1 + 10;
+                var position = year % 10;
+                if (position === 9) {
+                    return false;
+                }
+                return this.yearExists(diagYear) && this.isInRange(diagYear);
+            },
+
+            hasSelectedDiagonalTL: function (year) {
+                var diagYear = year - 1 + 10;
+                var position = year % 10;
+                if (position === 0) {
+                    return false;
+                }
+                return this.yearExists(diagYear) && this.isInRange(diagYear);
+            },
+        };
+    }
+
+    function createMobileGenreFilterComponent(config) {
+        var filters = config.filters;
+        var component = createGenreFilterComponent(config || {});
+        if (!Array.isArray(filters.genres)) {
+            filters.genres = [];
+        }
+
+        component.expanded = JSON.parse(localStorage.getItem("mobileFilterExpanded_genre") || "true");
+        component.expandedCategories = {};
+        component.countsReady = false;
+
+        component.init = function () {
+            var self = this;
+            this.$watch("expanded", function (val) {
+                localStorage.setItem("mobileFilterExpanded_genre", JSON.stringify(val));
+            });
+            this._genreCountsHandler = function (event) {
+                self.updateFilteredCounts(event.detail);
+                self.countsReady = true;
+            };
+            window.addEventListener("genre-counts-update", this._genreCountsHandler);
+        };
+
+        component.destroy = function () {
+            if (this._genreCountsHandler) {
+                window.removeEventListener("genre-counts-update", this._genreCountsHandler);
+            }
+        };
+
+        component.selectedCount = function () {
+            return filters.genres.length;
+        };
+
+        component.clearGenres = function () {
+            filters.genres = [];
+        };
+
+        component.isCategoryExpanded = function (categoryId) {
+            return this.expandedCategories[categoryId] === true;
+        };
+
+        component.toggleCategoryExpansion = function (categoryId) {
+            this.expandedCategories[categoryId] = !this.isCategoryExpanded(categoryId);
+        };
+
+        component.resetExpanded = function () {
+            this.expandedCategories = {};
+        };
+
+        component.toggleAllExpanded = function () {
+            var shouldExpand = !this.areAllExpanded();
+            var categories = this.rootCategories;
+            for (var i = 0; i < categories.length; i++) {
+                this.expandedCategories[categories[i].id] = shouldExpand;
+            }
+        };
+
+        return component;
+    }
+
+    /**
+     * The decade buttons the mobile sheet offers, spanning the data.
+     *
+     * This was a hardcoded 1970s-2020s, which is the games range. Albums go
+     * back to the 1950s, and a section whose earliest decades are missing
+     * from the sheet cannot be filtered to them on a phone at all.
+     */
+    function buildDecades(minYear, maxYear) {
+        if (!isFinite(minYear) || !isFinite(maxYear) || maxYear < minYear) {
+            return [];
+        }
+        var decades = [];
+        var first = Math.floor(minYear / 10) * 10;
+        var last = Math.floor(maxYear / 10) * 10;
+        for (var decade = first; decade <= last; decade += 10) {
+            decades.push({ label: decade + "s", start: decade, end: decade + 9 });
+        }
+        return decades;
+    }
+
+    function createMobileTimeFilterComponent(config) {
+        var filters = config.filters;
+        var minYear = config.minYear;
+        var maxYear = config.maxYear;
+
+        return {
+            expanded: JSON.parse(localStorage.getItem("mobileFilterExpanded_time") || "true"),
+            mode: "decade",
+            decades: buildDecades(minYear, maxYear),
+
+            isDecadeSelected: function (decade) {
+                return Number(filters.start) === decade.start && Number(filters.end) === decade.end;
+            },
+
+            toggleDecade: function (decade) {
+                if (this.isDecadeSelected(decade)) {
+                    filters.start = minYear;
+                    filters.end = maxYear;
+                } else {
+                    filters.start = decade.start;
+                    filters.end = decade.end;
+                }
+            },
+
+            selectDecade: function (decade) {
+                filters.start = decade.start;
+                filters.end = decade.end;
+            },
+
+            hasYearFilter: function () {
+                return filters.start !== minYear || filters.end !== maxYear;
+            },
+
+            clearYears: function () {
+                filters.start = minYear;
+                filters.end = maxYear;
+            },
+
+            syncRangeSelects: function () {
+                var self = this;
+                setTimeout(function () {
+                    if (self.$refs.startYear) {
+                        self.$refs.startYear.value = filters.start;
+                    }
+                    if (self.$refs.endYear) {
+                        self.$refs.endYear.value = filters.end;
+                    }
+                }, 50);
+            },
+
+            init: function () {
+                var self = this;
+                this.$watch("expanded", function (val) {
+                    localStorage.setItem("mobileFilterExpanded_time", JSON.stringify(val));
+                });
+                this.$watch("mode", function (val) {
+                    if (val === "range") {
+                        self.syncRangeSelects();
+                    }
+                });
+            },
+        };
+    }
+
+    function registerFactories() {
+        Alpine.data("genreFilterComponent", function (config) {
+            return createGenreFilterComponent(config || {});
+        });
+        Alpine.data("yearGridComponent", function (config) {
+            return createYearGridComponent(config || {});
+        });
+        Alpine.data("mobileGenreFilterComponent", function (config) {
+            return createMobileGenreFilterComponent(config || {});
+        });
+        Alpine.data("mobileTimeFilterComponent", function (config) {
+            return createMobileTimeFilterComponent(config || {});
+        });
+    }
+
+    document.addEventListener("alpine:init", registerFactories);
+})();

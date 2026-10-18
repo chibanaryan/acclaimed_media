@@ -10,6 +10,7 @@ from django.urls import reverse
 
 from core.models import User
 from music import models
+from music.views import BUNDLED_RELEASE_DIR
 from music.forms import MusicImportForm
 
 FIXTURE_DIR = Path(settings.BASE_DIR) / "acclaimedgames" / "test_input_files" / "music"
@@ -147,9 +148,30 @@ class MusicImportViewTests(TestCase):
         response = self.client.post(self.url, {"seed_bundled_data": "on"})
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context["error"])
-        self.assertEqual(models.Album.objects.count(), 500)
-        self.assertEqual(models.MusicList.objects.count(), 54)
-        self.assertEqual(models.AlbumListMembership.objects.count(), 4692)
+        # However many the checked-in release holds; the point is that the
+        # bundled files were the ones imported.
+        self.assertEqual(
+            models.Album.objects.count(),
+            sum(
+                1
+                for _ in (BUNDLED_RELEASE_DIR / "WebRankings.txt").open(
+                    encoding="utf-8-sig"
+                )
+            ),
+        )
+        self.assertEqual(
+            models.MusicList.objects.count(),
+            sum(
+                1
+                for _ in (BUNDLED_RELEASE_DIR / "ListData.txt").open(
+                    encoding="utf-8-sig"
+                )
+            ),
+        )
+        # Every album lands on at least one list; the exact total is a
+        # property of the release, not of the import page.
+        self.assertGreater(models.AlbumListMembership.objects.count(), 0)
+        self.assertEqual(models.Album.objects.filter(lists__isnull=True).count(), 0)
 
     def test_the_summary_reports_the_new_counts(self):
         response = self.client.post(self.url, _all_files())

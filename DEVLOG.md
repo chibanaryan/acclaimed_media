@@ -1,5 +1,43 @@
 # Developer Log
 
+## 2026-10-18 (music/games parity; shared ranking components; 1000-album release)
+
+- **The rankings pages now render the same chrome from `core/`.** The year
+  heatmap, the genre tree, the sort/direction/view/jump controls, the rank
+  distribution, the publication groups, the list-type groups and the search
+  box all moved out of `games/` and are shared by both sections, with games
+  switched over to the shared copies. Music had grown its own: decade chips
+  instead of the heatmap, a flat `<select>` where a root genre and one of its
+  styles looked identical, and no view toggle or jump-to-rank at all
+- **Row and card styling is one rule set.** `.media-*` had been copied from
+  `.game-*` without the row-level hover, so album rows lifted their thumbnail
+  but never showed the gradient, the lift or the accented left edge. The two
+  class families now share every rule through selector lists
+- **Album rows lead with the artist.** The credit sits on its own line under
+  the title, indented with the metadata and a step above it in weight; square
+  covers are sized to the row. Beside the title it was the first thing
+  truncated, and on exactly the rows that needed it
+- **The music genre filter expands descendants**, as the games filter does, so
+  picking "Rock" means rock. Counts beside a genre are distinct counts across
+  its subtree: summing a root and its children double-counted an album tagged
+  both "Classical" and "Modern Classical", and the sidebar claimed Classical
+  had two albums when it had one
+- **`get_or_create_genre` corrects a stale root.** It returned an existing row
+  untouched, so "Alternative Rock" stayed filed under Electronic for 68 albums
+  long after the resolution order was fixed - the fix could not reach a row
+  that already existed
+- **Music gained what it was missing**: a search box in the sidebar and mobile
+  nav (`/api/music/unified-search/`), a CSV download, a filter-aware heading
+  that updates on both the HTMX and the client path, a mobile filter sheet, a
+  per-section "Updated: ..." stamp, and faceted counts that narrow with the
+  other filters
+- **New release imported: 1000 albums, 67 lists, 24 publications.** The
+  release-file tests now read their counts from the files rather than pinning
+  the previous release's. `ARTISTS_WITH_COMMAS` gained "Tyler, the Creator",
+  which was splitting into two artists
+- An import does not fetch metadata, on either section. The music import page
+  now shows which passes have work left and the command to run
+
 ## 2026-10-17 (shared cache; client-side filtering for music; books stack repaired)
 
 - **Move the shared cache onto Postgres.** Production ran `locmemcache://` on one

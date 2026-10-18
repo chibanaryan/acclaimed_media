@@ -406,3 +406,47 @@ class RealVocabularyTests(SimpleTestCase):
         ]:
             with self.subTest(style=style):
                 self.assertEqual(gn.resolve_style(style, ["Rock"]), expected)
+
+
+class ReparentingTests(TestCase):
+    """A mapping fix has to reach the rows it was written for.
+
+    `get_or_create_genre` used to return an existing row untouched, so
+    "Alternative Rock" stayed filed under Electronic for 68 albums long
+    after the resolution order was corrected: the row had been created from
+    an album whose Discogs genres led with Electronic, and every later pass
+    found it by name and left it alone.
+    """
+
+    def test_an_existing_genre_is_moved_when_its_root_changes(self):
+        electronic = gn.get_or_create_genre("Electronic")
+        stale = gn.get_or_create_genre("Alternative Rock", parent_name="Electronic")
+        self.assertEqual(stale.parent_id, electronic.id)
+
+        fixed = gn.get_or_create_genre("Alternative Rock", parent_name="Rock")
+        fixed.refresh_from_db()
+        self.assertEqual(fixed.parent.name, "Rock")
+        self.assertEqual(fixed.level, 1)
+        self.assertEqual(fixed.path, "Rock > Alternative Rock")
+
+    def test_moving_a_genre_moves_its_children(self):
+        gn.get_or_create_genre("Electronic")
+        parent = gn.get_or_create_genre("Alternative Rock", parent_name="Electronic")
+        child = MusicGenre.objects.create(
+            name="Slacker Rock", parent=parent, level=2, path="x"
+        )
+
+        gn.get_or_create_genre("Alternative Rock", parent_name="Rock")
+        child.refresh_from_db()
+        self.assertEqual(child.level, 2)
+        self.assertEqual(child.path, "Rock > Alternative Rock > Slacker Rock")
+
+    def test_a_genre_already_in_the_right_place_is_left_alone(self):
+        gn.get_or_create_genre("Rock")
+        first = gn.get_or_create_genre("Pop Rock", parent_name="Rock")
+        again = gn.get_or_create_genre("Pop Rock", parent_name="Rock")
+        self.assertEqual(first.id, again.id)
+        self.assertEqual(again.parent.name, "Rock")
+
+    def test_the_real_mapping_puts_alternative_rock_under_rock(self):
+        self.assertEqual(gn.resolve_style("Alternative Rock"), "Rock")

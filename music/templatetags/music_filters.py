@@ -128,21 +128,29 @@ def format_artist_list(artists, max_display=3):
 
 
 @register.simple_tag
-def artist_links(album):
+def artist_links(album, link_class="link link-hover"):
     """Render an album's artists as links, or the raw credit if unlinkable.
 
     Falls back to ``artist_credit`` so a credit that was never parsed into
     artists (or whose artists have no slug) still shows the published text
     rather than nothing.
+
+    ``link_class`` follows the games templates' split: rows use the quiet
+    ``link link-hover``, as a game row's developers do, and the detail page's
+    properties table uses ``link link-accent``, as its developer row does.
     """
     artists = [a for a in album.artists.all() if a.slug]
     if not artists:
         return album.artist_credit
     return format_html_join(
         mark_safe('<span class="text-base-content/30">, </span>'),
-        '<a href="{}" class="link link-hover">{}</a>',
+        '<a href="{}" class="{}">{}</a>',
         (
-            (reverse("music:artist-detail", kwargs={"slug": a.slug}), a.name)
+            (
+                reverse("music:artist-detail", kwargs={"slug": a.slug}),
+                link_class,
+                a.name,
+            )
             for a in artists
         ),
     )

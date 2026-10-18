@@ -467,3 +467,72 @@ class AlbumAllDataAPITests(MusicAPITestMixin, TestCase):
         self.payload(self.url())
         self.client.logout()
         self.assertEqual(self.client.get(self.url()).status_code, 404)
+
+
+class MusicUnifiedSearchViewTests(MusicAPITestMixin, TestCase):
+    """The endpoint behind the sidebar and mobile search boxes.
+
+    Music had no unified search at all, which is why the shared search box in
+    the chrome was gated on ``media_type == 'games'`` and the section showed
+    no search anywhere.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.url = reverse("music-api:unified-search")
+
+    def test_a_short_query_returns_empty_groups(self):
+        # Two characters is the floor the search box itself enforces; the
+        # endpoint must not run a full scan for a single letter.
+        response = self.client.get(self.url, {"q": "a"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"albums": [], "artists": []})
+
+    def test_albums_match_on_title_and_on_credit(self):
+        by_title = self.client.get(self.url, {"q": "kid a"}).json()
+        self.assertEqual([album["name"] for album in by_title["albums"]], ["Kid A"])
+
+        by_credit = self.client.get(self.url, {"q": "radiohead"}).json()
+        self.assertEqual(
+            sorted(album["name"] for album in by_credit["albums"]),
+            ["Kid A", "OK Computer"],
+        )
+
+    def test_an_album_carries_what_the_dropdown_renders(self):
+        album = self.client.get(self.url, {"q": "kid a"}).json()["albums"][0]
+        self.assertEqual(album["slug"], self.kid_a.slug)
+        self.assertEqual(album["rank"], self.kid_a.rank)
+        self.assertEqual(album["year_released"], 2000)
+        self.assertEqual(album["artist_credit"], "Radiohead")
+        self.assertIn("thumbnail", album)
+
+    def test_artists_are_matched_and_counted(self):
+        artists = self.client.get(self.url, {"q": "radiohead"}).json()["artists"]
+        self.assertEqual(artists[0]["name"], "Radiohead")
+        self.assertEqual(artists[0]["albums_count"], 2)
+        self.assertEqual(artists[0]["slug"], "radiohead")
+
+    def test_an_artist_with_no_albums_is_not_offered(self):
+        models.Artist.objects.create(name="Radio Ghost", slug="radio-ghost")
+        names = [
+            artist["name"]
+            for artist in self.client.get(self.url, {"q": "radio"}).json()["artists"]
+        ]
+        self.assertNotIn("Radio Ghost", names)
+
+    def test_results_are_limited(self):
+        response = self.client.get(self.url, {"q": "radiohead", "album_limit": "1"})
+        self.assertEqual(len(response.json()["albums"]), 1)
+
+    def test_a_nonsense_limit_falls_back_rather_than_raising(self):
+        for raw in ("", "many", "0", "500"):
+            with self.subTest(limit=raw):
+                response = self.client.get(
+                    self.url, {"q": "radiohead", "album_limit": raw}
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertGreaterEqual(len(response.json()["albums"]), 1)
+
+    def test_anonymous_callers_get_404(self):
+        self.client.logout()
+        self.assertEqual(self.client.get(self.url, {"q": "kid a"}).status_code, 404)

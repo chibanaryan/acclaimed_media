@@ -146,7 +146,12 @@ class Snippet(models.Model):
 
 
 class SiteMetadata(models.Model):
-    """Site-wide metadata stored as a singleton"""
+    """Site-wide metadata, one row per section.
+
+    ``key`` is the section: "default" for games, "music" for the album
+    rankings. Each row carries when that section's data was last imported,
+    which the section's heading shows as "Updated: ...".
+    """
 
     key = models.CharField(max_length=50, unique=True, default="default")
     last_full_update = models.DateTimeField(null=True, blank=True)
@@ -159,9 +164,19 @@ class SiteMetadata(models.Model):
         return f"Site Metadata ({self.key})"
 
     @classmethod
-    def get_instance(cls) -> "SiteMetadata":
-        """Get or create the singleton instance."""
-        instance, _ = cls.objects.get_or_create(key="default")
+    def get_instance(cls, key: str = "default") -> "SiteMetadata":
+        """Get or create the singleton for one section."""
+        instance, _ = cls.objects.get_or_create(key=key)
+        return instance
+
+    @classmethod
+    def stamp_update(cls, key: str = "default") -> "SiteMetadata":
+        """Record that this section's data was just imported."""
+        from django.utils import timezone
+
+        instance = cls.get_instance(key)
+        instance.last_full_update = timezone.now()
+        instance.save(update_fields=["last_full_update"])
         return instance
 
 

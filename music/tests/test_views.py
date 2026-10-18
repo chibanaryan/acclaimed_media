@@ -10,8 +10,10 @@ from django.urls import reverse
 
 from core import constants as core_constants
 from core.models import User
+from core.tests.utils import clear_all_caches
+from games.models import SiteMetadata
 from music import config, models, views
-from music.views import _decade_options, _filter_title, group_list_appearances
+from music.views import _filter_title, group_list_appearances
 
 
 class StaffUserTestMixin:
@@ -307,51 +309,96 @@ class AlbumHomePageViewTests(MusicDataMixin, TestCase):
         response = self.client.get(reverse("music:home"), {"q": "nothingmatches"})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.context["albums"]), 0)
-        self.assertContains(response, "Nothing here")
+        self.assertContains(response, "No albums match your filters")
 
 
 class FilterTitleTests(TestCase):
-    """The heading describes the filter state, in the site's own wording."""
+    """The heading describes the filter state, in the site's own wording.
+
+    Composed like the games heading: genres fold into the noun phrase, the
+    year range becomes an "of ..." suffix and an artist reads as "by ...".
+    """
+
+    BOUNDS = {"min_year": 1955, "max_year": 2019}
+    GENRES = [{"id": 1, "name": "Rock"}, {"id": 2, "name": "Soul"}]
+    ARTISTS = [{"id": 7, "name": "The Beatles"}]
 
     def test_unfiltered(self):
+        self.assertEqual(
+            _filter_title({}, **self.BOUNDS), "Most Acclaimed Albums of All Time"
+        )
+
+    def test_with_no_bounds_it_omits_the_time_window(self):
         self.assertEqual(_filter_title({}), "Most Acclaimed Albums")
 
     def test_a_search_query_wins_over_a_year_range(self):
-        title = _filter_title({"q": "kid a", "start": "1990", "end": "1999"})
+        title = _filter_title(
+            {"q": "kid a", "start": "1990", "end": "1999"}, **self.BOUNDS
+        )
         self.assertEqual(title, "Albums matching \u201ckid a\u201d")
 
     def test_a_single_year(self):
         self.assertEqual(
-            _filter_title({"start": "1966", "end": "1966"}),
+            _filter_title({"start": "1966", "end": "1966"}, **self.BOUNDS),
             "Most Acclaimed Albums of 1966",
         )
 
     def test_a_full_decade_reads_as_a_decade(self):
         self.assertEqual(
-            _filter_title({"start": "1970", "end": "1979"}),
+            _filter_title({"start": "1970", "end": "1979"}, **self.BOUNDS),
             "Most Acclaimed Albums of the 1970s",
         )
 
     def test_an_arbitrary_range_reads_as_a_range(self):
         self.assertEqual(
-            _filter_title({"start": "1965", "end": "1972"}),
-            "Most Acclaimed Albums, 1965\u20131972",
+            _filter_title({"start": "1965", "end": "1972"}, **self.BOUNDS),
+            "Most Acclaimed Albums of 1965-1972",
         )
 
-    def test_a_range_starting_on_a_zero_but_not_a_decade(self):
+    def test_one_sided_ranges_fill_from_the_data(self):
+        # The grid has no notion of an open range; an absent bound is the
+        # edge of the data, which is also what the queryset does.
         self.assertEqual(
-            _filter_title({"start": "1970", "end": "1985"}),
-            "Most Acclaimed Albums, 1970\u20131985",
+            _filter_title({"start": "1990"}, **self.BOUNDS),
+            "Most Acclaimed Albums of 1990-2019",
+        )
+        self.assertEqual(
+            _filter_title({"end": "1990"}, **self.BOUNDS),
+            "Most Acclaimed Albums of 1955-1990",
         )
 
-    def test_only_a_start_year(self):
+    def test_a_genre_folds_into_the_phrase(self):
         self.assertEqual(
-            _filter_title({"start": "1990"}), "Most Acclaimed Albums from 1990"
+            _filter_title({"genres": "1"}, genres=self.GENRES, **self.BOUNDS),
+            "Most Acclaimed Rock Albums of All Time",
         )
 
-    def test_only_an_end_year(self):
+    def test_several_genres_read_as_a_list(self):
         self.assertEqual(
-            _filter_title({"end": "1990"}), "Most Acclaimed Albums up to 1990"
+            _filter_title({"genres": "1,2"}, genres=self.GENRES, **self.BOUNDS),
+            "Most Acclaimed Rock and Soul Albums of All Time",
+        )
+
+    def test_an_artist_reads_as_a_credit(self):
+        self.assertEqual(
+            _filter_title({"artists": "7"}, artists=self.ARTISTS, **self.BOUNDS),
+            "Most Acclaimed Albums by The Beatles of All Time",
+        )
+
+    def test_a_genre_and_a_decade_together(self):
+        self.assertEqual(
+            _filter_title(
+                {"genres": "1", "start": "1970", "end": "1979"},
+                genres=self.GENRES,
+                **self.BOUNDS,
+            ),
+            "Most Acclaimed Rock Albums of the 1970s",
+        )
+
+    def test_an_unknown_id_is_ignored_rather_than_shown(self):
+        self.assertEqual(
+            _filter_title({"genres": "999"}, genres=self.GENRES, **self.BOUNDS),
+            "Most Acclaimed Albums of All Time",
         )
 
     def test_the_title_avoids_best_and_top_phrasing(self):
@@ -365,34 +412,6 @@ class FilterTitleTests(TestCase):
                 title = _filter_title(params).lower()
                 self.assertNotIn("best", title)
                 self.assertNotIn("top ", title)
-
-
-class DecadeOptionsTests(MusicDataMixin, TestCase):
-    def test_counts_albums_per_decade(self):
-        options = _decade_options(1960, 2000, None, None)
-        by_label = {entry["label"]: entry["count"] for entry in options}
-        self.assertEqual(by_label["1960s"], 1)
-        self.assertEqual(by_label["1970s"], 1)
-        self.assertEqual(by_label["2000s"], 1)
-
-    def test_marks_the_selected_decade(self):
-        options = _decade_options(1960, 2000, "1970", "1979")
-        selected = [e["label"] for e in options if e["selected"]]
-        self.assertEqual(selected, ["1970s"])
-
-    def test_nothing_is_selected_for_a_partial_range(self):
-        options = _decade_options(1960, 2000, "1970", "1975")
-        self.assertEqual([e["label"] for e in options if e["selected"]], [])
-
-    def test_albums_without_a_year_are_excluded(self):
-        models.Album.objects.create(name="Undated", rank=99)
-        options = _decade_options(1960, 2000, None, None)
-        self.assertEqual(sum(e["count"] for e in options), 3)
-
-    def test_the_sidebar_renders_the_decade_chips(self):
-        response = self.client.get(reverse("music:home"))
-        self.assertContains(response, "1960s")
-        self.assertContains(response, 'name="decade"')
 
 
 class AlbumDetailViewTests(MusicDataMixin, TestCase):
@@ -672,21 +691,78 @@ class MusicListListViewTests(MusicDataMixin, TestCase):
         response = self.client.get(reverse("music:list-list"), {"type": "Z"})
         self.assertEqual(len(response.context["music_lists"]), 3)
 
-    def test_sort_by_year(self):
-        response = self.client.get(reverse("music:list-list"), {"sort": "year"})
+    def test_lists_are_grouped_under_their_publication(self):
+        # The page renders one collapsible row per publication, as the games
+        # source-lists page does, rather than a card per list.
+        response = self.client.get(reverse("music:list-list"))
+        groups = response.context["publication_groups"]
+        self.assertEqual([g["publication"].name for g in groups], ["Pitchfork"])
+        self.assertEqual(len(groups[0]["lists"]), 3)
+        self.assertEqual(response.context["publication_count"], 1)
+
+    def test_a_group_counts_its_lists_by_type(self):
+        group = self.client.get(reverse("music:list-list")).context[
+            "publication_groups"
+        ][0]
+        self.assertEqual(group["alltime_count"], 1)
+        self.assertEqual(group["decade_count"], 1)
+        self.assertEqual(group["misc_count"], 1)
+        self.assertEqual(group["eoy_count"], 0)
+
+    def test_publications_sort_by_weight_then_by_name(self):
+        quiet = models.MusicPublication.objects.create(name="Aardvark Weekly")
+        models.MusicList.objects.create(
+            name="Our favourite records of 2021",
+            year=2021,
+            publisher=quiet,
+            order=4,
+            type=core_constants.LIST_EOY,
+        )
+        response = self.client.get(reverse("music:list-list"))
+        names = [g["publication"].name for g in response.context["publication_groups"]]
+        # An all-time list outweighs a year-end one, so Pitchfork leads even
+        # though Aardvark sorts first alphabetically.
+        self.assertEqual(names, ["Pitchfork", "Aardvark Weekly"])
+
+        alphabetical = self.client.get(reverse("music:list-list"), {"sort": "alpha"})
         self.assertEqual(
-            [s.year for s in response.context["music_lists"]], [2020, 2017, 2010]
+            [g["publication"].name for g in alphabetical.context["publication_groups"]],
+            ["Aardvark Weekly", "Pitchfork"],
         )
 
-    def test_sort_by_album_count(self):
-        response = self.client.get(reverse("music:list-list"), {"sort": "albums"})
-        self.assertEqual(response.context["music_lists"][0].album_count, 1)
-
-    def test_sort_by_publication(self):
-        response = self.client.get(reverse("music:list-list"), {"sort": "publication"})
-        self.assertEqual(
-            [s.year for s in response.context["music_lists"]], [2020, 2017, 2010]
+    def test_the_direction_toggle_reverses_the_publications(self):
+        models.MusicPublication.objects.create(name="Aardvark Weekly")
+        models.MusicList.objects.create(
+            name="Our favourite records of 2021",
+            year=2021,
+            publisher=models.MusicPublication.objects.get(name="Aardvark Weekly"),
+            order=4,
+            type=core_constants.LIST_EOY,
         )
+        response = self.client.get(
+            reverse("music:list-list"), {"sort": "alpha", "dir": "desc"}
+        )
+        self.assertEqual(
+            [g["publication"].name for g in response.context["publication_groups"]],
+            ["Pitchfork", "Aardvark Weekly"],
+        )
+
+    def test_an_unknown_sort_falls_back_to_the_default(self):
+        response = self.client.get(reverse("music:list-list"), {"sort": "nonsense"})
+        self.assertEqual(response.context["current_sort"], "importance")
+
+    def test_the_year_filter_narrows_the_lists(self):
+        response = self.client.get(reverse("music:list-list"), {"year": "2010"})
+        self.assertEqual([s.year for s in response.context["music_lists"]], [2010])
+
+    def test_the_filters_count_each_other_but_not_themselves(self):
+        # A type count reflects the year filter and vice versa, so neither
+        # offers an option that would empty the page.
+        response = self.client.get(reverse("music:list-list"), {"year": "2010"})
+        counts = {e["code"]: e["count"] for e in response.context["list_types"]}
+        self.assertEqual(sum(counts.values()), 1)
+        years = {e["year"] for e in response.context["list_years"]}
+        self.assertEqual(years, {2010, 2017, 2020})
 
     def test_context_carries_the_type_summary(self):
         response = self.client.get(reverse("music:list-list"))
@@ -698,7 +774,7 @@ class MusicListListViewTests(MusicDataMixin, TestCase):
         self.assertEqual(summary[core_constants.LIST_MISC], 1)
         self.assertEqual(summary[core_constants.LIST_EOY], 0)
         self.assertEqual(response.context["total_count"], 3)
-        self.assertEqual(response.context["current_sort"], "order")
+        self.assertEqual(response.context["current_sort"], "importance")
 
     def test_htmx_request_serves_the_results_partial(self):
         response = self.client.get(reverse("music:list-list"), HTTP_HX_REQUEST="true")
@@ -709,7 +785,7 @@ class MusicListListViewTests(MusicDataMixin, TestCase):
     def test_an_empty_result_set_renders_the_empty_state(self):
         response = self.client.get(reverse("music:list-list"), {"q": "zzzznope"})
         self.assertEqual(len(response.context["music_lists"]), 0)
-        self.assertContains(response, "No lists found")
+        self.assertContains(response, "No lists match these filters")
 
     def test_a_list_without_a_publisher_renders(self):
         models.MusicList.objects.create(name="Unattributed", year=2001, order=9)
@@ -900,22 +976,6 @@ class ClientSideFilteringContextTests(MusicDataMixin, TestCase):
 class MusicCacheInvalidationTests(MusicDataMixin, TestCase):
     """Every cached key has to be reachable from one invalidation call."""
 
-    def test_the_decade_counts_are_cached(self):
-        views._cached_decade_counts()
-        self.assertIsNotNone(cache.get(config.CACHE_KEY_DECADE_COUNTS))
-
-    def test_a_second_call_does_not_re_run_the_aggregate(self):
-        views._cached_decade_counts()
-        with self.assertNumQueries(0):
-            views._cached_decade_counts()
-
-    def test_decade_options_still_mark_the_selected_chip(self):
-        # Only the counts are cached; which chip is selected is per request.
-        first = _decade_options(1960, 1979, "1960", "1969")
-        second = _decade_options(1960, 1979, None, None)
-        self.assertTrue(first[0]["selected"])
-        self.assertFalse(second[0]["selected"])
-
     def test_invalidation_clears_every_declared_key(self):
         for key in config.CACHE_KEYS:
             cache.set(key, "stale", 60)
@@ -941,3 +1001,89 @@ class MusicCacheInvalidationTests(MusicDataMixin, TestCase):
         for key in config.CACHE_KEYS:
             with self.subTest(key=key):
                 self.assertTrue(key.startswith(f"{config.CACHE_VERSION}:"))
+
+
+class LastUpdatedStampTests(MusicDataMixin, TestCase):
+    """The rankings heading says when the data was last imported.
+
+    `SiteMetadata` is keyed per section, so the album rankings carry their
+    own stamp rather than reporting the games import date.
+    """
+
+    def test_the_stamp_starts_empty_and_the_heading_omits_it(self):
+        response = self.client.get(reverse("music:home"))
+        self.assertIsNone(response.context["last_update"])
+        self.assertNotContains(response, "Updated:")
+
+    def test_an_import_stamps_the_music_row_only(self):
+        SiteMetadata.stamp_update(config.SITE_METADATA_KEY)
+        music_row = SiteMetadata.get_instance(config.SITE_METADATA_KEY)
+        self.assertIsNotNone(music_row.last_full_update)
+        self.assertIsNone(SiteMetadata.get_instance().last_full_update)
+
+    def test_the_heading_shows_the_date_once_stamped(self):
+        SiteMetadata.stamp_update(config.SITE_METADATA_KEY)
+        clear_all_caches()
+        response = self.client.get(reverse("music:home"))
+        self.assertIsNotNone(response.context["last_update"])
+        self.assertContains(response, "Updated:")
+
+
+class RankDistributionTests(MusicDataMixin, TestCase):
+    """The chart the games rankings and developer pages carry.
+
+    Bins are built from the global maximum rank, not the filtered one, so a
+    filtered set is always read against the same axis.
+    """
+
+    def test_the_rankings_page_bins_the_filtered_albums(self):
+        response = self.client.get(reverse("music:home"))
+        bins = response.context["rank_distribution"]
+        self.assertEqual(len(bins), config.RANK_DISTRIBUTION_BIN_COUNT)
+        self.assertEqual(sum(entry["count"] for entry in bins), 3)
+        self.assertEqual(bins[0]["binStart"], 1)
+        self.assertEqual(bins[-1]["binEnd"], response.context["max_rank"])
+
+    def test_filtering_narrows_the_bins_but_not_the_axis(self):
+        response = self.client.get(reverse("music:home"), {"q": "revolver"})
+        bins = response.context["rank_distribution"]
+        self.assertEqual(sum(entry["count"] for entry in bins), 1)
+        self.assertEqual(bins[-1]["binEnd"], response.context["max_rank"])
+
+    def test_the_page_renders_the_chart(self):
+        page = self.client.get(reverse("music:home")).content.decode()
+        self.assertIn("rank-distribution", page)
+        self.assertIn('id="rank-distribution-update"', page)
+
+    def test_the_artist_page_bins_that_artist(self):
+        response = self.client.get(self.beatles.get_absolute_url())
+        bins = response.context["rank_distribution"]
+        self.assertEqual(sum(entry["count"] for entry in bins), 1)
+        self.assertIn("rank-distribution", response.content.decode())
+
+
+class ArtistSortTests(MusicDataMixin, TestCase):
+    """Artists sort the way developers do, including by their best work."""
+
+    def test_sorting_by_top_rank_puts_the_best_album_first(self):
+        response = self.client.get(reverse("music:artist-list"), {"sort": "rank"})
+        names = [artist.name for artist in response.context["artists"]]
+        # Revolver is rank 1, so The Beatles lead.
+        self.assertEqual(names[0], "The Beatles")
+
+    def test_sorting_by_albums_still_works(self):
+        response = self.client.get(reverse("music:artist-list"), {"sort": "albums"})
+        self.assertEqual(response.context["current_sort"], "albums")
+        self.assertTrue(response.context["artists"])
+
+    def test_the_control_offers_every_sort(self):
+        page = self.client.get(reverse("music:artist-list")).content.decode()
+        for option in config.ARTIST_SORT_OPTIONS:
+            with self.subTest(sort=option["value"]):
+                self.assertIn(f"updateSort('{option['value']}')", page)
+
+    def test_the_search_box_can_clear_itself(self):
+        # Every games search input has a clear button; the shared one had
+        # none, so these pages could not empty their own search.
+        page = self.client.get(reverse("music:artist-list")).content.decode()
+        self.assertIn('aria-label="Clear search"', page)

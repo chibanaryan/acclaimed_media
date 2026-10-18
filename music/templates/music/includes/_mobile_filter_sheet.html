@@ -1,0 +1,111 @@
+{# Mobile filter bottom sheet for the album rankings. #}
+{# Assumes an enclosing x-data with `filterOpen` and the shared filter #}
+{# component's `filters` / debouncedFilterUpdate() / resetAllFilters(). #}
+{# #}
+{# Same chrome as games/includes/_mobile_filter_sheet.html, with music's #}
+{# sections: search, release year, artist, genre. The year and genre bodies #}
+{# are the shared core partials both sections use. #}
+{# Keep every template comment on a single line. #}
+
+{# Backdrop #}
+<div x-show="filterOpen"
+     x-transition:enter="transition ease-out duration-300"
+     x-transition:enter-start="opacity-0"
+     x-transition:enter-end="opacity-100"
+     x-transition:leave="transition ease-in duration-200"
+     x-transition:leave-start="opacity-100"
+     x-transition:leave-end="opacity-0"
+     @click="filterOpen = false"
+     class="fixed inset-0 z-40 bg-black/50"
+     x-cloak>
+</div>
+
+{# Sheet panel #}
+<div x-show="filterOpen"
+     x-effect="if (filterOpen) { document.body.style.overflow = 'hidden'; $nextTick(() => $refs.filterScroll.scrollTop = 0); } else { document.body.style.overflow = ''; }"
+     x-transition:enter="transition ease-out duration-200"
+     x-transition:enter-start="opacity-0"
+     x-transition:enter-end="opacity-100"
+     x-transition:leave="transition ease-in duration-150"
+     x-transition:leave-start="opacity-100"
+     x-transition:leave-end="opacity-0"
+     class="fixed inset-0 z-50 pt-12 bg-base-300 flex flex-col overflow-hidden"
+     x-cloak>
+
+    {# Handle bar #}
+    <div class="flex justify-center pt-3 pb-1">
+        <div class="w-12 h-1.5 bg-base-100 rounded-full"></div>
+    </div>
+
+    {# Header #}
+    <div class="flex items-center justify-between px-4 pb-3 border-b border-base-100">
+        <h2 class="text-xl font-bold">Filters</h2>
+        <div class="flex items-center gap-2">
+            <button type="button" @click="resetAllFilters()" class="btn btn-ghost btn-sm">
+                Clear All Filters
+            </button>
+            <button type="button"
+                    @click="filterOpen = false"
+                    class="btn btn-ghost btn-sm btn-square"
+                    aria-label="Close filters">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    {# Scrollable filter content #}
+    <div class="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-4" id="mobile-filter-form" x-ref="filterScroll">
+        {# Search #}
+        <div class="space-y-2 pb-3 border-b border-base-100">
+            <div class="flex items-center gap-2 mb-2">
+                <span class="text-sm font-semibold text-base-content/85">Search</span>
+            </div>
+            <label class="input input-bordered w-full bg-base-200">
+                <svg class="h-4 w-4 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <path d="m21 21-4.3-4.3"></path>
+                    </g>
+                </svg>
+                <input type="text"
+                       x-model="filters.q"
+                       @input.debounce.500ms="debouncedFilterUpdate()"
+                       placeholder="Album or artist"
+                       class="grow">
+                <button type="button"
+                        @click="filters.q = ''; debouncedFilterUpdate();"
+                        title="Clear search"
+                        class="btn btn-ghost btn-xs btn-circle"
+                        style="display: none"
+                        :style="{ display: filters.q && filters.q.length > 0 ? 'flex' : 'none' }"
+                        aria-label="Clear search">
+                    <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                        <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2.5" fill="none" stroke="currentColor">
+                            <path d="M18 6 6 18"></path>
+                            <path d="m6 6 12 12"></path>
+                        </g>
+                    </svg>
+                </button>
+            </label>
+        </div>
+
+        {# Release year #}
+        {% include 'core/includes/_mobile_filter_time.html' %}
+
+        {# Genre #}
+        {% if genre_tree %}
+        {% include 'core/includes/_mobile_filter_genres.html' with genre_icon='mdi-music-note' genre_icons_element='genre-icons-data' default_genre_icon=default_genre_icon genre_counts_include_descendants=True %}
+        {% endif %}
+    </div>
+
+    {# Sticky footer #}
+    <div class="p-4 border-t border-base-100 bg-base-300 safe-area-inset-bottom">
+        <button type="button"
+                class="btn btn-primary w-full"
+                @click="filterOpen = false">
+            Close
+        </button>
+    </div>
+</div>

@@ -1,0 +1,32 @@
+{# The load-more button, or the "all loaded" note once there is no more. #}
+{# Props: oob - rendered as an out-of-band swap when appending a page #}
+{# #}
+{# Styled exactly like the games load-more (btn btn-ghost, a section icon, #}
+{# "Load More (N remaining)"), and lives outside #album-list-container as #}
+{# that one does. Because the button sits outside the element the rows are #}
+{# appended to, each page's response replaces it out of band - otherwise the #}
+{# first Load More would be the last. #}
+{# Keep every template comment on a single line. #}
+{% load humanize %}
+{% if has_more %}
+<div id="load-more-container" class="load-more-container text-center my-6"{% if oob %} hx-swap-oob="true"{% endif %}>
+    <button type="button"
+            class="btn btn-ghost load-more-button"
+            hx-get="{% url 'music:home' %}?page={{ next_page }}&append=true{% if query_string %}&{{ query_string }}{% endif %}"
+            hx-target="#album-list-container"
+            hx-swap="beforeend"
+            data-next-page="{{ next_page }}"
+            data-total="{{ total_count }}"
+            data-loaded="{{ loaded_count }}">
+        <span class="mdi mdi-album"></span>
+        <span class="load-more-text">Load More ({{ remaining_count|intcomma }} remaining)</span>
+    </button>
+</div>
+{% elif total_count %}
+<div id="load-more-container" class="load-more-container text-center my-6"{% if oob %} hx-swap-oob="true"{% endif %}>
+    <div class="text-base-content/50 text-sm">
+        <span class="mdi mdi-check-circle-outline"></span>
+        <span>All {{ total_count|intcomma }} results loaded</span>
+    </div>
+</div>
+{% endif %}

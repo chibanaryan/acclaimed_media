@@ -1,31 +1,61 @@
 {% extends 'base.html' %}
-{% load humanize music_filters %}
+{% load humanize static music_filters %}
 
-{% block title %}Album Source Lists{% endblock %}
+{% block title %}Album Source Lists | Acclaimed Video Games{% endblock %}
 {% block meta_description %}The published album lists aggregated into the album rankings.{% endblock %}
+
+{% block pre_alpine %}
+{# The shared sort controls bind to this; it must load before Alpine core. #}
+<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/media-list-controls.min.js" %}?v=2');</script>
+{% endblock %}
 
 {% block content %}
 <div class="max-w-[860px] mx-auto">
-<div id="content">
+{# The controls sit inside the swapped results, so their state lives out #}
+{# here, as it does on the rankings and artist pages. #}
+<div id="content"
+     x-data="entityListControls({
+         url: '{% url 'music:list-list' %}',
+         target: '#filter-results-wrapper',
+         sort: '{{ current_sort }}',
+         dir: '{{ current_dir }}',
+         defaultSort: 'order',
+         defaultDir: 'asc',
+         extraFields: ['q', 'type', 'year']
+     })">
     <div class="flex items-center justify-between mb-2">
         <h1 class="text-3xl font-bold">
             Source Lists
             <span class="badge badge-warning badge-sm align-middle ml-1">Beta</span>
         </h1>
-        {% if user.is_staff %}
-        <a href="{% url 'music:import' %}"
-           class="link link-hover text-base-content/70 hover:text-accent inline-flex items-center gap-1 text-sm">
-            <span class="mdi mdi-database-import"></span>
-            Import data
-        </a>
-        {% endif %}
+        <div class="flex items-center gap-4">
+            <a href="#contact"
+               class="contact-modal-trigger link link-hover text-base-content/70 hover:text-accent inline-flex items-center gap-1 text-sm"
+               data-category="submit_list"
+               data-message="I'd like to submit an album list for consideration:
+
+List name:
+Publication:
+URL:
+Year published: ">
+                <span class="mdi mdi-plus-circle"></span>
+                Submit a list
+            </a>
+            {% if user.is_staff %}
+            <a href="{% url 'music:import' %}"
+               class="link link-hover text-base-content/70 hover:text-accent inline-flex items-center gap-1 text-sm">
+                <span class="mdi mdi-database-import"></span>
+                Import data
+            </a>
+            {% endif %}
+        </div>
     </div>
 
     <p class="text-base-content/70 text-sm mb-4">Album rankings and lists from publications worldwide</p>
 
     {# Search input #}
     <div class="mb-6">
-        {% include 'core/includes/_search_box.html' with input_id='music-list-search' placeholder='Search publications' value=current_q hx_get=request.path hx_target='#filter-results-wrapper' hx_include="[name='type'], [name='sort'], [name='dir']" %}
+        {% include 'core/includes/_search_box.html' with input_id='music-list-search' placeholder='Search publications' value=current_q hx_get=request.path hx_target='#filter-results-wrapper' hx_include="[name='type'], [name='year'], [name='sort'], [name='dir']" %}
     </div>
 
     <div id="filter-results-wrapper">

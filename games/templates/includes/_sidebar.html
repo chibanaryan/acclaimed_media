@@ -10,7 +10,98 @@
             {% include 'core/includes/_sidebar_nav.html' %}
         </nav>
 
-        {% if media_type == 'games' %}
+        {% if media_type == 'music' %}
+        {# Search bar - albums and artists, in the same box the games #}
+        {# sidebar uses. The section had none until it had an endpoint. #}
+        <div class="relative"
+             x-data="createMediaSearchData('{% url 'music-api:unified-search' %}', { albums: 5, artists: 3 })"
+             x-init="window.addEventListener('reset-search-state', () => reset())"
+             @click.away="showMenu = false">
+            <label for="sidebar-search" class="sr-only">Search albums and artists</label>
+            <label class="input input-bordered input-sm w-full bg-base-100 border-base-content/20">
+                <svg class="h-4 w-4 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <path d="m21 21-4.3-4.3"></path>
+                    </g>
+                </svg>
+                <input type="text"
+                       id="sidebar-search"
+                       name="q"
+                       placeholder="Search all..."
+                       class="grow"
+                       x-model="q"
+                       @focus="showMenu = true"
+                       @input.debounce.300ms="loadResults()"
+                       @keydown.enter="if(q.trim().length >= 2) window.location.href = '{% url 'music:home' %}?q=' + encodeURIComponent(q.trim())"
+                       autocomplete="off">
+                <button type="button"
+                        @click="reset(); showMenu = false"
+                        class="btn btn-ghost btn-xs btn-circle"
+                        style="display: none"
+                        :style="{ display: q.length > 0 ? 'flex' : 'none' }"
+                        aria-label="Clear search">
+                    <span class="mdi mdi-close"></span>
+                </button>
+            </label>
+            {# Results dropdown, grouped as the games one is #}
+            <div x-show="showMenu" x-cloak
+                 class="absolute left-0 top-full mt-1 bg-base-200 rounded-box w-80 p-2 shadow-lg z-[9999] max-h-80 overflow-y-auto">
+                <ul class="menu menu-sm p-0">
+                    <template x-if="!q || q.trim().length < 2">
+                        <li class="disabled"><span class="text-base-content/85 text-sm">Enter 2+ characters</span></li>
+                    </template>
+                    <template x-if="q && q.trim().length >= 2 && !loading && !hasResults()">
+                        <li class="disabled"><span class="text-base-content/85 text-sm">No results found</span></li>
+                    </template>
+                    {# Albums #}
+                    <template x-if="has('albums')">
+                        <li class="menu-title text-xs uppercase tracking-wider text-base-content/70 pt-1 pb-0">Albums</li>
+                    </template>
+                    <template x-for="album in results.albums" :key="'album-' + album.id">
+                        <li>
+                            <a :href="'/music/' + album.slug + '/'" class="flex items-center gap-2 py-2">
+                                <img :src="album.thumbnail" :alt="album.name" width="90" height="90" class="w-6 h-6 rounded object-cover">
+                                <div class="flex-1 min-w-0">
+                                    <div class="font-semibold text-sm truncate" x-text="album.name"></div>
+                                    <div class="text-xs text-base-content/85" x-text="(album.year_released || '') + ' &bull; #' + album.rank"></div>
+                                </div>
+                            </a>
+                        </li>
+                    </template>
+                    <template x-if="q && q.trim().length >= 2 && !loading && has('albums')">
+                        <li>
+                            <a :href="'{% url 'music:home' %}?q=' + encodeURIComponent(q.trim())" class="link link-accent text-sm">
+                                See all album results...
+                            </a>
+                        </li>
+                    </template>
+                    {# Artists #}
+                    <template x-if="has('artists')">
+                        <li class="menu-title text-xs uppercase tracking-wider text-base-content/70 pt-2 pb-0">Artists</li>
+                    </template>
+                    <template x-for="artist in results.artists" :key="'artist-' + artist.id">
+                        <li>
+                            <a :href="'/music/artists/' + artist.slug + '/'" class="flex items-center gap-2 py-2">
+                                <span class="mdi mdi-account-music text-lg text-accent"></span>
+                                <div class="flex-1 min-w-0">
+                                    <div class="font-semibold text-sm truncate" x-text="artist.name"></div>
+                                    <div class="text-xs text-base-content/85" x-text="artist.albums_count + ' albums'"></div>
+                                </div>
+                            </a>
+                        </li>
+                    </template>
+                    <template x-if="q && q.trim().length >= 2 && !loading && has('artists')">
+                        <li>
+                            <a :href="'{% url 'music:artist-list' %}?q=' + encodeURIComponent(q.trim())" class="link link-accent text-sm">
+                                See all artist results...
+                            </a>
+                        </li>
+                    </template>
+                </ul>
+            </div>
+        </div>
+        {% elif media_type == 'games' %}
         {# Search bar #}
         <div class="relative"
              x-data="createUnifiedSearchData('{% url 'games-api:unified-search' %}', 3, 5)"

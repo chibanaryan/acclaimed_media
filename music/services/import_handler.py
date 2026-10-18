@@ -26,6 +26,7 @@ from django.utils.text import slugify
 
 from core import constants as core_constants
 from core.services.ranking import update_year_decade_ranks
+from games.models import SiteMetadata
 from music import config, models
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,10 @@ ARTISTS_WITH_COMMAS = frozenset(
         "Earth, Wind & Fire",
         "Emerson, Lake & Palmer",
         "Peter, Paul and Mary",
+        # The 2026 release's new entry: without this the credit splits into
+        # an artist called "Tyler" and another called "the Creator", and the
+        # albums hang off both.
+        "Tyler, the Creator",
     }
 )
 
@@ -406,5 +411,9 @@ def import_batch(
 
         _, message = import_listmemberships(positions_file, progress_callback)
         messages.append(message)
+
+        # Stamp when the rankings were last replaced, which the album
+        # rankings heading shows the way the games home page shows its own.
+        SiteMetadata.stamp_update(config.SITE_METADATA_KEY)
 
     return (True, " | ".join(messages))

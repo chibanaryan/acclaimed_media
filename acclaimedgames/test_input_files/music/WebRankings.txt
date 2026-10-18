@@ -1,500 +1,1000 @@
 1	Pet Sounds	The Beach Boys	1966	Q212863
-2	Abbey Road	The Beatles	1969	Q173643
-3	London Calling	The Clash	1979	Q19003
-4	What's Going On	Marvin Gaye	1971	Q901648
-5	The Velvet Underground & Nico	The Velvet Underground, Nico	1967	Q259667
-6	OK Computer	Radiohead	1997	Q202996
-7	Revolver	The Beatles	1966	Q185121
-8	Nevermind	Nirvana	1991	Q17444
-9	Exile on Main St.	The Rolling Stones	1972	Q217248
-10	Blue	Joni Mitchell	1971	Q804554
-11	It Takes a Nation of Millions to Hold Us Back	Public Enemy	1988	Q926127
-12	The Beatles ["The White Album"]	The Beatles	1968	Q3295515
-13	The Rise and Fall of Ziggy Stardust and the Spiders from Mars	David Bowie	1972	Q682846
-14	Blood on the Tracks	Bob Dylan	1975	Q300854
-15	Born to Run	Bruce Springsteen	1975	Q752366
-16	Purple Rain	Prince, Prince and the Revolution	1984	Q253004
-17	Thriller	Michael Jackson	1982	Q44320
-18	Highway 61 Revisited	Bob Dylan	1965	Q217211
-19	Rumours	Fleetwood Mac	1977	Q695405
-20	The Queen Is Dead	The Smiths	1986	Q853308
-21	Sgt. Pepper's Lonely Hearts Club Band	The Beatles	1967	Q169226
-22	Horses	Patti Smith	1975	Q774927
-23	My Beautiful Dark Twisted Fantasy	Kanye West	2010	Q547624
-24	Blonde on Blonde	Bob Dylan	1966	Q598116
-25	Songs in the Key of Life	Stevie Wonder	1976	Q845040
-26	Loveless	My Bloody Valentine	1991	Q174163
-27	Remain in Light	Talking Heads	1980	Q843416
-28	Kind of Blue	Miles Davis	1959	Q283221
-29	Astral Weeks	Van Morrison	1968	Q750452
-30	Is This It	The Strokes	2001	Q779275
-31	To Pimp a Butterfly	Kendrick Lamar	2015	Q19602856
-32	Kid A	Radiohead	2000	Q220726
-33	Sign o' the Times	Prince	1987	Q1187787
-34	Rubber Soul	The Beatles	1965	Q190640
-35	Are You Experienced	Jimi Hendrix	1967	Q640397
-36	Enter the Wu-Tang (36 Chambers)	Wu-Tang Clan	1993	Q679150
-37	Innervisions	Stevie Wonder	1973	Q1049169
-38	The Dark Side of the Moon	Pink Floyd	1973	Q150901
-39	After the Gold Rush	Neil Young	1970	Q264397
+2	London Calling	The Clash	1979	Q19003
+3	What's Going On	Marvin Gaye	1971	Q901648
+4	Revolver	The Beatles	1966	Q185121
+5	Abbey Road	The Beatles	1969	Q173643
+6	It Takes a Nation of Millions to Hold Us Back	Public Enemy	1988	Q926127
+7	The Velvet Underground & Nico	The Velvet Underground, Nico	1967	Q259667
+8	Blue	Joni Mitchell	1971	Q804554
+9	OK Computer	Radiohead	1997	Q202996
+10	Nevermind	Nirvana	1991	Q17444
+11	The Rise and Fall of Ziggy Stardust and the Spiders from Mars	David Bowie	1972	Q682846
+12	Exile on Main St.	The Rolling Stones	1972	Q217248
+13	Born to Run	Bruce Springsteen	1975	Q752366
+14	Purple Rain	Prince, Prince and the Revolution	1984	Q253004
+15	Highway 61 Revisited	Bob Dylan	1965	Q217211
+16	Rumours	Fleetwood Mac	1977	Q695405
+17	The Beatles ["The White Album"]	The Beatles	1968	Q3295515
+18	Blonde on Blonde	Bob Dylan	1966	Q598116
+19	Thriller	Michael Jackson	1982	Q44320
+20	Loveless	My Bloody Valentine	1991	Q174163
+21	Horses	Patti Smith	1975	Q774927
+22	Blood on the Tracks	Bob Dylan	1975	Q300854
+23	Remain in Light	Talking Heads	1980	Q843416
+24	The Queen Is Dead	The Smiths	1986	Q853308
+25	To Pimp a Butterfly	Kendrick Lamar	2015	Q19602856
+26	My Beautiful Dark Twisted Fantasy	Kanye West	2010	Q547624
+27	Sgt. Pepper's Lonely Hearts Club Band	The Beatles	1967	Q169226
+28	Kid A	Radiohead	2000	Q220726
+29	Innervisions	Stevie Wonder	1973	Q1049169
+30	Kind of Blue	Miles Davis	1959	Q283221
+31	Sign o' the Times	Prince	1987	Q1187787
+32	Are You Experienced	Jimi Hendrix	1967	Q640397
+33	Enter the Wu-Tang (36 Chambers)	Wu-Tang Clan	1993	Q679150
+34	Astral Weeks	Van Morrison	1968	Q750452
+35	Songs in the Key of Life	Stevie Wonder	1976	Q845040
+36	A Love Supreme	John Coltrane	1965	Q5106
+37	Is This It	The Strokes	2001	Q779275
+38	Hounds of Love	Kate Bush	1985	Q1055992
+39	The Dark Side of the Moon	Pink Floyd	1973	Q150901
 40	Hunky Dory	David Bowie	1971	Q755988
-41	Paul's Boutique	Beastie Boys	1989	Q977418
-42	Doolittle	Pixies	1989	Q909006
-43	Marquee Moon	Television	1977	Q432372
-44	Hounds of Love	Kate Bush	1985	Q1055992
-45	Ramones	Ramones	1976	Q176284
-46	The Miseducation of Lauryn Hill	Lauryn Hill	1998	Q945926
-47	Led Zeppelin IV	Led Zeppelin	1971	Q201940
-48	A Love Supreme	John Coltrane	1965	Q5106
-49	Dummy	Portishead	1994	Q911143
-50	Disintegration	The Cure	1989	Q939505
-51	Funeral	Arcade Fire	2004	Q526196
-52	Never Mind the Bollocks, Here's the Sex Pistols	Sex Pistols	1977	Q457275
-53	Daydream Nation	Sonic Youth	1988	Q902833
-54	Back to Black	Amy Winehouse	2006	Q156670
-55	At Folsom Prison	Johnny Cash	1968	Q752937
-56	Electric Ladyland	Jimi Hendrix	1968	Q524415
-57	3 Feet High and Rising	De La Soul	1989	Q1079807
-58	Grace	Jeff Buckley	1994	Q642737
-59	Automatic for the People	R.E.M.	1992	Q782550
-60	The Low End Theory	A Tribe Called Quest	1991	Q1090876
-61	Tapestry	Carole King	1971	Q411032
-62	Graceland	Paul Simon	1986	Q1027822
-63	Let It Bleed	The Rolling Stones	1969	Q379339,Q62606457
-64	Rain Dogs	Tom Waits	1985	Q259443
-65	Otis Blue/Otis Redding Sings Soul	Otis Redding	1965	Q1226956
-66	Appetite for Destruction	Guns N' Roses	1987	Q270690
+41	After the Gold Rush	Neil Young	1970	Q264397
+42	Marquee Moon	Television	1977	Q432372
+43	Doolittle	Pixies	1989	Q909006
+44	Paul's Boutique	Beastie Boys	1989	Q977418
+45	Disintegration	The Cure	1989	Q939505
+46	Never Mind the Bollocks, Here's the Sex Pistols	Sex Pistols	1977	Q457275
+47	Dummy	Portishead	1994	Q911143
+48	Automatic for the People	R.E.M.	1992	Q782550
+49	3 Feet High and Rising	De La Soul	1989	Q1079807
+50	Daydream Nation	Sonic Youth	1988	Q902833
+51	Led Zeppelin IV	Led Zeppelin	1971	Q201940
+52	Rubber Soul	The Beatles	1965	Q190640
+53	Ramones	Ramones	1976	Q176284
+54	The Miseducation of Lauryn Hill	Lauryn Hill	1998	Q945926
+55	Funeral	Arcade Fire	2004	Q526196
+56	Rain Dogs	Tom Waits	1985	Q259443
+57	Electric Ladyland	Jimi Hendrix	1968	Q524415
+58	At Folsom Prison	Johnny Cash	1968	Q752937
+59	The Low End Theory	A Tribe Called Quest	1991	Q1090876
+60	Graceland	Paul Simon	1986	Q1027822
+61	Forever Changes	Love	1967	Q1002861
+62	Grace	Jeff Buckley	1994	Q642737
+63	Closer	Joy Division	1980	Q756930
+64	Otis Blue/Otis Redding Sings Soul	Otis Redding	1965	Q1226956
+65	Stankonia	OutKast	2000	Q378166
+66	Live at the Apollo	James Brown, The Famous Flames	1963	Q898420
 67	The Blueprint	Jay-Z	2001	Q1088473
-68	Master of Puppets	Metallica	1986	Q187507
-69	Closer	Joy Division	1980	Q756930
-70	Stankonia	OutKast	2000	Q378166
-71	Lemonade	Beyoncé	2016	Q23905116
-72	The Chronic	Dr. Dre	1992	Q749154
-73	Illmatic	Nas	1994	Q847541
-74	Live at the Apollo	James Brown, The Famous Flames	1963	Q898420
-75	Back in Black	AC/DC	1980	Q155715
-76	Ready to Die	The Notorious B.I.G.	1994	Q529999
-77	Lady Soul	Aretha Franklin	1968	Q928442
-78	The Stone Roses	The Stone Roses	1989	Q300932
-79	Sound of Silver	LCD Soundsystem	2007	Q2548222
-80	Straight Outta Compton	N.W.A.	1989	Q644326
-81	Yankee Hotel Foxtrot	Wilco	2001	Q1091995
-82	The Joshua Tree	U2	1987	Q152873
-83	Odelay	Beck	1996	Q1067721
-84	In Rainbows	Radiohead	2007	Q223295
-85	Sticky Fingers	The Rolling Stones	1971	Q745850
-86	Dusty in Memphis	Dusty Springfield	1969	Q723817
-87	Channel Orange	Frank Ocean	2012	Q402035
-88	The Band	The Band	1969	Q926142
-89	Bitches Brew	Miles Davis	1970	Q804096
-90	Low	David Bowie	1977	Q837214
-91	Slanted and Enchanted	Pavement	1992	Q120712
-92	Blue Lines	Massive Attack	1991	Q847910
-93	I Never Loved a Man the Way I Love You	Aretha Franklin	1967	Q2112923
-94	Forever Changes	Love	1967	Q1002861
-95	In Utero	Nirvana	1993	Q222001
-96	There's a Riot Goin' On	Sly and the Family Stone	1971	Q258003
-97	Surfer Rosa	Pixies	1988	Q571213
-98	Beggars Banquet	The Rolling Stones	1968	Q339065
-99	Stories from the City, Stories from the Sea	PJ Harvey	2000	Q1049357
-100	Murmur	R.E.M.	1983	Q904480
-101	The Marshall Mathers LP	Eminem	2000	Q153607
-102	Off the Wall	Michael Jackson	1979	Q44289
-103	Bringing It All Back Home	Bob Dylan	1965	Q268106
-104	Different Class	Pulp	1995	Q771579
-105	The Kinks Are the Village Green Preservation Society	The Kinks	1968	Q254078
-106	Achtung Baby	U2	1991	Q308801
-107	Crooked Rain, Crooked Rain	Pavement	1994	Q869912
-108	On the Beach	Neil Young	1974	Q1073882
-109	Who's Next	The Who	1971	Q729387
-110	Fun House	The Stooges	1970	Q1004341
-111	Either/Or	Elliott Smith	1997	Q988557
-112	(What's the Story) Morning Glory?	Oasis	1995	Q8360
-113	A Seat at the Table	Solange	2016	Q27231139
-114	Endtroducing.....	DJ Shadow	1996	Q614739
-115	The Velvet Underground	The Velvet Underground	1969	Q848781
-116	Transformer	Lou Reed	1972	Q631153
-117	John Lennon/Plastic Ono Band	John Lennon, Plastic Ono Band	1970	Q603000
-118	Raw Power	The Stooges	1973	Q918613
-119	Elephant	The White Stripes	2003	Q580496
-120	Paranoid	Black Sabbath	1970	Q271787
-121	Trans Europa Express	Kraftwerk	1977	Q523372
-122	Car Wheels on a Gravel Road	Lucinda Williams	1998	Q858302
-123	Live Through This	Hole	1994	Q946807
-124	Good Kid, M.A.A.D City	Kendrick Lamar	2012	Q1930676
-125	Nebraska	Bruce Springsteen	1982	Q852024
-126	The Soft Bulletin	The Flaming Lips	1999	Q915468
-127	Unknown Pleasures	Joy Division	1979	Q735573
-128	The Bends	Radiohead	1995	Q221246
-129	The Clash	The Clash	1977	Q775208
-130	The Downward Spiral	Nine Inch Nails	1994	Q784933
-131	Discovery	Daft Punk	2001	Q1901313
-132	Blonde	Frank Ocean	2016	Q26450992
-133	Siamese Dream	The Smashing Pumpkins	1993	Q902233
-134	Blackstar	David Bowie	2016	Q21450442
-135	Rid of Me	PJ Harvey	1993	Q1074272
-136	Let It Be	The Replacements	1984	Q1040457
-137	Supa Dupa Fly	Missy Elliott	1997	Q240228
-138	If You're Feeling Sinister	Belle and Sebastian	1996	Q943328
-139	Maxinquaye	Tricky	1995	Q1092867
-140	Parallel Lines	Blondie	1978	Q1072373
-141	Exile in Guyville	Liz Phair	1993	Q821216
-142	Fear of a Black Planet	Public Enemy	1990	Q996926
-143	Harvest	Neil Young	1972	Q537983
-144	Homogenic	Björk	1997	Q617046
-145	Stand!	Sly and the Family Stone	1969	Q429521
-146	Music from Big Pink	The Band	1968	Q1063385
-147	Songs of Leonard Cohen	Leonard Cohen	1967	Q923550
-148	Like a Prayer	Madonna	1989	Q252447
-149	Beyoncé	Beyoncé	2013	Q15303590
-150	Darkness on the Edge of Town	Bruce Springsteen	1978	Q902146
-151	Paid in Full	Eric B. & Rakim	1987	Q1643785
-152	Post	Björk	1995	Q1347624
-153	Melodrama	Lorde	2017	Q28864303
-154	White Blood Cells	The White Stripes	2001	Q289539
-155	The Freewheelin' Bob Dylan	Bob Dylan	1963	Q11632
+68	Lemonade	Beyoncé	2016	Q23905116
+69	Low	David Bowie	1977	Q837214
+70	Illmatic	Nas	1994	Q847541
+71	The Chronic	Dr. Dre	1992	Q749154
+72	Let It Bleed	The Rolling Stones	1969	Q379339,Q62606457
+73	Lady Soul	Aretha Franklin	1968	Q928442
+74	Tapestry	Carole King	1971	Q411032
+75	Sound of Silver	LCD Soundsystem	2007	Q2548222
+76	There's a Riot Goin' On	Sly and the Family Stone	1971	Q258003
+77	Straight Outta Compton	N.W.A.	1989	Q644326
+78	Back to Black	Amy Winehouse	2006	Q156670
+79	In Utero	Nirvana	1993	Q222001
+80	Sticky Fingers	The Rolling Stones	1971	Q745850
+81	Bitches Brew	Miles Davis	1970	Q804096
+82	Yankee Hotel Foxtrot	Wilco	2001	Q1091995
+83	The Joshua Tree	U2	1987	Q152873
+84	Dusty in Memphis	Dusty Springfield	1969	Q723817
+85	Odelay	Beck	1996	Q1067721
+86	Master of Puppets	Metallica	1986	Q187507
+87	Endtroducing.....	DJ Shadow	1996	Q614739
+88	Blue Lines	Massive Attack	1991	Q847910
+89	Appetite for Destruction	Guns N' Roses	1987	Q270690
+90	Beggars Banquet	The Rolling Stones	1968	Q339065
+91	Ready to Die	The Notorious B.I.G.	1994	Q529999
+92	Channel Orange	Frank Ocean	2012	Q402035
+93	Slanted and Enchanted	Pavement	1992	Q120712
+94	Back in Black	AC/DC	1980	Q155715
+95	Surfer Rosa	Pixies	1988	Q571213
+96	Different Class	Pulp	1995	Q771579
+97	The Band	The Band	1969	Q926142
+98	I Never Loved a Man the Way I Love You	Aretha Franklin	1967	Q2112923
+99	The Stone Roses	The Stone Roses	1989	Q300932
+100	In Rainbows	Radiohead	2007	Q223295
+101	Either/Or	Elliott Smith	1997	Q988557
+102	Who's Next	The Who	1971	Q729387
+103	Rid of Me	PJ Harvey	1993	Q1074272
+104	Fun House	The Stooges	1970	Q1004341
+105	Trans Europa Express	Kraftwerk	1977	Q523372
+106	Raw Power	The Stooges	1973	Q918613
+107	Unknown Pleasures	Joy Division	1979	Q735573
+108	Paranoid	Black Sabbath	1970	Q271787
+109	Transformer	Lou Reed	1972	Q631153
+110	Murmur	R.E.M.	1983	Q904480
+111	Achtung Baby	U2	1991	Q308801
+112	John Lennon/Plastic Ono Band	John Lennon, Plastic Ono Band	1970	Q603000
+113	Bringing It All Back Home	Bob Dylan	1965	Q268106
+114	Blonde	Frank Ocean	2016	Q26450992
+115	The Kinks Are the Village Green Preservation Society	The Kinks	1968	Q254078
+116	Stories from the City, Stories from the Sea	PJ Harvey	2000	Q1049357
+117	Nebraska	Bruce Springsteen	1982	Q852024
+118	Crooked Rain, Crooked Rain	Pavement	1994	Q869912
+119	A Seat at the Table	Solange	2016	Q27231139
+120	Car Wheels on a Gravel Road	Lucinda Williams	1998	Q858302
+121	The Velvet Underground	The Velvet Underground	1969	Q848781
+122	The Marshall Mathers LP	Eminem	2000	Q153607
+123	The Downward Spiral	Nine Inch Nails	1994	Q784933
+124	On the Beach	Neil Young	1974	Q1073882
+125	Off the Wall	Michael Jackson	1979	Q44289
+126	Maxinquaye	Tricky	1995	Q1092867
+127	Songs of Leonard Cohen	Leonard Cohen	1967	Q923550
+128	Fear of a Black Planet	Public Enemy	1990	Q996926
+129	Blackstar	David Bowie	2016	Q21450442
+130	The Soft Bulletin	The Flaming Lips	1999	Q915468
+131	Post	Björk	1995	Q1347624
+132	Let It Be	The Replacements	1984	Q1040457
+133	(What's the Story) Morning Glory?	Oasis	1995	Q8360
+134	Maggot Brain	Funkadelic	1971	Q937641
+135	For Your Pleasure	Roxy Music	1973	Q1002798
+136	Paid in Full	Eric B. & Rakim	1987	Q1643785
+137	Suicide	Suicide	1977	Q574758
+138	Discovery	Daft Punk	2001	Q1901313
+139	Elephant	The White Stripes	2003	Q580496
+140	The Clash	The Clash	1977	Q775208
+141	The Bends	Radiohead	1995	Q221246
+142	If You're Feeling Sinister	Belle and Sebastian	1996	Q943328
+143	The Piper at the Gates of Dawn	Pink Floyd	1967	Q202714
+144	Music from Big Pink	The Band	1968	Q1063385
+145	Siamese Dream	The Smashing Pumpkins	1993	Q902233
+146	Live Through This	Hole	1994	Q946807
+147	The Doors	The Doors	1967	Q201949
+148	69 Love Songs	The Magnetic Fields	1999	Q1412554
+149	Entertainment!	Gang of Four	1979	Q167110
+150	Supa Dupa Fly	Missy Elliott	1997	Q240228
+151	Stand!	Sly and the Family Stone	1969	Q429521
+152	Good Kid, M.A.A.D City	Kendrick Lamar	2012	Q1930676
+153	Pink Moon	Nick Drake	1972	Q574910
+154	Parallel Lines	Blondie	1978	Q1072373
+155	Exile in Guyville	Liz Phair	1993	Q821216
 156	Ladies and Gentlemen We Are Floating in Space	Spiritualized	1997	Q254320
-157	Goodbye Yellow Brick Road	Elton John	1973	Q827363
-158	For Your Pleasure	Roxy Music	1973	Q1002798
-159	Illinois	Sufjan Stevens	2005	Q1658831
-160	Sweetheart of the Rodeo	The Byrds	1968	Q928243
-161	The Hissing of Summer Lawns	Joni Mitchell	1975	Q964149
-162	The Piper at the Gates of Dawn	Pink Floyd	1967	Q202714
-163	Definitely Maybe	Oasis	1994	Q328993
-164	Physical Graffiti	Led Zeppelin	1975	Q210809
-165	Whatever People Say I Am, That's What I'm Not	Arctic Monkeys	2006	Q842126
-166	Norman Fucking Rockwell!	Lana Del Rey	2019	Q56655003
-167	A Hard Day's Night	The Beatles	1964	Q182518
-168	69 Love Songs	The Magnetic Fields	1999	Q1412554
-169	Metal Box / Second Edition	Public Image Ltd	1979	Q937050
-170	Entertainment!	Gang of Four	1979	Q167110
-171	Voodoo	D’Angelo	2000	Q2748045
-172	Liquid Swords	GZA	1995	Q915458
-173	The Doors	The Doors	1967	Q201949
+157	Illinois	Sufjan Stevens	2005	Q1658831
+158	The Man-Machine	Kraftwerk	1978	Q535525
+159	Psychocandy	The Jesus and Mary Chain	1985	Q649834
+160	The Hissing of Summer Lawns	Joni Mitchell	1975	Q964149
+161	Harvest	Neil Young	1972	Q537983
+162	Music Has the Right to Children	Boards of Canada	1998	Q224539
+163	Homogenic	Björk	1997	Q617046
+164	Voodoo	D’Angelo	2000	Q2748045
+165	This Year's Model	Elvis Costello	1978	Q1188324
+166	Goodbye Yellow Brick Road	Elton John	1973	Q827363
+167	Darkness on the Edge of Town	Bruce Springsteen	1978	Q902146
+168	Five Leaves Left	Nick Drake	1969	Q918649
+169	The Black Saint and the Sinner Lady	Charles Mingus	1963	Q738124
+170	Whatever People Say I Am, That's What I'm Not	Arctic Monkeys	2006	Q842126
+171	Catch a Fire	Bob Marley and the Wailers	1973	Q369980
+172	Metal Box / Second Edition	Public Image Ltd	1979	Q937050
+173	White Blood Cells	The White Stripes	2001	Q289539
 174	Third/Sister Lovers	Big Star	1978	Q755161
-175	Aja	Steely Dan	1977	Q411814
-176	Station to Station	David Bowie	1976	Q831890
-177	Red Headed Stranger	Willie Nelson	1975	Q755963
-178	White Light/White Heat	The Velvet Underground	1968	Q523347
-179	Raising Hell	Run-DMC	1986	Q521828
-180	Here Come the Warm Jets	Brian Eno	1974	Q734156
-181	Odessey and Oracle	The Zombies	1968	Q1187585
-182	The Man-Machine	Kraftwerk	1978	Q535525
-183	Rage Against the Machine	Rage Against the Machine	1992	Q540943
-184	Pink Moon	Nick Drake	1972	Q574910
-185	Led Zeppelin	Led Zeppelin	1969	Q131392
-186	Catch a Fire	Bob Marley and the Wailers	1973	Q369980
-187	The Stooges	The Stooges	1969	Q378272
-188	Psychocandy	The Jesus and Mary Chain	1985	Q649834
-189	Suicide	Suicide	1977	Q574758
-190	This Year's Model	Elvis Costello	1978	Q1188324
-191	The Score	Fugees	1996	Q938448
-192	Everybody Knows This Is Nowhere	Neil Young, Crazy Horse	1969	Q852882
-193	Five Leaves Left	Nick Drake	1969	Q918649
-194	Music Has the Right to Children	Boards of Canada	1998	Q224539
-195	Aquemini	OutKast	1998	Q623242
-196	The Modern Lovers	The Modern Lovers	1976	Q755363
-197	Bridge over Troubled Water	Simon & Garfunkel	1970	Q655502
-198	Electric Warrior	T. Rex	1971	Q940412
-199	Born in the U.S.A.	Bruce Springsteen	1984	Q40425
-200	Moondance	Van Morrison	1970	Q1179158
-201	The College Dropout	Kanye West	2004	Q747526
-202	Modern Sounds in Country and Western Music	Ray Charles	1962	Q860771
-203	Younger Than Yesterday	The Byrds	1967	Q2031535
-204	Body Talk	Robyn	2010	Q3641547
-205	Kala	M.I.A.	2007	Q1508063
-206	Led Zeppelin II	Led Zeppelin	1969	Q209539
-207	Loaded	The Velvet Underground	1970	Q1634439
-208	Screamadelica	Primal Scream	1991	Q1091832
-209	Maggot Brain	Funkadelic	1971	Q937641
-210	The Who Sell Out	The Who	1967	Q844051
-211	Time Out of Mind	Bob Dylan	1997	Q657325
-212	Parklife	Blur	1994	Q241777
-213	Dig Me Out	Sleater-Kinney	1997	Q727157
-214	Another Green World	Brian Eno	1975	Q771427
-215	Last Splash	The Breeders	1993	Q2136712
-216	Fever to Tell	Yeah Yeah Yeahs	2003	Q567955
-217	Power, Corruption & Lies	New Order	1983	Q1930135
-218	Let England Shake	PJ Harvey	2011	Q734093
-219	Reasonable Doubt	Jay-Z	1996	Q845329
-220	Golden Hour	Kacey Musgraves	2018	Q51155613
-221	Here's Little Richard	Little Richard	1957	Q1035513
-222	Coat of Many Colors	Dolly Parton	1971	Q868099
-223	Dookie	Green Day	1994	Q211292
-224	1999	Prince, Prince and the Revolution	1982	Q208824
-225	Tim	The Replacements	1985	Q1939867
-226	Tommy	The Who	1969	Q372055
-227	Strangeways, Here We Come	The Smiths	1987	Q1065130
-228	1989	Taylor Swift	2014	Q17544553
-229	Fear of Music	Talking Heads	1979	Q934211
-230	Exodus	Bob Marley and the Wailers	1977	Q913633
-231	Histoire de Melody Nelson	Serge Gainsbourg	1971	Q1036873
-232	Modern Vampires of the City	Vampire Weekend	2013	Q6888924
-233	Wild Is the Wind	Nina Simone	1966	Q754696
-234	For Emma, Forever Ago	Bon Iver	2007	Q1753919
-235	Reign in Blood	Slayer	1986	Q474960
-236	Ray of Light	Madonna	1998	Q155335
-237	My Aim Is True	Elvis Costello	1977	Q517468
-238	Hejira	Joni Mitchell	1976	Q1035073
-239	CrazySexyCool	TLC	1994	Q869575
-240	In the Aeroplane Over the Sea	Neutral Milk Hotel	1998	Q1660782
-241	The Smiths	The Smiths	1984	Q974045
-242	The Notorious Byrd Brothers	The Byrds	1968	Q1077979
-243	Ten	Pearl Jam	1991	Q383227
-244	Something/Anything?	Todd Rundgren	1972	Q846465
+175	Histoire de Melody Nelson	Serge Gainsbourg	1971	Q1036873
+176	Rage Against the Machine	Rage Against the Machine	1992	Q540943
+177	Station to Station	David Bowie	1976	Q831890
+178	Kala	M.I.A.	2007	Q1508063
+179	Melodrama	Lorde	2017	Q28864303
+180	The Freewheelin' Bob Dylan	Bob Dylan	1963	Q11632
+181	Definitely Maybe	Oasis	1994	Q328993
+182	Physical Graffiti	Led Zeppelin	1975	Q210809
+183	Raising Hell	Run-DMC	1986	Q521828
+184	Beyoncé	Beyoncé	2013	Q15303590
+185	Violator	Depeche Mode	1990	Q683079
+186	The Stooges	The Stooges	1969	Q378272
+187	Sweetheart of the Rodeo	The Byrds	1968	Q928243
+188	Like a Prayer	Madonna	1989	Q252447
+189	Something/Anything?	Todd Rundgren	1972	Q846465
+190	Screamadelica	Primal Scream	1991	Q1091832
+191	Liquid Swords	GZA	1995	Q915458
+192	Ill Communication	Beastie Boys	1994	Q1096393
+193	Moondance	Van Morrison	1970	Q1179158
+194	Younger Than Yesterday	The Byrds	1967	Q2031535
+195	Fear of Music	Talking Heads	1979	Q934211
+196	New York Dolls	New York Dolls	1973	Q1190099
+197	Everybody Knows This Is Nowhere	Neil Young, Crazy Horse	1969	Q852882
+198	White Light/White Heat	The Velvet Underground	1968	Q523347
+199	A Hard Day's Night	The Beatles	1964	Q182518
+200	Aja	Steely Dan	1977	Q411814
+201	Odessey and Oracle	The Zombies	1968	Q1187585
+202	Reign in Blood	Slayer	1986	Q474960
+203	Time Out of Mind	Bob Dylan	1997	Q657325
+204	Here Come the Warm Jets	Brian Eno	1974	Q734156
+205	Trout Mask Replica	Captain Beefheart	1969	Q194790
+206	Norman Fucking Rockwell!	Lana Del Rey	2019	Q56655003
+207	Dig Me Out	Sleater-Kinney	1997	Q727157
+208	Led Zeppelin	Led Zeppelin	1969	Q131392
+209	Bridge over Troubled Water	Simon & Garfunkel	1970	Q655502
+210	Red Headed Stranger	Willie Nelson	1975	Q755963
+211	Selected Ambient Works 85–92	Aphex Twin	1992	Q970352
+212	Aquemini	OutKast	1998	Q623242
+213	Led Zeppelin II	Led Zeppelin	1969	Q209539
+214	Spirit of Eden	Talk Talk	1988	Q1696613
+215	The Score	Fugees	1996	Q938448
+216	Born in the U.S.A.	Bruce Springsteen	1984	Q40425
+217	The Specials	The Specials	1979	Q1090708
+218	Another Green World	Brian Eno	1975	Q771427
+219	The Smiths	The Smiths	1984	Q974045
+220	Let England Shake	PJ Harvey	2011	Q734093
+221	Zen Arcade	Hüsker Dü	1984	Q1756193
+222	Power, Corruption & Lies	New Order	1983	Q1930135
+223	Parklife	Blur	1994	Q241777
+224	In a Silent Way	Miles Davis	1969	Q917685
+225	Modern Vampires of the City	Vampire Weekend	2013	Q6888924
+226	Electric Warrior	T. Rex	1971	Q940412
+227	Untrue	Burial	2007	Q2445090
+228	Spiderland	Slint	1991	Q545227
+229	Body Talk	Robyn	2010	Q3641547
+230	Heaven or Las Vegas	Cocteau Twins	1990	Q848584
+231	The College Dropout	Kanye West	2004	Q747526
+232	The Who Sell Out	The Who	1967	Q844051
+233	Kick Out the Jams	MC5	1969	Q1040417
+234	In the Aeroplane Over the Sea	Neutral Milk Hotel	1998	Q1660782
+235	For Emma, Forever Ago	Bon Iver	2007	Q1753919
+236	Loaded	The Velvet Underground	1970	Q1634439
+237	Third	Portishead	2008	Q571394
+238	The Modern Lovers	The Modern Lovers	1976	Q755363
+239	Ege Bamyasi	Can	1972	Q1933617
+240	Mezzanine	Massive Attack	1998	Q844258
+241	The B-52's	The B-52s	1979	Q302812
+242	Double Nickels on the Dime	Minutemen	1984	Q909309
+243	Golden Hour	Kacey Musgraves	2018	Q51155613
+244	Last Splash	The Breeders	1993	Q2136712
 245	Swordfishtrombones	Tom Waits	1983	Q851991
-246	To Bring You My Love	PJ Harvey	1995	Q583302
-247	Violator	Depeche Mode	1990	Q683079
-248	Trout Mask Replica	Captain Beefheart	1969	Q194790
-249	Axis: Bold as Love	Jimi Hendrix	1967	Q616268
-250	Hotel California	Eagles	1976	Q752172
-251	New York Dolls	New York Dolls	1973	Q1190099
-252	Yoshimi Battles the Pink Robots	The Flaming Lips	2002	Q915815
-253	Super Fly	Curtis Mayfield	1972	Q930135
-254	The Idler Wheel...	Fiona Apple	2012	Q2004110
-255	Moon Safari	Air	1998	Q1091500
-256	Gris-Gris	Dr. John	1968	Q45710
-257	AM	Arctic Monkeys	2013	Q13539256
-258	Court and Spark	Joni Mitchell	1974	Q869433
-259	Faith	George Michael	1987	Q568555
-260	MTV Unplugged in New York	Nirvana	1994	Q212326
-261	Turn On the Bright Lights	Interpol	2002	Q1340055
-262	So	Peter Gabriel	1986	Q657185
-263	Mezzanine	Massive Attack	1998	Q844258
-264	Selected Ambient Works 85–92	Aphex Twin	1992	Q970352
-265	This Nation's Saving Grace	The Fall	1985	Q254105
-266	The Gilded Palace of Sin	The Flying Burrito Brothers	1969	Q245868
-267	Songs of Love and Hate	Leonard Cohen	1971	Q923467
-268	Black Messiah	D’Angelo	2014	Q18638796
-269	The Black Saint and the Sinner Lady	Charles Mingus	1963	Q738124
-270	Talking Book	Stevie Wonder	1972	Q676192
-271	Third	Portishead	2008	Q571394
-272	Original Pirate Material	The Streets	2002	Q2709081
-273	American Idiot	Green Day	2004	Q151714
-274	Pretenders	The Pretenders	1979	Q755468
-275	Licensed to Ill	Beastie Boys	1986	Q1073460
-276	Spirit of Eden	Talk Talk	1988	Q1696613
-277	Imperial Bedroom	Elvis Costello	1982	Q846779
-278	Kick Out the Jams	MC5	1969	Q1040417
-279	Debut	Björk	1993	Q753601
-280	Ill Communication	Beastie Boys	1994	Q1096393
-281	In the Wee Small Hours	Frank Sinatra	1955	Q221573
-282	Rock Bottom	Robert Wyatt	1974	Q263938
-283	Double Nickels on the Dime	Minutemen	1984	Q909309
-284	Dare	The Human League	1981	Q262888
-285	Déjà Vu	Crosby, Stills & Nash	1970	Q255471
-286	Damaged	Black Flag	1981	Q901386
-287	The Black Album	Jay-Z	2003	Q2563740
-288	Synchronicity	The Police	1983	Q1064318
-289	Spiderland	Slint	1991	Q545227
-290	"Heroes"	David Bowie	1977	Q595352
-291	The Specials	The Specials	1979	Q1090708
-292	Anti	Rihanna	2016	Q21084500
-293	The B-52's	The B-52s	1979	Q302812
-294	21	Adele	2011	Q155169
-295	One Nation Under a Groove	Funkadelic	1978	Q636006
-296	Homework	Daft Punk	1997	Q920504
-297	Scott 4	Scott Walker	1969	Q1286461
-298	Can't Buy a Thrill	Steely Dan	1972	Q857908
-299	Elvis Presley	Elvis Presley	1956	Q610926
-300	Steve McQueen / Two Wheels Good	Prefab Sprout	1985	Q847082
-301	Heaven or Las Vegas	Cocteau Twins	1990	Q848584
-302	Ys	Joanna Newsom	2006	Q632915
-303	Computer World	Kraftwerk	1981	Q111419417
-304	A Wizard, a True Star	Todd Rundgren	1973	Q260728
+246	Debut	Björk	1993	Q753601
+247	Steve McQueen / Two Wheels Good	Prefab Sprout	1985	Q847082
+248	This Nation's Saving Grace	The Fall	1985	Q254105
+249	Imperial Bedroom	Elvis Costello	1982	Q846779
+250	Rock Bottom	Robert Wyatt	1974	Q263938
+251	So	Peter Gabriel	1986	Q657185
+252	Reasonable Doubt	Jay-Z	1996	Q845329
+253	Dookie	Green Day	1994	Q211292
+254	Original Pirate Material	The Streets	2002	Q2709081
+255	1989	Taylor Swift	2014	Q17544553
+256	Modern Sounds in Country and Western Music	Ray Charles	1962	Q860771
+257	Tago Mago	Can	1971	Q929039
+258	Madvillainy	Madvillain	2004	Q2333298
+259	Exodus	Bob Marley and the Wailers	1977	Q913633
+260	Super Fly	Curtis Mayfield	1972	Q930135
+261	Fever to Tell	Yeah Yeah Yeahs	2003	Q567955
+262	My Aim Is True	Elvis Costello	1977	Q517468
+263	CrazySexyCool	TLC	1994	Q869575
+264	Ten	Pearl Jam	1991	Q383227
+265	Homework	Daft Punk	1997	Q920504
+266	Ys	Joanna Newsom	2006	Q632915
+267	Ray of Light	Madonna	1998	Q155335
+268	Computer World	Kraftwerk	1981	Q111419417
+269	The Idler Wheel...	Fiona Apple	2012	Q2004110
+270	Coat of Many Colors	Dolly Parton	1971	Q868099
+271	Songs of Love and Hate	Leonard Cohen	1971	Q923467
+272	Tommy	The Who	1969	Q372055
+273	Here's Little Richard	Little Richard	1957	Q1035513
+274	To Bring You My Love	PJ Harvey	1995	Q583302
+275	Baduizm	Erykah Badu	1997	Q2415000
+276	Court and Spark	Joni Mitchell	1974	Q869433
+277	Lady in Satin	Billie Holiday	1958	Q285175
+278	Wild Is the Wind	Nina Simone	1966	Q754696
+279	1999	Prince, Prince and the Revolution	1982	Q208824
+280	Moon Safari	Air	1998	Q1091500
+281	I'm Your Man	Leonard Cohen	1988	Q946629
+282	Dare	The Human League	1981	Q262888
+283	Merriweather Post Pavilion	Animal Collective	2009	Q1206906
+284	Turn On the Bright Lights	Interpol	2002	Q1340055
+285	Hejira	Joni Mitchell	1976	Q1035073
+286	Yoshimi Battles the Pink Robots	The Flaming Lips	2002	Q915815
+287	The Notorious Byrd Brothers	The Byrds	1968	Q1077979
+288	Talking Book	Stevie Wonder	1972	Q676192
+289	Tim	The Replacements	1985	Q1939867
+290	Strangeways, Here We Come	The Smiths	1987	Q1065130
+291	Repeater	Fugazi	1990	Q1040789
+292	Pink Flag	Wire	1977	Q370633
+293	Black Messiah	D’Angelo	2014	Q18638796
+294	Songs for Swingin' Lovers!	Frank Sinatra	1956	Q1041548
+295	Since I Left You	The Avalanches	2000	Q821531
+296	Technique	New Order	1989	Q1065877
+297	Hotel California	Eagles	1976	Q752172
+298	Synchronicity	The Police	1983	Q1064318
+299	Axis: Bold as Love	Jimi Hendrix	1967	Q616268
+300	Pretenders	The Pretenders	1979	Q755468
+301	Gris-Gris	Dr. John	1968	Q45710
+302	Head Hunters	Herbie Hancock	1973	Q1034640
+303	Scott 4	Scott Walker	1969	Q1286461
+304	MTV Unplugged in New York	Nirvana	1994	Q212326
 305	Vampire Weekend	Vampire Weekend	2008	Q2071555
-306	In a Silent Way	Miles Davis	1969	Q917685
-307	When We All Fall Asleep, Where Do We Go?	Billie Eilish	2019	Q61157315
-308	Speakerboxxx/The Love Below	OutKast	2003	Q603672
-309	Head Hunters	Herbie Hancock	1973	Q1034640
-310	Weezer ["The Blue Album"]	Weezer	1994	Q1346351
-311	Live at Leeds	The Who	1970	Q685345
-312	Bryter Layter	Nick Drake	1971	Q600038
-313	A Rush of Blood to the Head	Coldplay	2002	Q207970
-314	Jagged Little Pill	Alanis Morissette	1995	Q750084
-315	Since I Left You	The Avalanches	2000	Q821531
-316	Countdown to Ecstasy	Steely Dan	1973	Q634785
-317	Rum Sodomy & the Lash	The Pogues	1985	Q528746
-318	Only Built 4 Cuban Linx...	Raekwon	1995	Q1187999
-319	Sea Change	Beck	2002	Q590851
-320	Tonight's the Night	Neil Young	1975	Q1066236
-321	Janet Jackson's Rhythm Nation 1814	Janet Jackson	1989	Q928863
-322	Songs for the Deaf	Queens of the Stone Age	2002	Q586984
-323	You Want It Darker	Leonard Cohen	2016	Q26271668
-324	Take Care	Drake	2011	Q5104794
-325	Dear Science	TV on the Radio	2008	Q1951071
-326	Tago Mago	Can	1971	Q929039
-327	Carrie & Lowell	Sufjan Stevens	2015	Q18758139
-328	Merriweather Post Pavilion	Animal Collective	2009	Q1206906
-329	The Boatman's Call	Nick Cave and the Bad Seeds	1997	Q1187337
-330	Hot Buttered Soul	Isaac Hayes	1969	Q521823
-331	#1 Record	Big Star	1972	Q269307
-332	Dig Your Own Hole	The Chemical Brothers	1997	Q678065
-333	Lady in Satin	Billie Holiday	1958	Q285175
-334	Scary Monsters (and Super Creeps)	David Bowie	1980	Q1752993
-335	Up the Bracket	The Libertines	2002	Q2292774
-336	Doggystyle	Snoop Dogg	1993	Q753494
-337	Control	Janet Jackson	1986	Q530266
-338	Untrue	Burial	2007	Q2445090
-339	She's So Unusual	Cyndi Lauper	1983	Q263323
-340	Surf's Up	The Beach Boys	1971	Q940425
-341	Repeater	Fugazi	1990	Q1040789
-342	Pinkerton	Weezer	1996	Q1536639
-343	Aladdin Sane	David Bowie	1973	Q558969
-344	Baduizm	Erykah Badu	1997	Q2415000
-345	Yeezus	Kanye West	2013	Q13378144
-346	Bossanova	Pixies	1990	Q1093303
-347	Deserter's Songs	Mercury Rev	1998	Q904278
-348	Call Me	Al Green	1973	Q5021543
-349	I Want to See the Bright Lights Tonight	Richard Thompson	1974	Q1095539
-350	Isn't Anything	My Bloody Valentine	1988	Q1098197
-351	Metallica ["The Black Album"]	Metallica	1991	Q213516
-352	Live at the Regal	B. B. King	1965	Q846100
-353	Journey in Satchidananda	Alice Coltrane	1971	Q6296378
-354	Wish You Were Here	Pink Floyd	1975	Q200872
-355	Future Days	Can	1973	Q1004420
-356	Van Halen	Van Halen	1978	Q264135
-357	Currents	Tame Impala	2015	Q19824616
-358	Time (The Revelator)	Gillian Welch	2001	Q1321150
-359	Songs for Swingin' Lovers!	Frank Sinatra	1956	Q1041548
-360	Check Your Head	Beastie Boys	1992	Q608507
-361	Technique	New Order	1989	Q1065877
-362	Madvillainy	Madvillain	2004	Q2333298
-363	Lost in the Dream	The War on Drugs	2014	Q15858189
-364	American Beauty	Grateful Dead	1970	Q255923
-365	New Day Rising	Hüsker Dü	1985	Q1754295
-366	The Harder They Come		1972	Q937034
-367	Low-Life	New Order	1985	Q372143
-368	The Slim Shady LP	Eminem	1999	Q383459
-369	Ege Bamyasi	Can	1972	Q1933617
-370	This Is Happening	LCD Soundsystem	2010	Q2620579
-371	Lust for Life	Iggy Pop	1977	Q587585
-372	From Elvis in Memphis	Elvis Presley	1969	Q1004072
-373	Live at the Harlem Square Club, 1963	Sam Cooke	1985	Q221622
-374	The Stranger	Billy Joel	1977	Q202183
-375	Zen Arcade	Hüsker Dü	1984	Q1756193
-376	Laughing Stock	Talk Talk	1991	Q1807611
-377	Radio City	Big Star	1974	Q1939617
-378	Solid Air	John Martyn	1973	Q1289811
-379	Vespertine	Björk	2001	Q375207
-380	Germfree Adolescents	X-Ray Spex	1978	Q755450
-381	Roxy Music	Roxy Music	1972	Q602249
-382	Pink Flag	Wire	1977	Q370633
-383	Dirty Computer	Janelle Monáe	2018	Q52213432
-384	Natty Dread	Bob Marley and the Wailers	1974	Q913435
-385	I Can Hear the Heart Beating as One	Yo La Tengo	1997	Q13586166
-386	Liege & Lief	Fairport Convention	1969	Q913069
-387	I'm Your Man	Leonard Cohen	1988	Q946629
-388	Cut	The Slits	1979	Q899653
-389	Fleet Foxes	Fleet Foxes	2008	Q1237201
-390	The Great Twenty-Eight	Chuck Berry	1982	Q775877
-391	Something Else by The Kinks	The Kinks	1967	Q535579
-392	You're Living All over Me	Dinosaur Jr.	1987	Q573113
-393	Treasure	Cocteau Twins	1984	Q782511
-394	The River	Bruce Springsteen	1980	Q1340975
-395	Rust Never Sleeps	Neil Young, Crazy Horse	1979	Q927457
-396	The Lexicon of Love	ABC	1982	Q1188724
-397	Dirty Mind	Prince	1980	Q1228240
-398	The Fame Monster	Lady Gaga	2009	Q164621
-399	Cheap Thrills	Big Brother and the Holding Company	1968	Q860418
-400	Document	R.E.M.	1987	Q904490
-401	Every Picture Tells a Story	Rod Stewart	1971	Q993764
-402	Searching for the Young Soul Rebels	Dexys Midnight Runners	1980	Q756362
-403	All Eyez on Me	2Pac	1996	Q498054
-404	Mothership Connection	Parliament	1975	Q766984
-405	Band on the Run	Paul McCartney, Wings	1973	Q572093
-406	My Life	Mary J. Blige	1994	Q2520722
-407	John Prine	John Prine	1971	Q1101326
-408	Imagine	John Lennon	1971	Q333266
-409	I Put a Spell on You	Nina Simone	1965	Q1641852
-410	Eli and the Thirteenth Confession	Laura Nyro	1968	Q728044
-411	Goo	Sonic Youth	1990	Q1011916
-412	Pearl	Janis Joplin	1971	Q220744
-413	Berlin	Lou Reed	1973	Q793582
-414	Clube da Esquina	Milton Nascimento, Lô Borges	1972	Q18244395
-415	Bad	Michael Jackson	1987	Q44142
-416	Tha Carter III	Lil Wayne	2008	Q1417942
-417	The Shape of Jazz to Come	Ornette Coleman	1959	Q930325
-418	Crosby, Stills & Nash	Crosby, Stills & Nash	1969	Q869918
-419	Late Registration	Kanye West	2005	Q1130097
-420	Legend	Bob Marley and the Wailers	1984	Q594250
-421	We're Only in It for the Money	The Mothers of Invention	1968	Q901620
-422	I See a Darkness	Bonnie "Prince" Billy	1999	Q847362
-423	Bandwagonesque	Teenage Fanclub	1991	Q789982
-424	Franz Ferdinand	Franz Ferdinand	2004	Q829973
-425	The Head on the Door	The Cure	1985	Q1931734
-426	XTRMNTR	Primal Scream	2000	Q2006424
-427	American Recordings	Johnny Cash	1994	Q466622
-428	John Wesley Harding	Bob Dylan	1967	Q740161
-429	And Then Nothing Turned Itself Inside Out	Yo La Tengo	2000	Q4753374
-430	Ágætis byrjun	Sigur Rós	1999	Q249952
-431	The Nightfly	Donald Fagen	1982	Q1190071
-432	Halcyon Digest	Deerhunter	2010	Q3311608
-433	Love and Theft	Bob Dylan	2001	Q425909
-434	The Wall	Pink Floyd	1979	Q151114
-435	Safe as Milk	Captain Beefheart	1967	Q305207
-436	Toxicity	System of a Down	2001	Q218971
-437	Good Old Boys	Randy Newman	1974	Q755367
-438	Emperor Tomato Ketchup	Stereolab	1996	Q3053205
-439	Nothing's Shocking	Jane's Addiction	1988	Q1189149
-440	Superunknown	Soundgarden	1994	Q739924
-441	Bookends	Simon & Garfunkel	1968	Q796762
-442	Aftermath	The Rolling Stones	1966	Q389281,Q62579599
-443	Teen Dream	Beach House	2010	Q200510
-444	Grievous Angel	Gram Parsons	1974	Q573404
-445	De La Soul Is Dead	De La Soul	1991	Q222316
-446	A Grand Don't Come for Free	The Streets	2004	Q438369
-447	Ctrl	SZA	2017	Q30598066
-448	Heartbreaker	Ryan Adams	2000	Q645435
-449	I Am a Bird Now	Anohni and the Johnsons	2005	Q1768257
-450	My Life in the Bush of Ghosts	Brian Eno, David Byrne	1981	Q1066227
-451	Damn	Kendrick Lamar	2017	Q29349514
-452	Blood Sugar Sex Magik	Red Hot Chili Peppers	1991	Q329396
-453	The Dreaming	Kate Bush	1982	Q1188851
-454	Pornography	The Cure	1982	Q904080
-455	Elastica	Elastica	1995	Q853449
-456	When the Pawn...	Fiona Apple	1999	Q2003805
-457	Ocean Rain	Echo & the Bunnymen	1984	Q587813
-458	Saturday Night Fever		1977	Q928132
-459	The Suburbs	Arcade Fire	2010	Q1575638
-460	Mama's Gun	Erykah Badu	2000	Q847976
-461	Arular	M.I.A.	2005	Q610043
-462	Tusk	Fleetwood Mac	1979	Q749617
-463	Criminal Minded	Boogie Down Productions	1987	Q2706654
-464	The La's	The La's	1990	Q820561
-465	Sometimes I Sit and Think, and Sometimes I Just Sit	Courtney Barnett	2015	Q19750424
-466	Little Earthquakes	Tori Amos	1992	Q253057
-467	The World Is a Ghetto	War	1972	Q377837
-468	Avalon	Roxy Music	1982	Q1954070
-469	Play	Moby	1999	Q1064897
-470	Lifes Rich Pageant	R.E.M.	1986	Q2069748
-471	The Velvet Rope	Janet Jackson	1997	Q777308
-472	Madonna	Madonna	1983	Q177943
-473	Run–D.M.C.	Run-DMC	1984	Q926138
-474	Bee Thousand	Guided by Voices	1994	Q2793597
-475	Sail Away	Randy Newman	1972	Q755487
-476	Emotion	Carly Rae Jepsen	2015	Q20046854
-477	Radiator	Super Furry Animals	1997	Q7280378
-478	Here, My Dear	Marvin Gaye	1978	Q914440
-479	More Songs About Buildings and Food	Talking Heads	1978	Q1077225
-480	AmeriKKKa's Most Wanted	Ice Cube	1990	Q689666
-481	Random Access Memories	Daft Punk	2013	Q8119033
-482	The Cars	The Cars	1978	Q1188848
-483	Millions Now Living Will Never Die	Tortoise	1996	Q853063
-484	Sister	Sonic Youth	1987	Q941771
-485	Boy in da Corner	Dizzee Rascal	2003	Q252406
-486	Abattoir Blues / The Lyre of Orpheus	Nick Cave and the Bad Seeds	2004	Q479343
-487	Paul Simon	Paul Simon	1972	Q370482
-488	Going to a Go-Go	Smokey Robinson & The Miracles	1965	Q2192176
-489	Sandinista!	The Clash	1980	Q1142897
-490	Presenting the Fabulous Ronettes	The Ronettes	1964	Q3910940
-491	I Do Not Want What I Haven't Got	Sinéad O'Connor	1990	Q1060887
-492	Relationship of Command	At the Drive-In	2000	Q1386645
-493	Mellon Collie and the Infinite Sadness	The Smashing Pumpkins	1995	Q655602
-494	Buffalo Springfield Again	Buffalo Springfield	1967	Q851530
-495	Hex Enduction Hour	The Fall	1982	Q1943772
-496	The Hangman's Beautiful Daughter	The Incredible String Band	1968	Q977581
-497	At Fillmore East	The Allman Brothers Band	1971	Q1087498
-498	Paris 1919	John Cale	1973	Q685052
-499	FutureSex/LoveSounds	Justin Timberlake	2006	Q471924
-500	Brown Sugar	D’Angelo	1995	Q779719
+306	Treasure	Cocteau Twins	1984	Q782511
+307	John Prine	John Prine	1971	Q1101326
+308	AM	Arctic Monkeys	2013	Q13539256
+309	The Gilded Palace of Sin	The Flying Burrito Brothers	1969	Q245868
+310	From Elvis in Memphis	Elvis Presley	1969	Q1004072
+311	#1 Record	Big Star	1972	Q269307
+312	Hot Buttered Soul	Isaac Hayes	1969	Q521823
+313	Yeezus	Kanye West	2013	Q13378144
+314	Carrie & Lowell	Sufjan Stevens	2015	Q18758139
+315	Sister	Sonic Youth	1987	Q941771
+316	Mothership Connection	Parliament	1975	Q766984
+317	Licensed to Ill	Beastie Boys	1986	Q1073460
+318	Criminal Minded	Boogie Down Productions	1987	Q2706654
+319	Laughing Stock	Talk Talk	1991	Q1807611
+320	In the Wee Small Hours	Frank Sinatra	1955	Q221573
+321	Speakerboxxx/The Love Below	OutKast	2003	Q603672
+322	Anti	Rihanna	2016	Q21084500
+323	Cut	The Slits	1979	Q899653
+324	Faith	George Michael	1987	Q568555
+325	Journey in Satchidananda	Alice Coltrane	1971	Q6296378
+326	American Beauty	Grateful Dead	1970	Q255923
+327	Wish You Were Here	Pink Floyd	1975	Q200872
+328	American Idiot	Green Day	2004	Q151714
+329	Scary Monsters (and Super Creeps)	David Bowie	1980	Q1752993
+330	Natty Dread	Bob Marley and the Wailers	1974	Q913435
+331	Only Built 4 Cuban Linx...	Raekwon	1995	Q1187999
+332	Elvis Presley	Elvis Presley	1956	Q610926
+333	Damaged	Black Flag	1981	Q901386
+334	Rust Never Sleeps	Neil Young, Crazy Horse	1979	Q927457
+335	Control	Janet Jackson	1986	Q530266
+336	Déjà Vu	Crosby, Stills & Nash	1970	Q255471
+337	A Rush of Blood to the Head	Coldplay	2002	Q207970
+338	Berlin	Lou Reed	1973	Q793582
+339	"Heroes"	David Bowie	1977	Q595352
+340	The Black Album	Jay-Z	2003	Q2563740
+341	Goo	Sonic Youth	1990	Q1011916
+342	We're Only in It for the Money	The Mothers of Invention	1968	Q901620
+343	Can't Buy a Thrill	Steely Dan	1972	Q857908
+344	Doggystyle	Snoop Dogg	1993	Q753494
+345	One Nation Under a Groove	Funkadelic	1978	Q636006
+346	I Want to See the Bright Lights Tonight	Richard Thompson	1974	Q1095539
+347	Bossanova	Pixies	1990	Q1093303
+348	The Modern Dance	Pere Ubu	1978	Q914632
+349	21	Adele	2011	Q155169
+350	New Day Rising	Hüsker Dü	1985	Q1754295
+351	Call Me	Al Green	1973	Q5021543
+352	Sea Change	Beck	2002	Q590851
+353	Surf's Up	The Beach Boys	1971	Q940425
+354	A Wizard, a True Star	Todd Rundgren	1973	Q260728
+355	Weezer ["The Blue Album"]	Weezer	1994	Q1346351
+356	You're Living All over Me	Dinosaur Jr.	1987	Q573113
+357	Isn't Anything	My Bloody Valentine	1988	Q1098197
+358	Low-Life	New Order	1985	Q372143
+359	Dear Science	TV on the Radio	2008	Q1951071
+360	My Life in the Bush of Ghosts	Brian Eno, David Byrne	1981	Q1066227
+361	Metallica ["The Black Album"]	Metallica	1991	Q213516
+362	Countdown to Ecstasy	Steely Dan	1973	Q634785
+363	Vespertine	Björk	2001	Q375207
+364	Jagged Little Pill	Alanis Morissette	1995	Q750084
+365	Live at Leeds	The Who	1970	Q685345
+366	Bryter Layter	Nick Drake	1971	Q600038
+367	Tonight's the Night	Neil Young	1975	Q1066236
+368	Van Halen	Van Halen	1978	Q264135
+369	Live at the Harlem Square Club, 1963	Sam Cooke	1985	Q221622
+370	I See a Darkness	Bonnie "Prince" Billy	1999	Q847362
+371	When We All Fall Asleep, Where Do We Go?	Billie Eilish	2019	Q61157315
+372	Take Care	Drake	2011	Q5104794
+373	The Harder They Come		1972	Q937034
+374	American Recordings	Johnny Cash	1994	Q466622
+375	The Stranger	Billy Joel	1977	Q202183
+376	Lost in the Dream	The War on Drugs	2014	Q15858189
+377	Rum Sodomy & the Lash	The Pogues	1985	Q528746
+378	Pinkerton	Weezer	1996	Q1536639
+379	Halcyon Digest	Deerhunter	2010	Q3311608
+380	Up the Bracket	The Libertines	2002	Q2292774
+381	Aladdin Sane	David Bowie	1973	Q558969
+382	Radio City	Big Star	1974	Q1939617
+383	The Boatman's Call	Nick Cave and the Bad Seeds	1997	Q1187337
+384	Dig Your Own Hole	The Chemical Brothers	1997	Q678065
+385	Emotion	Carly Rae Jepsen	2015	Q20046854
+386	Songs for the Deaf	Queens of the Stone Age	2002	Q586984
+387	I Can Hear the Heart Beating as One	Yo La Tengo	1997	Q13586166
+388	Germfree Adolescents	X-Ray Spex	1978	Q755450
+389	The River	Bruce Springsteen	1980	Q1340975
+390	Donuts	J Dilla	2006	Q4346634
+391	Late Registration	Kanye West	2005	Q1130097
+392	Janet Jackson's Rhythm Nation 1814	Janet Jackson	1989	Q928863
+393	Dirty Mind	Prince	1980	Q1228240
+394	She's So Unusual	Cyndi Lauper	1983	Q263323
+395	Singles Going Steady	Buzzcocks	1979	Q3961850
+396	Surrealistic Pillow	Jefferson Airplane	1967	Q913092
+397	You Want It Darker	Leonard Cohen	2016	Q26271668
+398	Fleet Foxes	Fleet Foxes	2008	Q1237201
+399	Fresh Fruit for Rotting Vegetables	Dead Kennedys	1980	Q162069
+400	Little Earthquakes	Tori Amos	1992	Q253057
+401	I Put a Spell on You	Nina Simone	1965	Q1641852
+402	Teen Dream	Beach House	2010	Q200510
+403	Future Days	Can	1973	Q1004420
+404	Live at the Regal	B. B. King	1965	Q846100
+405	Bad	Michael Jackson	1987	Q44142
+406	Behaviour	Pet Shop Boys	1990	Q792049
+407	Deserter's Songs	Mercury Rev	1998	Q904278
+408	And Then Nothing Turned Itself Inside Out	Yo La Tengo	2000	Q4753374
+409	This Is Happening	LCD Soundsystem	2010	Q2620579
+410	Time (The Revelator)	Gillian Welch	2001	Q1321150
+411	Check Your Head	Beastie Boys	1992	Q608507
+412	All Eyez on Me	2Pac	1996	Q498054
+413	Eli and the Thirteenth Confession	Laura Nyro	1968	Q728044
+414	Lust for Life	Iggy Pop	1977	Q587585
+415	Currents	Tame Impala	2015	Q19824616
+416	Document	R.E.M.	1987	Q904490
+417	The Slim Shady LP	Eminem	1999	Q383459
+418	Let's Get It On	Marvin Gaye	1973	Q1094376
+419	Arular	M.I.A.	2005	Q610043
+420	Emperor Tomato Ketchup	Stereolab	1996	Q3053205
+421	XTRMNTR	Primal Scream	2000	Q2006424
+422	Solid Air	John Martyn	1973	Q1289811
+423	Roxy Music	Roxy Music	1972	Q602249
+424	The Head on the Door	The Cure	1985	Q1931734
+425	Oil of Every Pearl's Un-Insides	Sophie	2018	Q55094184
+426	Liege & Lief	Fairport Convention	1969	Q913069
+427	Something Else by The Kinks	The Kinks	1967	Q535579
+428	Songs from the Big Chair	Tears for Fears	1985	Q549774
+429	Love and Theft	Bob Dylan	2001	Q425909
+430	Dirty Computer	Janelle Monáe	2018	Q52213432
+431	Q. Are We Not Men? A: We Are Devo!	Devo	1978	Q670074
+432	Paris 1919	John Cale	1973	Q685052
+433	Cheap Thrills	Big Brother and the Holding Company	1968	Q860418
+434	Curtis	Curtis Mayfield	1970	Q717750
+435	The Slider	T. Rex	1972	Q1190112
+436	Ragged Glory	Neil Young, Crazy Horse	1990	Q515341
+437	Superunknown	Soundgarden	1994	Q739924
+438	Bookends	Simon & Garfunkel	1968	Q796762
+439	The Shape of Jazz to Come	Ornette Coleman	1959	Q930325
+440	Good Old Boys	Randy Newman	1974	Q755367
+441	Damn	Kendrick Lamar	2017	Q29349514
+442	The Great Twenty-Eight	Chuck Berry	1982	Q775877
+443	Safe as Milk	Captain Beefheart	1967	Q305207
+444	Ocean Rain	Echo & the Bunnymen	1984	Q587813
+445	I Am a Bird Now	Anohni and the Johnsons	2005	Q1768257
+446	Every Picture Tells a Story	Rod Stewart	1971	Q993764
+447	De La Soul Is Dead	De La Soul	1991	Q222316
+448	Band on the Run	Paul McCartney, Wings	1973	Q572093
+449	My Life	Mary J. Blige	1994	Q2520722
+450	Brown Sugar	D’Angelo	1995	Q779719
+451	The Lexicon of Love	ABC	1982	Q1188724
+452	The Wall	Pink Floyd	1979	Q151114
+453	Franz Ferdinand	Franz Ferdinand	2004	Q829973
+454	Crosby, Stills & Nash	Crosby, Stills & Nash	1969	Q869918
+455	The Fame Monster	Lady Gaga	2009	Q164621
+456	Searching for the Young Soul Rebels	Dexys Midnight Runners	1980	Q756362
+457	Neu!	Neu!	1972	Q1566338
+458	Imagine	John Lennon	1971	Q333266
+459	Red	Taylor Swift	2012	Q858750
+460	Clube da Esquina	Milton Nascimento, Lô Borges	1972	Q18244395
+461	Master of Reality	Black Sabbath	1971	Q658926
+462	Pearl	Janis Joplin	1971	Q220744
+463	Ágætis byrjun	Sigur Rós	1999	Q249952
+464	Getz/Gilberto	Stan Getz, João Gilberto	1964	Q1010134
+465	Nothing's Shocking	Jane's Addiction	1988	Q1189149
+466	Sometimes I Sit and Think, and Sometimes I Just Sit	Courtney Barnett	2015	Q19750424
+467	Lifes Rich Pageant	R.E.M.	1986	Q2069748
+468	Pornography	The Cure	1982	Q904080
+469	Tha Carter III	Lil Wayne	2008	Q1417942
+470	When the Pawn...	Fiona Apple	1999	Q2003805
+471	Saturday Night Fever		1977	Q928132
+472	John Wesley Harding	Bob Dylan	1967	Q740161
+473	Millions Now Living Will Never Die	Tortoise	1996	Q853063
+474	Buena Vista Social Club	Buena Vista Social Club	1997	Q1597639
+475	Heartbreaker	Ryan Adams	2000	Q645435
+476	The Velvet Rope	Janet Jackson	1997	Q777308
+477	The Lonesome Crowded West	Modest Mouse	1997	Q7748155
+478	Ctrl	SZA	2017	Q30598066
+479	Presenting the Fabulous Ronettes	The Ronettes	1964	Q3910940
+480	Madonna	Madonna	1983	Q177943
+481	The Suburbs	Arcade Fire	2010	Q1575638
+482	Tusk	Fleetwood Mac	1979	Q749617
+483	Bandwagonesque	Teenage Fanclub	1991	Q789982
+484	Toxicity	System of a Down	2001	Q218971
+485	Dog Man Star	Suede	1994	Q663543
+486	Legend	Bob Marley and the Wailers	1984	Q594250
+487	Brian Wilson Presents Smile	Brian Wilson	2004	Q964306
+488	The Cars	The Cars	1978	Q1188848
+489	Cosmo's Factory	Creedence Clearwater Revival	1970	Q869314
+490	Grievous Angel	Gram Parsons	1974	Q573404
+491	Richard D. James Album	Aphex Twin	1996	Q922756
+492	The Nightfly	Donald Fagen	1982	Q1190071
+493	Boy in da Corner	Dizzee Rascal	2003	Q252406
+494	Aftermath	The Rolling Stones	1966	Q389281,Q62579599
+495	Pills 'n' Thrills and Bellyaches	Happy Mondays	1990	Q915936
+496	Avalon	Roxy Music	1982	Q1954070
+497	LP1	FKA Twigs	2014	Q17524127
+498	I Do Not Want What I Haven't Got	Sinéad O'Connor	1990	Q1060887
+499	Out to Lunch!	Eric Dolphy	1964	Q522174
+500	Los Angeles	X	1980	Q1147518
+501	Sandinista!	The Clash	1980	Q1142897
+502	Let It Be	The Beatles	1970	Q199585
+503	Blood Sugar Sex Magik	Red Hot Chili Peppers	1991	Q329396
+504	Boxer	The National	2007	Q2467268
+505	Double Negative	Low	2018	Q56611332
+506	Diamond Life	Sade	1984	Q904971
+507	Southeastern	Jason Isbell	2013	Q17062011
+508	13	Blur	1999	Q186689
+509	Silent Shout	The Knife	2006	Q3622642
+510	A Grand Don't Come for Free	The Streets	2004	Q438369
+511	Mr. Tambourine Man	The Byrds	1965	Q959637
+512	All Things Must Pass	George Harrison	1970	Q654204
+513	Elastica	Elastica	1995	Q853449
+514	The Idiot	Iggy Pop	1977	Q970795
+515	Love Deluxe	Sade	1992	Q1185154
+516	Lift Your Skinny Fists like Antennas to Heaven	Godspeed You! Black Emperor	2000	Q920503
+517	A Night at the Opera	Queen	1975	Q193477
+518	The Dreaming	Kate Bush	1982	Q1188851
+519	Play	Moby	1999	Q1064897
+520	FutureSex/LoveSounds	Justin Timberlake	2006	Q471924
+521	Stop Making Sense	Talking Heads	1984	Q7619740
+522	xx	The xx	2009	Q285120
+523	Actually	Pet Shop Boys	1987	Q344590
+524	Happy Sad	Tim Buckley	1969	Q426474
+525	Things Fall Apart	The Roots	1999	Q1061660
+526	The La's	The La's	1990	Q820561
+527	Mama's Gun	Erykah Badu	2000	Q847976
+528	No Other	Gene Clark	1974	Q1218351
+529	Here, My Dear	Marvin Gaye	1978	Q914440
+530	Some Girls	The Rolling Stones	1978	Q945740
+531	The World Is a Ghetto	War	1972	Q377837
+532	Sail Away	Randy Newman	1972	Q755487
+533	Zombie	Fela Kuti	1976	Q643431
+534	More Songs About Buildings and Food	Talking Heads	1978	Q1077225
+535	Radiator	Super Furry Animals	1997	Q7280378
+536	Bee Thousand	Guided by Voices	1994	Q2793597
+537	Ghosteen	Nick Cave and the Bad Seeds	2019	Q68308370
+538	Nightclubbing	Grace Jones	1981	Q677127
+539	Inspiration Information	Shuggie Otis	1974	Q266466
+540	Bone Machine	Tom Waits	1992	Q371310
+541	Going to a Go-Go	Smokey Robinson & The Miracles	1965	Q2192176
+542	AmeriKKKa's Most Wanted	Ice Cube	1990	Q689666
+543	Abattoir Blues / The Lyre of Orpheus	Nick Cave and the Bad Seeds	2004	Q479343
+544	Paul Simon	Paul Simon	1972	Q370482
+545	Buffalo Springfield Again	Buffalo Springfield	1967	Q851530
+546	All Mod Cons	The Jam	1978	Q654045
+547	Mellon Collie and the Infinite Sadness	The Smashing Pumpkins	1995	Q655602
+548	Moving Pictures	Rush	1981	Q904976
+549	Beauty and the Beat	The Go-Go's	1981	Q756288
+550	In the Court of the Crimson King	King Crimson	1969	Q212799
+551	Tracy Chapman	Tracy Chapman	1988	Q129804
+552	Young Americans	David Bowie	1975	Q765031
+553	Peter Gabriel 3: Melt	Peter Gabriel	1980	Q133933
+554	A Moon Shaped Pool	Radiohead	2016	Q24037694
+555	I Love You, Honeybear	Father John Misty	2015	Q18702224
+556	The Hangman's Beautiful Daughter	The Incredible String Band	1968	Q977581
+557	Random Access Memories	Daft Punk	2013	Q8119033
+558	Hex Enduction Hour	The Fall	1982	Q1943772
+559	Moby Grape	Moby Grape	1967	Q846125
+560	Relationship of Command	At the Drive-In	2000	Q1386645
+561	Black Sabbath	Black Sabbath	1970	Q328482
+562	At Fillmore East	The Allman Brothers Band	1971	Q1087498
+563	My Generation	The Who	1965	Q375249
+564	Rated R	Queens of the Stone Age	2000	Q1267544
+565	LCD Soundsystem	LCD Soundsystem	2005	Q2660587
+566	Timeless	Goldie	1995	Q718732
+567	Sketches of Spain	Miles Davis	1960	Q926812
+568	Run–D.M.C.	Run-DMC	1984	Q926138
+569	Skylarking	XTC	1986	Q367220
+570	Tidal	Fiona Apple	1996	Q847595
+571	Violent Femmes	Violent Femmes	1983	Q915047
+572	Tilt	Scott Walker	1995	Q3528550
+573	The Holy Bible	Manic Street Preachers	1994	Q587425
+574	Titanic Rising	Weyes Blood	2019	Q62515490
+575	The "Chirping" Crickets	The Crickets	1957	Q845923
+576	The Grey Album	Danger Mouse	2004	Q661738
+577	Hats	The Blue Nile	1989	Q16993749
+578	Meat Is Murder	The Smiths	1985	Q1065599
+579	3 + 3	The Isley Brothers	1973	Q1490166
+580	L.A. Woman	The Doors	1971	Q212846
+581	40 Greatest Hits	Hank Williams	1978	Q4637398
+582	Veckatimest	Grizzly Bear	2009	Q857793
+583	New Boots and Panties!!	Ian Dury	1977	Q259823
+584	If I Could Only Remember My Name	David Crosby	1971	Q613887
+585	Giant Steps	John Coltrane	1960	Q1516218
+586	Underwater Moonlight	The Soft Boys	1980	Q684063
+587	Person Pitch	Panda Bear	2007	Q7170443
+588	Tea for the Tillerman	Cat Stevens	1970	Q1077486
+589	It's Too Late to Stop Now	Van Morrison	1974	Q846280
+590	On the Corner	Miles Davis	1972	Q2610414
+591	I'm Wide Awake, It's Morning	Bright Eyes	2005	Q1536631
+592	Autobahn	Kraftwerk	1974	Q544099
+593	On Fire	Galaxie 500	1989	Q1147023
+594	World of Echo	Arthur Russell	1986	Q8036598
+595	Some Rap Songs	Earl Sweatshirt	2018	Q59307022
+596	Sweet Baby James	James Taylor	1970	Q745580
+597	Eagles	Eagles	1972	Q987438
+598	The Rising	Bruce Springsteen	2002	Q280315
+599	Layla and Other Assorted Love Songs	Derek and the Dominos	1970	Q843511
+600	Rocks	Aerosmith	1976	Q830738
+601	James Blake	James Blake	2011	Q1320814
+602	Return to Cookie Mountain	TV on the Radio	2006	Q1950649
+603	Modern Life Is Rubbish	Blur	1993	Q839345
+604	Risqué	Chic	1979	Q671605
+605	Le Tigre	Le Tigre	1999	Q847634
+606	The Moon & Antarctica	Modest Mouse	2000	Q3544418
+607	At Last!	Etta James	1960	Q3280688
+608	Diamond Dogs	David Bowie	1974	Q1629619
+609	Nuggets: Original Artyfacts from the First Psychedelic Era, 1965–1968		1972	Q744572
+610	The Marble Index	Nico	1968	Q1934496
+611	Abraxas	Santana	1970	Q284798
+612	Live/Dead	Grateful Dead	1969	Q557654
+613	The United States of America	The United States of America	1968	Q1319869
+614	Giant Steps	The Boo Radleys	1993	Q1010296
+615	Chairs Missing	Wire	1978	Q642096
+616	Chutes Too Narrow	The Shins	2003	Q1090053
+617	Bizarre Ride II the Pharcyde	The Pharcyde	1992	Q804148
+618	Copper Blue	Sugar	1992	Q821891
+619	Emergency & I	The Dismemberment Plan	1999	Q5370542
+620	(Pronounced 'Lĕh-'nérd 'Skin-'nérd)	Lynyrd Skynyrd	1973	Q276827
+621	New York	Lou Reed	1989	Q2720168
+622	Hatful of Hollow	The Smiths	1984	Q1753988
+623	Silent Alarm	Bloc Party	2005	Q1415704
+624	Supreme Clientele	Ghostface Killah	2000	Q4354411
+625	Black Monk Time	Monks	1966	Q735414
+626	The Warning	Hot Chip	2006	Q3285140
+627	Nilsson Schmilsson	Harry Nilsson	1971	Q1218171
+628	Remedy	Basement Jaxx	1999	Q847559
+629	Nancy & Lee	Nancy Sinatra, Lee Hazlewood	1968	Q6962512
+630	Music of My Mind	Stevie Wonder	1972	Q1929619
+631	Vulnicura	Björk	2015	Q18762354
+632	Art Angels	Grimes	2015	Q21198126
+633	Selected Ambient Works Volume II	Aphex Twin	1994	Q1933629
+634	Bon Iver	Bon Iver	2011	Q2636653
+635	20 Jazz Funk Greats	Throbbing Gristle	1979	Q4356849
+636	Sunbather	Deafheaven	2013	Q15717528
+637	Music for the Jilted Generation	The Prodigy	1994	Q836674
+638	Music for 18 Musicians	Steve Reich	1978	Q104724128
+639	Think Tank	Blur	2003	Q889228
+640	Rattlesnakes	Lloyd Cole and the Commotions	1984	Q1246110
+641	Disraeli Gears	Cream	1967	Q269211
+642	Willy and the Poor Boys	Creedence Clearwater Revival	1969	Q1546636
+643	Miss America	Mary Margaret O'Hara	1988	Q6875992
+644	Flower Boy	Tyler, the Creator	2017	Q32922784
+645	Mama Said Knock You Out	LL Cool J	1990	Q636979
+646	Deceit	This Heat	1981	Q3020983
+647	That's the Way of the World	Earth, Wind & Fire	1975	Q616224
+648	Neon Bible	Arcade Fire	2007	Q1630983
+649	Miss E... So Addictive	Missy Elliott	2001	Q2351202
+650	The Life of Pablo	Kanye West	2016	Q21996865
+651	Oracular Spectacular	MGMT	2007	Q1574866
+652	The Indestructible Beat of Soweto		1985	Q7741839
+653	In Colour	Jamie xx	2015	Q19824719
+654	Sulk	The Associates	1982	Q523325
+655	África Brasil	Jorge Ben	1976	Q1412463
+656	Vauxhall and I	Morrissey	1994	Q383240
+657	The Woods	Sleater-Kinney	2005	Q3311214
+658	Pastel Blues	Nina Simone	1965	Q3897497
+659	Reach Out	Four Tops	1967	Q7300175
+660	Acid Rap	Chance the Rapper	2013	Q15519343
+661	Back to Mono (1958–1969)		1991	Q576557
+662	First Take	Roberta Flack	1969	Q5453862
+663	Strange Mercy	St. Vincent	2011	Q7621430
+664	El mal querer	Rosalía	2018	Q56650719
+665	Hot Fuss	The Killers	2004	Q215223
+666	New York Tendaberry	Laura Nyro	1969	Q13516679
+667	Visions	Grimes	2012	Q605854
+668	War	U2	1983	Q331811
+669	Dirt	Alice in Chains	1992	Q835555
+670	Led Zeppelin III	Led Zeppelin	1970	Q207438
+671	C'est Chic	Chic	1978	Q855965
+672	Brothers in Arms	Dire Straits	1985	Q258609
+673	Seventeen Seconds	The Cure	1980	Q853423
+674	Amazing Grace	Aretha Franklin	1972	Q3613741
+675	A Christmas Gift for You from Phil Spector		1963	Q435802
+676	You Forgot It in People	Broken Social Scene	2002	Q6450665
+677	Give Up	The Postal Service	2003	Q577717
+678	Skeleton Tree	Nick Cave and the Bad Seeds	2016	Q24514656
+679	Sound Affects	The Jam	1980	Q846993
+680	Saturdays = Youth	M83	2008	Q7426762
+681	Lucinda Williams	Lucinda Williams	1988	Q6697399
+682	Modern Times	Bob Dylan	2006	Q1324012
+683	Midnight Marauders	A Tribe Called Quest	1993	Q631450
+684	Bad Girls	Donna Summer	1979	Q788286
+685	Pure Heroine	Lorde	2013	Q15042463
+686	Ambient 1: Music for Airports	Brian Eno	1979	Q127100
+687	Closing Time	Tom Waits	1973	Q1753003
+688	Let Love In	Nick Cave and the Bad Seeds	1994	Q967395
+689	Trouble Will Find Me	The National	2013	Q10558537
+690	His 'n' Hers	Pulp	1994	Q1755342
+691	Listen Without Prejudice Vol. 1	George Michael	1990	Q547927
+692	Karma	Pharoah Sanders	1969	Q1571202
+693	Floating into the Night	Julee Cruise	1989	Q5459917
+694	Purple Mountains	Purple Mountains	2019	Q85795067
+695	Pretty Hate Machine	Nine Inch Nails	1989	Q836587
+696	Juju	Siouxsie and the Banshees	1981	Q914404
+697	Life After Death	The Notorious B.I.G.	1997	Q519122
+698	People's Instinctive Travels and the Paths of Rhythm	A Tribe Called Quest	1990	Q1041284
+699	Kollaps	Einstürzende Neubauten	1981	Q220931
+700	High Land, Hard Rain	Aztec Camera	1983	Q3785525
+701	Kill the Moonlight	Spoon	2002	Q6407222
+702	1984	Van Halen	1984	Q208429
+703	The Writing's on the Wall	Destiny's Child	1999	Q617443
+704	Demon Days	Gorillaz	2005	Q834418
+705	Graduation	Kanye West	2007	Q1129439
+706	Nowhere	Ride	1990	Q611093
+707	Hell Hath No Fury	Clipse	2006	Q5706587
+708	Freak Out!	The Mothers of Invention	1966	Q835474
+709	Colossal Youth	Young Marble Giants	1980	Q5149116
+710	American III: Solitary Man	Johnny Cash	2000	Q465057
+711	The Drift	Scott Walker	2006	Q3520679
+712	Parachutes	Coldplay	2000	Q131977
+713	So Tonight That I Might See	Mazzy Star	1993	Q1150249
+714	Songs from a Room	Leonard Cohen	1969	Q260860
+715	All That You Can't Leave Behind	U2	2000	Q296586
+716	The Milk-Eyed Mender	Joanna Newsom	2004	Q1405406
+717	Wildflowers	Tom Petty	1994	Q1935759
+718	A Ghost Is Born	Wilco	2004	Q1426589
+719	22, A Million	Bon Iver	2016	Q26262770
+720	The Epic	Kamasi Washington	2015	Q20648801
+721	Quadrophenia	The Who	1973	Q1123963
+722	Californication	Red Hot Chili Peppers	1999	Q219425
+723	American Dream	LCD Soundsystem	2017	Q30597800
+724	Reggatta de Blanc	The Police	1979	Q847683
+725	American IV: The Man Comes Around	Johnny Cash	2002	Q465068
+726	Guitar Town	Steve Earle	1986	Q846802
+727	Clandestino	Manu Chao	1998	Q867788
+728	( )	Sigur Rós	2002	Q8364
+729	Suede	Suede	1993	Q1078818
+730	Rapture	Anita Baker	1986	Q846783
+731	Daytona	Pusha T	2018	Q54171177
+732	Houses of the Holy	Led Zeppelin	1973	Q211413
+733	Ram	Paul McCartney, Linda McCartney	1971	Q252230
+734	Push the Sky Away	Nick Cave and the Bad Seeds	2013	Q166063
+735	Arthur (Or the Decline and Fall of the British Empire)	The Kinks	1969	Q672782
+736	Where Did Our Love Go	The Supremes	1964	Q2947738
+737	Cosmogramma	Flying Lotus	2010	Q5174328
+738	The Raincoats	The Raincoats	1979	Q7759337
+739	Scott 3	Scott Walker	1969	Q3476160
+740	Please Please Me	The Beatles	1963	Q181826
+741	Celebration Rock	Japandroids	2012	Q756219
+742	Rocket to Russia	Ramones	1977	Q1352199
+743	Run the Jewels 2	Run the Jewels	2014	Q18163579
+744	High Violet	The National	2010	Q370764
+745	Rejuvenation	The Meters	1974	Q7310577
+746	Atrocity Exhibition	Danny Brown	2016	Q27889395
+747	Gold	Ryan Adams	2001	Q916453
+748	Chill Out	The KLF	1990	Q355395
+749	Being There	Wilco	1996	Q792071
+750	Townes Van Zandt	Townes Van Zandt	1969	Q7830112
+751	Private Dancer	Tina Turner	1984	Q700970
+752	Blood & Chocolate	Elvis Costello	1986	Q756625
+753	If You Can Believe Your Eyes and Ears	The Mamas & the Papas	1966	Q1040127
+754	Immigrés	Youssou N’Dour	1984	Q1096637
+755	Bummed	Happy Mondays	1988	Q851929
+756	Smoke Ring for My Halo	Kurt Vile	2011	Q17021198
+757	GP	Gram Parsons	1973	Q1081281
+758	Nixon	Lambchop	2000	Q568806
+759	The Sun Sessions	Elvis Presley	1976	Q1077777
+760	Z	My Morning Jacket	2005	Q8063327
+761	Cross / †	Justice	2007	Q340079
+762	There Is Love in You	Four Tet	2010	Q1143345
+763	If You're Reading This It's Too Late	Drake	2015	Q19248558
+764	Amnesiac	Radiohead	2001	Q223650
+765	Desire	Bob Dylan	1976	Q1200744
+766	Before and After Science	Brian Eno	1977	Q676884
+767	Close to the Edge	Yes	1972	Q686598
+768	Anthology of American Folk Music		1952	Q4771901
+769	Let's Dance	David Bowie	1983	Q113189
+770	Hot Rats	Frank Zappa	1969	Q79195
+771	Don't Stand Me Down	Dexys Midnight Runners	1985	Q908509
+772	Have You in My Wilderness	Julia Holter	2015	Q20992394
+773	A Northern Soul	The Verve	1995	Q300507
+774	Star Time	James Brown	1991	Q613274
+775	Bert Jansch	Bert Jansch	1965	Q793730
+776	Alligator	The National	2005	Q2838311
+777	The Battle of Los Angeles	Rage Against the Machine	1999	Q754834
+778	Robyn	Robyn	2005	Q3284281
+779	808s & Heartbreak	Kanye West	2008	Q271308
+780	The Greatest	Cat Power	2006	Q1080203
+781	The Only Ones	The Only Ones	1978	Q593547
+782	Gunfighter Ballads and Trail Songs	Marty Robbins	1959	Q1028780
+783	This Is Hardcore	Pulp	1998	Q550525
+784	Ga Ga Ga Ga Ga	Spoon	2007	Q2370606
+785	Blues Breakers with Eric Clapton	John Mayall & the Bluesbreakers, Eric Clapton	1966	Q19260
+786	Be the Cowboy	Mitski	2018	Q55080282
+787	The ArchAndroid	Janelle Monáe	2010	Q1933237
+788	Songs About Fucking	Big Black	1987	Q1424916
+789	Crazy Rhythms	The Feelies	1980	Q611323
+790	Invasion of Privacy	Cardi B	2018	Q51027746
+791	Kaputt	Destroyer	2011	Q1728779
+792	Live and Dangerous	Thin Lizzy	1978	Q1090100
+793	The Genius of Ray Charles	Ray Charles	1959	Q846519
+794	Unhalfbricking	Fairport Convention	1969	Q371317
+795	Figure 8	Elliott Smith	2000	Q263520
+796	Parsley, Sage, Rosemary and Thyme	Simon & Garfunkel	1966	Q747405
+797	Selling England by the Pound	Genesis	1973	Q750081
+798	Red	King Crimson	1974	Q928448
+799	Raising Sand	Robert Plant, Alison Krauss	2007	Q866481
+800	GI	Germs	1979	Q755912
+801	An Awesome Wave	Alt-J	2012	Q1389280
+802	The Madcap Laughs	Syd Barrett	1970	Q585923
+803	Green River	Creedence Clearwater Revival	1969	Q926391
+804	Playing with Fire	Spacemen 3	1989	Q1237273
+805	Ella Fitzgerald Sings the George and Ira Gershwin Song Book	Ella Fitzgerald	1959	Q988911
+806	Happy Trails	Quicksilver Messenger Service	1969	Q754693
+807	King of the Delta Blues Singers	Robert Johnson	1961	Q1108847
+808	Horse Rotorvator	Coil	1986	Q3786820
+809	Ace of Spades	Motörhead	1980	Q481752
+810	Ellington at Newport	Duke Ellington	1956	Q1332214
+811	Revival	Gillian Welch	1996	Q7318513
+812	Highway to Hell	AC/DC	1979	Q285929
+813	Burnin'	Bob Marley and the Wailers	1973	Q852213
+814	Eliminator	ZZ Top	1983	Q253369
+815	Monster Movie	Can	1969	Q1952542
+816	Close to You	The Carpenters	1970	Q868020
+817	13 Songs	Fugazi	1989	Q2807634
+818	The Beach Boys Today!	The Beach Boys	1965	Q224367
+819	Aha Shake Heartbreak	Kings of Leon	2004	Q552221
+820	The Immaculate Collection	Madonna	1990	Q642470
+821	Strange Days	The Doors	1967	Q212665
+822	Get Rich or Die Tryin'	50 Cent	2003	Q756782
+823	Metamodern Sounds in Country Music	Sturgill Simpson	2014	Q18713724
+824	Brothers	The Black Keys	2010	Q1930987
+825	It's a Shame About Ray	The Lemonheads	1992	Q1098435
+826	One in a Million	Aaliyah	1996	Q938836
+827	At Newport 1960	Muddy Waters	1960	Q779941
+828	Roger the Engineer	The Yardbirds	1966	Q924365
+829	Hail to the Thief	Radiohead	2003	Q274963
+830	Nick of Time	Bonnie Raitt	1989	Q255954
+831	Meat Puppets II	Meat Puppets	1984	Q756379
+832	E2-E4	Manuel Göttsching	1984	Q1273664
+833	Ride the Lightning	Metallica	1984	Q190989
+834	Settle	Disclosure	2013	Q15430249
+835	Gaucho	Steely Dan	1980	Q735403
+836	Toys in the Attic	Aerosmith	1975	Q683019
+837	Moanin' in the Moonlight	Howlin' Wolf	1959	Q1649120
+838	The English Riviera	Metronomy	2011	Q3520757
+839	16 Lovers Lane	The Go-Betweens	1988	Q756757
+840	Ritual de lo Habitual	Jane's Addiction	1990	Q673386
+841	Neu! '75	Neu!	1975	Q1065671
+842	Meet the Beatles!	The Beatles	1964	Q913616
+843	Stardust	Willie Nelson	1978	Q781877
+844	Talking Heads: 77	Talking Heads	1977	Q1066535
+845	American Water	Silver Jews	1998	Q4745360
+846	Born to Die	Lana Del Rey	2012	Q37148
+847	You Are Free	Cat Power	2003	Q1994885
+848	New Forms	Roni Size & Reprazent	1997	Q1217448
+849	Scum	Napalm Death	1987	Q1070440
+850	Gentlemen	The Afghan Whigs	1993	Q756405
+851	Geogaddi	Boards of Canada	2002	Q1503114
+852	Alive!	Kiss	1975	Q650560
+853	Aqualung	Jethro Tull	1971	Q623040
+854	Bat Out of Hell	Meat Loaf	1977	Q776064
+855	California	American Music Club	1988	Q570510
+856	Astroworld	Travis Scott	2018	Q55934491
+857	Face to Face	The Kinks	1966	Q675825
+858	20 Golden Greats	Buddy Holly	1978	Q1413848
+859	Mingus Ah Um	Charles Mingus	1959	Q1787154
+860	Leader of the Pack	The Shangri-Las	1965	Q17019922
+861	Help!	The Beatles	1965	Q201816
+862	The Sensual World	Kate Bush	1989	Q1065457
+863	Big Science	Laurie Anderson	1982	Q3283080
+864	Bad Brains	Bad Brains	1982	Q1442416
+865	Atomizer	Big Black	1986	Q647288
+866	Music for the Masses	Depeche Mode	1987	Q584720
+867	Rio	Duran Duran	1982	Q588352
+868	Mott	Mott the Hoople	1973	Q756499
+869	Clouds	Joni Mitchell	1969	Q781732
+870	Lonerism	Tame Impala	2012	Q3136228
+871	Rattus Norvegicus	The Stranglers	1977	Q772593
+872	Bo Diddley	Bo Diddley	1958	Q4931076
+873	Go Bo Diddley	Bo Diddley	1959	Q5574731
+874	Pretzel Logic	Steely Dan	1974	Q1065716
+875	The Man Who Sold the World	David Bowie	1970	Q1129202
+876	Out of Step	Minor Threat	1983	Q1040730
+877	Damn the Torpedoes	Tom Petty and the Heartbreakers	1979	Q45032
+878	St. Vincent	St. Vincent	2014	Q15707989
+879	Dry	PJ Harvey	1992	Q910088
+880	Under Construction	Missy Elliott	2002	Q1074943
+881	Transatlanticism	Death Cab for Cutie	2003	Q16418
+882	Cupid & Psyche 85	Scritti Politti	1985	Q756264
+883	Y	The Pop Group	1979	Q3571181
+884	Dubnobasswithmyheadman	Underworld	1994	Q3040557
+885	Os Mutantes	Os Mutantes	1968	Q650681
+886	Bitte Orca	Dirty Projectors	2009	Q4918958
+887	Get Happy!!	Elvis Costello	1980	Q2746563
+888	Blur	Blur	1997	Q548770
+889	F♯ A♯ ∞	Godspeed You! Black Emperor	1997	Q1483981
+890	Sounds of Silence	Simon & Garfunkel	1966	Q768587
+891	When I Was Born for the 7th Time	Cornershop	1997	Q1464595
+892	Free Jazz: A Collective Improvisation	Ornette Coleman	1961	Q1408653
+893	Mellow Gold	Beck	1994	Q1768254
+894	Honky Château	Elton John	1972	Q1753042
+895	Maxwell's Urban Hang Suite	Maxwell	1996	Q980430
+896	Want One	Rufus Wainwright	2003	Q918233
+897	Radio	LL Cool J	1985	Q614065
+898	Alien Lanes	Guided by Voices	1995	Q649973
+899	Broken English	Marianne Faithfull	1979	Q849982
+900	The Sophtware Slump	Grandaddy	2000	Q3522780
+901	I'm Still in Love with You	Al Green	1972	Q17005727
+902	Keep It Like a Secret	Built to Spill	1999	Q6382975
+903	461 Ocean Boulevard	Eric Clapton	1974	Q235486
+904	Duck Rock	Malcolm McLaren	1983	Q910692
+905	m b v	My Bloody Valentine	2013	Q4144948
+906	Viva Hate	Morrissey	1988	Q530496
+907	Look-Ka Py Py	The Meters	1969	Q6674927
+908	Ghost in the Machine	The Police	1981	Q751468
+909	With the Beatles	The Beatles	1963	Q182389
+910	Crocodiles	Echo & the Bunnymen	1980	Q914583
+911	The Number of the Beast	Iron Maiden	1982	Q223858
+912	Soundtrack from Twin Peaks	Angelo Badalamenti	1990	Q3683573
+913	Greatest Hits	Sly and the Family Stone	1970	Q723193
+914	The Wild, the Innocent & the E Street Shuffle	Bruce Springsteen	1973	Q1463801
+915	We Are Family	Sister Sledge	1979	Q1412811
+916	XO	Elliott Smith	1998	Q2699525
+917	A Nod Is As Good As a Wink... to a Blind Horse	Faces	1971	Q460239
+918	You Can't Hide Your Love Forever	Orange Juice	1982	Q8057024
+919	The Basement Tapes	Bob Dylan, The Band	1975	Q1471926
+920	There's No Place Like America Today	Curtis Mayfield	1975	Q239821
+921	Grand Prix	Teenage Fanclub	1995	Q5594915
+922	Green	R.E.M.	1988	Q920586
+923	Tunnel of Love	Bruce Springsteen	1987	Q1470388
+924	Funky Kingston	Toots and the Maytals	1973	Q723201
+925	Fuzzy Logic	Super Furry Animals	1996	Q1004449
+926	Songs the Lord Taught Us	The Cramps	1980	Q535069
+927	Two Dancers	Wild Beasts	2009	Q4051897
+928	The Magnolia Electric Co.	Songs: Ohia / Jason Molina	2003	Q2412664
+929	Big Fish Theory	Vince Staples	2017	Q30543194
+930	EVOL	Sonic Youth	1986	Q993982
+931	All Hail the Queen	Queen Latifah	1989	Q640238
+932	Complete & Unbelievable: The Otis Redding Dictionary of Soul	Otis Redding	1966	Q2915917
+933	Club Classics Vol. One	Soul II Soul	1989	Q751383
+934	Space Is the Place	Sun Ra	1973	Q17020640
+935	Sex Machine	James Brown	1970	Q11893236
+936	A Rainbow in Curved Air	Terry Riley	1969	Q2819874
+937	Cheap Trick at Budokan	Cheap Trick	1978	Q389160
+938	Badmotorfinger	Soundgarden	1991	Q507515
+939	Portrait of a Legend: 1951–1964	Sam Cooke	2003	Q7232323
+940	Arrival	ABBA	1976	Q162392
+941	Al Green's Greatest Hits	Al Green	1975	Q558449
+942	The Anthology: 1947–1972	Muddy Waters	2001	Q937533
+943	Kimono My House	Sparks	1974	Q241983
+944	No New York		1978	Q1581545
+945	Janet	Janet Jackson	1993	Q284860
+946	Armed Forces	Elvis Costello	1979	Q635748
+947	Whitney Houston	Whitney Houston	1985	Q220749
+948	Destroyer	Kiss	1976	Q833616
+949	Tres Hombres	ZZ Top	1973	Q951455
+950	Mirrored	Battles	2007	Q539555
+951	Anthology	The Temptations	1973	Q4771882
+952	Foxbase Alpha	Saint Etienne	1991	Q1003247
+953	Workingman's Dead	Grateful Dead	1970	Q1252417
+954	Souvlaki	Slowdive	1993	Q1582736
+955	Home	The Chicks [formerly: Dixie Chicks]	2002	Q3286748
+956	We Got It from Here... Thank You 4 Your Service	A Tribe Called Quest	2016	Q27818866
+957	Sweet Dreams (Are Made of This)	Eurythmics	1983	Q1069455
+958	Summerteeth	Wilco	1999	Q1425603
+959	Tindersticks	Tindersticks	1993	Q7808052
+960	Faust IV	Faust	1973	Q383246
+961	Boys and Girls in America	The Hold Steady	2006	Q4952712
+962	Hard Again	Muddy Waters	1977	Q757005
+963	Space Ritual	Hawkwind	1973	Q733359
+964	The Glow Pt. 2	The Microphones	2001	Q7736852
+965	Secrets of the Beehive	David Sylvian	1987	Q2307974
+966	How Will the Wolf Survive?	Los Lobos	1984	Q5918236
+967	Heart of the Congos	The Congos	1977	Q1643080
+968	East Side Story	Squeeze	1981	Q5329389
+969	Puberty 2	Mitski	2016	Q27536501
+970	Phaedra	Tangerine Dream	1974	Q642815
+971	Tattoo You	The Rolling Stones	1981	Q547315
+972	Wild Gift	X	1981	Q847234
+973	Whack World	Tierra Whack	2018	Q60764520
+974	Expensive Shit	Fela Kuti	1975	Q5421015
+975	Rings Around the World	Super Furry Animals	2001	Q859017
+976	Apollo: Atmospheres and Soundtracks	Brian Eno, Daniel Lanois, Roger Eno	1983	Q3282479
+977	Shoot Out the Lights	Richard Thompson	1982	Q7500500
+978	What's the 411?	Mary J. Blige	1992	Q2779733
+979	Turiya Sings	Alice Coltrane	1982	Q108907112
+980	O.G. Original Gangster	Ice-T	1991	Q525753
+981	I Should Coco	Supergrass	1995	Q918041
+982	Everything Must Go	Manic Street Preachers	1996	Q993823
+983	The Psychedelic Sounds of the 13th Floor Elevators	The 13th Floor Elevators	1966	Q1066220
+984	Benji	Sun Kil Moon	2014	Q16243513
+985	No Sleep 'til Hammersmith	Motörhead	1981	Q899718
+986	Soul Mining	The The	1983	Q847060
+987	Back in the USA	MC5	1970	Q1429250
+988	Protection	Massive Attack	1994	Q632803
+989	Fishscale	Ghostface Killah	2006	Q1610463
+990	Tigermilk	Belle and Sebastian	1996	Q1077248
+991	Dirty	Sonic Youth	1992	Q531154
+992	Black Up	Shabazz Palaces	2011	Q4922092
+993	Mule Variations	Tom Waits	1999	Q1753238
+994	Parade	Prince	1986	Q1970030
+995	Knock Knock	Bill Callahan	1999	Q1473828
+996	Replica	Oneohtrix Point Never	2011	Q7314052
+997	Orbital [Orbital 2 / the Brown Album]	Orbital	1993	Q384695
+998	Have One on Me	Joanna Newsom	2010	Q1944292
+999	Here Are The Sonics	The Sonics	1965	Q663778
+1000	New Wave	The Auteurs	1993	Q664026

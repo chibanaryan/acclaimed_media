@@ -92,7 +92,7 @@
     <h2 class="text-xl font-bold mt-6 mb-4">Source Lists</h2>
     <div class="space-y-3">
         {% for group_label, group_items in grouped_lists %}
-            {% include 'games/includes/_list_type_group.html' with group_label=group_label group_items=group_items %}
+            {% include 'core/includes/_list_type_group.html' with group_label=group_label group_items=group_items %}
         {% endfor %}
     </div>
     {% endif %}

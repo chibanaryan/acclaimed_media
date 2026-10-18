@@ -151,3 +151,25 @@ CONTACT_DUPLICATE_WINDOW_SECONDS = CACHE_TIMEOUT_24_HOURS
 CONTACT_RATE_LIMIT_WINDOW_SECONDS = 60 * 10
 CONTACT_SPAM_CACHE_PREFIX = "contact_spam"
 CONTACT_PLACEHOLDER_DOMAINS = {"example.com", "example.org", "example.net"}
+
+# =============================================================================
+# Ranking list controls
+# =============================================================================
+
+# The sorts offered on the rankings page, rendered by
+# core/includes/_media_list_controls.html and applied by filterComponent's
+# updateSort(). `label_expr` is an Alpine expression for the one label that
+# depends on other filter state - playtime reads as "Playtime (100%)" while
+# the completionist mode is selected.
+SORT_OPTIONS = (
+    {"value": "rank", "label": "Rank"},
+    {"value": "year", "label": "Year"},
+    {"value": "name", "label": "A-Z"},
+    {
+        "value": "playtime",
+        "label": "Playtime",
+        "label_expr": (
+            "filters.hltb_mode === 'completionist' " "? 'Playtime (100%)' : 'Playtime'"
+        ),
+    },
+)

@@ -6,7 +6,7 @@
     <div class="flex-1 min-w-0 overflow-hidden" x-ref="navContainer">
         <div id="mobile-nav-items" class="flex gap-1 items-center nav-calculating" x-ref="navItems">
             {% if media_type == 'music' %}
-            {# Music section: its own links, and no games search #}
+            {# Music section: its own links and its own search #}
             <a href="{% url 'music:home' %}" class="btn btn-ghost btn-sm btn-square shrink-0 nav-item{% if request.resolver_match.url_name == 'home' %} btn-active{% endif %}" data-nav-item="albums" data-menu-label="Albums" aria-label="Albums">
                 <span class="mdi mdi-album text-lg"></span>
             </a>
@@ -24,6 +24,106 @@
                 Import
             </a>
             {% endif %}
+
+            {# Search dropdown - albums and artists, in the games box's shape #}
+            <div class="relative shrink-0 nav-item" data-nav-item="search" x-data="{
+                     showSearchDropdown: false,
+                     ...createMediaSearchData('{% url 'music-api:unified-search' %}', { albums: 5, artists: 3 })
+                 }"
+                 x-init="window.addEventListener('reset-search-state', () => { reset(); showSearchDropdown = false; })"
+                 @click.away="showSearchDropdown = false; reset()">
+
+                <button @click="showSearchDropdown = !showSearchDropdown; $nextTick(() => { if(showSearchDropdown) $refs.searchInputMobile.focus(); })"
+                        class="btn btn-ghost btn-sm"
+                        aria-label="Search">
+                    <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                        <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2.5" fill="none" stroke="currentColor">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <path d="m21 21-4.3-4.3"></path>
+                        </g>
+                    </svg>
+                </button>
+
+                <div x-show="showSearchDropdown" x-cloak
+                     class="fixed left-4 right-4 top-[64px] bg-base-200 rounded-box shadow-lg z-[99999]">
+                    <div class="p-4">
+                        <label for="nav-search-mobile" class="sr-only">Search albums and artists</label>
+                        <label class="input input-bordered input-sm w-full bg-base-100">
+                            <svg class="h-4 w-4 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                                <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor">
+                                    <circle cx="11" cy="11" r="8"></circle>
+                                    <path d="m21 21-4.3-4.3"></path>
+                                </g>
+                            </svg>
+                            <input type="text"
+                                   id="nav-search-mobile"
+                                   name="q"
+                                   x-ref="searchInputMobile"
+                                   x-model="q"
+                                   @focus="showMenu = true"
+                                   @input.debounce.300ms="loadResults()"
+                                   @keydown.enter="if(q.trim().length >= 2) window.location.href = '{% url 'music:home' %}?q=' + encodeURIComponent(q.trim())"
+                                   placeholder="Albums, artists..."
+                                   class="grow"
+                                   autocomplete="off">
+                            <button type="button"
+                                    @click="reset(); showMenu = false"
+                                    class="btn btn-ghost btn-xs btn-circle"
+                                    style="display: none"
+                                    :style="{ display: q.length > 0 ? 'flex' : 'none' }"
+                                    aria-label="Clear search">
+                                <span class="mdi mdi-close"></span>
+                            </button>
+                        </label>
+
+                        <div x-show="showMenu" x-cloak class="mt-2 max-h-80 overflow-y-auto">
+                            <ul class="menu p-0">
+                                <template x-if="!q || q.trim().length < 2">
+                                    <li class="disabled"><span class="text-base-content/85 text-sm">Please enter two or more characters</span></li>
+                                </template>
+                                <template x-if="q && q.trim().length >= 2 && !loading && !hasResults()">
+                                    <li class="disabled"><span class="text-base-content/85 text-sm">No results found</span></li>
+                                </template>
+                                <template x-if="has('albums')">
+                                    <li class="menu-title text-xs uppercase tracking-wider text-base-content/70 pt-1 pb-0">Albums</li>
+                                </template>
+                                <template x-for="album in results.albums" :key="'album-' + album.id">
+                                    <li>
+                                        <a :href="'/music/' + album.slug + '/'" class="flex items-center gap-3">
+                                            <img :src="album.thumbnail" :alt="album.name" width="32" height="32" class="w-8 h-8 rounded object-cover">
+                                            <div>
+                                                <div class="font-semibold text-sm" x-text="album.name + (album.year_released ? ' (' + album.year_released + ')' : '')"></div>
+                                                <div class="text-xs text-base-content/85" x-text="'All time rank: ' + album.rank"></div>
+                                            </div>
+                                        </a>
+                                    </li>
+                                </template>
+                                <template x-if="q && q.trim().length >= 2 && !loading && has('albums')">
+                                    <li>
+                                        <a :href="'{% url 'music:home' %}?q=' + encodeURIComponent(q.trim())" class="link link-accent text-sm">
+                                            See all album results &hellip;
+                                        </a>
+                                    </li>
+                                </template>
+                                <template x-if="has('artists')">
+                                    <li class="menu-title text-xs uppercase tracking-wider text-base-content/70 pt-2 pb-0">Artists</li>
+                                </template>
+                                <template x-for="artist in results.artists" :key="'artist-' + artist.id">
+                                    <li>
+                                        <a :href="'/music/artists/' + artist.slug + '/'" class="flex items-center gap-3">
+                                            <span class="mdi mdi-account-music text-xl text-accent"></span>
+                                            <div>
+                                                <div class="font-semibold text-sm" x-text="artist.name"></div>
+                                                <div class="text-xs text-base-content/85" x-text="artist.albums_count + ' albums'"></div>
+                                            </div>
+                                        </a>
+                                    </li>
+                                </template>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <a href="{% url 'home' %}" class="btn btn-ghost btn-sm btn-square shrink-0 nav-item" data-nav-item="back-to-games" data-menu-label="Back to Games" aria-label="Back to Games">
                 <span class="mdi mdi-arrow-left text-lg"></span>

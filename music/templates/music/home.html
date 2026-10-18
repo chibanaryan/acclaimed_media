@@ -1,8 +1,22 @@
 {% extends 'base.html' %}
 {% load humanize static music_filters %}
 
-{% block title %}{{ filter_title|default:"Most Acclaimed Albums" }}{% endblock %}
-{% block meta_description %}Album rankings aggregated from {{ list_count }} published critics' lists.{% endblock %}
+{# Head blocks follow the games rankings page: the heading doubles as the #}
+{# page title, with the same site suffix, and as the og/twitter titles. #}
+{% block title %}{{ filter_title|default:"Most Acclaimed Albums" }} | Acclaimed Video Games{% endblock %}
+
+{% block meta_description %}The top {{ album_count }} most recommended albums across {{ list_count }} critic lists from {{ publication_count }} publications.{% endblock %}
+{% block og_title %}{{ filter_title|default:"Most Acclaimed Albums" }} | Acclaimed Video Games{% endblock %}
+{% block og_description %}Album rankings aggregated from {{ list_count }} published critics' lists.{% endblock %}
+{% block twitter_title %}{{ filter_title|default:"Most Acclaimed Albums" }} | Acclaimed Video Games{% endblock %}
+{% block twitter_description %}Album rankings aggregated from {{ list_count }} published critics' lists.{% endblock %}
+
+{% block pre_alpine %}
+{# The shared filter sidebar components and the page's own filter state, both #}
+{# loaded before Alpine core as the games rankings page loads its own. #}
+<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/filter-subcomponents.min.js" %}?v=1');</script>
+<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/media-list-controls.min.js" %}?v=2');</script>
+{% endblock %}
 
 {% block extra_head %}
 {% if enable_client_filtering %}
@@ -14,6 +28,9 @@ fails to, the HTMX form below keeps filtering server-side.
 <script nonce="{{ csp_nonce }}">
 window.albumDataVersion = "{{ album_data_version }}";
 window.albumDataUrl = "{% url 'music-api:album-all-data' %}";
+// This page filters in place, so the base template's redirect fallback for
+// a genre clicked in a row must stay out of the way.
+window.listFilterActive = true;
 </script>
 <script src="{% static 'music/js/music-client-side-filtering.bundle.min.js' %}?v=2"
         defer fetchpriority="low" nonce="{{ csp_nonce }}"></script>
@@ -21,32 +38,68 @@ window.albumDataUrl = "{% url 'music-api:album-all-data' %}";
 {% endblock %}
 
 {% block content %}
-<div class="flex flex-col w-full">
+{# The sort/view controls live in the results header and the filter form #}
+{# carries the state, so the component has to enclose both columns - and sit #}
+{# outside #album-results-container, which HTMX replaces wholesale. #}
+{# Filter state and the genre tree's data, read by the shared component. #}
+{{ filters|json_script:"filters-data" }}
+{{ genre_tree|json_script:"genres-data" }}
+{{ genre_category_icons|json_script:"genre-icons-data" }}
+<div class="flex flex-col w-full"
+     x-data="mediaListControls({
+         sort: '{{ current_sort }}',
+         dir: '{{ current_dir }}',
+         minYear: {{ min_year }},
+         maxYear: {{ max_year }},
+         viewModeKey: 'albumViewMode',
+         formId: 'album-filters',
+         listContainerId: 'album-list-container',
+         resultsContainerId: 'album-results-container',
+         titleNoun: 'Albums',
+         titleSearchNoun: 'Albums'
+     })">
 
 {# Page heading row - title on the left, matching the games layout widths #}
 <div id="search-heading" class="mb-4 hidden desktop:flex items-center gap-6" style="min-height: 80px;">
     <div class="min-w-0 flex-1 max-w-[calc(100%-357px-1.5rem)] flex flex-col justify-center">
         <h1 class="text-3xl font-bold line-clamp-2" id="search-title">
-            {{ filter_title|default:"Most Acclaimed Albums" }}
+            <span id="search-title-text">{{ filter_title|default:"Most Acclaimed Albums" }}</span>
             <span class="badge badge-warning badge-sm align-middle ml-1">Beta</span>
         </h1>
         <p class="text-base-content/70 text-sm">
             The top {{ album_count|intcomma }} most recommended albums across
             {{ list_count|intcomma }} critic lists from
             {{ publication_count|intcomma }} publications.
+            {% if last_update %}
+            <span class="text-base-content/50">&middot; Updated: {{ last_update|date:"F j, Y" }}</span>
+            {% endif %}
         </p>
+    </div>
+    {# Rank distribution, sidebar-width, once a filter narrows the set #}
+    <div style="width: 357px; flex-shrink: 0; display: none;" x-show="hasActiveFilters()">
+        {% include 'core/includes/_rank_distribution.html' %}
     </div>
 </div>
 
-{# Mobile heading #}
-<div class="desktop:hidden mb-3">
-    <h1 class="text-2xl font-bold" id="search-title-mobile">
-        {{ filter_title|default:"Most Acclaimed Albums" }}
-        <span class="badge badge-warning badge-sm align-middle">Beta</span>
-    </h1>
-    <p class="text-base-content/70 text-sm">
-        {{ album_count|intcomma }} albums &middot; {{ list_count|intcomma }} lists
-    </p>
+{# Mobile sticky header and bottom sheet, as the games page has #}
+<div class="desktop:hidden"
+     x-data="{ filterOpen: false }"
+     x-effect="document.body.classList.toggle('filter-sheet-open', filterOpen)">
+    <div class="relative z-10 bg-base-200 border-b border-base-content/10 py-4 mb-4 -mx-4 px-4 flex items-center justify-between gap-3">
+        <h1 class="text-lg font-bold flex-1 min-w-0" id="search-title-mobile">
+            <span id="search-title-mobile-text">{{ filter_title|default:"Most Acclaimed Albums" }}</span>
+            <span class="badge badge-warning badge-xs align-middle">Beta</span>
+        </h1>
+        <button type="button" class="btn btn-primary btn-sm shrink-0" @click="filterOpen = true">
+            <span class="mdi mdi-tune"></span>
+            Filters
+            <template x-if="hasActiveFilters()">
+                <span class="badge badge-xs badge-secondary">!</span>
+            </template>
+        </button>
+    </div>
+
+    {% include 'music/includes/_mobile_filter_sheet.html' %}
 </div>
 
 {# Two-column layout: results on the left, filters sidebar on the right #}
@@ -60,7 +113,9 @@ window.albumDataUrl = "{% url 'music-api:album-all-data' %}";
     </div>
 
     {# Right sidebar - filters. One GET form; HTMX serializes it on change. #}
-    <div class="w-full desktop:w-[357px] desktop:shrink-0 order-first desktop:order-last mb-4 desktop:mb-0">
+    {# Desktop only: below that breakpoint the bottom sheet above holds the #}
+    {# same controls, which is what the games page does. #}
+    <div class="hidden desktop:block desktop:w-[357px] desktop:shrink-0">
         <form id="album-filters"
               hx-get="{% url 'music:home' %}"
               hx-target="#album-results-container"
@@ -70,19 +125,28 @@ window.albumDataUrl = "{% url 'music-api:album-all-data' %}";
               hx-trigger="submit, change, keyup changed delay:350ms from:find input[name='q']"
               class="bg-base-200 rounded-lg p-4">
 
-            {# Filters header #}
+            {# Filters header, with the same actions the games sidebar has #}
             <div class="flex items-center justify-between mb-3 pb-2 border-b border-base-100">
                 <div class="flex items-center gap-2">
                     <span class="mdi mdi-filter-variant text-xl text-accent"></span>
                     <span class="font-bold text-base">Filters</span>
                 </div>
-                {% if is_filtered %}
-                <a href="{% url 'music:home' %}" class="btn btn-ghost btn-xs text-base-content/70 hover:text-error">
-                    <span class="mdi mdi-close text-xs"></span>
-                    <span class="text-xs">Clear all</span>
-                </a>
-                {% endif %}
-                <span id="album-loading" class="htmx-indicator loading loading-spinner loading-xs"></span>
+                <div class="flex gap-2 items-center">
+                    <span id="album-loading" class="htmx-indicator loading loading-spinner loading-xs"></span>
+                    <a :href="'{% url 'music:download' %}?' + downloadQuery()"
+                       class="btn btn-ghost btn-xs text-base-content/70 hover:text-success"
+                       title="Download CSV">
+                        <span class="mdi mdi-download"></span>
+                        <span>CSV</span>
+                    </a>
+                    <button type="button"
+                            @click="resetAllFilters()"
+                            class="btn btn-ghost btn-xs text-base-content/70 hover:text-error"
+                            title="Clear all filters">
+                        <span class="mdi mdi-close text-xs"></span>
+                        <span>Clear All</span>
+                    </button>
+                </div>
             </div>
 
             {# Search #}
@@ -97,111 +161,68 @@ window.albumDataUrl = "{% url 'music-api:album-all-data' %}";
                     <span class="font-bold text-base">Search</span>
                 </div>
                 <label class="input input-bordered input-sm w-full bg-base-100">
-                    <input type="search" name="q" value="{{ current_q }}"
+                    <input type="search" name="q" x-model="filters.q"
+                           @input.debounce.350ms="debouncedFilterUpdate()"
                            class="grow" placeholder="Album or artist" autocomplete="off">
                 </label>
             </div>
 
-            {# Release year #}
-            <div class="mb-4 pb-3 border-b border-base-100">
-                <div class="flex items-center gap-2 mb-2">
+            {# Release year - the shared heatmap, as on the games page #}
+            <div class="mb-4 pb-3 border-b border-base-100" :class="yearExpanded ? 'min-h-[15rem]' : ''">
+                <div class="flex items-center gap-2 mb-2 cursor-pointer" @click="yearExpanded = !yearExpanded; localStorage.setItem('yearExpanded', yearExpanded)">
                     <span class="mdi mdi-calendar-range text-xl text-accent"></span>
                     <span class="font-bold text-base">Release Year</span>
-                </div>
-                <div class="flex flex-wrap gap-1 mb-2">
-                    {% for decade in decades %}
-                    <button type="button"
-                            class="mobile-filter-chip{% if decade.selected %} mobile-filter-chip-selected{% endif %}"
-                            name="decade" value="{{ decade.start }}"
-                            hx-get="{% url 'music:home' %}?start={{ decade.start }}&end={{ decade.end }}{% if current_q %}&q={{ current_q|urlencode }}{% endif %}{% if current_sort != 'rank' %}&sort={{ current_sort }}{% endif %}"
-                            hx-target="#album-results-container"
-                            hx-swap="innerHTML"
-                            hx-push-url="true">
-                        {{ decade.label }}
-                        <span class="text-xs opacity-70 tabular-nums">{{ decade.count }}</span>
+                    <span class="mdi text-base-content/70 ml-1"
+                          :class="yearExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
+                    <button type="button" class="btn btn-ghost btn-xs ml-auto text-base-content/70 hover:text-error" @click.stop="resetYears()" title="Clear year filter" x-cloak x-show="hasYearFilter()">
+                        <span class="mdi mdi-close text-xs"></span>
+                        <span class="text-xs">Clear</span>
                     </button>
-                    {% endfor %}
                 </div>
-                <div class="flex items-center gap-2">
-                    <input type="number" name="start" value="{{ current_start }}"
-                           min="{{ min_year }}" max="{{ max_year }}" placeholder="{{ min_year }}"
-                           aria-label="From year"
-                           class="input input-bordered input-sm w-full bg-base-100">
-                    <span class="text-base-content/50">&ndash;</span>
-                    <input type="number" name="end" value="{{ current_end }}"
-                           min="{{ min_year }}" max="{{ max_year }}" placeholder="{{ max_year }}"
-                           aria-label="To year"
-                           class="input input-bordered input-sm w-full bg-base-100">
+                <div x-show="yearExpanded" x-collapse data-filter-init="year">
+                    {% include 'core/includes/_year_grid.html' with item_noun_plural='albums' %}
                 </div>
+                {# The year range the grid writes, as the form sends it. #}
+                <input type="hidden" name="start" value="{{ current_start }}">
+                <input type="hidden" name="end" value="{{ current_end }}">
             </div>
 
-            {# Artist #}
-            {% if artists %}
-            <div class="mb-4 pb-3 border-b border-base-100">
-                <div class="flex items-center gap-2 mb-2">
-                    <span class="mdi mdi-account-music text-xl text-accent"></span>
-                    <span class="font-bold text-base">Artist</span>
-                </div>
-                <select name="artists" aria-label="Filter by artist"
-                        class="select select-bordered select-sm w-full bg-base-100">
-                    <option value="">All artists</option>
-                    {% for artist in artists %}
-                    <option value="{{ artist.id }}" {% if current_artists == artist.id|stringformat:'s' %}selected{% endif %}>
-                        {{ artist.name }} ({{ artist.albums_count }})
-                    </option>
-                    {% endfor %}
-                </select>
-            </div>
-            {% endif %}
-
-            {# Genre - only once the metadata pass has populated genres #}
-            {% if genre_groups %}
-            <div class="mb-4 pb-3 border-b border-base-100">
-                <div class="flex items-center gap-2 mb-2">
+            {# Genre - the shared tree, so a root genre reads as a root #}
+            {% if genre_tree %}
+            <div :class="genresExpanded ? 'mb-3' : 'mb-1'">
+                <div class="flex items-center gap-2 mb-2 cursor-pointer" @click="genresExpanded = !genresExpanded; localStorage.setItem('genresExpanded', genresExpanded)">
                     <span class="mdi mdi-music-note text-xl text-accent"></span>
                     <span class="font-bold text-base">Genre</span>
+                    <span class="mdi text-base-content/70 ml-1"
+                          :class="genresExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
+                    <div class="ml-auto flex items-center gap-1">
+                        <button type="button" class="btn btn-ghost btn-xs text-base-content/70 hover:text-error" @click.stop="resetGenres()" title="Clear genre filter" x-cloak x-show="filters.genres.length > 0">
+                            <span class="mdi mdi-close text-xs"></span>
+                            <span class="text-xs">Clear</span>
+                        </button>
+                        <button type="button" class="btn btn-ghost btn-xs text-base-content/40 hover:text-base-content hover:bg-base-100" @click.stop="$dispatch('genres-toggle-expand')" title="Expand/collapse all" x-cloak x-show="genresExpanded">
+                            <span class="mdi mdi-unfold-more-horizontal"></span>
+                        </button>
+                    </div>
                 </div>
-                {# Grouped by root genre: the taxonomy is two deep (a root, #}
-                {# then the Discogs styles under it), which a flat list of a #}
-                {# hundred and fifty names cannot present usefully. #}
-                <select name="genres" aria-label="Filter by genre"
-                        class="select select-bordered select-sm w-full bg-base-100">
-                    <option value="">All genres</option>
-                    {% for group in genre_groups %}
-                    <optgroup label="{{ group.root.name }}">
-                        {% for genre in group.options %}
-                        <option value="{{ genre.id }}" {% if current_genres == genre.id|stringformat:'s' %}selected{% endif %}>
-                            {{ genre.name }} ({{ genre.albums_count }})
-                        </option>
-                        {% endfor %}
-                    </optgroup>
-                    {% endfor %}
-                </select>
+                <div x-show="genresExpanded"
+                     x-collapse
+                     data-filter-init="genres"
+                     data-filter-type="genres"
+                     @filter-changed="handleFilterChange($event.detail.type, $event.detail.items)"
+                     @filter-update="handleFilterChange($event.detail.type, $event.detail.items)">
+                    {% include 'core/includes/_genre_filter.html' with item_noun_plural='albums' genre_icons_element='genre-icons-data' default_genre_icon=default_genre_icon genre_counts_include_descendants=True %}
+                </div>
+                {# The genre ids the tree writes, as the form sends them. #}
+                <input type="hidden" name="genres" value="{{ current_genres }}">
             </div>
             {% endif %}
 
-            {# Sort - kept in the form so a change re-runs the whole query #}
-            <div>
-                <div class="flex items-center gap-2 mb-2">
-                    <span class="mdi mdi-sort text-xl text-accent"></span>
-                    <span class="font-bold text-base">Sort</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <select name="sort" aria-label="Sort albums by"
-                            class="select select-bordered select-sm w-full bg-base-100">
-                        <option value="rank" {% if current_sort == 'rank' %}selected{% endif %}>Rank</option>
-                        <option value="year" {% if current_sort == 'year' %}selected{% endif %}>Year</option>
-                        <option value="name" {% if current_sort == 'name' %}selected{% endif %}>Alphabetical</option>
-                        <option value="lists" {% if current_sort == 'lists' %}selected{% endif %}># Lists</option>
-                    </select>
-                    <select name="dir" aria-label="Sort direction"
-                            class="select select-bordered select-sm bg-base-100"
-                            style="width: fit-content;">
-                        <option value="asc" {% if current_dir == 'asc' %}selected{% endif %}>Asc</option>
-                        <option value="desc" {% if current_dir == 'desc' %}selected{% endif %}>Desc</option>
-                    </select>
-                </div>
-            </div>
+            {# Sort state. The controls that set these sit in the results #}
+            {# header, where the games rankings page has them; the form still #}
+            {# carries the values so one HTMX request sends the whole state. #}
+            <input type="hidden" name="sort" value="{{ current_sort }}">
+            <input type="hidden" name="dir" value="{{ current_dir }}">
         </form>
     </div>
 </div>
@@ -219,6 +240,9 @@ in step.
 </template>
 <template id="mobile-row-template">
     {% include 'music/includes/_album_row.html' with row_variant='mobile' only %}
+</template>
+<template id="grid-card-template">
+    {% include 'music/includes/_album_card_grid.html' %}
 </template>
 {% endif %}
 {% endblock %}

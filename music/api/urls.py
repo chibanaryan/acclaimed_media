@@ -13,6 +13,12 @@ app_name = "music-api"
 urlpatterns = [
     # Search
     path("search/", views.AlbumSearchAPIView.as_view(), name="album-search"),
+    # Albums and artists together, for the sidebar search box
+    path(
+        "unified-search/",
+        views.MusicUnifiedSearchView.as_view(),
+        name="unified-search",
+    ),
     # Albums
     path("", views.AlbumListView.as_view(), name="album-list"),
     # Bulk payload for client-side filtering

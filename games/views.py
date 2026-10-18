@@ -48,6 +48,7 @@ from core.mixins import (
     StaffOnlyMixin,
 )
 from core.models import User
+from core.services import ranking, titles
 from games import config, constants, models, utils
 from games.cache import invalidate_played_games_cache, invalidate_want_to_play_cache
 from games.forms import ImportForm, ContactForm
@@ -154,28 +155,10 @@ def _get_want_to_play_game_ids(user):
     return ids
 
 
-def _join_names(names):
-    """Join a list of names with commas and an 'and' before the last item."""
-    if not names:
-        return ""
-    if len(names) == 1:
-        return names[0]
-    if len(names) == 2:
-        return " and ".join(names)
-    return ", ".join(names[:-1]) + f", and {names[-1]}"
-
-
-def _build_time_window(start_year, end_year, min_year, max_year):
-    """Return a human-readable time window label for headings and filenames."""
-    if start_year is None or end_year is None:
-        return ""
-    if start_year <= min_year and end_year >= max_year:
-        return "All Time"
-    if start_year == end_year:
-        return str(start_year)
-    if start_year % 10 == 0 and end_year == start_year + 9:
-        return f"the {start_year}s"
-    return f"{start_year}-{end_year}"
+# Both heading helpers now live in core, so the album rankings page composes
+# its heading the same way this one does.
+_join_names = titles.join_names
+_build_time_window = titles.build_time_window
 
 
 def _build_platform_segment(selected_platform_ids, platforms, include_games=True):
@@ -1709,31 +1692,15 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
                 or 0
             )
 
-            rank_bins = []
-            if max_rank > 0:
-                bin_count = config.RANK_DISTRIBUTION_BIN_COUNT
-                bin_size = math.ceil(max_rank / bin_count)
-                counts = [0] * bin_count
-
-                # Get ranks from current queryset (respects filters)
-                ranks = (
-                    self.get_queryset()
-                    .filter(rank__gte=1, rank__lte=max_rank)
-                    .order_by()
-                    .values_list("id", "rank")
-                )
-                for _, rank in ranks:
-                    if rank:
-                        idx = (rank - 1) // bin_size
-                        if 0 <= idx < bin_count:
-                            counts[idx] += 1
-
-                for i in range(bin_count):
-                    bin_start = i * bin_size + 1
-                    bin_end = min((i + 1) * bin_size, max_rank)
-                    rank_bins.append(
-                        {"binStart": bin_start, "binEnd": bin_end, "count": counts[i]}
-                    )
+            ranks = (
+                self.get_queryset()
+                .filter(rank__gte=1, rank__lte=max_rank)
+                .order_by()
+                .values_list("rank", flat=True)
+            )
+            rank_bins = ranking.rank_distribution(
+                ranks, max_rank, config.RANK_DISTRIBUTION_BIN_COUNT
+            )
 
             cached_rank_data = {"rank_bins": rank_bins, "max_rank": max_rank}
             cache.set(rank_dist_cache_key, cached_rank_data, facet_cache_timeout)
@@ -1761,6 +1728,10 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
 
         # Enable client-side filtering for fast subsequent interactions
         context["enable_client_filtering"] = True
+
+        # Sorts for the shared results-header controls
+        # (core/includes/_media_list_controls.html)
+        context["sort_options"] = config.SORT_OPTIONS
 
         # Add played/want-to-play game IDs for client-side rendering (cached per-user)
         if self.request.user.is_authenticated:

@@ -240,6 +240,8 @@ Music API endpoints (staff-only):
 - `/api/music/genres/` - Music genres
 - `/api/music/meta/` - Counts and year/decade distributions
 - `/api/music/all/` - Every album in one payload, for client-side filtering
+- `/api/music/unified-search/` - Albums and artists together, for the sidebar
+  and mobile search boxes
 
 **Note:** these endpoints carry no `cache_page` decorator on purpose. `cache_page`
 wraps `dispatch`, so it is consulted before permissions run and a staff response
@@ -254,6 +256,52 @@ was unreachable from a browser - and the tests missed it because
 `APIClient.force_authenticate` bypasses authentication entirely. Test staff API
 access with a real session login.
 
+### Shared ranking-page components
+
+The games and album rankings pages render the same chrome from `core/`. They
+had each grown their own, and the album page's was visibly poorer for it - a
+row of decade chips instead of the year heatmap, a flat `<select>` where a
+root genre and one of its styles looked identical, no view toggle, no
+jump-to-rank, and row styling that had copied the games hover rules without
+the hover.
+
+| Shared piece | What it is |
+|---|---|
+| `core/includes/_media_list_controls.html` | sort dropdown, direction flip, list/grid toggle, jump-to-rank |
+| `core/includes/_year_grid.html` | the year heatmap, with drag and shift+click ranges |
+| `core/includes/_genre_filter.html` | the hierarchical genre tree |
+| `core/includes/_mobile_filter_time.html`, `_mobile_filter_genres.html` | their bottom-sheet equivalents |
+| `core/includes/_entity_sort_controls.html` | the sort control for entity lists (artists, source lists, developers) |
+| `core/includes/_publication_group.html` | a publication's lists, collapsible, on a source-lists page |
+| `core/includes/_list_type_group.html` | one group of list appearances on a detail page |
+| `core/includes/_rank_distribution.html` | where the filtered items sit across the ranking |
+| `core/includes/_search_box.html` | the standard search input, with its clear button |
+| `core/services/titles.py` | the heading's wording: `join_names`, `build_time_window` |
+| `core/services/ranking.py` | `rank_distribution`, the chart's binning |
+| `core/js/filter-subcomponents.js` | `yearGridComponent`, `genreFilterComponent` and their mobile forms |
+| `core/js/media-list-controls.js` | `mediaListControls`, `entityListControls` |
+| `core/js/media-search.js` | `createMediaSearchData`, for a section's search box |
+
+The templates are the contract. Each binds to an Alpine component exposing
+`filters`, `genres`, `initialized`, `debouncedFilterUpdate()`,
+`handleFilterChange()`, `updateSort()`, `toggleSortDirection()`, `viewMode`
+and `setViewMode()`. Games satisfies it with `filterComponent`, which also
+owns platforms, series, playtime and saved filters; music satisfies it with
+`mediaListControls`, which writes the state into its HTMX form and announces
+a `change`. **Add a control to the shared template, not to one page.**
+
+Row and card styling is shared the same way but through CSS selector lists -
+`.game-row, .media-row { ... }` - because each section's JavaScript queries
+its own class names. One rule block, both families; a fourth copy of the
+`.game-row` rules is what left album rows without a hover state.
+
+Facet counts (the number beside a year cell or a genre row) are counted with
+their own dimension left out, so an option never leads to an empty page:
+`apply_album_filters(..., skip=("year",))` server-side and
+`AlbumFilterEngine.facets()` in the browser. Both publish the same
+`year-counts-update` / `genre-counts-update` events the subcomponents listen
+for, so neither side knows which did the counting.
+
 ### Music client-side filtering
 
 `/music/` filters in the browser. `/api/music/all/` returns the whole corpus
@@ -266,6 +314,9 @@ itself.
 It is progressive enhancement. The page is server-rendered and its HTMX sidebar
 filters server-side on its own; the bundle suppresses those requests only once
 it has data and a renderer, so a failed or slow bundle leaves a working page.
+Load More, jump-to-rank and the list/grid toggle all work either way: the
+engine seeds itself from what the server rendered (`attach()` and
+`_syncRendererWithPage()`) rather than re-rendering the page on load.
 
 Two payload fields exist to keep the client and the server agreeing exactly:
 
@@ -279,9 +330,19 @@ Two payload fields exist to keep the client and the server agreeing exactly:
   is weighted differently again. The client sorts alphabetically by this
   integer, which also stops local SQLite disagreeing with production Postgres.
 
-The genre filter matches flat ids on both sides, with no hierarchy expansion,
-because `get_queryset` does: selecting a root genre matches only albums tagged
-with the root itself, which is also what the count beside that option reports.
+The genre filter expands a selected genre to its descendants on both sides,
+as `games.services.query_filters.apply_genre_filter` does: picking "Rock"
+means rock, including the Discogs styles filed under it. `expand_genre_ids`
+does it server-side and `AlbumFilterEngine._expandGenres` in the browser,
+from the descendant ids the payload already carries.
+
+The count beside a genre is a **distinct** count across that genre's whole
+subtree, so it is exactly what selecting the row gives. Summing a root and
+its children instead - which is what the shared tree does when a section does
+not supply subtree counts - double-counts an album tagged both "Classical"
+and "Modern Classical", and the sidebar claimed Classical had two albums when
+it had one. Music passes `genre_counts_include_descendants` to turn the
+summing off.
 
 When changing the filters, re-run the parity check: for a spread of filter and
 sort combinations, compare the engine's ordered ids against
@@ -447,6 +508,8 @@ The home page game rankings use a **dual-rendering architecture** that requires 
 | `games/templates/games/includes/_game_row_mobile.html` | (fallback string methods: `_renderDesktopRowString`, `_renderMobileRowString`) |
 | `games/templatetags/game_filters.py` | `_platformFamilies`, `_familyInfo` objects |
 | `music/templates/music/includes/_album_row.html` | `music/static/music/js/album-list-renderer.js` |
+| `music/templates/music/includes/_album_card_grid.html` | `AlbumListRenderer._renderGridCard` |
+| `games/templates/games/includes/_game_card_grid.html` | `GameListRenderer._renderGridCard` |
 | `core/templates/core/includes/_base_media_row.html` | `core/static/core/js/base-renderer.js` |
 
 Music renders one partial for both halves: `_base_media_row.html` takes a
@@ -530,6 +593,24 @@ from the games files:
 
 Unranked lists record every member at rank 1, matching the games convention.
 
+**An import does not fetch metadata.** It replaces every `Album` row, and the
+external data rows survive on `on_delete=SET_NULL` - they are re-attached by
+external id only when `fetch_album_metadata` next runs and adopts them. Until
+then the rankings render with placeholder artwork and no genre filter at all,
+because the sidebar hides a filter with nothing in it. The games import page
+has the same split (its "Metadata Operations" panel, with its own buttons);
+music's import page shows what is missing and the command to run.
+
+The import stamps `SiteMetadata` under the `music` key, which the rankings
+heading reads as "Updated: ...". `SiteMetadata` is keyed per section, so
+games and music carry their own dates.
+
+A new release can introduce an act whose own name contains a comma - the 2026
+release added "Tyler, the Creator" - which `split_artist_credit` would
+otherwise break into two artists. `ARTISTS_WITH_COMMAS` is the list, and
+`test_every_real_comma_credit_parses_as_expected` names the acts rather than
+counting them, so the next one fails loudly instead of quietly splitting.
+
 ## Music Metadata Pipeline
 
 Run `/music-metadata` (`python manage.py fetch_album_metadata`) after an import.
@@ -545,6 +626,12 @@ way.
 
 Two decisions worth knowing before changing any of it:
 
+- **A style's root is corrected in place.** `get_or_create_genre` used to
+  return an existing genre row untouched, so a style first created under the
+  wrong root kept it forever: "Alternative Rock" sat under Electronic for 68
+  albums long after the resolution order was fixed, because the fix could not
+  reach a row that already existed. It now re-parents a row whose root has
+  changed, `level` and `path` with it.
 - **Genres come from Discogs, not Wikidata.** Discogs publishes a curated
   two-level vocabulary and assigns it per album by exact master ID. Deriving a
   tree from Wikidata's P279 graph classified only 159 of this corpus's 207 genre
@@ -750,6 +837,12 @@ nothing declared after that point registers either:
 - `games/static/games/js/client-side-filtering.bundle.min.js` - `base-renderer`, `game-cache`, `client-filter`, `game-list-renderer`, `client-filtering`
 - `books/static/books/js/book-client-side-filtering.bundle.min.js` - `base-renderer`, `book-cache`, `book-client-filter`, `book-list-renderer`, `book-client-filtering`
 - `music/static/music/js/music-client-side-filtering.bundle.min.js` - `base-renderer`, `album-filter`, `album-list-renderer`, `album-client-filtering`
+
+`core/static/core/js/` also holds three files loaded on their own rather than
+bundled, because they have to run before Alpine initialises:
+`filter-subcomponents.min.js`, `media-list-controls.min.js` and
+`media-search.min.js`. Pages push them onto `window.alpineScripts` in
+`{% block pre_alpine %}`.
 
 `core/tests/test_static_bundles.py` asserts that every bundle a template
 references exists and that each defines the base classes its members extend.

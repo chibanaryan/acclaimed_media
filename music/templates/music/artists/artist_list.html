@@ -1,11 +1,26 @@
 {% extends 'base.html' %}
-{% load humanize music_filters %}
+{% load humanize static music_filters %}
 
-{% block title %}Album Artists{% endblock %}
+{% block title %}Album Artists | Acclaimed Video Games{% endblock %}
 {% block meta_description %}Artists with albums in the acclaimed album rankings.{% endblock %}
 
+{% block pre_alpine %}
+{# The shared sort controls bind to this; it must load before Alpine core. #}
+<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/media-list-controls.min.js" %}?v=2');</script>
+{% endblock %}
+
 {% block content %}
-<div class="max-w-5xl mx-auto">
+{# The controls sit inside the swapped results, so their state lives out #}
+{# here, as it does on the rankings pages. #}
+<div class="max-w-5xl mx-auto"
+     x-data="entityListControls({
+         url: '{% url 'music:artist-list' %}',
+         target: '#artist-results-wrapper',
+         sort: '{{ current_sort }}',
+         dir: '{{ current_dir }}',
+         defaultSort: 'albums',
+         extraFields: ['q']
+     })">
 <h1 class="text-3xl font-bold mb-4">
     Artists
     <span class="badge badge-warning badge-sm align-middle ml-1">Beta</span>

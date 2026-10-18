@@ -22,9 +22,12 @@
     <td class="py-2">
         {% if best %}
         <a href="{{ best.get_absolute_url }}" class="flex items-center gap-3 group py-1 -ml-1 pl-1 rounded transition-colors hover:bg-base-content/5">
-            {% if best.cover_image_url %}
+            {# `thumbnail`, not `cover_image_url`: the latter is the remote #}
+            {# Cover Art Archive URL, which 500s on roughly one request in #}
+            {# ten. Every other page serves the stored copy. #}
+            {% if best.thumbnail %}
             <div class="w-10 h-10 flex-shrink-0 overflow-hidden rounded shadow-sm group-hover:shadow-md transition-shadow">
-                <img src="{{ best.cover_image_url }}" alt="" width="40" height="40"
+                <img src="{{ best.thumbnail }}" alt="" width="40" height="40"
                      class="w-full h-full object-cover" loading="lazy">
             </div>
             {% else %}
@@ -44,9 +47,6 @@
         {% endif %}
     </td>
     {% endwith %}
-    <td class="text-right align-middle text-sm text-base-content/70">
-        {% if artist.subsidiaries.all %}{{ artist.subsidiaries.all|length }}{% else %}&mdash;{% endif %}
-    </td>
     <td class="text-right align-middle">
         <span class="font-semibold tabular-nums">{{ artist.albums_count }}</span>
     </td>

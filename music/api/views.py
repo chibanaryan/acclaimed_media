@@ -8,7 +8,7 @@ the page itself, so the client can tell a stale copy from a current one
 without a second request.
 """
 
-from django.db.models import Count, Max, Min, Prefetch
+from django.db.models import Count, Max, Min, Prefetch, Q
 from django.db.models.functions import Lower
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.generics import ListAPIView, RetrieveAPIView
@@ -20,6 +20,15 @@ from core.permissions import IsStaffOrHide
 from .. import models
 from ..services.data_version import compute_album_data_version
 from . import serializers
+
+
+def _parse_limit(raw, default, maximum=20):
+    """A result limit from the query string, clamped and never raising."""
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(value, maximum))
 
 
 class StaffReadAPIMixin:
@@ -136,6 +145,67 @@ class AlbumAllDataView(StaffReadAPIMixin, APIView):
                 "albums": albums_data,
                 "artists": artists,
                 "genres": genres_data,
+            }
+        )
+
+
+class MusicUnifiedSearchView(StaffReadAPIMixin, APIView):
+    """Albums and artists in one response, for the sidebar search box.
+
+    The games equivalent (``games.api.views.UnifiedSearchView``) feeds the
+    same search box in the same chrome; music had no endpoint at all, which
+    is why the sidebar's search input was gated on ``media_type == 'games'``
+    and the section had no search anywhere.
+    """
+
+    def get(self, request):
+        q = request.query_params.get("q", "").strip()
+        album_limit = _parse_limit(request.query_params.get("album_limit"), 5)
+        artist_limit = _parse_limit(request.query_params.get("artist_limit"), 3)
+
+        if len(q) < 2:
+            return Response({"albums": [], "artists": []})
+
+        albums = (
+            models.Album.objects.filter(
+                Q(name__icontains=q)
+                | Q(name_normalized__icontains=q)
+                | Q(artist_credit__icontains=q)
+            )
+            .distinct()
+            .order_by("rank")[:album_limit]
+        )
+
+        artists = (
+            models.Artist.objects.filter(name__icontains=q)
+            .annotate(albums_count=Count("albums"))
+            .filter(albums_count__gt=0)
+            .order_by("-albums_count", Lower("name"))[:artist_limit]
+        )
+
+        return Response(
+            {
+                "albums": [
+                    {
+                        "id": album.id,
+                        "name": album.name,
+                        "slug": album.slug,
+                        "rank": album.rank,
+                        "year_released": album.year_released,
+                        "artist_credit": album.artist_credit,
+                        "thumbnail": album.thumbnail or "",
+                    }
+                    for album in albums
+                ],
+                "artists": [
+                    {
+                        "id": artist.id,
+                        "name": artist.name,
+                        "slug": artist.slug,
+                        "albums_count": artist.albums_count,
+                    }
+                    for artist in artists
+                ],
             }
         )
 

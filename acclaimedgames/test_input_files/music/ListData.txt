@@ -52,3 +52,16 @@ Musikexpress	2020	Die 100 besten Alben der 10-er Jahre
 Hot Press	2006	100 Greatest Albums Ever	
 Time	2006	The All-TIME 100 Albums	https://web.archive.org/web/20071208133308/http://www.time.com/time/2006/100albums/
 Fact	2012	The 100 Best Albums of the 1990s	https://www.factmag.com/2012/09/03/the-100-best-albums-of-the-1990s-100-81/
+Fact	2014	The 100 best albums of the 1970s	https://www.factmag.com/2014/07/14/the-100-best-albums-of-the-1970s/
+Fact	2013	The 100 Best Albums of the 1980s	https://www.factmag.com/2013/06/24/the-100-best-albums-of-the-1980s-100-81/
+The A.V. Club	2019	The 50 best albums of the 2010s	https://www.avclub.com/the-50-best-albums-of-the-2010s-1839776060
+Rockdelux	2014	Los 300 discos del 30 aniversario de la revista Rockdelux	
+Fact	2010	The 100 Best Albums of the 2000s	https://www.factmag.com/2010/12/01/100-best-albums-of-the-decade/
+Rockdelux	2002	Los 200 mejores discos del siglo XX	
+Treble	2024	Treble 100: The Complete List	https://www.treblezine.com/treble-100-complete-list-all-time-favorite-albums/
+Treble	2022	The 150 Best Albums of the 1980s	https://www.treblezine.com/150-best-albums-of-the-1980s/
+Treble	2019	The Top 150 Albums of the ’70s	https://www.treblezine.com/top-150-best-albums-of-the-70s/
+Treble	2024	The 150 Best Albums of the 1990s	https://www.treblezine.com/150-best-albums-of-the-1990s/
+Treble	2023	The 150 Best Albums of the 1960s	https://www.treblezine.com/the-150-best-albums-of-the-1960s/
+Treble	2010	The Best Albums of the ’00s	https://www.treblezine.com/the-best-albums-of-the-00s/
+Treble	2020	Top 150 Albums of the 2010s	https://www.treblezine.com/top-150-albums-of-the-2010s/

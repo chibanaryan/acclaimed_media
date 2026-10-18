@@ -810,14 +810,34 @@
   }
 }
 
-/* Game Row Component - Desktop and Mobile */
-.game-row {
+/* ============================================================================
+ * MEDIA ROW COMPONENT - Desktop and Mobile
+ * ============================================================================
+ * One definition for every ranking row on the site. Games emit .game-row and
+ * the .game-* element classes; anything extending
+ * core/includes/_base_media_row.html - music today - emits .media-row and
+ * .media-*. The class names stay distinct because each section's JavaScript
+ * and view-mode CSS query their own, but every rule below is shared through
+ * :is() so the two cannot drift apart.
+ *
+ * They had. The .media-* set was copied from these rules and the row-level
+ * hover was left out, so album rows lifted their thumbnail and rank on hover
+ * but never showed the gradient, the lift or the primary left border a game
+ * row does. Add a rule here, not a fourth copy of it.
+ *
+ * Where a media type genuinely differs, the difference is a custom property
+ * (artwork aspect ratio and fit), not a separate rule.
+ */
+
+.game-row,
+.media-row {
   position: relative;
   transition: transform 0.15s ease;
 }
 
-/* Highlight overlay using pseudo-element for GPU-composited animation */
-.game-row::before {
+/* Highlight overlay on a pseudo-element so the animation stays composited */
+.game-row::before,
+.media-row::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -829,84 +849,83 @@
   z-index: -1;
 }
 
-/* CSS containment for mobile only - desktop needs tooltips to escape row bounds */
-.game-row.mobile {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 80px;
-}
-
-/* Mobile: scroll offset for fixed header (60px nav + 8px breathing room) */
+/* Scroll offset for the fixed mobile header (60px nav + breathing room) */
 @media (max-width: 1087px) {
-  .game-row {
+  .game-row,
+  .media-row {
     scroll-margin-top: 68px;
   }
 }
 
-/* Highlighted row (from URL param) - uses GPU-composited opacity on ::before pseudo-element */
-.game-row.is-highlighted::before {
+/* Highlighted row (from a ?highlight= param), and its fade-out */
+.game-row.is-highlighted::before,
+.media-row.is-highlighted::before {
   opacity: 1;
 }
 
-.game-row.is-highlighted {
+.game-row.is-highlighted,
+.media-row.is-highlighted {
   border-left-color: var(--color-primary);
 }
 
-/* Fade out animation for highlight */
-.game-row.is-highlighted.fade-out::before {
+.game-row.is-highlighted.fade-out::before,
+.media-row.is-highlighted.fade-out::before {
   opacity: 0;
 }
 
-.game-row.is-highlighted.fade-out {
+.game-row.is-highlighted.fade-out,
+.media-row.is-highlighted.fade-out {
   border-left-color: transparent;
 }
 
-/* Desktop: Visual styling with gradient hover */
-.game-row.desktop {
+/* Desktop: pill-shaped left edge that the hover border colours in */
+.game-row.desktop,
+.media-row.desktop {
   align-items: center;
   border-left: 4px solid transparent;
   border-top-left-radius: 9999px;
   border-bottom-left-radius: 9999px;
 }
 
-/* Desktop hover - gradient effect */
-.game-row.desktop:hover {
+/* Desktop hover - gradient sweep, slight lift, accented left edge */
+.game-row.desktop:hover,
+.media-row.desktop:hover {
   background: linear-gradient(to right, color-mix(in oklch, var(--color-primary) 12%, transparent) 40%, transparent 100%);
   transform: translateY(-1px);
   border-left-color: var(--color-primary);
 }
 
-/* Mobile hover effects - match highlight color */
-.game-row.mobile:hover {
-  background-color: color-mix(in oklch, var(--color-primary) 15%, transparent);
-}
-
 @layer components {
 
-  /* Desktop: Comfortable row height with visible metadata */
-  .game-row.desktop {
+  .game-row.desktop,
+  .media-row.desktop {
     min-height: 52px;
   }
 
-  /* Desktop: Rank scales subtly on hover */
-  .game-row.desktop .game-rank {
+  /* Rank scales subtly on hover */
+  .game-row.desktop .game-rank,
+  .media-row.desktop .media-rank {
     transition: transform 0.2s ease;
   }
 
-  .game-row.desktop:hover .game-rank {
+  .game-row.desktop:hover .game-rank,
+  .media-row.desktop:hover .media-rank {
     transform: scale(1.08);
   }
 
-  /* Desktop: Game title */
-  .game-row.desktop .game-title {
+  .game-row.desktop .game-title,
+  .media-row.desktop .media-title {
     font-size: 1.125rem; /* text-lg */
     line-height: 1.75rem;
   }
 
-  /* Desktop: Thumbnails with middle-out hover effect */
-  .game-row.desktop .game-thumb-link {
+  /* Thumbnail grows from its centre on hover. The aspect ratio is a variable
+     because media types differ: box art is portrait, album sleeves square. */
+  .game-row.desktop .game-thumb-link,
+  .media-row.desktop .media-thumb-link {
     @apply block flex-shrink-0;
-    width: 38px;
-    height: calc(38px * 128 / 90);
+    width: var(--media-thumb-width, 38px);
+    aspect-ratio: var(--media-thumb-aspect, 90 / 128);
     border-radius: 6px;
     overflow: hidden;
     margin-left: 4px;
@@ -915,39 +934,108 @@
     transition: transform 0.2s ease;
   }
 
-  .game-row.desktop:hover .game-thumb-link {
-    transform: scale(1.16); /* 44/38 ≈ 1.158, rounded for cleaner value */
+  .game-row.desktop:hover .game-thumb-link,
+  .media-row.desktop:hover .media-thumb-link {
+    transform: scale(1.16); /* 44/38 ~ 1.158, rounded for a cleaner value */
   }
 
-  .game-row.desktop .game-thumb {
+  .game-row.desktop .game-thumb,
+  .media-row.desktop .media-thumb {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: var(--media-thumb-fit, cover);
   }
 
-  /* Desktop: Metadata row - always visible */
-  .game-row.desktop .game-row-details {
+  /* Square artwork shown whole. `contain` rather than `cover` so a sleeve
+     that is not exactly 1:1 is letterboxed instead of cropped - the point of
+     a cover is the whole cover. */
+  .media-thumb-whole {
+    --media-thumb-aspect: 1 / 1;
+    --media-thumb-fit: contain;
+    /* Sized to the row rather than to the portrait box it replaced: an
+       album row carries three lines (title, credit, metadata), so a square
+       cover can fill that height instead of floating in the middle of it.
+       Short of the full content height, which leaves the hover scale
+       somewhere to go - the same headroom a game row's thumbnail has. */
+    --media-thumb-width: 64px;
+  }
+
+  .media-thumb-mobile {
+    @apply rounded overflow-hidden bg-base-100;
+    width: 3rem;
+    aspect-ratio: var(--media-thumb-aspect, 90 / 128);
+  }
+
+  .media-thumb-mobile img {
+    width: 100%;
+    height: 100%;
+    object-fit: var(--media-thumb-fit, cover);
+  }
+
+  /* Metadata row - always visible, brightening on hover */
+  .game-row.desktop .game-row-details,
+  .media-row.desktop .media-row-details {
     @apply opacity-80;
     transition: opacity 0.15s ease;
   }
 
-  .game-row.desktop:hover .game-row-details {
+  .game-row.desktop:hover .game-row-details,
+  .media-row.desktop:hover .media-row-details {
     @apply opacity-100;
   }
 
-  /* Mobile: Circular thumbnails (no hover expansion) */
-  .game-row.mobile .game-thumb-link {
-    @apply block overflow-hidden flex-shrink-0;
-    border-radius: 50%;
-    width: 40px;
-    height: 40px;
+  /* Stand-in for missing artwork: albums have no cover until the metadata
+     pass runs, and an empty <img> box reads as a broken image. */
+  .media-thumb-placeholder {
+    @apply flex items-center justify-center bg-base-300 text-base-content/40;
+    width: 100%;
+    height: 100%;
   }
 
-  .game-row.mobile .game-thumb {
-    width: 40px;
-    height: 40px;
-    object-fit: cover;
-    object-position: center top;
+  /* Mobile card - one rule set for all three verticals */
+  .game-card-mobile,
+  .book-card-mobile,
+  .media-card-mobile {
+    position: relative;
+    border-left: 3px solid transparent;
+  }
+
+  .game-card-mobile::before,
+  .book-card-mobile::before,
+  .media-card-mobile::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background-color: color-mix(in oklch, var(--color-primary) 20%, transparent);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .game-card-mobile.is-highlighted::before,
+  .book-card-mobile.is-highlighted::before,
+  .media-card-mobile.is-highlighted::before {
+    opacity: 1;
+  }
+
+  .game-card-mobile.is-highlighted,
+  .book-card-mobile.is-highlighted,
+  .media-card-mobile.is-highlighted {
+    border-left-color: var(--color-primary);
+  }
+
+  .game-card-mobile.is-highlighted.fade-out::before,
+  .book-card-mobile.is-highlighted.fade-out::before,
+  .media-card-mobile.is-highlighted.fade-out::before {
+    opacity: 0;
+  }
+
+  .game-card-mobile.is-highlighted.fade-out,
+  .book-card-mobile.is-highlighted.fade-out,
+  .media-card-mobile.is-highlighted.fade-out {
+    border-left-color: transparent;
   }
 
 }
@@ -1025,237 +1113,10 @@ tr.entity-row:hover {
     @apply bg-primary text-primary-content border-primary;
   }
 
-  /* Mobile Game Card */
-  .game-card-mobile {
-    position: relative;
-    border-left: 3px solid transparent;
-    /* Remove non-composited transitions, use instant change */
-  }
-
-  /* Highlight overlay for mobile - uses opacity for GPU compositing */
-  .game-card-mobile::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background-color: color-mix(in oklch, var(--color-primary) 20%, transparent);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  .game-card-mobile.is-highlighted::before {
-    opacity: 1;
-  }
-
-  .game-card-mobile.is-highlighted {
-    border-left-color: var(--color-primary);
-  }
-
-  .game-card-mobile.is-highlighted.fade-out::before {
-    opacity: 0;
-  }
-
-  .game-card-mobile.is-highlighted.fade-out {
-    border-left-color: transparent;
-  }
-
-  /* Mobile Book Card - similar to game card mobile */
-  .book-card-mobile {
-    position: relative;
-    border-left: 3px solid transparent;
-  }
-
-  .book-card-mobile::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background-color: color-mix(in oklch, var(--color-primary) 20%, transparent);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  .book-card-mobile.is-highlighted::before {
-    opacity: 1;
-  }
-
-  .book-card-mobile.is-highlighted {
-    border-left-color: var(--color-primary);
-  }
-
-  .book-card-mobile.is-highlighted.fade-out::before {
-    opacity: 0;
-  }
-
-  .book-card-mobile.is-highlighted.fade-out {
-    border-left-color: transparent;
-  }
-
   /* Safe area padding for bottom sheet footer (iOS notch) */
   .safe-area-inset-bottom {
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
-}
-
-/* ============================================================================
- * SHARED MEDIA ROW STYLES
- * ============================================================================
- * The class names core/includes/_base_media_row.html emits, so any media
- * vertical that extends that template is styled without a fourth copy of the
- * game-row rules. Used by the music section; games and books still carry
- * their own .game-* / .book-* equivalents above.
- */
-
-.media-row {
-  position: relative;
-  transition: transform 0.15s ease;
-}
-
-/* Highlight overlay on a pseudo-element so the animation stays composited */
-.media-row::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background-color: color-mix(in oklch, var(--color-primary) 15%, transparent);
-  opacity: 0;
-  transition: opacity 0.5s ease;
-  pointer-events: none;
-  z-index: -1;
-}
-
-.media-row.is-highlighted::before {
-  opacity: 1;
-}
-
-/* Scroll offset for the fixed mobile header (60px nav + breathing room) */
-@media (max-width: 1087px) {
-  .media-row {
-    scroll-margin-top: 68px;
-  }
-}
-
-@layer components {
-
-  .media-row.desktop {
-    min-height: 52px;
-  }
-
-  .media-row.desktop .media-rank {
-    transition: transform 0.2s ease;
-  }
-
-  .media-row.desktop:hover .media-rank {
-    transform: scale(1.08);
-  }
-
-  .media-row.desktop .media-title {
-    font-size: 1.125rem; /* text-lg */
-    line-height: 1.75rem;
-  }
-
-  /* Thumbnail grows from its centre on hover, as game rows do.
-     The aspect ratio is a variable because media types differ: box art is
-     portrait, album sleeves are square. */
-  .media-row.desktop .media-thumb-link {
-    @apply block flex-shrink-0;
-    width: var(--media-thumb-width, 38px);
-    aspect-ratio: var(--media-thumb-aspect, 90 / 128);
-    border-radius: 6px;
-    overflow: hidden;
-    margin-left: 4px;
-    margin-right: 4px;
-    transform-origin: center center;
-    transition: transform 0.2s ease;
-  }
-
-  .media-row.desktop:hover .media-thumb-link {
-    transform: scale(1.16);
-  }
-
-  .media-row.desktop .media-thumb {
-    width: 100%;
-    height: 100%;
-    object-fit: var(--media-thumb-fit, cover);
-  }
-
-  /* Square artwork shown whole. `contain` rather than `cover` so a sleeve
-     that is not exactly 1:1 is letterboxed instead of cropped - the point of
-     a cover is the whole cover. */
-  .media-thumb-whole {
-    --media-thumb-aspect: 1 / 1;
-    --media-thumb-fit: contain;
-    /* A square is shorter than the 38x54 portrait box it replaces, so widen
-       it to keep the row's visual weight the same. */
-    --media-thumb-width: 48px;
-  }
-
-  .media-thumb-mobile {
-    @apply rounded overflow-hidden bg-base-100;
-    width: 3rem;
-    aspect-ratio: var(--media-thumb-aspect, 90 / 128);
-  }
-
-  .media-thumb-mobile img {
-    width: 100%;
-    height: 100%;
-    object-fit: var(--media-thumb-fit, cover);
-  }
-
-  .media-row.desktop .media-row-details {
-    @apply opacity-80;
-    transition: opacity 0.15s ease;
-  }
-
-  .media-row.desktop:hover .media-row-details {
-    @apply opacity-100;
-  }
-
-  /* Stand-in for a missing cover: albums have none until the metadata
-     pass runs, and an empty <img> box reads as a broken image. */
-  .media-thumb-placeholder {
-    @apply flex items-center justify-center bg-base-300 text-base-content/40;
-    width: 100%;
-    height: 100%;
-  }
-
-  .media-card-mobile {
-    position: relative;
-    border-left: 3px solid transparent;
-  }
-
-  .media-card-mobile::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background-color: color-mix(in oklch, var(--color-primary) 20%, transparent);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  .media-card-mobile.is-highlighted::before {
-    opacity: 1;
-  }
-
-  .media-card-mobile.is-highlighted {
-    border-left-color: var(--color-primary);
-  }
-
-  .media-card-mobile.is-highlighted.fade-out::before {
-    opacity: 0;
-  }
-
-  .media-card-mobile.is-highlighted.fade-out {
-    border-left-color: transparent;
-  }
-
 }
 
 /* Bottom Sheet Backdrop Animation */
@@ -1539,13 +1400,17 @@ input[type="number"] {
 }
 
 /* =============================================================================
-   Game Grid View
-   A card-based grid layout alternative to the list view
+   Grid View
+   A card-based grid layout alternative to the list view. Shared by games
+   (.game-*) and anything using the core media card (.media-*), through :is()
+   for the same reason the row rules are - see MEDIA ROW COMPONENT above.
+   Artwork shape is a custom property: box art is portrait, sleeves square.
    ============================================================================= */
 
 @layer components {
   /* Grid container - auto-fill columns based on minimum card width */
-  .game-grid {
+  .game-grid,
+  .media-grid {
     display: grid;
     /* Cards will be at least 105px wide, automatically adjusting column count */
     grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
@@ -1554,7 +1419,8 @@ input[type="number"] {
   }
 
   @media (min-width: 962px) {
-    .game-grid {
+    .game-grid,
+    .media-grid {
       /* Larger minimum on desktop for bigger cards */
       grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
       gap: calc(var(--spacing) * 3);
@@ -1562,51 +1428,67 @@ input[type="number"] {
   }
 
   /* Grid card */
-  .game-card-grid {
+  .game-card-grid,
+  .media-card-grid {
     @apply transition-transform duration-200 cursor-pointer;
     /* CSS containment for off-screen cards */
     content-visibility: auto;
     contain-intrinsic-size: auto 200px;
   }
 
-  .game-card-grid:hover {
+  .game-card-grid:hover,
+  .media-card-grid:hover {
     @apply -translate-y-1;
   }
 
+  /* Square artwork, for album sleeves. Also shortens the reserved box. */
+  .media-card-square {
+    --media-card-aspect: 1 / 1;
+    --media-card-fit: contain;
+  }
+
   /* Cover container */
-  .game-card-cover {
+  .game-card-cover,
+  .media-card-cover {
     @apply shadow-md transition-shadow duration-200 bg-base-300;
-    aspect-ratio: 90 / 128;
+    aspect-ratio: var(--media-card-aspect, 90 / 128);
     border-radius: 0.5rem;
     overflow: hidden;
   }
 
-  .game-card-grid:hover .game-card-cover {
+  .game-card-grid:hover .game-card-cover,
+  .media-card-grid:hover .media-card-cover {
     @apply shadow-xl;
   }
 
-  .game-card-cover img {
-    @apply w-full h-full object-cover transition-transform duration-300;
+  .game-card-cover img,
+  .media-card-cover img {
+    @apply w-full h-full transition-transform duration-300;
+    object-fit: var(--media-card-fit, cover);
   }
 
-  .game-card-grid:hover .game-card-cover img {
+  .game-card-grid:hover .game-card-cover img,
+  .media-card-grid:hover .media-card-cover img {
     @apply scale-105;
   }
 
   /* Rank badge - positioned in top-left corner */
-  .game-card-rank {
+  .game-card-rank,
+  .media-card-rank {
     @apply absolute top-1.5 left-1.5 z-10;
   }
 
-  .game-card-rank .badge {
+  .game-card-rank .badge,
+  .media-card-rank .badge {
     @apply text-xs font-bold tabular-nums px-1.5 py-0.5 shadow-md;
     background-color: rgba(0, 0, 0, 0.75);
     color: white;
     border: none;
   }
 
-  /* Global rank indicator - positioned in top-right corner as secondary info */
-  .game-card-global-rank {
+  /* Global rank indicator - top-right corner as secondary info */
+  .game-card-global-rank,
+  .media-card-global-rank {
     @apply absolute top-1.5 right-1.5 z-10;
     @apply text-[10px] font-medium tabular-nums px-1 py-0.5;
     background-color: rgba(255, 255, 255, 0.85);
@@ -1615,12 +1497,14 @@ input[type="number"] {
     backdrop-filter: blur(2px);
   }
 
-  .game-card-global-rank.hidden {
+  .game-card-global-rank.hidden,
+  .media-card-global-rank.hidden {
     display: none;
   }
 
   /* Hover overlay - slides up from bottom */
-  .game-card-overlay {
+  .game-card-overlay,
+  .media-card-overlay {
     @apply absolute inset-x-0 bottom-0 z-10;
     background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.7) 70%, transparent 100%);
     padding: 2.5rem 0.5rem 0.5rem;
@@ -1631,20 +1515,24 @@ input[type="number"] {
     border-radius: 0 0 0.5rem 0.5rem;
   }
 
-  .game-card-grid:hover .game-card-overlay {
+  .game-card-grid:hover .game-card-overlay,
+  .media-card-grid:hover .media-card-overlay {
     opacity: 1;
     transform: translateY(0);
     pointer-events: auto;
   }
 
-  .game-card-overlay-content {
+  .game-card-overlay-content,
+  .media-card-overlay-content {
     @apply text-xs text-white/90 leading-tight;
     display: flex;
     flex-direction: column;
     gap: 0.125rem;
   }
 
-  .game-card-dev {
+  /* Creator line: developer for games, artist credit for albums */
+  .game-card-dev,
+  .media-card-creator {
     @apply font-medium truncate;
   }
 
@@ -1652,7 +1540,8 @@ input[type="number"] {
     @apply text-white/70 truncate;
   }
 
-  .game-card-genres {
+  .game-card-genres,
+  .media-card-genres {
     @apply text-white/70;
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -1664,12 +1553,14 @@ input[type="number"] {
     @apply text-white/60 tabular-nums;
   }
 
-  .game-card-lists {
+  .game-card-lists,
+  .media-card-lists {
     @apply text-white/60 tabular-nums;
   }
 
   /* Title and year below cover */
-  .game-card-info {
+  .game-card-info,
+  .media-card-info {
     @apply mt-2 px-0.5;
     /* Fixed height for consistent card sizes: 2 lines title (~2.2rem) + year (~1rem) */
     height: 3.25rem;
@@ -1677,7 +1568,8 @@ input[type="number"] {
     flex-direction: column;
   }
 
-  .game-card-info .game-card-name {
+  .game-card-info .game-card-name,
+  .media-card-info .media-card-name {
     @apply font-bold text-sm leading-tight block;
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -1686,32 +1578,38 @@ input[type="number"] {
     flex: 1;
   }
 
-  .game-card-info .game-card-year {
+  .game-card-info .game-card-year,
+  .media-card-info .media-card-year {
     @apply text-xs text-base-content/70;
     flex-shrink: 0;
   }
 
   /* Highlight state for grid cards */
-  .game-card-grid.is-highlighted .game-card-cover {
+  .game-card-grid.is-highlighted .game-card-cover,
+  .media-card-grid.is-highlighted .media-card-cover {
     @apply ring-2 ring-primary ring-offset-2 ring-offset-base-100;
   }
 
-  .game-card-grid.is-highlighted.fade-out .game-card-cover {
+  .game-card-grid.is-highlighted.fade-out .game-card-cover,
+  .media-card-grid.is-highlighted.fade-out .media-card-cover {
     @apply ring-0 ring-offset-0;
   }
 }
 
 /* View mode toggle - hide list rows when in grid mode */
-#game-list-container.view-grid .game-row-wrapper {
+#game-list-container.view-grid .game-row-wrapper,
+#album-list-container.view-grid .media-row-wrapper {
   display: none !important;
 }
 
-#game-list-container.view-grid .game-card-mobile {
+#game-list-container.view-grid .game-card-mobile,
+#album-list-container.view-grid .media-card-mobile {
   display: none !important;
 }
 
 /* View mode toggle - hide grid when in list mode */
-#game-list-container.view-list .game-grid {
+#game-list-container.view-list .game-grid,
+#album-list-container.view-list .media-grid {
   display: none !important;
 }
 
@@ -1727,6 +1625,7 @@ input[type="number"] {
   }
 }
 
-.game-card-enter {
+.game-card-enter,
+.media-card-enter {
   animation: game-card-enter 0.25s ease-out forwards;
 }

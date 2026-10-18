@@ -1,5 +1,10 @@
-{# List type group for game detail page #}
-{% load game_filters %}
+{# One group of list appearances on a detail page, by list type. #}
+{# Props: group_label, group_items (each with year, publication, name, url, #}
+{#   rank) #}
+{# Shared by the game and album detail pages, which had separately written #}
+{# versions: the album one lost the external-link affordance and used a #}
+{# different table and header style for the same content. #}
+{# Keep every template comment on a single line. #}
 
 <div class="list-type-group border border-base-content/10 rounded-lg">
     {# Section header #}

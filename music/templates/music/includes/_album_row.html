@@ -45,24 +45,36 @@
 </div>
 {% endblock %}
 
+{# The credit gets a line of its own under the title, stronger than the #}
+{# metadata below it. Beside the title it was the first thing truncated, #}
+{# and exactly on the rows where it was needed - a long album title left #}
+{# no room for the artist. On its own line it is in the same place in #}
+{# every row, which is what makes a list of a thousand scannable. #}
+{% block subtitle %}
+<div class="media-credit text-sm font-semibold text-base-content/90 truncate ml-4 -mt-0.5" data-slot="artist-credit-inline">{% if item %}{% artist_links item %}{% endif %}</div>
+{% endblock %}
+
+{# The release year links to that year's rankings, as the games row does. #}
+{% block year_link %}
+<a {% if item and item.year_released %}href="{% url 'music:home' %}?start={{ item.year_released }}&end={{ item.year_released }}&highlight={{ item.id }}"{% endif %}
+   class="text-base-content/80 ml-1.5" data-slot="year-link">
+    (<span data-slot="year">{% if item %}{{ item.year|default_if_none:"" }}{% endif %}</span>)
+</a>
+{% endblock %}
+
 {% block metadata %}
 {% if item %}
-    {% if item.artist_credit %}
-    <span class="whitespace-nowrap" data-slot="artist-credit">{% artist_links item %}</span>
-    {% endif %}
-
     {% if item.genres.count > 0 %}
     <span class="whitespace-nowrap">
-        {% if item.artist_credit %}<span class="text-base-content/30">|</span> {% endif %}
         <span data-slot="genres">
-            {% for genre in item.genres.all %}{{ genre.name }}{% if not forloop.last %}<span class="text-base-content/30"> / </span>{% endif %}{% endfor %}
+            {% for genre in item.genres.all %}<button type="button" class="hover:text-primary cursor-pointer transition-colors" onclick="event.stopPropagation(); document.dispatchEvent(new CustomEvent('add-genre', {detail: {genreId: '{{ genre.id }}', itemId: '{{ item.id }}'} }))" title="{{ genre.name }}">{{ genre.name }}</button>{% if not forloop.last %}<span class="text-base-content/30"> / </span>{% endif %}{% endfor %}
         </span>
     </span>
     {% endif %}
 
     {% if item.list_count %}
     <span class="whitespace-nowrap">
-        {% if item.genres.count > 0 or item.artist_credit %}<span class="text-base-content/30">|</span> {% endif %}
+        {% if item.genres.count > 0 %}<span class="text-base-content/30">|</span> {% endif %}
         <span class="tabular-nums" data-slot="list-count">{{ item.list_count }} list{{ item.list_count|pluralize }}</span>
     </span>
     {% endif %}
@@ -72,7 +84,7 @@
 {% block mobile_metadata %}
 {% if item %}
     {% if item.artist_credit %}
-    <span class="whitespace-nowrap" data-slot="artist-credit">{{ item.artist_credit }}</span>
+    <span class="whitespace-nowrap font-medium text-base-content" data-slot="artist-credit">{{ item.artist_credit }}</span>
     {% endif %}
     {% if item.list_count %}
     <span class="whitespace-nowrap">

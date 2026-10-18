@@ -7,8 +7,9 @@ models, and cover the PostgreSQL window-function path with mocks.
 
 from unittest import mock
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
+from core.services import ranking
 from core.services.ranking import update_year_decade_ranks, year_to_decade
 from games import models as game_models
 from music import models as music_models
@@ -154,3 +155,39 @@ class PostgresPathTests(TestCase):
         self.assertIn("(year_released / 10) * 10", statements)
         self.assertIn("SET year_rank", statements)
         self.assertIn("SET decade_rank", statements)
+
+
+class RankDistributionTests(SimpleTestCase):
+    """Binning for the rank distribution chart, shared by both sections."""
+
+    def test_bins_span_the_whole_ranking(self):
+        bins = ranking.rank_distribution([1, 50, 100], max_rank=100, bin_count=10)
+        self.assertEqual(len(bins), 10)
+        self.assertEqual(bins[0]["binStart"], 1)
+        self.assertEqual(bins[-1]["binEnd"], 100)
+
+    def test_each_rank_lands_in_one_bin(self):
+        bins = ranking.rank_distribution([1, 2, 11, 100], max_rank=100, bin_count=10)
+        self.assertEqual(sum(entry["count"] for entry in bins), 4)
+        self.assertEqual(bins[0]["count"], 2)
+        self.assertEqual(bins[1]["count"], 1)
+        self.assertEqual(bins[9]["count"], 1)
+
+    def test_the_axis_does_not_move_with_the_filtered_set(self):
+        # Bins come from the global maximum, so a filtered chart is read
+        # against the same axis as an unfiltered one.
+        bins = ranking.rank_distribution([5], max_rank=1000, bin_count=10)
+        self.assertEqual(bins[-1]["binEnd"], 1000)
+        self.assertEqual(sum(entry["count"] for entry in bins), 1)
+
+    def test_ranks_outside_the_axis_are_dropped(self):
+        bins = ranking.rank_distribution([0, None, 5000], max_rank=100, bin_count=10)
+        self.assertEqual(sum(entry["count"] for entry in bins), 0)
+
+    def test_an_empty_ranking_has_no_bins(self):
+        self.assertEqual(ranking.rank_distribution([1, 2], 0, 10), [])
+        self.assertEqual(ranking.rank_distribution([1, 2], 100, 0), [])
+
+    def test_a_ranking_smaller_than_the_bin_count_still_bins(self):
+        bins = ranking.rank_distribution([1, 2, 3], max_rank=3, bin_count=10)
+        self.assertEqual(sum(entry["count"] for entry in bins), 3)

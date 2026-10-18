@@ -2,7 +2,8 @@
 {# Props: name, input_id, placeholder, value, hx_get, hx_target, hx_include #}
 {# Matches the games source-lists search box so search looks the same #}
 {# everywhere. Keep every template comment on a single line. #}
-<label class="input input-bordered w-64 bg-base-200">
+<label class="input input-bordered w-64 bg-base-200"
+       x-data="{ q: '{{ value|default:''|escapejs }}' }">
     <svg class="h-4 w-4 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
         <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor">
             <circle cx="11" cy="11" r="8"></circle>
@@ -15,6 +16,7 @@
            id="{{ input_id }}"
            placeholder="{{ placeholder|default:'Search' }}"
            value="{{ value|default:'' }}"
+           x-model="q"
            hx-get="{{ hx_get }}"
            hx-target="{{ hx_target }}"
            hx-trigger="input changed delay:300ms"
@@ -22,4 +24,19 @@
            hx-push-url="true"
            {% if hx_include %}hx-include="{{ hx_include }}"{% endif %}
            autocomplete="off">
+    {# The clear button every games search input has. #}
+    <button type="button"
+            @click="q = ''; $nextTick(() => document.getElementById('{{ input_id }}').dispatchEvent(new Event('input', { bubbles: true })))"
+            title="Clear search"
+            class="btn btn-ghost btn-xs btn-circle"
+            style="display: none"
+            :style="{ display: q.length > 0 ? 'flex' : 'none' }"
+            aria-label="Clear search">
+        <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2.5" fill="none" stroke="currentColor">
+                <path d="M18 6 6 18"></path>
+                <path d="m6 6 12 12"></path>
+            </g>
+        </svg>
+    </button>
 </label>

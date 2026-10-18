@@ -2,7 +2,7 @@
 {# Assumes parent has filters.genres (array, multi-select), and genres (list) from main Alpine.js state #}
 {% load static %}
 
-<div x-data="mobileGenreFilterComponent({ filters, genres })"
+<div x-data="mobileGenreFilterComponent({ filters, genres{% if genre_icons_element %}, categoryIconsElementId: '{{ genre_icons_element }}', defaultCategoryIcon: '{{ default_genre_icon|default:"mdi-music-note" }}'{% endif %}{% if genre_counts_include_descendants %}, countsIncludeDescendants: true{% endif %} })"
      @genres-reset.window="filters.genres = []; resetExpanded();"
      class="space-y-3">
 
@@ -11,7 +11,7 @@
         <button type="button"
                 @click="expanded = !expanded"
                 class="flex items-center gap-2">
-            <span class="mdi mdi-gamepad-variant text-lg text-base-content/70"></span>
+            <span class="mdi {{ genre_icon|default:'mdi-gamepad-variant' }} text-lg text-base-content/70"></span>
             Genre
             <span class="mdi mdi-chevron-right text-xl transition-transform duration-200" :class="{ 'rotate-90': expanded }"></span>
         </button>

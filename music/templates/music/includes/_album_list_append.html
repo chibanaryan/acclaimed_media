@@ -1,18 +1,12 @@
-{# Append-only partial: the next page of rows, plus its own load-more so #}
-{# the button reappears while pages remain. #}
+{# Append-only partial: the next page of rows, plus an out-of-band swap that #}
+{# replaces the load-more button with the one for the page after it. #}
+{# #}
+{# Rows only, as games/includes/_game_list_append.html is: paging in grid #}
+{# view is handled by the client-side bundle, which renders cards into the #}
+{# existing grid rather than appending a second one. #}
+{# Keep every template comment on a single line. #}
 {% load humanize %}
 {% for album in albums %}
     {% include 'music/includes/_album_row.html' with item=album show_rank=show_rank index=forloop.counter|add:page_obj.start_index|add:-1 highlight=highlight %}
 {% endfor %}
-{% if has_more %}
-<div class="load-more-container flex justify-center mt-4">
-    <button type="button"
-            class="btn btn-outline btn-sm"
-            hx-get="{% url 'music:home' %}?page={{ next_page }}&append=true{% if query_string %}&{{ query_string }}{% endif %}"
-            hx-target="#album-list-container"
-            hx-swap="beforeend"
-            hx-on::after-request="this.closest('.load-more-container').remove()">
-        Load {{ remaining_count|intcomma }} more
-    </button>
-</div>
-{% endif %}
+{% include 'music/includes/_album_load_more.html' with oob=True %}

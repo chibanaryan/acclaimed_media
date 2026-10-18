@@ -5,21 +5,29 @@ Every view is staff-only: the section is a beta and should look absent, not
 forbidden, to everyone else. That gate is ``core.mixins.StaffOnlyMixin``,
 which raises 404.
 
-Unlike the books app, the album list is server-rendered with HTMX filtering.
-There is no client-side filtering bundle yet, so every variable these
-templates read is set here.
+The album list is server-rendered with HTMX filtering and progressively
+enhanced by music/static/music/js/, so every variable these templates read is
+set here and the page works with or without that bundle.
+
+Presentation is deliberately shared with the games rankings page rather than
+reimplemented: the results-header controls, the row and grid card styling and
+the filter sidebar components all come from core/, so the two sections look
+like one site.
 """
 
 from collections import defaultdict
+import csv
+import math
 from io import TextIOWrapper
 from pathlib import Path
 
 from django.conf import settings
 from django.core.cache import cache
-from django.db.models import Count, Prefetch, Q
+from django.db.models import Count, Max, Min, Prefetch, Q
 from django.db.models.functions import Lower
 from django.http import Http404, HttpResponse
 from django.shortcuts import render
+from django.utils.text import slugify
 from django.views import View
 from django.views.generic import DetailView, ListView
 
@@ -29,6 +37,9 @@ from core.mixins import HTMXPartialMixin, RobustPaginationMixin, StaffOnlyMixin
 from music import config, models
 from music.forms import MusicImportForm
 from music.services import import_handler
+from core.services import ranking, titles
+from games.models import SiteMetadata
+from music.templatetags import music_filters
 from music.services.data_version import compute_album_data_version
 
 # The checked-in release files, offered as the import default so the page is
@@ -54,81 +65,77 @@ ALBUM_SORTS = {
     "lists": ("list_count", "rank"),
 }
 
+# Which way a sort runs when the URL names no direction. The controls pick
+# the same way - a name or a rank reads best-first, a count reads biggest
+# first - so a hand-typed ?sort=rank and a click on "Top Rank" agree.
+ASCENDING_SORTS = frozenset({"name", "alpha", "order", "rank"})
+
+
+def default_direction(sort):
+    """The direction a sort runs in when the URL does not say."""
+    return "asc" if sort in ASCENDING_SORTS else "desc"
+
+
 ARTIST_SORTS = {
     "albums": ("albums_count", Lower("name")),
+    # An artist's best album, as the developer list's "Top Rank" sorts by a
+    # developer's best game. A lower rank is better, so this one reads
+    # "ascending" in the natural sense the other sorts are declared in.
+    "rank": ("best_rank", Lower("name")),
     "name": (Lower("name"),),
 }
 
 
-def _cached_decade_counts():
-    """Return albums per decade, cached: it is a full-table aggregate.
-
-    Only the counts are cached. Which chip is selected depends on the current
-    request, so that is computed per request in ``_decade_options``.
-    """
-    counts = cache.get(config.CACHE_KEY_DECADE_COUNTS)
-    if counts is None:
-        counts = {}
-        for row in (
-            models.Album.objects.exclude(year_released__isnull=True)
-            .values("year_released")
-            .annotate(count=Count("id"))
-        ):
-            decade = (row["year_released"] // 10) * 10
-            counts[decade] = counts.get(decade, 0) + row["count"]
-        cache.set(config.CACHE_KEY_DECADE_COUNTS, counts, config.CACHE_TIMEOUT_24_HOURS)
-    return counts
-
-
-def _decade_options(min_year, max_year, current_start, current_end):
-    """Decade quick-filters with album counts, for the sidebar.
-
-    Mirrors the games year filter's role without the heatmap: the album data
-    spans seven decades, so a row of chips covers it.
-    """
-    counts = _cached_decade_counts()
-
-    options = []
-    for decade in sorted(counts):
-        end = decade + 9
-        options.append(
-            {
-                "start": decade,
-                "end": end,
-                "label": f"{decade}s",
-                "count": counts[decade],
-                "selected": (
-                    str(current_start) == str(decade) and str(current_end) == str(end)
-                ),
-            }
-        )
-    return options
-
-
-def _filter_title(params):
+def _filter_title(params, min_year=None, max_year=None, genres=None, artists=None):
     """A natural page title describing the current filter state.
 
-    Deliberately avoids "best"/"top" phrasing, matching the wording used on
-    the games ranking pages.
-    """
-    base = "Most Acclaimed Albums"
-    start = params.get("start")
-    end = params.get("end")
-    query = params.get("q")
+    Composed the way ``games.views._build_filter_title`` composes its own:
+    the selected genres fold into the noun phrase, the year range becomes an
+    "of ..." suffix, and an artist reads as "by ...". It used to know only
+    about the search box and the year range, so filtering by genre left the
+    heading saying "Most Acclaimed Albums" and nothing else.
 
+    Deliberately avoids "best"/"top" phrasing, matching the games pages.
+    """
+    query = params.get("q")
     if query:
         return f"Albums matching \u201c{query}\u201d"
-    if start and end and start == end:
-        return f"{base} of {start}"
-    if start and end:
-        if start.endswith("0") and end == str(int(start) + 9):
-            return f"{base} of the {start}s"
-        return f"{base}, {start}\u2013{end}"
-    if start:
-        return f"{base} from {start}"
-    if end:
-        return f"{base} up to {end}"
-    return base
+
+    genre_label = ""
+    selected_genres = _parse_id_list(params.get("genres"))
+    if selected_genres and genres:
+        names = {genre["id"]: genre["name"] for genre in genres}
+        chosen = [names[genre_id] for genre_id in selected_genres if genre_id in names]
+        if chosen:
+            genre_label = f" {titles.join_names(chosen)}"
+
+    artist_label = ""
+    selected_artists = _parse_id_list(params.get("artists"))
+    if selected_artists and artists:
+        names = {artist["id"]: artist["name"] for artist in artists}
+        chosen = [
+            names[artist_id] for artist_id in selected_artists if artist_id in names
+        ]
+        if chosen:
+            artist_label = f" by {titles.join_names(chosen)}"
+
+    start = _parse_int(params.get("start"))
+    end = _parse_int(params.get("end"))
+    if min_year is not None and max_year is not None:
+        window = titles.build_time_window(
+            start if start is not None else min_year,
+            end if end is not None else max_year,
+            min_year,
+            max_year,
+        )
+    elif start is not None and end is not None:
+        window = titles.build_time_window(start, end, start, end)
+    else:
+        window = ""
+
+    time_suffix = f" of {window}" if window else ""
+    title = f"Most Acclaimed{genre_label} Albums{artist_label}{time_suffix}"
+    return " ".join(title.split())
 
 
 def _get_year_bounds():
@@ -177,6 +184,98 @@ def _reverse_order(field):
     return field.desc()
 
 
+def apply_album_filters(queryset, params, skip=()):
+    """Apply the rankings page's filters to ``queryset``.
+
+    ``skip`` leaves a dimension out, which is how the facet counts beside the
+    year cells and the genre rows are worked out: the count under "1975" is
+    how many albums that year has under the *other* filters, not how many are
+    showing right now.
+    """
+    q = params.get("q")
+    if q and "q" not in skip:
+        queryset = queryset.filter(
+            Q(name__icontains=q)
+            | Q(name_normalized__icontains=q)
+            | Q(artist_credit__icontains=q)
+        )
+
+    if "year" not in skip:
+        start = _parse_int(params.get("start"))
+        if start is not None:
+            queryset = queryset.filter(year_released__gte=start)
+        end = _parse_int(params.get("end"))
+        if end is not None:
+            queryset = queryset.filter(year_released__lte=end)
+
+    if "artists" not in skip:
+        artist_ids = _parse_id_list(params.get("artists"))
+        if artist_ids:
+            queryset = queryset.filter(artists__id__in=artist_ids).distinct()
+
+    if "genres" not in skip:
+        genre_ids = _parse_id_list(params.get("genres"))
+        if genre_ids:
+            queryset = queryset.filter(
+                genres__id__in=expand_genre_ids(genre_ids)
+            ).distinct()
+
+    return queryset
+
+
+def expand_genre_ids(genre_ids):
+    """Add every descendant of the selected genres.
+
+    Selecting "Rock" means rock, including the styles filed under it -
+    which is what ``games.services.query_filters.apply_genre_filter`` does,
+    and what the count beside the row says. Matching the ids literally made
+    a root match only the albums tagged with the bare root name, so picking
+    Rock dropped almost everything the reader would call rock.
+    """
+    expanded = set(genre_ids)
+    for genre in models.MusicGenre.objects.filter(id__in=genre_ids).prefetch_related(
+        "children"
+    ):
+        expanded.update(genre.get_descendant_ids(include_self=True))
+    return sorted(expanded)
+
+
+def _year_counts(queryset):
+    """Albums per release year, for the year heatmap."""
+    return [
+        {"year": row["year_released"], "count": row["count"]}
+        for row in queryset.exclude(year_released__isnull=True)
+        .values("year_released")
+        .annotate(count=Count("id"))
+        .order_by("year_released")
+    ]
+
+
+def _genre_counts(queryset):
+    """Albums per genre, counting each genre's whole subtree.
+
+    The number beside a row has to be what selecting that row gives, and
+    selecting a root includes its styles. Summing a root and its children
+    in the browser (which is what the tree used to do) counts an album
+    tagged both "Classical" and "Modern Classical" twice - the page said
+    Classical had 2 albums when it had one.
+    """
+    pairs = list(queryset.exclude(genres__isnull=True).values_list("id", "genres__id"))
+    albums_by_genre = defaultdict(set)
+    for album_id, genre_id in pairs:
+        albums_by_genre[genre_id].add(album_id)
+
+    counts = {}
+    for genre in models.MusicGenre.objects.prefetch_related("children"):
+        subtree = genre.get_descendant_ids(include_self=True)
+        albums = set()
+        for genre_id in subtree:
+            albums |= albums_by_genre.get(genre_id, set())
+        if albums:
+            counts[str(genre.id)] = len(albums)
+    return counts
+
+
 def _cached_artist_options():
     """Return the artist filter options: every artist with at least one album."""
     cache_key = config.CACHE_KEY_ARTIST_OPTIONS
@@ -211,6 +310,28 @@ def _cached_genre_options():
         )
         cache.set(cache_key, options, config.CACHE_TIMEOUT_24_HOURS)
     return options
+
+
+def genre_tree_options():
+    """The genre options shaped for ``core/includes/_genre_filter.html``.
+
+    The shared tree reads ``level``, ``parent_id`` and a count; it prefers
+    ``filtered_count`` when one has been pushed in, and falls back to
+    ``item_count`` - the equivalent of games' ``game_count``.
+    """
+    subtree_counts = _genre_counts(models.Album.objects.all())
+    return [
+        {
+            "id": option["id"],
+            "name": option["name"],
+            "slug": option["slug"],
+            "level": option["level"],
+            "parent_id": option["parent_id"],
+            # The subtree count, for the same reason _genre_counts uses one.
+            "item_count": subtree_counts.get(str(option["id"]), 0),
+        }
+        for option in _cached_genre_options()
+    ]
 
 
 def group_genre_options(options):
@@ -309,16 +430,20 @@ class AlbumHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
     paginate_by = config.DEFAULT_PAGE_SIZE
     paginate_orphans = 0
 
+    def _is_partial_request(self):
+        """Whether this request wants a fragment rather than the whole page."""
+        return bool(
+            self.request.headers.get("HX-Request")
+            or self.request.headers.get("X-Requested-With") == "XMLHttpRequest"
+            or self.request.GET.get("partial") == "true"
+        )
+
     def get_template_names(self):
         """Serve the right fragment for HTMX, the full page otherwise."""
         if self.request.GET.get("append") == "true":
             return ["music/includes/_album_list_append.html"]
 
-        is_htmx = (
-            self.request.headers.get("HX-Request")
-            or self.request.headers.get("X-Requested-With") == "XMLHttpRequest"
-            or self.request.GET.get("partial") == "true"
-        )
+        is_htmx = self._is_partial_request()
         if is_htmx:
             if self.request.headers.get("HX-Target") == "album-results-container":
                 return ["music/includes/_album_list_results.html"]
@@ -326,31 +451,10 @@ class AlbumHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
         return super().get_template_names()
 
     def get_queryset(self):
-        qs = models.Album.objects.with_relations().with_list_count()
-
-        q = self.request.GET.get("q")
-        if q:
-            qs = qs.filter(
-                Q(name__icontains=q)
-                | Q(name_normalized__icontains=q)
-                | Q(artist_credit__icontains=q)
-            )
-
-        start = _parse_int(self.request.GET.get("start"))
-        if start is not None:
-            qs = qs.filter(year_released__gte=start)
-        end = _parse_int(self.request.GET.get("end"))
-        if end is not None:
-            qs = qs.filter(year_released__lte=end)
-
-        artist_ids = _parse_id_list(self.request.GET.get("artists"))
-        if artist_ids:
-            qs = qs.filter(artists__id__in=artist_ids).distinct()
-
-        genre_ids = _parse_id_list(self.request.GET.get("genres"))
-        if genre_ids:
-            qs = qs.filter(genres__id__in=genre_ids).distinct()
-
+        qs = apply_album_filters(
+            models.Album.objects.with_relations().with_list_count(),
+            self.request.GET,
+        )
         return _apply_sort(
             qs,
             ALBUM_SORTS,
@@ -365,11 +469,46 @@ class AlbumHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
         min_year, max_year = _get_year_bounds()
         context["min_year"] = min_year
         context["max_year"] = max_year
+        # The artist filter is not in the sidebar: two thirds of artists have
+        # a single album, so a 337-entry dropdown was mostly one-row filters,
+        # and the search box already matches the published credit. The
+        # parameter still works for deep links, and a row's credit links to
+        # the artist's own page.
         context["artists"] = _cached_artist_options()
         genres = _cached_genre_options()
         context["genres"] = genres
         context["genre_groups"] = group_genre_options(genres)
+        context["genre_tree"] = genre_tree_options()
+        context["genre_category_icons"] = music_filters.MUSIC_GENRE_CATEGORY_ICONS
+        context["default_genre_icon"] = music_filters.DEFAULT_GENRE_ICON
         context.update(_cached_hero_stats())
+
+        # Facet counts for the shared year grid and genre tree. Each is
+        # counted with its own dimension left out, so a year cell says how
+        # many albums that year would give under the other filters.
+        base = models.Album.objects.all()
+        context["year_counts"] = _year_counts(
+            apply_album_filters(base, self.request.GET, skip=("year",))
+        )
+        context["genre_counts"] = _genre_counts(
+            apply_album_filters(base, self.request.GET, skip=("genres",))
+        )
+
+        # Where the filtered albums sit across the whole ranking, binned
+        # against the global maximum so the shape is comparable between
+        # filters - the chart the games rankings page shows beside its own
+        # heading.
+        max_rank = models.Album.objects.aggregate(top=Max("rank"))["top"] or 0
+        context["max_rank"] = max_rank
+        context["rank_distribution"] = ranking.rank_distribution(
+            self.get_queryset()
+            .filter(rank__gte=1, rank__lte=max_rank)
+            .order_by()
+            .values_list("rank", flat=True),
+            max_rank,
+            config.RANK_DISTRIBUTION_BIN_COUNT,
+        )
+        context["rank_distribution_bin_count"] = config.RANK_DISTRIBUTION_BIN_COUNT
 
         page_obj = context.get("page_obj")
         total_count = page_obj.paginator.count if page_obj else 0
@@ -394,13 +533,28 @@ class AlbumHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
             self.request.GET.get(param)
             for param in ("q", "start", "end", "artists", "genres")
         )
-        context["filter_title"] = _filter_title(self.request.GET)
-        context["decades"] = _decade_options(
-            min_year,
-            max_year,
-            self.request.GET.get("start"),
-            self.request.GET.get("end"),
+        context["filter_title"] = _filter_title(
+            self.request.GET,
+            min_year=min_year,
+            max_year=max_year,
+            genres=genres,
+            artists=context["artists"],
         )
+
+        # The state the shared Alpine filter component starts from. Years
+        # default to the full range, which is how the grid spells "no year
+        # filter"; the view spells it as absent parameters.
+        context["filters"] = {
+            "q": context["current_q"],
+            "start": _parse_int(self.request.GET.get("start")) or min_year,
+            "end": _parse_int(self.request.GET.get("end")) or max_year,
+            "genres": [
+                str(genre_id)
+                for genre_id in _parse_id_list(self.request.GET.get("genres"))
+            ],
+            "sort": context["current_sort"],
+            "sortDirection": context["current_dir"],
+        }
         context["show_rank"] = "filtered" if context["is_filtered"] else "alltime"
         context["highlight"] = _parse_int(self.request.GET.get("highlight"))
         context["query_string"] = self._filter_query_string()
@@ -412,6 +566,16 @@ class AlbumHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
         context["enable_client_filtering"] = True
         context["album_data_version"] = compute_album_data_version()
 
+        # Sorts for the shared results-header controls
+        # (core/includes/_media_list_controls.html), the same partial the
+        # games rankings page renders.
+        context["sort_options"] = config.SORT_OPTIONS
+        # Out-of-band updates belong in a swap response, not in a full page.
+        context["is_partial_response"] = self._is_partial_request()
+        context["last_update"] = SiteMetadata.get_instance(
+            config.SITE_METADATA_KEY
+        ).last_full_update
+
         return context
 
     def _filter_query_string(self):
@@ -420,6 +584,66 @@ class AlbumHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
         params.pop("page", None)
         params.pop("append", None)
         return params.urlencode()
+
+
+class AlbumDownloadView(StaffOnlyMixin, View):
+    """The current filter state as a CSV, as the games sidebar offers.
+
+    Same filters as the rankings page, so the file is exactly what the
+    reader is looking at - the filename is the heading, slugified, which is
+    how ``games.views.download_games_csv`` names its own.
+    """
+
+    def get(self, request, *args, **kwargs):
+        min_year, max_year = _get_year_bounds()
+        albums = _apply_sort(
+            apply_album_filters(
+                models.Album.objects.with_relations().with_list_count(),
+                request.GET,
+            ),
+            ALBUM_SORTS,
+            request.GET.get("sort", "rank"),
+            request.GET.get("dir", "asc"),
+            default="rank",
+        )
+
+        title = _filter_title(
+            request.GET,
+            min_year=min_year,
+            max_year=max_year,
+            genres=_cached_genre_options(),
+            artists=_cached_artist_options(),
+        )
+        filename = f"{slugify(title) or 'acclaimed-albums'}.csv"
+
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+
+        writer = csv.writer(response)
+        writer.writerow(
+            [
+                "Filtered Rank",
+                "Global Rank",
+                "Name",
+                "Year",
+                "Artist",
+                "Genres",
+                "Lists",
+            ]
+        )
+        for index, album in enumerate(albums, start=1):
+            writer.writerow(
+                [
+                    index,
+                    album.rank,
+                    album.name,
+                    album.year_released or "",
+                    album.artist_credit,
+                    ", ".join(genre.name for genre in album.genres.all()),
+                    album.list_count,
+                ]
+            )
+        return response
 
 
 class AlbumDetailView(StaffOnlyMixin, DetailView):
@@ -465,6 +689,17 @@ class AlbumDetailView(StaffOnlyMixin, DetailView):
             )
         context["total_album_count"] = total_album_count
 
+        # "N of M" beside the decade and year ranks, as the game detail page
+        # shows beside its own. Without them a rank reads as a bare number.
+        if album.decade is not None:
+            context["decade_album_count"] = models.Album.objects.filter(
+                year_released__gte=album.decade, year_released__lte=album.decade + 9
+            ).count()
+        if album.year_released is not None:
+            context["year_album_count"] = models.Album.objects.filter(
+                year_released=album.year_released
+            ).count()
+
         if album.artists.exists():
             context["related_albums"] = (
                 models.Album.objects.filter(artists__in=album.artists.all())
@@ -493,7 +728,11 @@ class ArtistListView(StaffOnlyMixin, RobustPaginationMixin, HTMXPartialMixin, Li
 
     def get_queryset(self):
         qs = (
-            models.Artist.objects.annotate(albums_count=Count("albums"))
+            models.Artist.objects.annotate(
+                albums_count=Count("albums"),
+                # The artist's best album, for the "Top Rank" sort.
+                best_rank=Min("albums__rank"),
+            )
             .filter(albums_count__gt=0)
             .select_related("parent")
             .prefetch_related("subsidiaries")
@@ -503,11 +742,12 @@ class ArtistListView(StaffOnlyMixin, RobustPaginationMixin, HTMXPartialMixin, Li
         if q:
             qs = qs.filter(name__icontains=q)
 
+        sort = self.request.GET.get("sort", "albums")
         return _apply_sort(
             qs,
             ARTIST_SORTS,
-            self.request.GET.get("sort", "albums"),
-            self.request.GET.get("dir", "desc"),
+            sort,
+            self.request.GET.get("dir") or default_direction(sort),
             default="albums",
         )
 
@@ -515,7 +755,10 @@ class ArtistListView(StaffOnlyMixin, RobustPaginationMixin, HTMXPartialMixin, Li
         context = super().get_context_data(**kwargs)
         context["current_q"] = self.request.GET.get("q", "")
         context["current_sort"] = self.request.GET.get("sort", "albums")
-        context["current_dir"] = self.request.GET.get("dir", "desc")
+        context["current_dir"] = self.request.GET.get("dir") or default_direction(
+            context["current_sort"]
+        )
+        context["sort_options"] = config.ARTIST_SORT_OPTIONS
 
         page_obj = context.get("page_obj")
         total_count = page_obj.paginator.count if page_obj else 0
@@ -560,6 +803,17 @@ class ArtistDetailView(StaffOnlyMixin, DetailView):
         context["artist_albums"] = albums
         context["albums_count"] = len(albums)
         context["best_album"] = albums[0] if albums else None
+
+        # Where this artist's albums sit across the whole ranking, the chart
+        # the developer detail page shows for a developer's games.
+        max_rank = models.Album.objects.aggregate(top=Max("rank"))["top"] or 0
+        context["max_rank"] = max_rank
+        context["rank_distribution"] = ranking.rank_distribution(
+            [album.rank for album in albums],
+            max_rank,
+            config.RANK_DISTRIBUTION_BIN_COUNT,
+        )
+        context["rank_distribution_bin_count"] = config.RANK_DISTRIBUTION_BIN_COUNT
         return context
 
 
@@ -586,16 +840,74 @@ class AlbumSearchView(StaffOnlyMixin, ListView):
         )
 
 
-class MusicListListView(
-    StaffOnlyMixin, RobustPaginationMixin, HTMXPartialMixin, ListView
-):
+def group_lists_by_publication(music_lists):
+    """Group source lists under their publication, with per-type counts.
+
+    The shape ``core/includes/_publication_group.html`` renders, which is how
+    the games source-lists page presents the same data. A publication with a
+    dozen lists reads as one row that opens, not as a dozen loose cards.
+    """
+    groups = []
+    index = {}
+    type_fields = {
+        core_constants.LIST_ALLTIME: "alltime_count",
+        core_constants.LIST_DECADE: "decade_count",
+        core_constants.LIST_MISC: "misc_count",
+        core_constants.LIST_EOY: "eoy_count",
+    }
+
+    for source in music_lists:
+        key = source.publisher_id
+        if key not in index:
+            index[key] = {
+                "publication": source.publisher,
+                "lists": [],
+                "alltime_count": 0,
+                "decade_count": 0,
+                "misc_count": 0,
+                "eoy_count": 0,
+                "total_count": 0,
+            }
+            groups.append(index[key])
+        group = index[key]
+        group["lists"].append(source)
+        group["total_count"] += 1
+        field = type_fields.get(source.type)
+        if field:
+            group[field] += 1
+
+    return groups
+
+
+# How much a list type is worth when ordering publications by importance,
+# matching games' weighting: an all-time list says more about a publication
+# than a year-end one.
+PUBLICATION_IMPORTANCE_WEIGHTS = {
+    core_constants.LIST_ALLTIME: 1000,
+    core_constants.LIST_DECADE: 100,
+    core_constants.LIST_MISC: 10,
+    core_constants.LIST_EOY: 1,
+}
+
+
+def _publication_importance(group):
+    """A publication's weight, for the default ordering."""
+    return (
+        group["alltime_count"]
+        * PUBLICATION_IMPORTANCE_WEIGHTS[core_constants.LIST_ALLTIME]
+        + group["decade_count"]
+        * PUBLICATION_IMPORTANCE_WEIGHTS[core_constants.LIST_DECADE]
+        + group["misc_count"] * PUBLICATION_IMPORTANCE_WEIGHTS[core_constants.LIST_MISC]
+        + group["eoy_count"] * PUBLICATION_IMPORTANCE_WEIGHTS[core_constants.LIST_EOY]
+    )
+
+
+class MusicListListView(StaffOnlyMixin, HTMXPartialMixin, ListView):
     """The source lists behind the album rankings, grouped by publication."""
 
     model = models.MusicList
     template_name = "music/lists/list_list.html"
     context_object_name = "music_lists"
-    paginate_by = config.DEFAULT_PAGE_SIZE
-    paginate_orphans = 0
     htmx_partial_template = "music/lists/includes/_list_list_results.html"
 
     def get_queryset(self):
@@ -613,31 +925,67 @@ class MusicListListView(
         if list_type in dict(core_constants.LIST_TYPES):
             qs = qs.filter(type=list_type)
 
-        sort = self.request.GET.get("sort", "order")
-        if sort == "year":
-            qs = qs.order_by("-year", "publisher__name", "name")
-        elif sort == "albums":
-            qs = qs.order_by("-album_count", "publisher__name", "name")
-        elif sort == "publication":
-            qs = qs.order_by("publisher__name", "-year", "name")
+        year = _parse_int(self.request.GET.get("year"))
+        if year is not None:
+            qs = qs.filter(year=year)
 
-        return qs
+        # Within a publication, the lists that say the most come first, as
+        # they do in the games groups. The page's sort orders publications,
+        # not lists, so it is applied to the groups in get_context_data.
+        return qs.order_by("type", "-year", "name")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["current_q"] = self.request.GET.get("q", "")
         context["current_type"] = self.request.GET.get("type", "")
-        context["current_sort"] = self.request.GET.get("sort", "order")
+        sort = self.request.GET.get("sort", "importance")
+        if sort not in {option["value"] for option in config.MUSIC_LIST_SORT_OPTIONS}:
+            sort = "importance"
+        context["current_sort"] = sort
+        context["current_dir"] = self.request.GET.get("dir") or default_direction(sort)
+        context["sort_options"] = config.MUSIC_LIST_SORT_OPTIONS
+        context["current_year"] = self.request.GET.get("year", "")
+
+        music_lists = list(context["music_lists"])
+        context["total_count"] = len(music_lists)
+
+        groups = group_lists_by_publication(music_lists)
+        descending = context["current_dir"] == "desc"
+
+        def publication_name(group):
+            return group["publication"].name.lower() if group["publication"] else ""
+
+        if sort == "alpha":
+            groups.sort(key=publication_name, reverse=descending)
+        else:
+            # The default, as on the games page: publications whose lists
+            # carry the most weight first, ties broken by name.
+            groups.sort(key=publication_name)
+            groups.sort(key=_publication_importance, reverse=descending)
+        context["publication_groups"] = groups
+        context["publication_count"] = len(groups)
+
+        # Facet counts: each filter counted with its own dimension left out,
+        # so an option never leads to an empty page.
+        by_type = models.MusicList.objects.all()
+        if context["current_year"]:
+            year = _parse_int(context["current_year"])
+            if year is not None:
+                by_type = by_type.filter(year=year)
         context["list_types"] = [
             {
                 "code": code,
                 "label": core_constants.get_list_type_label(code),
-                "count": models.MusicList.objects.filter(type=code).count(),
+                "count": by_type.filter(type=code).count(),
             }
             for code in core_constants.LIST_TYPE_IMPORTANCE_ORDER
         ]
-        context["total_count"] = (
-            context["page_obj"].paginator.count if context.get("page_obj") else 0
+
+        by_year = models.MusicList.objects.all()
+        if context["current_type"]:
+            by_year = by_year.filter(type=context["current_type"])
+        context["list_years"] = list(
+            by_year.values("year").annotate(count=Count("id")).order_by("-year")
         )
         return context
 
@@ -759,6 +1107,7 @@ class MusicImportView(StaffOnlyMixin, View):
             "summary": summary,
             "error": error,
             "counts": _music_counts(),
+            "metadata": _metadata_gaps(),
             "bundled_files": [
                 {"label": MusicImportForm().fields[field].label, "name": name}
                 for field, name in BUNDLED_FILES.items()
@@ -791,6 +1140,45 @@ def _music_counts():
         "lists": models.MusicList.objects.count(),
         "publications": models.MusicPublication.objects.count(),
         "memberships": models.AlbumListMembership.objects.count(),
+    }
+
+
+def _metadata_gaps():
+    """How many albums each metadata pass still has work for.
+
+    An import replaces every album row, so the external data - which
+    survives on ``on_delete=SET_NULL`` rows - is only re-attached when the
+    metadata pass next runs and adopts it by external id. Until then the
+    rankings render without cover art or genres, and nothing on the import
+    page said so. The games import page carries the same idea as its
+    "Metadata Operations" panel.
+    """
+    total = models.Album.objects.count()
+    missing_wikidata = models.Album.objects.filter(
+        primary_wikipedia_album_data__isnull=True
+    ).count()
+    missing_genres = models.Album.objects.filter(genres__isnull=True).count()
+    missing_covers = models.Album.objects.exclude(
+        primary_musicbrainz_album_data__cover_art_stored=True
+    ).count()
+
+    return {
+        "total": total,
+        "missing_wikidata": missing_wikidata,
+        "missing_genres": missing_genres,
+        "missing_covers": missing_covers,
+        "complete": total > 0
+        and not (missing_wikidata or missing_genres or missing_covers),
+        # Discogs' anonymous tier is the floor on a refresh: 25 requests a
+        # minute, one per album, so this is the number that matters.
+        "estimated_minutes": (
+            math.ceil(
+                max(missing_genres, missing_covers, missing_wikidata)
+                / config.DISCOGS_ANONYMOUS_REQUESTS_PER_MINUTE
+            )
+            if total
+            else 0
+        ),
     }
 
 

@@ -1,6 +1,11 @@
-{# YearGrid component - Heatmap year selector #}
-{# Props: year_counts (list of {year, count}), min_year, max_year #}
-{# Uses parent Alpine.js context (filters.start, filters.end) #}
+{# Year heatmap selector, shared by every ranking page. #}
+{# Props: year_counts (list of {year, count}), min_year, max_year, #}
+{#   item_noun_plural ('games' / 'albums') for the cell tooltips #}
+{# Uses the parent Alpine component: filters.start, filters.end, #}
+{#   initialized, debouncedFilterUpdate(). #}
+{# Lived in games/templates/includes/ until the album rankings page adopted #}
+{# it; a second copy would have drifted, which is what this move prevents. #}
+{# Keep every template comment on a single line. #}
 {% load game_filters %}
 
 {# Pass year counts data to Alpine.js via JSON script tag #}
@@ -38,7 +43,7 @@
                      @mousedown="startDragDecade(decade.start, $event)"
                      @mouseenter="updateDragDecade(decade.start)"
                      @click.stop="if (!isDragging || (dragStart === decade.start && dragEnd === decade.start + 9)) selectDecade(decade.start, $event)"
-                     :title="decade.label + ': ' + getDecadeCount(decade) + ' games'">
+                     :title="decade.label + ': ' + getDecadeCount(decade) + ' {{ item_noun_plural|default:'games' }}'">
                     <span x-text="decade.label"></span>
                 </div>
 
@@ -61,7 +66,7 @@
                              'is-unavailable': cell && cell.year && !cell.available && !isInRange(cell.year)
                          }"
                          :style="cell && cell.year ? '--heatmap-opacity: ' + getOpacity(cell.count) : ''"
-                         :title="cell && cell.year ? cell.year + ': ' + cell.count + ' games' : ''"
+                         :title="cell && cell.year ? cell.year + ': ' + cell.count + ' {{ item_noun_plural|default:'games' }}' : ''"
                          @mousedown="cell && cell.year && startDrag(cell.year, $event)"
                          @mouseenter="cell && cell.year && updateDrag(cell.year)"
                          @click.stop="cell && cell.year && (!isDragging || dragStart === cell.year) && selectYear(cell.year, $event)">

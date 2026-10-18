@@ -1,4 +1,10 @@
-{# Publication group with expand/collapse for lists #}
+{# One publication's lists, collapsible, with a badge per list type. #}
+{# Props: group - {publication, lists, alltime_count, decade_count, #}
+{#   misc_count, eoy_count} #}
+{# Shared by the games and music source-list pages. The music page used to #}
+{# render a flat card per list, so a publication with a dozen lists read as #}
+{# a dozen unrelated rows. #}
+{# Keep every template comment on a single line. #}
 {% load game_filters %}
 {% load humanize %}
 

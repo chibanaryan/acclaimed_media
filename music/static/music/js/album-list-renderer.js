@@ -27,7 +27,8 @@ class AlbumListRenderer extends BaseMediaListRenderer {
 
         this._templates = {
             desktop: document.getElementById('desktop-row-template'),
-            mobile: document.getElementById('mobile-row-template')
+            mobile: document.getElementById('mobile-row-template'),
+            grid: document.getElementById('grid-card-template')
         };
 
         if (!this._templates.desktop || !this._templates.mobile) {
@@ -39,12 +40,61 @@ class AlbumListRenderer extends BaseMediaListRenderer {
     }
 
     /**
-     * Music has no grid view, so the base class's grid path is unreachable.
-     * Declared only to fail loudly if that ever changes.
+     * Render one grid card, cloning the same `_album_card_grid.html` the
+     * server renders cards with.
      * @protected
+     * @returns {Element|null}
      */
-    _renderGridCard() {
-        throw new Error('Albums have no grid view');
+    _renderGridCard(compactAlbum, index, showRank) {
+        this._initTemplates();
+        if (!this._templates || !this._templates.grid) return null;
+
+        const card = this._templates.grid.content.cloneNode(true).firstElementChild;
+        if (!card) return null;
+
+        const album = this.engine.expandAlbum(compactAlbum);
+        const url = `/music/${encodeURIComponent(album.slug)}/`;
+
+        card.id = `music-${album.id}-grid`;
+        if (this.highlightId && album.id === this.highlightId) {
+            card.classList.add('is-highlighted');
+        }
+
+        // The grid badge carries a # that the row's rank column does not,
+        // so the rank pair is filled here rather than through _fillRanks.
+        const rank = card.querySelector('[data-slot="rank-grid"]');
+        if (rank && showRank !== 'none') {
+            rank.textContent = `#${showRank === 'filtered' ? index : album.rank}`;
+        }
+        const globalRank = card.querySelector('[data-slot="global-rank-grid"]');
+        if (globalRank) {
+            globalRank.textContent = `#${album.rank}`;
+            globalRank.classList.toggle('hidden', showRank !== 'filtered');
+        }
+
+        this._fillCover(card, album, 'cover', 'cover-placeholder');
+        const coverLink = card.querySelector('[data-slot="cover-link"]');
+        if (coverLink) coverLink.href = url;
+
+        this._fillSlot(card, 'name-grid', album.name);
+        const titleLink = card.querySelector('[data-slot="title-link-grid"]');
+        if (titleLink) titleLink.href = url;
+        this._fillSlot(card, 'year-grid', album.year === null ? '' : album.year);
+
+        this._fillSlot(card, 'creator', album.artistCredit || '');
+        const genres = card.querySelector('[data-slot="genres-grid"]');
+        if (genres) {
+            genres.textContent = album.genres.map(genre => genre.n).join(' / ');
+        }
+        const listCount = card.querySelector('[data-slot="list-count-grid"]');
+        if (listCount) {
+            const label = album.listCount === 1 ? 'list' : 'lists';
+            listCount.textContent = album.listCount
+                ? `${album.listCount} ${label}`
+                : '';
+        }
+
+        return card;
     }
 
     /**
@@ -123,20 +173,32 @@ class AlbumListRenderer extends BaseMediaListRenderer {
      * @private
      * @returns {string} HTML
      */
-    _metaHtml(album, { withGenres }) {
+    _metaHtml(album, { withGenres, withCredit = true }) {
         const divider = '<span class="text-base-content/30">|</span> ';
         const parts = [];
 
-        if (album.artistCredit) {
+        if (withCredit && album.artistCredit) {
             parts.push(
-                `<span class="whitespace-nowrap" data-slot="artist-credit">` +
-                `${this._artistCreditHtml(album)}</span>`
+                '<span class="whitespace-nowrap font-medium text-base-content"' +
+                ` data-slot="artist-credit">${this._artistCreditHtml(album)}</span>`
             );
         }
 
         if (withGenres && album.genres.length) {
+            // Clickable, as the game row's genres are: each one adds itself
+            // to the filter rather than only naming itself.
             const names = album.genres
-                .map(genre => this._escapeHtml(genre.n))
+                .map(genre => {
+                    const label = this._escapeHtml(genre.n);
+                    return (
+                        '<button type="button" class="hover:text-primary ' +
+                        'cursor-pointer transition-colors" ' +
+                        `onclick="event.stopPropagation(); ` +
+                        `document.dispatchEvent(new CustomEvent('add-genre', ` +
+                        `{detail: {genreId: '${genre.id}', itemId: ` +
+                        `'${album.id}'} }))" title="${label}">${label}</button>`
+                    );
+                })
                 .join('<span class="text-base-content/30"> / </span>');
             parts.push(
                 `<span class="whitespace-nowrap">${parts.length ? divider : ''}` +
@@ -197,8 +259,22 @@ class AlbumListRenderer extends BaseMediaListRenderer {
         const thumbLink = row.querySelector('[data-slot="thumb-link"]');
         if (thumbLink) thumbLink.href = url;
 
+        const credit = row.querySelector('[data-slot="artist-credit-inline"]');
+        if (credit) credit.innerHTML = this._artistCreditHtml(album);
+
         this._fillSlot(row, 'year', album.year === null ? '' : album.year);
-        this._fillMeta(row, album, 'meta-row', { withGenres: true });
+        const yearLink = row.querySelector('[data-slot="year-link"]');
+        if (yearLink && album.year !== null) {
+            yearLink.href =
+                `/music/?start=${album.year}&end=${album.year}` +
+                `&highlight=${album.id}`;
+        } else if (yearLink) {
+            yearLink.removeAttribute('href');
+        }
+        this._fillMeta(row, album, 'meta-row', {
+            withGenres: true,
+            withCredit: false
+        });
 
         return row;
     }
@@ -275,29 +351,39 @@ class AlbumListRenderer extends BaseMediaListRenderer {
     }
 
     /**
-     * Result summary, worded as `_album_list_results.html` words it.
+     * Result summary, worded exactly as the shared controls partial words it
+     * server-side - which is also how the games rankings page words it.
      * @returns {string} HTML
      */
-    getResultSummaryHtml(loaded, total) {
-        if (!total) return 'No albums match these filters';
-        const noun = total === 1 ? 'album' : 'albums';
+    getResultSummaryHtml(loaded, total, options = {}) {
+        if (!total) return '';
+        if (options.compact) {
+            // The mobile line drops the "Showing" and the element id, which
+            // only ever belongs to one element on the page.
+            return (
+                '<span class="loaded-count-value">' + loaded.toLocaleString() +
+                '</span> of ' + total.toLocaleString()
+            );
+        }
         return (
             'Showing <span id="loaded-count" class="loaded-count-value">' +
-            loaded.toLocaleString() + '</span> of ' + total.toLocaleString() +
-            ' ' + noun
+            loaded.toLocaleString() + '</span> of ' + total.toLocaleString()
         );
     }
 
     /**
-     * Load-more button, styled as the server's is.
+     * Load-more button, matching `_album_load_more.html` - and so the games
+     * load-more - in both wording and classes.
      * @returns {string} HTML
      */
     getLoadMoreHtml(state) {
         const { hasMore, remaining } = state;
         if (!hasMore) return '';
         return (
-            '<button type="button" class="btn btn-outline btn-sm load-more-button">' +
-            'Load ' + remaining.toLocaleString() + ' more</button>'
+            '<button type="button" class="btn btn-ghost load-more-button">' +
+            '<span class="mdi mdi-album"></span>' +
+            '<span class="load-more-text">Load More (' +
+            remaining.toLocaleString() + ' remaining)</span></button>'
         );
     }
 }
@@ -315,6 +401,7 @@ class AlbumListRenderer extends BaseMediaListRenderer {
 AlbumListRenderer.SLOTS = [
     'root',
     'media-row',
+    'artist-credit-inline',
     'rank',
     'global-rank',
     'thumb-link',
@@ -331,6 +418,24 @@ AlbumListRenderer.SLOTS = [
     'title-mobile',
     'year-mobile',
     'meta-mobile'
+];
+
+/** The slots the grid card renderer fills, checked the same way. */
+AlbumListRenderer.GRID_SLOTS = [
+    'root-grid',
+    'rank-container',
+    'rank-grid',
+    'global-rank-grid',
+    'cover-link',
+    'cover',
+    'cover-placeholder',
+    'overlay',
+    'creator',
+    'genres-grid',
+    'list-count-grid',
+    'title-link-grid',
+    'name-grid',
+    'year-grid'
 ];
 
 if (typeof window !== 'undefined') {

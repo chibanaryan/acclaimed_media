@@ -436,11 +436,23 @@ def get_or_create_genre(name: str, parent_name: Optional[str] = None):
     Mirrors ``games.services.genre_normalizer.get_or_create_genre``: the
     parent is ensured recursively so ``level`` and ``path`` are always
     consistent, rather than relying on a later pass to repair them.
+
+    An existing row whose parent disagrees with ``parent_name`` is moved.
+    Returning it untouched is how "Alternative Rock" stayed filed under
+    Electronic for 68 albums: the row was created from an album whose
+    Discogs genres happened to lead with Electronic, and every later pass -
+    including the ones after the resolution order was fixed - found the row
+    by name and left it alone. A mapping fix that cannot reach the rows it
+    was written for is not a fix.
     """
     from music.models import MusicGenre
 
     existing = MusicGenre.objects.filter(name=name).first()
     if existing is not None:
+        if parent_name and parent_name != name:
+            parent = get_or_create_genre(parent_name)
+            if existing.parent_id != parent.id:
+                reparent_genre(existing, parent)
         return existing
 
     parent = None
@@ -462,6 +474,23 @@ def get_or_create_genre(name: str, parent_name: Optional[str] = None):
         path=path[: _max_length("path")],
         display_order=_root_display_order(name),
     )
+
+
+def reparent_genre(genre, parent) -> None:
+    """Move a genre under ``parent``, keeping ``level`` and ``path`` true.
+
+    Both are denormalized for the filter tree, so moving a row without them
+    leaves a style that renders at the wrong depth or under the wrong
+    heading.
+    """
+    genre.parent = parent
+    genre.level = parent.level + 1 if parent else 0
+    path = f"{parent.path} > {genre.name}" if parent else genre.name
+    genre.path = path[: _max_length("path")]
+    genre.save(update_fields=["parent", "level", "path"])
+
+    for child in genre.children.all():
+        reparent_genre(child, genre)
 
 
 def _max_length(field_name: str) -> int:

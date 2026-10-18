@@ -15,36 +15,11 @@
 
     <div class="w-px h-6 bg-base-content/20"></div>
 
-    <div class="flex items-center gap-1">
-        <span class="mdi mdi-sort text-base text-base-content/70"></span>
-        <select name="sort"
-                class="select select-bordered select-sm bg-base-200"
-                style="width: fit-content; max-width: 100%;"
-                aria-label="Sort artists by"
-                hx-get="{{ request.path }}"
-                hx-target="#artist-results-wrapper"
-                hx-trigger="change"
-                hx-swap="innerHTML"
-                hx-push-url="true"
-                hx-include="[name='q'], [name='dir']">
-            <option value="albums" {% if current_sort == 'albums' %}selected{% endif %}>Albums</option>
-            <option value="name" {% if current_sort == 'name' %}selected{% endif %}>Alphabetical</option>
-        </select>
-    </div>
+    {# The sort state, as fields the search box's hx-include can send. #}
+    <input type="hidden" name="sort" :value="sort">
+    <input type="hidden" name="dir" :value="sortDirection">
 
-    <select name="dir"
-            class="select select-bordered select-sm bg-base-200"
-            style="width: fit-content; max-width: 100%;"
-            aria-label="Sort direction"
-            hx-get="{{ request.path }}"
-            hx-target="#artist-results-wrapper"
-            hx-trigger="change"
-            hx-swap="innerHTML"
-            hx-push-url="true"
-            hx-include="[name='q'], [name='sort']">
-        <option value="desc" {% if current_dir == 'desc' %}selected{% endif %}>Descending</option>
-        <option value="asc" {% if current_dir == 'asc' %}selected{% endif %}>Ascending</option>
-    </select>
+    {% include 'core/includes/_entity_sort_controls.html' with sort_options=sort_options default_sort_label='Albums' %}
 
     {% if current_q %}
     <a href="{% url 'music:artist-list' %}" class="btn btn-ghost btn-sm">
@@ -59,18 +34,16 @@
 <div class="hidden desktop:block overflow-x-auto">
     <table class="table-minimal table-fixed w-full">
         <colgroup>
-            <col style="width: 34%;">
-            <col style="width: 9%;">
-            <col style="width: 33%;">
-            <col style="width: 12%;">
-            <col style="width: 12%;">
+            <col style="width: 38%;">
+            <col style="width: 10%;">
+            <col style="width: 38%;">
+            <col style="width: 14%;">
         </colgroup>
         <thead>
             <tr>
                 <th class="font-semibold">Name</th>
                 <th class="font-semibold text-center">Rank</th>
                 <th class="font-semibold">Top Album</th>
-                <th class="font-semibold text-right">Related</th>
                 <th class="font-semibold text-right">Albums</th>
             </tr>
         </thead>
