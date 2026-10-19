@@ -744,8 +744,9 @@ class GameQuerySetWantToPlayStatusTests(TestCase):
 
 
 class PlayedButtonPageWeightTests(TestCase):
-    """The played button renders twice per game on the rankings page, so
-    whatever it repeats is paid 200 times."""
+    """The played button renders twice per game on the rankings page, once
+    per row half, so whatever it repeats is paid 200 times. Its menu is
+    therefore not repeated: the page has one, shared by every button."""
 
     @classmethod
     def setUpTestData(cls):
@@ -766,6 +767,33 @@ class PlayedButtonPageWeightTests(TestCase):
         response = self.client.get(reverse("home"))
         self.assertContains(response, 'data-igdb-id="4242"')
         self.assertNotContains(response, "<script data-played-sync>")
+
+    def test_a_page_render_ships_one_menu_and_no_per_button_posts(self):
+        from django.urls import reverse
+
+        html = self.client.get(reverse("home")).content.decode()
+        self.assertEqual(html.count('id="played-menu"'), 1)
+        self.assertNotIn("hx-post=", html.split('id="played-menu"', 1)[0])
+        self.assertIn("played-menu.min.js", html)
+
+    def test_the_detail_page_button_opens_the_same_menu_below_it(self):
+        from django.urls import reverse
+
+        self.game.slug = "weighed"
+        self.game.save()
+        html = self.client.get(
+            reverse("game-detail", kwargs={"slug": "weighed"})
+        ).content.decode()
+        self.assertEqual(html.count('id="played-menu"'), 1)
+        self.assertIn('data-size="large"', html)
+
+    def test_an_anonymous_page_ships_no_menu(self):
+        from django.urls import reverse
+
+        self.client.logout()
+        html = self.client.get(reverse("home")).content.decode()
+        self.assertNotIn('id="played-menu"', html)
+        self.assertNotIn("played-menu.min.js", html)
 
     def test_the_toggle_response_ships_exactly_one(self):
         from django.urls import reverse

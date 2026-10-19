@@ -21,7 +21,7 @@
     {# rankings page; this file keeps the platform, series and playtime ones. #}
     <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/filter-subcomponents.min.js" %}?v=1');</script>
     <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "games/js/filter-subcomponents.min.js" %}?v=2');</script>
-    <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "games/js/filter-component.min.js" %}?v=9');</script>
+    <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "games/js/filter-component.min.js" %}?v=10');</script>
 {% endblock %}
 
 {% block extra_head %}
@@ -31,7 +31,7 @@
         if ('requestIdleCallback' in window) {
             requestIdleCallback(function() {
                 var script = document.createElement('script');
-                script.src = '{% static 'games/js/utils-loadmore.min.js' %}?v=4';
+                script.src = '{% static 'games/js/utils-loadmore.min.js' %}?v=5';
                 script.defer = true;
                 script.nonce = '{{ csp_nonce }}';
                 document.head.appendChild(script);
@@ -40,7 +40,7 @@
             // Fallback for browsers without requestIdleCallback
             setTimeout(function() {
                 var script = document.createElement('script');
-                script.src = '{% static 'games/js/utils-loadmore.min.js' %}?v=4';
+                script.src = '{% static 'games/js/utils-loadmore.min.js' %}?v=5';
                 script.defer = true;
                 script.nonce = '{{ csp_nonce }}';
                 document.head.appendChild(script);
@@ -76,7 +76,7 @@
         var csfLoaded = false;
         var csfLoading = false;
         var interactionEvents = ['pointerdown', 'touchstart', 'keydown'];
-        var csfScriptUrl = '{% static "games/js/client-side-filtering.bundle.min.js" %}?v=14';
+        var csfScriptUrl = '{% static "games/js/client-side-filtering.bundle.min.js" %}?v=15';
 
         function hasActiveFilterParams() {
             var params = new URLSearchParams(window.location.search);
@@ -119,7 +119,10 @@
 
         {# SEO routes (/games/<slug>/ etc.) carry path-implied filters with no query string, so treat them like deep-linked filter URLs #}
         var pathFiltered = {% if seo_title %}true{% else %}false{% endif %};
-        if (pathFiltered || hasActiveFilterParams()) {
+        {# Grid view is client-rendered only, so a reader who chose it needs the bundle at once #}
+        var gridView = false;
+        try { gridView = localStorage.getItem('gameViewMode') === 'grid'; } catch (e) {}
+        if (pathFiltered || gridView || hasActiveFilterParams()) {
             loadCSF();
             removeInteractionListeners();
             return;

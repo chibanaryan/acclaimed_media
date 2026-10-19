@@ -128,11 +128,17 @@ class RateLimitMiddleware:
         return self.get_response(request)
 
     def _incr(self, key, timeout):
-        """Atomically increment a cache counter, creating it if needed."""
+        """Atomically increment a cache counter, creating it if needed.
+
+        ``add`` only writes a missing key, so two threads meeting a new key
+        both count: the old incr-or-``set(1)`` let the second ``set`` reset
+        the first one's count under gunicorn's gthread workers. ``incr``
+        can still miss a key evicted in between, hence the fallback.
+        """
+        self.cache.add(key, 0, timeout=timeout)
         try:
             return self.cache.incr(key)
         except ValueError:
-            # Key doesn't exist yet — create it
             self.cache.set(key, 1, timeout=timeout)
             return 1
 

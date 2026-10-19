@@ -1,26 +1,20 @@
-{# Game Status Dropdown Button Template for JS cloning #}
-{# Contains all 3 state elements - JS shows the correct one based on status #}
+{# Game status button template for JS cloning - the twin of _played_button.html #}
+{# Contains all 3 state icons - JS shows the correct one based on status #}
 {# States: none (untracked), want (want to play), played #}
-{# NOTE: Dropdown positioned above button (bottom-full) - used only for home page list rows #}
-{# For game detail page (large size), see _played_button.html which uses top-full #}
+{# The menu is the page's shared #played-menu (played-menu.js), not per button #}
 {% load static %}
-<div class="played-button-wrapper relative"
-     x-data="{ open: false, zHigh: false }"
-     x-effect="if (open) { zHigh = true } else { setTimeout(() => zHigh = false, 100) }"
-     :class="{ 'z-[9999]': zHigh, 'z-10': !zHigh }"
-     @click.away="open = false"
-     @open-played-dropdown.window="if ($event.detail !== $el) open = false"
+<div class="played-button-wrapper"
      data-slot="played-wrapper"
      data-igdb-id=""
      data-status="none"
      onclick="event.stopPropagation()">
-    <button @click="$dispatch('open-played-dropdown', $el.closest('.played-button-wrapper')); open = !open"
+    <button type="button"
             class="played-button desktop:tooltip desktop:tooltip-top flex items-center justify-center shrink-0 cursor-pointer h-8 w-8 min-w-8"
             data-tip=""
             data-slot="played-button"
             aria-label="Not tracked - click to change"
-            aria-haspopup="true"
-            :aria-expanded="open">
+            aria-haspopup="menu"
+            aria-expanded="false">
         {# Played state - Mario star image #}
         <span class="flex items-center justify-center w-6 h-6 hidden" data-slot="played-icon">
             <img src="{% static 'games/images/mario-star.png' %}"
@@ -37,54 +31,4 @@
             <span class="mdi mdi-star-outline text-2xl text-base-content/30"></span>
         </span>
     </button>
-    {# Dropdown menu - JS will show/hide items based on status #}
-    <ul x-show="open" x-cloak
-        x-transition:enter="transition ease-out duration-100"
-        x-transition:enter-start="opacity-0 scale-95"
-        x-transition:enter-end="opacity-100 scale-100"
-        x-transition:leave="transition ease-in duration-75"
-        x-transition:leave-start="opacity-100 scale-100"
-        x-transition:leave-end="opacity-0 scale-95"
-        class="absolute bottom-full mb-1 left-0 menu bg-base-100 rounded-box shadow-lg p-1 min-w-max"
-        data-slot="dropdown-menu">
-        {# Played option - hidden when current status is played #}
-        <li data-slot="menu-played">
-            <button type="button"
-                class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
-                data-slot="btn-played"
-                hx-swap="outerHTML"
-                hx-target="closest .played-button-wrapper">
-                <span class="w-5 h-5 flex items-center justify-center">
-                    <img src="{% static 'games/images/mario-star.png' %}" alt="" class="w-5 h-5">
-                </span>
-                <span>Played</span>
-            </button>
-        </li>
-        {# Want to Play option - hidden when current status is want #}
-        <li data-slot="menu-want">
-            <button type="button"
-                class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
-                data-slot="btn-want"
-                hx-swap="outerHTML"
-                hx-target="closest .played-button-wrapper">
-                <span class="w-5 h-5 flex items-center justify-center">
-                    <span class="mdi mdi-star-plus-outline text-xl text-warning"></span>
-                </span>
-                <span>Want to Play</span>
-            </button>
-        </li>
-        {# Untracked option - hidden when current status is none #}
-        <li data-slot="menu-none" class="hidden">
-            <button type="button"
-                class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
-                data-slot="btn-none"
-                hx-swap="outerHTML"
-                hx-target="closest .played-button-wrapper">
-                <span class="w-5 h-5 flex items-center justify-center">
-                    <span class="mdi mdi-star-outline text-xl text-base-content/30"></span>
-                </span>
-                <span>Untracked</span>
-            </button>
-        </li>
-    </ul>
 </div>

@@ -26,6 +26,27 @@ from games.services.genre_normalizer import (
 )
 
 
+def _start_import_thread(target: Callable[[], None]):
+    """Run ``target`` on a daemon thread that closes its DB connection after.
+
+    Django's connections are per thread, and one opened here outlives its
+    thread until the cyclic garbage collector gets to the thread's wrapper,
+    holding a Postgres slot meanwhile. Under gunicorn's gthread workers the
+    web threads already account for workers x threads of those slots.
+    """
+    import threading
+
+    def run():
+        try:
+            target()
+        finally:
+            connection.close()
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    return thread
+
+
 def import_data(data: Dict[str, Any]) -> Optional[Tuple[bool, str]]:
     """
     Route posted form data to the correct import helper.
@@ -255,8 +276,7 @@ def import_igdb_with_progress(
                     finally:
                         _queue_event(None)
 
-                import_thread = threading.Thread(target=run_update, daemon=True)
-                import_thread.start()
+                _start_import_thread(run_update)
         else:
             # Standard IGDB data import
             # Create service with optimizations enabled
@@ -286,8 +306,7 @@ def import_igdb_with_progress(
                     # Signal that we're done
                     _queue_event(None)
 
-            import_thread = threading.Thread(target=run_import, daemon=True)
-            import_thread.start()
+            _start_import_thread(run_import)
 
         # Stream events as they come in from the queue
         try:
@@ -627,8 +646,7 @@ def import_wikipedia_pages_with_progress(force_refresh: bool = False):
                 # Signal that we're done
                 _queue_event(None)
 
-        lookup_thread = threading.Thread(target=run_lookup, daemon=True)
-        lookup_thread.start()
+        _start_import_thread(run_lookup)
 
         # Stream events as they come in from the queue
         try:
@@ -829,8 +847,7 @@ def import_batch_with_progress(data: Dict[str, Any]):
                 # Signal that we're done
                 _queue_event(None)
 
-        import_thread = threading.Thread(target=run_import, daemon=True)
-        import_thread.start()
+        _start_import_thread(run_import)
 
         # Stream events as they come in from the queue
         try:
@@ -839,8 +856,8 @@ def import_batch_with_progress(data: Dict[str, Any]):
 
             while True:
                 try:
-                    # Wait for event with a shorter timeout so we can emit
-                    # keepalive chunks before Gunicorn's 30-second worker timeout.
+                    # Wait with a short timeout so keepalive chunks go out well
+                    # inside Heroku's 55-second idle-connection limit.
                     event_json = event_queue.get(timeout=15)
 
                     # None signals the end of the import

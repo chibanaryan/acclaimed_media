@@ -429,6 +429,27 @@
             }
         });
 
+        // A platform or genre named in a row adds itself to the filter. One
+        // delegated listener rather than an inline onclick on every span
+        // (~54 KB of the rankings page): it re-announces the same
+        // add-platforms / add-genre events the filter components and the
+        // fallback below already answer. Only desktop row halves carry
+        // these, and those have no row-level click to stop.
+        document.addEventListener('click', function(e) {
+            var el = e.target.closest && e.target.closest('[data-add-platforms],[data-add-genre]');
+            if (!el) return;
+            var itemId = el.dataset.item;
+            if (el.dataset.addPlatforms) {
+                document.dispatchEvent(new CustomEvent('add-platforms', {
+                    detail: { platformIds: el.dataset.addPlatforms, itemId: itemId }
+                }));
+            } else {
+                document.dispatchEvent(new CustomEvent('add-genre', {
+                    detail: { genreId: el.dataset.addGenre, itemId: itemId }
+                }));
+            }
+        });
+
         // Fallback for platform/genre clicks on a page with no filter UI of
         // its own (a developer detail page, an album detail page): send the
         // reader to that section's rankings with the filter applied. A page
@@ -463,5 +484,11 @@
         style="display: none;">
         <span class="mdi mdi-chevron-up text-2xl"></span>
     </button>
+
+    {% if user.is_authenticated %}
+    {# The one game status menu every played button opens #}
+    {% include 'games/includes/_played_menu.html' %}
+    <script defer src="{% static 'games/js/played-menu.min.js' %}?v=1" nonce="{{ csp_nonce }}"></script>
+    {% endif %}
 </body>
 </html>

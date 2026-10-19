@@ -1,28 +1,26 @@
-{# Game status dropdown button - HTMX-enabled #}
-{# Click to open dropdown, select status directly #}
+{# Game status button - opens the page's one shared status menu #}
+{# (_played_menu.html, driven by played-menu.js), which posts the toggle #}
+{# and swaps this wrapper. The menu used to be rendered inside every #}
+{# button - three hx-post items and an Alpine component, twice per game #}
+{# for the desktop and mobile row halves - which was ~1.5 KB a copy. #}
 {# Icons: star-outline (none) -> star-plus-outline (want) -> Mario Star PNG (played) #}
 {# Sizes: Default w-6/text-2xl, Large w-10/text-5xl #}
-{# Pass size='large' for bigger button on game detail page #}
+{# Pass size='large' for bigger button on game detail page; the menu opens below it #}
 {% load static %}
 {% if user.is_authenticated and game.igdb_id %}
-<div class="played-button-wrapper relative"
-    x-data="{ open: false, zHigh: false }"
-    x-effect="if (open) { zHigh = true } else { setTimeout(() => zHigh = false, 100) }"
-    :class="{ 'z-[9999]': zHigh, 'z-10': !zHigh }"
-    @click.away="open = false"
-    @open-played-dropdown.window="if ($event.detail !== $el) open = false"
+{# stopPropagation keeps a click from reaching the mobile row's navigation; #}
+{# played-menu.js listens in the capture phase, so it still sees it. #}
+<div class="played-button-wrapper"
     data-igdb-id="{{ game.igdb_id }}"
     data-status="{% if is_played %}played{% elif is_want_to_play %}want{% else %}none{% endif %}"
     {% if size == 'large' %}data-size="large"{% endif %}
     onclick="event.stopPropagation()">
-    {# Current status button - opens dropdown #}
-    <button
-        @click="$dispatch('open-played-dropdown', $el.closest('.played-button-wrapper')); open = !open"
+    <button type="button"
         class="played-button desktop:tooltip {% if size == 'large' %}desktop:tooltip-bottom{% else %}desktop:tooltip-top{% endif %} flex items-center justify-center shrink-0 cursor-pointer {% if size == 'large' %}h-12 w-12 min-w-12{% else %}h-8 w-8 min-w-8{% endif %}"
         data-tip="{% if is_played %}You have played this game!{% elif is_want_to_play %}You want to play this game!{% else %}You aren't tracking this game.{% endif %}"
         aria-label="{% if is_played %}Played - click to change{% elif is_want_to_play %}Want to play - click to change{% else %}Not tracked - click to change{% endif %}"
-        aria-haspopup="true"
-        :aria-expanded="open">
+        aria-haspopup="menu"
+        aria-expanded="false">
         {% if is_played %}
         {# Played state - Mario Star #}
         <span class="flex items-center justify-center {% if size == 'large' %}w-10 h-10{% else %}w-6 h-6{% endif %}{% if just_toggled %} star-appear{% else %} star-idle{% endif %}">
@@ -43,62 +41,6 @@
         </span>
         {% endif %}
     </button>
-
-    {# Dropdown menu - shows only non-current status options #}
-    <ul x-show="open" x-cloak
-        x-transition:enter="transition ease-out duration-100"
-        x-transition:enter-start="opacity-0 scale-95"
-        x-transition:enter-end="opacity-100 scale-100"
-        x-transition:leave="transition ease-in duration-75"
-        x-transition:leave-start="opacity-100 scale-100"
-        x-transition:leave-end="opacity-0 scale-95"
-        class="absolute {% if size == 'large' %}top-full mt-1{% else %}bottom-full mb-1{% endif %} left-0 menu bg-base-100 rounded-box shadow-lg p-1 min-w-max">
-        {% if not is_played %}
-        {# Show "Played" option #}
-        <li>
-            <button type="button"
-                class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
-                hx-post="{% url 'toggle-played-game' igdb_id=game.igdb_id %}?status=played{% if size == 'large' %}&size=large{% endif %}"
-                hx-target="closest .played-button-wrapper"
-                hx-swap="outerHTML">
-                <span class="w-5 h-5 flex items-center justify-center">
-                    <img src="{% static 'games/images/mario-star.png' %}" alt="" class="w-5 h-5">
-                </span>
-                <span>Played</span>
-            </button>
-        </li>
-        {% endif %}
-        {% if not is_want_to_play %}
-        {# Show "Want to Play" option #}
-        <li>
-            <button type="button"
-                class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
-                hx-post="{% url 'toggle-played-game' igdb_id=game.igdb_id %}?status=want{% if size == 'large' %}&size=large{% endif %}"
-                hx-target="closest .played-button-wrapper"
-                hx-swap="outerHTML">
-                <span class="w-5 h-5 flex items-center justify-center">
-                    <span class="mdi mdi-star-plus-outline text-xl text-warning"></span>
-                </span>
-                <span>Want to Play</span>
-            </button>
-        </li>
-        {% endif %}
-        {% if is_played or is_want_to_play %}
-        {# Show "Untracked" option only if currently tracking #}
-        <li>
-            <button type="button"
-                class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
-                hx-post="{% url 'toggle-played-game' igdb_id=game.igdb_id %}?status=none{% if size == 'large' %}&size=large{% endif %}"
-                hx-target="closest .played-button-wrapper"
-                hx-swap="outerHTML">
-                <span class="w-5 h-5 flex items-center justify-center">
-                    <span class="mdi mdi-star-outline text-xl text-base-content/30"></span>
-                </span>
-                <span>Untracked</span>
-            </button>
-        </li>
-        {% endif %}
-    </ul>
 </div>
 {# Only the toggle response needs this. On a page render the global Sets are #}
 {# already filled from played_game_ids and every copy of the button already #}
@@ -140,6 +82,8 @@
                     otherIconSpan.innerHTML = iconSpan.innerHTML;
                     otherIconSpan.className = iconSpan.className;
                 }
+                otherBtn.dataset.tip = btn.dataset.tip;
+                otherBtn.setAttribute('aria-label', btn.getAttribute('aria-label'));
             }
             otherWrapper.dataset.status = status;
         }

@@ -1,0 +1,31 @@
+{# The one game status menu on the page, shared by every played button. #}
+{# played-menu.js shows the items other than the button's current status, #}
+{# places the menu above the button (below a large one) and posts the toggle #}
+{# for that button's game, swapping its wrapper with the response. #}
+{% load static %}
+<ul id="played-menu" class="menu bg-base-100 rounded-box shadow-lg p-1 min-w-max absolute z-[9999] hidden" role="menu" aria-label="Game status" data-url="{% url 'toggle-played-game' igdb_id=0 %}">
+    <li data-status="played">
+        <button type="button" role="menuitem" class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap">
+            <span class="w-5 h-5 flex items-center justify-center">
+                <img src="{% static 'games/images/mario-star.png' %}" alt="" class="w-5 h-5">
+            </span>
+            <span>Played</span>
+        </button>
+    </li>
+    <li data-status="want">
+        <button type="button" role="menuitem" class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap">
+            <span class="w-5 h-5 flex items-center justify-center">
+                <span class="mdi mdi-star-plus-outline text-xl text-warning"></span>
+            </span>
+            <span>Want to Play</span>
+        </button>
+    </li>
+    <li data-status="none">
+        <button type="button" role="menuitem" class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap">
+            <span class="w-5 h-5 flex items-center justify-center">
+                <span class="mdi mdi-star-outline text-xl text-base-content/30"></span>
+            </span>
+            <span>Untracked</span>
+        </button>
+    </li>
+</ul>

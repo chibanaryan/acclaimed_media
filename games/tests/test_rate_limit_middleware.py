@@ -184,3 +184,38 @@ class RateLimitMiddlewareTest(TestCase):
             ):
                 response = self.client.get("/")
         self.assertEqual(response.status_code, 429)
+
+
+class RateLimitCounterTests(TestCase):
+    """`_incr` has to count every request to a new key, even two at once.
+
+    It used to `incr`, catch the missing key and `set(key, 1)` - so under
+    gunicorn's gthread workers two threads meeting a new key could both
+    `set(1)`, and the second reset the first one's count.
+    """
+
+    def setUp(self):
+        from games.middleware import RateLimitMiddleware
+
+        self.cache = caches["ratelimit"]
+        self.cache.clear()
+        self.middleware = RateLimitMiddleware(lambda request: None)
+
+    def tearDown(self):
+        self.cache.clear()
+
+    def test_a_new_key_counts_from_one(self):
+        self.assertEqual(self.middleware._incr("rl-test:new", 60), 1)
+        self.assertEqual(self.middleware._incr("rl-test:new", 60), 2)
+
+    def test_an_existing_count_is_not_reset(self):
+        self.cache.set("rl-test:seeded", 5, timeout=60)
+        self.assertEqual(self.middleware._incr("rl-test:seeded", 60), 6)
+
+    def test_a_key_evicted_between_add_and_incr_starts_again(self):
+        flaky = MagicMock()
+        flaky.incr.side_effect = ValueError("evicted")
+        with patch("games.middleware.caches", new={"ratelimit": flaky}):
+            self.assertEqual(self.middleware._incr("rl-test:gone", 60), 1)
+        flaky.add.assert_called_once_with("rl-test:gone", 0, timeout=60)
+        flaky.set.assert_called_once_with("rl-test:gone", 1, timeout=60)

@@ -316,10 +316,8 @@ class AlbumListRenderer extends BaseMediaListRenderer {
                     return (
                         '<button type="button" class="hover:text-primary ' +
                         'cursor-pointer transition-colors" ' +
-                        `onclick="event.stopPropagation(); ` +
-                        `document.dispatchEvent(new CustomEvent('add-genre', ` +
-                        `{detail: {genreId: '${genre.id}', itemId: ` +
-                        `'${album.id}'} }))" title="${label}">${label}</button>`
+                        `data-add-genre="${genre.id}" data-item="${album.id}" ` +
+                        `title="${label}">${label}</button>`
                     );
                 })
                 .join('<span class="text-base-content/30"> / </span>');

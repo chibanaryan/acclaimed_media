@@ -96,7 +96,7 @@
     {% if item.genres.count > 0 %}
     <span class="whitespace-nowrap">
         <span data-slot="genres">
-            {% for genre in item.genres.all %}<button type="button" class="hover:text-primary cursor-pointer transition-colors" onclick="event.stopPropagation(); document.dispatchEvent(new CustomEvent('add-genre', {detail: {genreId: '{{ genre.id }}', itemId: '{{ item.id }}'} }))" title="{{ genre.name }}">{{ genre.name }}</button>{% if not forloop.last %}<span class="text-base-content/30"> / </span>{% endif %}{% endfor %}
+            {% for genre in item.genres.all %}<button type="button" class="hover:text-primary cursor-pointer transition-colors" data-add-genre="{{ genre.id }}" data-item="{{ item.id }}" title="{{ genre.name }}">{{ genre.name }}</button>{% if not forloop.last %}<span class="text-base-content/30"> / </span>{% endif %}{% endfor %}
         </span>
     </span>
     {% endif %}

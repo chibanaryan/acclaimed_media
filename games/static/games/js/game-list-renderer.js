@@ -306,7 +306,7 @@ class GameListRenderer extends BaseMediaListRenderer {
     /**
      * Render the game status dropdown button by cloning template
      * Handles 3 states: played, want to play, untracked
-     * Shows dropdown with only non-current status options
+     * The menu is the page's shared #played-menu (played-menu.js)
      * @private
      * @returns {DocumentFragment|null}
      */
@@ -332,7 +332,6 @@ class GameListRenderer extends BaseMediaListRenderer {
 
         const igdbId = game.i;
         const status = this._getGameStatus(igdbId);
-        const csrfToken = this._getCsrfToken();
 
         // Set tooltip based on status
         const tooltips = {
@@ -373,43 +372,6 @@ class GameListRenderer extends BaseMediaListRenderer {
             wantIcon.classList.remove('hidden');
         } else if (untrackedIcon) {
             untrackedIcon.classList.remove('hidden');
-        }
-
-        // Set up dropdown menu buttons with HTMX attributes
-        const btnPlayed = wrapper.querySelector('[data-slot="btn-played"]');
-        const btnWant = wrapper.querySelector('[data-slot="btn-want"]');
-        const btnNone = wrapper.querySelector('[data-slot="btn-none"]');
-        const menuPlayed = wrapper.querySelector('[data-slot="menu-played"]');
-        const menuWant = wrapper.querySelector('[data-slot="menu-want"]');
-        const menuNone = wrapper.querySelector('[data-slot="menu-none"]');
-
-        // Set HTMX post URLs with status parameter
-        if (btnPlayed) {
-            btnPlayed.setAttribute('hx-post', `/game/${igdbId}/toggle-played/?status=played`);
-            btnPlayed.setAttribute('hx-headers', `{"X-CSRFToken": "${csrfToken}"}`);
-        }
-        if (btnWant) {
-            btnWant.setAttribute('hx-post', `/game/${igdbId}/toggle-played/?status=want`);
-            btnWant.setAttribute('hx-headers', `{"X-CSRFToken": "${csrfToken}"}`);
-        }
-        if (btnNone) {
-            btnNone.setAttribute('hx-post', `/game/${igdbId}/toggle-played/?status=none`);
-            btnNone.setAttribute('hx-headers', `{"X-CSRFToken": "${csrfToken}"}`);
-        }
-
-        // Show/hide menu items based on current status (hide current status option)
-        if (status === 'played' && menuPlayed) {
-            menuPlayed.classList.add('hidden');
-        }
-        if (status === 'want' && menuWant) {
-            menuWant.classList.add('hidden');
-        }
-        if (status === 'none' && menuNone) {
-            menuNone.classList.add('hidden');
-        }
-        // Show "Untracked" option when currently tracking (played or want)
-        if (status !== 'none' && menuNone) {
-            menuNone.classList.remove('hidden');
         }
 
         return fragment;
@@ -594,11 +556,11 @@ class GameListRenderer extends BaseMediaListRenderer {
                             : `<span class="mdi ${f.icon} text-sm leading-none" aria-hidden="true"></span>`;
                         const countHtml = `<span class="tabular-nums font-bold leading-none" style="font-size: 8px; margin-left: 1px; margin-top: -2px;">${f.count}</span>`;
                         const comma = fi < platformFamilies.length - 1 ? ', ' : '';
-                        return `<span class="tooltip tooltip-top inline-flex items-start hover:text-primary cursor-pointer transition-colors" data-tip="${this._escapeHtml(f.tooltip)}" onclick="event.stopPropagation(); document.dispatchEvent(new CustomEvent('add-platforms', {detail: {platformIds: '${f.platformIdsStr}', gameId: '${game.id}'} }))">${iconHtml}${countHtml}</span>${comma}`;
+                        return `<span class="tooltip tooltip-top inline-flex items-start hover:text-primary cursor-pointer transition-colors" data-tip="${this._escapeHtml(f.tooltip)}" data-add-platforms="${f.platformIdsStr}">${iconHtml}${countHtml}</span>${comma}`;
                     } else {
                         return f.platforms.map((p, pi) => {
                             const comma = (pi < f.platforms.length - 1) ? ', ' : (fi < platformFamilies.length - 1 ? ', ' : '');
-                            return `<span class="tooltip tooltip-top hover:text-primary cursor-pointer transition-colors" data-tip="${this._escapeHtml(p.name)}" onclick="event.stopPropagation(); document.dispatchEvent(new CustomEvent('add-platforms', {detail: {platformIds: '${p.id}', gameId: '${game.id}'} }))">${p.code}</span>${comma}`;
+                            return `<span class="tooltip tooltip-top hover:text-primary cursor-pointer transition-colors" data-tip="${this._escapeHtml(p.name)}" data-add-platforms="${p.id}">${p.code}</span>${comma}`;
                         }).join('');
                     }
                 }).join('');
@@ -609,7 +571,7 @@ class GameListRenderer extends BaseMediaListRenderer {
             if (expanded.genres.length > 0) {
                 const bullet = metaHtml ? '<span class="text-base-content/30">|</span> ' : '';
                 const genresHtml = expanded.genres.map((g, i) =>
-                    `<button type="button" class="hover:text-primary cursor-pointer transition-colors" onclick="event.stopPropagation(); document.dispatchEvent(new CustomEvent('add-genre', {detail: {genreId: '${g.id}', gameId: '${game.id}'} }))" title="${this._escapeHtml(g.name)}">${this._escapeHtml(g.name)}</button>${i < expanded.genres.length - 1 ? '<span class="text-base-content/30"> / </span>' : ''}`
+                    `<button type="button" class="hover:text-primary cursor-pointer transition-colors" data-add-genre="${g.id}" title="${this._escapeHtml(g.name)}">${this._escapeHtml(g.name)}</button>${i < expanded.genres.length - 1 ? '<span class="text-base-content/30"> / </span>' : ''}`
                 ).join('');
                 metaHtml += ` <span class="whitespace-nowrap">${bullet}<span data-slot="genres">${genresHtml}</span></span>`;
             }
@@ -673,17 +635,17 @@ class GameListRenderer extends BaseMediaListRenderer {
                     : `<span class="mdi ${f.icon} text-sm leading-none" aria-hidden="true"></span>`;
                 const countHtml = `<span class="tabular-nums font-bold leading-none" style="font-size: 8px; margin-left: 1px; margin-top: -2px;">${f.count}</span>`;
                 const comma = fi < platformFamilies.length - 1 ? ', ' : '';
-                return `<span class="tooltip tooltip-top inline-flex items-start hover:text-primary cursor-pointer transition-colors" data-tip="${this._escapeHtml(f.tooltip)}" onclick="event.stopPropagation(); document.dispatchEvent(new CustomEvent('add-platforms', {detail: {platformIds: '${f.platformIdsStr}', gameId: '${game.id}'} }))">${iconHtml}${countHtml}</span>${comma}`;
+                return `<span class="tooltip tooltip-top inline-flex items-start hover:text-primary cursor-pointer transition-colors" data-tip="${this._escapeHtml(f.tooltip)}" data-add-platforms="${f.platformIdsStr}">${iconHtml}${countHtml}</span>${comma}`;
             } else {
                 return f.platforms.map((p, pi) => {
                     const comma = (pi < f.platforms.length - 1) ? ', ' : (fi < platformFamilies.length - 1 ? ', ' : '');
-                    return `<span class="tooltip tooltip-top hover:text-primary cursor-pointer transition-colors" data-tip="${this._escapeHtml(p.name)}" onclick="event.stopPropagation(); document.dispatchEvent(new CustomEvent('add-platforms', {detail: {platformIds: '${p.id}', gameId: '${game.id}'} }))">${p.code}</span>${comma}`;
+                    return `<span class="tooltip tooltip-top hover:text-primary cursor-pointer transition-colors" data-tip="${this._escapeHtml(p.name)}" data-add-platforms="${p.id}">${p.code}</span>${comma}`;
                 }).join('');
             }
         }).join('');
 
         const genresHtml = expanded.genres.map((g, i) =>
-            `<button type="button" class="hover:text-primary cursor-pointer transition-colors" onclick="event.stopPropagation(); document.dispatchEvent(new CustomEvent('add-genre', {detail: {genreId: '${g.id}', gameId: '${game.id}'} }))" title="${this._escapeHtml(g.name)}">${this._escapeHtml(g.name)}</button>${i < expanded.genres.length - 1 ? '<span class="text-base-content/30"> / </span>' : ''}`
+            `<button type="button" class="hover:text-primary cursor-pointer transition-colors" data-add-genre="${g.id}" title="${this._escapeHtml(g.name)}">${this._escapeHtml(g.name)}</button>${i < expanded.genres.length - 1 ? '<span class="text-base-content/30"> / </span>' : ''}`
         ).join('');
 
         const globalRankHtml = showGlobalRank ? `<span class="game-row-global-rank text-xs text-base-content/60 tabular-nums">(#${game.r})</span>` : '';
@@ -735,14 +697,13 @@ class GameListRenderer extends BaseMediaListRenderer {
     /**
      * Fallback: Render game status dropdown button as string
      * Handles 3 states: played, want to play, untracked
-     * Shows dropdown with only non-current status options
+     * The menu is the page's shared #played-menu (played-menu.js)
      * @private
      */
     _renderPlayedButtonString(game) {
         if (!window.isAuthenticated || !game.i) return '';
         const igdbId = game.i;
         const status = this._getGameStatus(igdbId);
-        const csrfToken = this._getCsrfToken();
 
         // Tooltip shows game status
         const tooltips = {
@@ -769,56 +730,13 @@ class GameListRenderer extends BaseMediaListRenderer {
         };
         const ariaLabel = ariaLabels[status];
 
-        // Build dropdown menu items (only show non-current status options)
-        // Common button classes and HTMX attributes for dropdown items
-        const btnClass = 'flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap';
-        const hxAttrs = (targetStatus) =>
-            `hx-post="/game/${igdbId}/toggle-played/?status=${targetStatus}" ` +
-            `hx-target="closest .played-button-wrapper" hx-swap="outerHTML" ` +
-            `hx-headers='{"X-CSRFToken": "${csrfToken}"}'`;
-
-        let menuItems = '';
-        if (status !== 'played') {
-            menuItems += `<li><button type="button" class="${btnClass}" ${hxAttrs('played')}>` +
-                `<span class="w-5 h-5 flex items-center justify-center">` +
-                `<img src="${this._staticUrls.marioStar}" alt="" class="w-5 h-5"></span>` +
-                `<span>Played</span></button></li>`;
-        }
-        if (status !== 'want') {
-            menuItems += `<li><button type="button" class="${btnClass}" ${hxAttrs('want')}>` +
-                `<span class="w-5 h-5 flex items-center justify-center">` +
-                `<span class="mdi mdi-star-plus-outline text-xl text-warning"></span></span>` +
-                `<span>Want to Play</span></button></li>`;
-        }
-        if (status !== 'none') {
-            menuItems += `<li><button type="button" class="${btnClass}" ${hxAttrs('none')}>` +
-                `<span class="w-5 h-5 flex items-center justify-center">` +
-                `<span class="mdi mdi-star-outline text-xl text-base-content/30"></span></span>` +
-                `<span>Untracked</span></button></li>`;
-        }
-
-        // Use x-data for Alpine.js dropdown toggle with z-index management
-        // Dropdown positioned above button (bottom-full) for list rows
-        return `<div class="played-button-wrapper relative" ` +
-            `x-data="{ open: false, zHigh: false }" ` +
-            `x-effect="if (open) { zHigh = true } else { setTimeout(() => zHigh = false, 100) }" ` +
-            `:class="{ 'z-[9999]': zHigh, 'z-10': !zHigh }" ` +
-            `@click.away="open = false" ` +
-            `@open-played-dropdown.window="if ($event.detail !== $el) open = false" ` +
+        // The menu is the page's shared #played-menu (played-menu.js)
+        return `<div class="played-button-wrapper" ` +
             `data-igdb-id="${igdbId}" data-status="${status}" onclick="event.stopPropagation()">` +
-            `<button @click="$dispatch('open-played-dropdown', $el.closest('.played-button-wrapper')); open = !open" ` +
+            `<button type="button" ` +
             `class="played-button desktop:tooltip desktop:tooltip-top flex items-center justify-center shrink-0 cursor-pointer h-8 w-8 min-w-8" ` +
-            `data-tip="${tooltipText}" aria-label="${ariaLabel}" aria-haspopup="true" :aria-expanded="open">` +
-            `${innerHtml}</button>` +
-            `<ul x-show="open" x-cloak ` +
-            `x-transition:enter="transition ease-out duration-100" ` +
-            `x-transition:enter-start="opacity-0 scale-95" ` +
-            `x-transition:enter-end="opacity-100 scale-100" ` +
-            `x-transition:leave="transition ease-in duration-75" ` +
-            `x-transition:leave-start="opacity-100 scale-100" ` +
-            `x-transition:leave-end="opacity-0 scale-95" ` +
-            `class="absolute bottom-full mb-1 left-0 menu bg-base-100 rounded-box shadow-lg p-1 min-w-max">` +
-            `${menuItems}</ul></div>`;
+            `data-tip="${tooltipText}" aria-label="${ariaLabel}" aria-haspopup="menu" aria-expanded="false">` +
+            `${innerHtml}</button></div>`;
     }
 
     /**
@@ -1348,14 +1266,18 @@ class GameListRenderer extends BaseMediaListRenderer {
         if (viewMode === 'grid') {
             // For grid view, append cards to existing grid container
             let gridContainer = container.querySelector('.game-grid');
+            let first = start;
             if (!gridContainer) {
+                // The server renders no grid cards, so a grid begun after the
+                // server's rows has to start from the top, not from `start`.
                 gridContainer = document.createElement('div');
                 gridContainer.className = 'game-grid';
                 container.appendChild(gridContainer);
+                first = 0;
             }
 
-            pageGames.forEach((game, i) => {
-                const index = start + 1 + i;
+            this.currentItems.slice(first, end).forEach((game, i) => {
+                const index = first + 1 + i;
                 const card = this._renderGridCard(game, index, showRank);
                 if (card) gridContainer.appendChild(card);
             });

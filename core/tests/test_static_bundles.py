@@ -369,3 +369,108 @@ class ApplyingASavedFilterMustNotAnnounceAResetTests(SimpleTestCase):
                         f"mobile sheet answers by clearing the state the "
                         f"saved filter just restored",
                     )
+
+
+class GamesGridIsClientRenderedTests(SimpleTestCase):
+    """The games grid exists only once the bundle has built it.
+
+    The server stopped rendering 100 hidden grid cards (~160 KB a page), so
+    three things now have to hold or grid mode shows an empty list: the CSS
+    hides the rows only when a grid exists, the page fetches the bundle at
+    once for a reader in grid mode, and the filter component renders the
+    grid as soon as the bundle is ready, filtered page or not. Each lives in
+    a different file and nothing server-side exercises any of them.
+    """
+
+    def _read(self, relative_path):
+        path = Path(settings.BASE_DIR) / relative_path
+        self.assertTrue(path.exists(), f"missing {relative_path}")
+        return path.read_text()
+
+    def test_rows_are_hidden_only_once_a_grid_exists(self):
+        for path in (
+            "theme/static_src/src/styles.css",
+            "theme/static/css/dist/styles.css",
+        ):
+            with self.subTest(path=path):
+                css = self._read(path)
+                self.assertIn(
+                    "#game-list-container.view-grid:has(.game-grid) .game-row-wrapper",
+                    css,
+                )
+                self.assertNotIn(
+                    "#game-list-container.view-grid .game-row-wrapper", css
+                )
+
+    def test_grid_mode_fetches_the_bundle_at_once(self):
+        page = self._read("games/templates/games/home.html")
+        self.assertIn("localStorage.getItem('gameViewMode') === 'grid'", page)
+        self.assertIn("pathFiltered || gridView ||", page)
+
+    def test_the_component_renders_the_grid_when_ready(self):
+        for path in (
+            "games/static/games/js/filter-component.js",
+            "games/static/games/js/filter-component.min.js",
+        ):
+            with self.subTest(path=path):
+                source = self._read(path)
+                self.assertIn("_needsClientGrid", source)
+                self.assertRegex(source, r"\w+\._needsClientGrid\(\)")
+                # The grid render keeps the URL: same filters as the server's.
+                self.assertRegex(source, r"historyMethod:\s*null")
+                self.assertIn(
+                    "'grid-view'" if "min" not in path else '"grid-view"', source
+                )
+
+
+class ClientLoadMoreClaimsItsClickTests(SimpleTestCase):
+    """A client-rendered Load More must load one page, not two.
+
+    The button's own listener (filter-component.js / client-filtering.js)
+    and utils-loadmore.js's delegated one on #game-results-container both
+    answered the click, so every press of a client-rendered list's button
+    appended two pages. Grid mode is always client-rendered now, which made
+    that every grid reader's Load More.
+    """
+
+    def test_the_button_listeners_stop_the_click(self):
+        for path in (
+            "games/static/games/js/filter-component.js",
+            "games/static/games/js/client-filtering.js",
+        ):
+            with self.subTest(path=path):
+                source = (Path(settings.BASE_DIR) / path).read_text()
+                handler = re.search(
+                    r"button\.addEventListener\('click', \(event\) => \{(.{0,400})",
+                    source,
+                    re.S,
+                )
+                self.assertIsNotNone(handler, "Load More click handler changed")
+                self.assertIn("event.stopPropagation();", handler.group(1))
+
+
+class SharedPlayedMenuTests(SimpleTestCase):
+    """Every played button opens the one #played-menu.
+
+    The wrapper stops click propagation, so the mobile row it sits in does
+    not navigate. The menu's listener therefore has to run in the capture
+    phase, or it would never see a click on a button at all.
+    """
+
+    SOURCE = "games/static/games/js/played-menu.js"
+
+    def test_the_minified_menu_is_findable(self):
+        self.assertIsNotNone(finders.find("games/js/played-menu.min.js"))
+
+    def test_the_click_listener_captures(self):
+        source = (Path(settings.BASE_DIR) / self.SOURCE).read_text()
+        listener = source.split("document.addEventListener('click'", 1)
+        self.assertEqual(len(listener), 2, "no click listener")
+        body = listener[1].split("document.addEventListener('keydown'", 1)[0]
+        self.assertRegex(body.rstrip(), r"\}, true\);$")
+
+    def test_the_post_inherits_the_csrf_header_from_the_wrapper(self):
+        # htmx.ajax reads hx-headers from its source and the source's
+        # ancestors, which is how the body's CSRF token reaches the POST.
+        source = (Path(settings.BASE_DIR) / self.SOURCE).read_text()
+        self.assertIn("source: wrapper, target: wrapper, swap: 'outerHTML'", source)

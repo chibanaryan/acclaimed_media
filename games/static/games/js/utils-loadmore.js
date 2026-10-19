@@ -308,7 +308,6 @@ function jumpToRankClientSide(csf, targetRank, loaded, perPage) {
     const total = result.total;
     const pageBoundary = Math.ceil(targetRank / perPage) * perPage;
     const loadUpTo = Math.min(pageBoundary, total);
-    const gamesToRender = result.games.slice(loaded, loadUpTo);
     const newLoaded = loadUpTo;
 
     // Render games directly to container
@@ -317,19 +316,22 @@ function jumpToRankClientSide(csf, targetRank, loaded, perPage) {
     if (viewMode === 'grid') {
         // For grid view, append cards to existing grid container
         let gridContainer = gameListContainer.querySelector('.game-grid');
+        let first = loaded;
         if (!gridContainer) {
+            // The server renders no grid cards: build the grid from rank 1
             gridContainer = document.createElement('div');
             gridContainer.className = 'game-grid';
             gameListContainer.appendChild(gridContainer);
+            first = 0;
         }
-        gamesToRender.forEach((game, i) => {
-            const index = loaded + i + 1; // 1-based rank
+        result.games.slice(first, loadUpTo).forEach((game, i) => {
+            const index = first + i + 1; // 1-based rank
             const card = renderer._renderGridCard(game, index, showRank);
             if (card) gridContainer.appendChild(card);
         });
     } else {
         // List view: render desktop + mobile rows
-        gamesToRender.forEach((game, i) => {
+        result.games.slice(loaded, loadUpTo).forEach((game, i) => {
             const index = loaded + i + 1; // 1-based rank
             const desktopRow = renderer._renderDesktopRow(game, index, showRank);
             const mobileRow = renderer._renderMobileRow(game, index, showRank);
@@ -510,9 +512,12 @@ async function loadPage(page) {
  * @param {number} position - The 1-based position to scroll to (e.g., 50 = 50th game in list)
  */
 function scrollToAndHighlightRank(position) {
-    // Detect view mode from container
+    // Detect view mode from container. Grid mode shows the list rows until
+    // the bundle has built a grid, so the cards count only once one exists.
     const gameListContainer = document.getElementById('game-list-container');
-    const isGridView = gameListContainer && gameListContainer.classList.contains('view-grid');
+    const isGridView = gameListContainer &&
+        gameListContainer.classList.contains('view-grid') &&
+        !!gameListContainer.querySelector('.game-grid');
 
     // Position is 1-based, arrays are 0-based
     const index = position - 1;
@@ -824,9 +829,11 @@ function jumpToHighlightedGame(gameId) {
  * @param {number} gameId - The game ID
  */
 function scrollToAndHighlightGameById(gameId) {
-    // Detect view mode from container
+    // Detect view mode from container (grid cards exist only once built)
     var gameListContainer = document.getElementById('game-list-container');
-    var isGridView = gameListContainer && gameListContainer.classList.contains('view-grid');
+    var isGridView = gameListContainer &&
+        gameListContainer.classList.contains('view-grid') &&
+        !!gameListContainer.querySelector('.game-grid');
 
     var elementToScroll = null;
     var elementsToHighlight = [];

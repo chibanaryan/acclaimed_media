@@ -1,5 +1,31 @@
 # Developer Log
 
+## 2026-10-18 (rankings page weight, and gthread)
+
+- **The rankings page is 690 KB anonymous (was 897 KB) and 833 KB logged in
+  (was 1.35 MB)**, measured on the local corpus with the test client
+- **The server renders no grid cards.** The 100 hidden cards were ~160 KB of
+  every page. Grid mode shows the list rows until the client-side filtering
+  bundle, fetched at once for a grid reader, builds the grid; the rows are
+  hidden only `:has(.game-grid)`. Load More and jump-to-rank build a grid
+  from rank 1 when none exists yet
+- **Platform and genre spans name their filter in data attributes**; one
+  delegated listener in `base.html` replaces an inline onclick on every span
+  (~54 KB), on game and album rows alike
+- **One game status menu per page.** Each of the two buttons per game carried
+  its own Alpine dropdown and three `hx-post` items; `played-menu.js` now
+  opens one shared `#played-menu` beside whichever was clicked (~250 KB
+  logged in). The twin-sync script also copies the tooltip and aria-label
+  now, and the menu flips below a button the mobile header would cover
+- **Two older bugs grid mode would have hit on every visit**: a
+  client-rendered Load More loaded two pages per click (the button's own
+  listener and `utils-loadmore.js`'s delegated one both answered), and
+  switching view rewrote `/` as `/games/?start=1971&end=2025`
+- **gunicorn runs `--worker-class gthread --threads 2`.** The rate limiter's
+  counter is now `add`-then-`incr`, so two threads meeting a new key both
+  count, and the importer's background threads close their DB connection
+  when they finish rather than when the garbage collector gets to them
+
 ## 2026-10-18 (Sentry: a laptop is not production)
 
 - **Two "production" issues came from a local shell script.** The local

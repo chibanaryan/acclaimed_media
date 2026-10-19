@@ -323,6 +323,9 @@ document.addEventListener('alpine:init', () => {
                 this.dispatchInitialCounts();
                 if (this.hasActiveFilterParamsOnUrl()) {
                     this.requestClientFilteringInit('initial-url');
+                } else if (this.viewMode === 'grid') {
+                    // The server renders no grid cards; only the bundle builds them.
+                    this.requestClientFilteringInit('grid-view');
                 }
             };
 
@@ -397,6 +400,9 @@ document.addEventListener('alpine:init', () => {
                             self._csf.setViewMode(self.viewMode);
                             if (self.hasActiveFilters()) {
                                 self.performClientUpdate({ historyMethod: 'replaceState' });
+                            } else if (self._needsClientGrid()) {
+                                // Same filters as the server rendered, so the URL stays.
+                                self.performClientUpdate({ historyMethod: null });
                             } else {
                                 self.updateFacetCounts();
                             }
@@ -1110,6 +1116,7 @@ document.addEventListener('alpine:init', () => {
         },
 
         performClientUpdate(options = {}) {
+            // historyMethod: null re-renders without touching the URL
             const { historyMethod = 'pushState' } = options;
 
             this.isLoading = true;
@@ -1189,7 +1196,9 @@ document.addEventListener('alpine:init', () => {
                 }
             }
 
-            window.history[historyMethod]({}, '', this._filterUrl());
+            if (historyMethod) {
+                window.history[historyMethod]({}, '', this._filterUrl());
+            }
 
             this.isLoading = false;
 
@@ -1299,7 +1308,11 @@ document.addEventListener('alpine:init', () => {
             const button = loadMoreContainer.querySelector('.load-more-button');
             if (!button) return;
 
-            button.addEventListener('click', () => {
+            button.addEventListener('click', (event) => {
+                // utils-loadmore.js also handles Load More, delegated from
+                // #game-results-container; without this it loaded a second
+                // page on every click of a client-rendered list.
+                event.stopPropagation();
                 button.classList.add('loading');
                 button.disabled = true;
 
@@ -1378,8 +1391,23 @@ document.addEventListener('alpine:init', () => {
                 this._csf.setViewMode(mode);
             }
             if (this.clientFilterReady && this._csf) {
-                this.performClientUpdate({ historyMethod: 'replaceState' });
+                // A view is not a filter: re-render, leave the URL alone. It
+                // used to replaceState with _filterUrl(), which on an
+                // unfiltered page wrote /games/?start=..&end=.. over `/`.
+                this.performClientUpdate({ historyMethod: null });
+            } else if (mode === 'grid') {
+                // Until the bundle renders a grid, grid mode shows the server's
+                // rows (styles.css hides them only once a .game-grid exists).
+                this.requestClientFilteringInit('grid-view');
             }
+        },
+
+        // True when grid mode is on but the list still holds the server's
+        // rows: the server renders no grid cards, so the bundle must.
+        _needsClientGrid() {
+            if (this.viewMode !== 'grid') return false;
+            const container = document.getElementById('game-list-container');
+            return !!container && !container.querySelector('.game-grid');
         },
 
         updateDisplayOnly() {

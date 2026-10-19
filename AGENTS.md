@@ -666,6 +666,7 @@ The home page game rankings use a **dual-rendering architecture** that requires 
 1. **Server-side rendering**: Django templates render game rows with actual data on initial page load
 2. **Client-side rendering**: JavaScript clones `<template>` elements and fills them with data for filtered/paginated results
 3. **Single source of truth**: The same Django templates (`_game_row_desktop.html`, `_game_row_mobile.html`) serve both purposes
+4. **Grid cards are client-only**: `_game_card_grid.html` is rendered solely into `#grid-card-template`; the server sends rows and the bundle builds the grid (see "Rankings page weight" under "Production memory budget")
 
 **Template Structure:**
 - When `game` context is provided → server renders with data
@@ -1019,13 +1020,30 @@ The web dyno is a Basic one: **512 MB for every gunicorn worker together**.
 Measured on 2026-10-18, one worker boots at ~110 MB (79 MB of imports, ~30 MB
 of it `sentry_sdk`) and plateaus at **~200 MB** once it has rendered a page or
 two - flat from ~50 renders out to 1000, so there is no leak to hunt. The
-rankings page is 1.4 MB of HTML, and the ~45 MB a worker never returns after
-its first render is allocator arenas, not live data.
+rankings page was 1.4 MB of HTML then, and the ~45 MB a worker never returns
+after its first render is allocator arenas, not live data. It is now 690 KB
+anonymous and 833 KB logged in (see "Rankings page weight" below).
 
 That arithmetic sets the shape of the `Procfile`:
 
 - **`--workers 2`.** 2 x 200 MB leaves ~110 MB of headroom; three workers
   needed ~570 MB and the dyno had been swapping and firing R14 all day.
+- **`--worker-class gthread --threads 2`** for concurrency without a third
+  heap: threads share their worker's imports and caches, so a second thread
+  costs only what its in-flight render allocates, where a third process cost
+  another ~200 MB. Four requests run at once instead of two, and a long SSE
+  import stream now holds one thread rather than a whole worker. Raise
+  `--threads` only against `memory.rss.bytes.max` measured on the dyno.
+  The request path was audited for shared state before the switch: the
+  per-process caches are `LocMemCache` (locked), the IGDB client and every
+  `requests.Session` are per instance, and `RateLimitMiddleware._incr` now
+  `add`s before it `incr`s so two threads meeting a new key both count.
+- **Database connections are per thread.** `CONN_MAX_AGE` is left at 0, so
+  each request opens and closes its own, and the web dyno holds at most
+  workers x threads (4) at once, plus an import's: its background thread
+  and the IGDB importer's pool of 8. `import_handler._start_import_thread`
+  closes the background thread's connection when it finishes; left alone it
+  lingered until the cyclic garbage collector reached the thread's wrapper.
 - **No `--preload`.** Measured with a fork test: a child touched ~160 MB of
   the parent's pages within 20 requests, because CPython refcounts dirty the
   page holding every object they read. Copy-on-write saved nothing (593 MB
@@ -1042,6 +1060,32 @@ survives, so rendering is unchanged, except inside `<pre>`/`<textarea>`, which
 are left as written. **Do not add markup whose meaning depends on
 indentation** - `white-space: pre` in CSS, or indented text in a `<code>`
 block - without exempting it there.
+
+**Rankings page weight.** What was cut, and what holds it down:
+
+- **The server renders no grid cards.** The 100 hidden
+  `_game_card_grid.html` cards were ~160 KB. Grid mode now shows the list
+  rows until the client-side filtering bundle builds a grid from
+  `#grid-card-template`: `styles.css` hides the rows only
+  `:has(.game-grid)`, `home.html` fetches the bundle at once when
+  `gameViewMode` is `grid`, and `filterComponent` renders the grid as soon
+  as the bundle is ready (`_needsClientGrid`), without touching the URL.
+  Anything that pages a grid (`renderer.loadMore`, `jumpToRankClientSide`)
+  builds it from rank 1 when none exists yet, because the rows above are
+  not cards.
+- **Platform and genre spans carry `data-add-platforms` / `data-add-genre`,
+  not inline onclicks** (~54 KB). One delegated listener in `base.html`
+  re-announces the `add-platforms` / `add-genre` events every filter
+  component already answers. Album rows use it too, with `data-item` for the
+  highlight.
+- **One game status menu per page, not one per button** (~250 KB logged
+  in). Each game renders two buttons, one per row half, and each used to
+  carry an Alpine component and three `hx-post` items. A button is now only
+  its trigger; `games/includes/_played_menu.html` and `played-menu.js` open
+  the shared menu beside it and post with `htmx.ajax`, the wrapper as source
+  so the body's CSRF header is inherited. The wrapper's
+  `onclick="event.stopPropagation()"` keeps the mobile row from navigating,
+  so the menu's click listener runs in the **capture** phase.
 
 Anything that grows the rendered page, the boot imports, or a per-process
 cache is spending from that 512 MB twice over. `heroku ps`, and the

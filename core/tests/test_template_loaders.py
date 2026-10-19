@@ -107,10 +107,10 @@ class RenderedPageTests(TestCase):
         clear_all_caches()
 
     def test_the_rankings_rows_carry_no_indentation(self):
-        # The rows are where the bytes were: 100 games, three copies each.
+        # The rows are where the bytes were: 100 games, two copies each.
         game = Game.objects.create(name="Indented", rank=1, slug="indented", igdb_id=1)
         html = self.client.get(reverse("home")).content.decode()
         start = html.index(f'id="game-{game.pk}"')
-        rows = html[start : html.index(f'id="game-{game.pk}-grid"', start)]
+        rows = html[start : html.index("<template", start)]
         self.assertIn(f'id="game-{game.pk}-mobile"', rows)
         self.assertIsNone(re.search(r"^[ \t]+\S", rows, re.MULTILINE))

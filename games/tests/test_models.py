@@ -1615,6 +1615,12 @@ class WikipediaGameDataEdgeCaseTests(TestCase):
 class GameThumbnailPropertiesTests(TestCase):
     """Tests for Game thumbnail properties when no primary IGDB data exists."""
 
+    def test_image_2x_returns_none_when_no_primary_igdb(self):
+        """The detail page guards its srcset on this; the server-rendered
+        grid card that used to exercise it is gone."""
+        game = models.Game.objects.create(name="No IGDB Game", rank=1, igdb_id=10)
+        self.assertIsNone(game.image_2x)
+
     def test_image_og_returns_none_when_no_primary_igdb(self):
         """Test image_og returns None when no primary IGDB data."""
         game = models.Game.objects.create(name="No IGDB Game", rank=1, igdb_id=10)

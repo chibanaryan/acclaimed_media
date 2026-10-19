@@ -327,7 +327,10 @@ class ClientSideFiltering {
         const button = loadMoreContainer.querySelector('.load-more-button');
         if (!button) return;
 
-        button.addEventListener('click', () => {
+        button.addEventListener('click', (event) => {
+            // utils-loadmore.js delegates Load More from an ancestor too;
+            // letting the click reach it loaded a second page.
+            event.stopPropagation();
             button.classList.add('loading');
             button.disabled = true;
 

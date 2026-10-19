@@ -61,7 +61,7 @@
                         <span data-slot="platforms">
                             {% for family in game.platforms.all|platform_families_grouped %}
                                 {% if family.count >= 3 %}
-                                <span class="tooltip tooltip-top inline-flex items-start hover:text-primary cursor-pointer transition-colors" data-tip="{{ family.tooltip }}" onclick="event.stopPropagation(); document.dispatchEvent(new CustomEvent('add-platforms', {detail: {platformIds: '{{ family.platform_ids_str }}', gameId: '{{ game.id }}'} }))">
+                                <span class="tooltip tooltip-top inline-flex items-start hover:text-primary cursor-pointer transition-colors" data-tip="{{ family.tooltip }}" data-add-platforms="{{ family.platform_ids_str }}">
                                     {% if family.svg_icon %}
                                     <svg class="w-3.5 h-3.5" aria-hidden="true"><use href="{% static 'games/images/platform-icons.svg' %}#{{ family.svg_icon }}"></use></svg>
                                     {% elif family.icon %}
@@ -70,7 +70,7 @@
                                     <span class="tabular-nums font-bold leading-none" style="font-size: 8px; margin-left: 1px; margin-top: -2px;">{{ family.count }}</span></span>{% if not forloop.last %}, {% endif %}
                                 {% else %}
                                     {% for p in family.platforms %}
-                                    <span class="tooltip tooltip-top hover:text-primary cursor-pointer transition-colors" data-tip="{{ p.name }}" onclick="event.stopPropagation(); document.dispatchEvent(new CustomEvent('add-platforms', {detail: {platformIds: '{{ p.id }}', gameId: '{{ game.id }}'} }))">{{ p.code }}</span>{% if not forloop.last %}, {% elif not forloop.parentloop.last %}, {% endif %}
+                                    <span class="tooltip tooltip-top hover:text-primary cursor-pointer transition-colors" data-tip="{{ p.name }}" data-add-platforms="{{ p.id }}">{{ p.code }}</span>{% if not forloop.last %}, {% elif not forloop.parentloop.last %}, {% endif %}
                                     {% endfor %}
                                 {% endif %}
                             {% endfor %}
@@ -83,7 +83,7 @@
                         {% if game.platforms.count > 0 or display_devs %}<span class="text-base-content/30">|</span> {% endif %}
                         <span data-slot="genres">
                             {% for g in game.wikipedia_genres.all %}
-                            <button type="button" class="hover:text-primary cursor-pointer transition-colors" onclick="event.stopPropagation(); document.dispatchEvent(new CustomEvent('add-genre', {detail: {genreId: '{{ g.id }}', gameId: '{{ game.id }}'} }))" title="{{ g.name }}">{{ g.name }}</button>
+                            <button type="button" class="hover:text-primary cursor-pointer transition-colors" data-add-genre="{{ g.id }}" title="{{ g.name }}">{{ g.name }}</button>
                             {% if not forloop.last %}<span class="text-base-content/30"> / </span>{% endif %}
                             {% endfor %}
                         </span>

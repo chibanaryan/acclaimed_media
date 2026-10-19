@@ -1610,13 +1610,17 @@ input[type="number"] {
   }
 }
 
-/* View mode toggle - hide list rows when in grid mode */
-#game-list-container.view-grid .game-row-wrapper,
+/* View mode toggle - hide list rows when in grid mode.
+   Games' grid is built only by the client-side filtering bundle (the server
+   no longer renders 100 hidden cards), so its rows are hidden only once a
+   grid exists. Until then - first paint, an SEO page, a server partial,
+   server Load More - grid mode shows the rows the server did render. */
+#game-list-container.view-grid:has(.game-grid) .game-row-wrapper,
 #album-list-container.view-grid .media-row-wrapper {
   display: none !important;
 }
 
-#game-list-container.view-grid .game-card-mobile,
+#game-list-container.view-grid:has(.game-grid) .game-card-mobile,
 #album-list-container.view-grid .media-card-mobile {
   display: none !important;
 }

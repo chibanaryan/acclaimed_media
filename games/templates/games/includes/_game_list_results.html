@@ -24,42 +24,11 @@
 {% include 'core/includes/_media_list_controls.html' with sort_options=sort_options default_sort_label='Rank' item_noun='Game' empty_count_label='Advanced Search' %}
 
 {% if games %}
-{# Synchronous script to set initial view mode based on localStorage - prevents flash #}
-<script nonce="{{ csp_nonce }}">
-(function() {
-    var viewMode = localStorage.getItem('gameViewMode') || 'list';
-    // Remove any existing init style (from previous HTMX loads)
-    var existing = document.getElementById('view-mode-init-styles');
-    if (existing) existing.remove();
-
-    var style = document.createElement('style');
-    style.id = 'view-mode-init-styles';
-    if (viewMode === 'grid') {
-        // Hide list rows, show grid
-        style.textContent = '#game-list-container .game-row-wrapper{display:none!important}' +
-                            '#game-list-container .game-card-mobile{display:none!important}';
-    } else {
-        // Hide grid, show list rows (default)
-        style.textContent = '#game-list-container .game-grid{display:none!important}';
-    }
-    document.head.appendChild(style);
-
-    // Cleanup function
-    function removeInitStyle() {
-        var initStyle = document.getElementById('view-mode-init-styles');
-        if (initStyle) initStyle.remove();
-    }
-
-    // If Alpine is already initialized (HTMX update), remove immediately
-    if (window.Alpine) {
-        setTimeout(removeInitStyle, 0);
-    } else {
-        document.addEventListener('alpine:init', function() {
-            setTimeout(removeInitStyle, 0);
-        });
-    }
-})();
-</script>
+{# Grid view is built only by the client-side filtering bundle, from #}
+{# #grid-card-template. Until it has built one, grid mode shows these rows #}
+{# (styles.css hides them only `:has(.game-grid)`), so first paint, a server #}
+{# partial and server Load More all stay coherent. Rendering the 100 hidden #}
+{# cards here as well was ~160 KB of every rankings page. #}
 <div id="game-list-container" class="isolate" :class="'view-' + viewMode">
     {# List view - game rows #}
     {% for game in games %}
@@ -67,14 +36,6 @@
             {% include 'games/includes/_game_row.html' with game=game index=index show_rank=filters.rank_display %}
         {% endwith %}
     {% endfor %}
-    {# Grid view - game cards #}
-    <div class="game-grid">
-        {% for game in games %}
-            {% with index=page_obj.start_index|add:forloop.counter0 %}
-                {% include 'games/includes/_game_card_grid.html' with game=game index=index show_rank=filters.rank_display %}
-            {% endwith %}
-        {% endfor %}
-    </div>
 </div>
 
 {% if has_more and not max_loaded %}

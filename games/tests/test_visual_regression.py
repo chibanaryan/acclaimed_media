@@ -563,20 +563,26 @@ class HTMXAttributeTests(TestCase):
             igdb_id=12345,
         )
 
-    def test_played_button_has_htmx_attributes(self):
-        """Test played button includes HTMX attributes for toggle."""
+    def test_the_shared_played_menu_carries_the_toggle_url(self):
+        """The page's one status menu posts the toggle for the clicked game.
+
+        played-menu.js swaps the 0 in this URL for the button's igdb id.
+        """
         self.client.login(username="testuser", password="testpass")
         response = self.client.get(reverse("home"))
         soup = BeautifulSoup(response.content, "html.parser")
 
-        # Find buttons with hx-* attributes
-        htmx_elements = soup.find_all(attrs={"hx-post": True})
-
-        # Should have at least one HTMX-enabled element for played tracking
-        self.assertTrue(
-            len(htmx_elements) > 0,
-            "Should have HTMX-enabled elements for played tracking",
+        menus = soup.select("#played-menu")
+        self.assertEqual(len(menus), 1)
+        self.assertEqual(
+            menus[0]["data-url"],
+            reverse("toggle-played-game", kwargs={"igdb_id": 0}),
         )
+        self.assertEqual(
+            [li["data-status"] for li in menus[0].select("li[data-status]")],
+            ["played", "want", "none"],
+        )
+        self.assertTrue(soup.select('.played-button-wrapper[data-igdb-id="12345"]'))
 
 
 class PlatformFamilyRenderingTests(TestCase):
@@ -615,3 +621,79 @@ class PlatformFamilyRenderingTests(TestCase):
         platforms_slot.get_text()
         # Should NOT show all individual codes when grouped
         # Instead should show Nintendo icon with count
+
+
+class ServerRendersNoGridTests(TestCase):
+    """The server renders list rows only; the grid is the bundle's.
+
+    The 100 hidden grid cards were ~160 KB of every rankings page. Grid
+    mode now shows these rows until the client-side filtering bundle builds
+    a grid from #grid-card-template, which therefore has to keep every slot
+    the renderer writes.
+    """
+
+    GRID_SLOTS = {
+        "root",
+        "rank-container",
+        "rank",
+        "global-rank",
+        "cover-link",
+        "cover",
+        "developer",
+        "platforms",
+        "genres",
+        "playtime",
+        "list-count",
+        "title-link",
+        "name",
+        "year",
+    }
+
+    def setUp(self):
+        clear_all_caches()
+        self.game = models.Game.objects.create(
+            name="Gridless", rank=1, slug="gridless", igdb_id=777
+        )
+
+    def test_the_page_renders_rows_but_no_cards(self):
+        soup = BeautifulSoup(self.client.get(reverse("home")).content, "html.parser")
+        container = soup.select_one("#game-list-container")
+        self.assertIsNotNone(container.select_one(f"#game-{self.game.pk}"))
+        self.assertIsNone(container.select_one(".game-grid"))
+        self.assertIsNone(soup.find(id=f"game-{self.game.pk}-grid"))
+
+    def test_the_grid_template_is_still_there_with_every_slot(self):
+        soup = BeautifulSoup(self.client.get(reverse("home")).content, "html.parser")
+        template = soup.select_one("template#grid-card-template")
+        self.assertIsNotNone(template)
+        slots = {el["data-slot"] for el in template.select("[data-slot]")}
+        self.assertEqual(self.GRID_SLOTS - slots, set())
+
+
+class RowFilterClicksAreDelegatedTests(TestCase):
+    """Platform and genre spans carry data attributes, not inline onclicks.
+
+    base.html's one delegated listener turns a click on them into the same
+    add-platforms / add-genre events the inline handlers used to dispatch.
+    """
+
+    def setUp(self):
+        clear_all_caches()
+        self.game = models.Game.objects.create(
+            name="Delegated", rank=1, slug="delegated"
+        )
+        self.genre = models.WikipediaGenre.objects.create(name="Shmup")
+        self.platform = models.Platform.objects.create(code="NES", name="NES")
+        self.game.wikipedia_genres.add(self.genre)
+        self.game.platforms.add(self.platform)
+
+    def test_the_row_names_its_filters_in_data_attributes(self):
+        html = self.client.get(reverse("home")).content.decode()
+        soup = BeautifulSoup(html, "html.parser")
+        self.assertTrue(soup.select(f'[data-add-genre="{self.genre.pk}"]'))
+        self.assertTrue(soup.select(f'[data-add-platforms="{self.platform.pk}"]'))
+        self.assertNotIn("new CustomEvent('add-", html.split("<template", 1)[0])
+
+    def test_the_page_carries_the_delegated_listener(self):
+        html = self.client.get(reverse("home")).content.decode()
+        self.assertIn("closest('[data-add-platforms],[data-add-genre]')", html)

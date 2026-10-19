@@ -28,23 +28,13 @@ What is left, why it matters, and what it costs. Ordered within each group.
 
 ## Production memory
 
-The web dyno is back inside its 512 MB quota with two workers, and the
-rankings page is down from 1.4 MB of HTML to 870 KB (1.32 MB logged in). See
-AGENTS.md, "Production memory budget". What is left, in the order the
-measurements favour:
+Items 5-8 of the previous roadmap shipped on 2026-10-18 (see DEVLOG.md):
+the rankings page is 690 KB anonymous and 833 KB logged in, and the dyno
+runs gthread with two threads per worker. What is left:
 
-5. **The server-rendered grid**: 100 `_game_card_grid.html` cards, about
-   160 KB, hidden unless grid view is on. Dropping them needs a client render
-   whenever grid mode is chosen before the client-side filtering bundle has
-   loaded, including `gameViewMode === 'grid'` in localStorage on first
-   paint. Scroll-to-rank (`utils-loadmore.js`) and the append path read them
-   too.
-6. **Inline `onclick`s** on every platform and genre span, about 54 KB,
-   could become one delegated listener.
-7. **One played button per game** rather than a desktop and a mobile copy:
-   up to ~300 KB logged in.
-8. **Then `--worker-class gthread`** for concurrency without a third heap,
-   then Standard-2X (1 GB, $50/mo vs Basic's $7).
+5. **Measure gthread on the dyno.** `memory.rss.bytes.max` and swap over a
+   day of traffic decide whether `--threads 3` fits, or whether the next
+   step is Standard-2X (1 GB, $50/mo vs Basic's $7).
 
 ## Music: not worth doing as parity
 
