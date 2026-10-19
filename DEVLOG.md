@@ -1,5 +1,20 @@
 # Developer Log
 
+## 2026-10-18 (music genres: the MusicBrainz labels classified)
+
+- **The first MusicBrainz pass brought 104 labels the vocabulary did not
+  know**, plus Discogs' "Nu-Disco" on prod. All are now a leaf alias
+  ("garage rock revival" -> Garage Rock, "2-step" -> UK Garage), a root alias
+  ("motown" -> Soul, "dirty south" -> Hip Hop) or a dropped tag
+  ("progressive", on everything from Master of Puppets to 3 Feet High and
+  Rising). `RealVocabularyTests` lists all 367 MusicBrainz labels in use
+- **Three obvious readings misfiled albums and were changed:** "ambient pop"
+  as Dream Pop put Bon Iver under Rock, "minimal synth" as Synth-pop put
+  Suicide under Pop, and "tejano" as Latin put Marty Robbins under World,
+  because Discogs' "Folk, World, & Country" counts as a second vote. Read
+  the rebuild's per-album diff before shipping a vocabulary change
+- 10 albums gained a genre (Pearl: Blues; Secrets of the Beehive: Art Pop);
+  none lost one, and the tree stays at 103 leaves
 ## 2026-10-18 (rankings page weight, and gthread)
 
 - **The rankings page is 690 KB anonymous (was 897 KB) and 833 KB logged in

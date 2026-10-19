@@ -16,23 +16,13 @@ What is left, why it matters, and what it costs. Ordered within each group.
    built from the same filter machinery. Music could, now that it shares the
    filters - but only once the section is public.
 
-## Music genres
-
-4. **Classify the 105 MusicBrainz labels the vocabulary does not know.** The
-   first MusicBrainz pass (2026-10-18) brought them in; until each is a
-   leaf, an alias, a root or a dropped label in
-   `music/services/genre_normalizer.py`, it adds nothing. The big ones are
-   `progressive` (18 albums), `pop soul` (14), `ambient pop` (13),
-   `piano rock` and `alternative pop` (10 each). The list is
-   `heroku run -- python manage.py rebuild_album_genres --dry-run --report`.
-
 ## Production memory
 
 Items 5-8 of the previous roadmap shipped on 2026-10-18 (see DEVLOG.md):
 the rankings page is 690 KB anonymous and 833 KB logged in, and the dyno
 runs gthread with two threads per worker. What is left:
 
-5. **Measure gthread on the dyno.** `memory.rss.bytes.max` and swap over a
+4. **Measure gthread on the dyno.** `memory.rss.bytes.max` and swap over a
    day of traffic decide whether `--threads 3` fits, or whether the next
    step is Standard-2X (1 GB, $50/mo vs Basic's $7).
 

@@ -843,6 +843,12 @@ Decisions worth knowing before changing any of it:
   better a source: it has *more* distinct labels than Discogs (272 against
   222), and its P279 graph classified only 159 of 207 genre entities, put
   thrash metal under Rock, and left ska, dub and ambient unreachable.
+- **Classifying a label is not free, even when the label is rare.** Discogs'
+  top-level genres count as a vote, and they are coarse: "Rock" supports
+  Punk and Metal, "Folk, World, & Country" supports World. So one
+  MusicBrainz tag read as a World or Punk leaf can tag an album on its own
+  ("tejano" as Latin put Marty Robbins under World). Read the per-album diff
+  from `rebuild_album_genres --dry-run --report`, not just the counts.
 - **The tree stays two levels and single-parent; hybrids tag extra roots.**
   `HYBRID_ROOTS` gives Folk Rock, Country Rock, Synth-pop and a few others a
   second root on the *album*, not a second parent on the genre, so *Harvest*
