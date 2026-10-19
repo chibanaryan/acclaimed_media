@@ -20,6 +20,7 @@ from rest_framework.views import APIView, Response
 from games import utils  # Shared utilities
 
 from core.permissions import IsStaffOrHide
+from core.services import genre_tree
 
 from .. import models
 from . import serializers
@@ -451,7 +452,6 @@ class BookAllDataView(StaffReadAPIMixin, APIView):
         # Build books list with minimal field names
         books_data = []
         authors_dict = {}
-        genres_data = []
 
         for book in books:
             # Collect author IDs
@@ -483,20 +483,27 @@ class BookAllDataView(StaffReadAPIMixin, APIView):
                 }
             )
 
-        # Build genre hierarchy
-        all_genres = models.BookGenre.objects.prefetch_related("children").all()
-        for genre in all_genres:
-            descendant_ids = genre.get_descendant_ids(include_self=False)
-            genres_data.append(
-                {
-                    "id": genre.id,
-                    "n": genre.name,
-                    "s": genre.slug,
-                    "p": genre.parent_id,
-                    "l": genre.level,
-                    "d": descendant_ids,
-                }
-            )
+        # One fetch for the table, one in-memory walk for the descendants.
+        # Recursing through `children` instead cost a query per genre, and
+        # `values()` keeps the manager's ordering, so "d" comes out exactly
+        # as it did - depth first, excluding the genre itself.
+        genre_rows = list(
+            models.BookGenre.objects.values("id", "name", "slug", "parent_id", "level")
+        )
+        descendants = genre_tree.descendants_by_id(
+            (row["id"], row["parent_id"]) for row in genre_rows
+        )
+        genres_data = [
+            {
+                "id": row["id"],
+                "n": row["name"],
+                "s": row["slug"],
+                "p": row["parent_id"],
+                "l": row["level"],
+                "d": descendants.get(row["id"], []),
+            }
+            for row in genre_rows
+        ]
 
         return Response(
             {

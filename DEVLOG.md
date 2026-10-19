@@ -1,5 +1,21 @@
 # Developer Log
 
+## 2026-10-18 (housekeeping)
+
+- **The second test runner had already been lost.** `manage.py test
+  games.tests` ran on every commit from `.git/hooks/pre-commit.legacy`, which
+  today's venv rebuild deleted when it re-ran `pre-commit install`. It is now
+  a versioned manual-stage hook (`pre-commit run django-tests --hook-stage
+  manual`, via `scripts/run_tests.sh`) covering all four apps, not just
+  games, and documented in AGENTS.md. All 3134 tests pass under it. `tblib`
+  joins `requirements.txt` so that a parallel failure reports a traceback
+- **`/api/books/all/` reads the genre table once**, through
+  `core.services.genre_tree.descendants_by_id`, the way music and games
+  already did. An eight-genre test tree cost 18 `books_bookgenre` selects
+- **`MEDIA_URL` / `MEDIA_ROOT` are gone**, along with the DEBUG-only media
+  route. The forum's avatars were their only consumer. `FORUM_ENABLED` is
+  unset on Heroku (v855)
+
 ## 2026-10-18 (album covers: a front flag is not a sleeve)
 
 - **"It Takes a Nation of Millions" showed a photo of its jewel case and

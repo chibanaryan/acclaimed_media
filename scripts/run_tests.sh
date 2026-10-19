@@ -15,5 +15,9 @@ export DATABASE_URL="${DATABASE_URL:-sqlite:///db.sqlite3}"
 export CACHE_URL="${CACHE_URL:-locmemcache://}"
 export CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:-http://localhost}"
 
-echo "Running Django tests via pre-commit..."
-"$PYTHON_BIN" manage.py test games.tests --parallel auto
+# The second runner: conftest.py does not apply here, so a test that leaks
+# cache or process state into the next one fails here while pytest stays
+# green. Run by `pre-commit run django-tests --hook-stage manual`.
+echo "Running Django tests (no conftest)..."
+"$PYTHON_BIN" manage.py test games.tests books.tests core.tests music.tests \
+    --parallel auto "$@"

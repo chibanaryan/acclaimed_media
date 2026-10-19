@@ -9,9 +9,9 @@ instances it hands back carry no prefetch of their own, so recursing into
 `child.children.all()` is a fresh query per node visited.
 
 One `(id, parent_id)` fetch and an in-memory walk answers it for the entire
-table instead. Music and games both use it - games' `WikipediaGenre`
-filtering, landing pages and `/api/games/all/` payload included - and books
-can fold onto it when that section is picked back up.
+table instead. Music, games and books all use it - games' `WikipediaGenre`
+filtering, landing pages and `/api/games/all/` payload included, and books'
+`/api/books/all/` payload.
 """
 
 from collections import defaultdict

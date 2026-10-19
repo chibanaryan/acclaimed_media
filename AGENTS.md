@@ -1064,7 +1064,29 @@ Environment variables are managed via django-environ (`.env` file):
 - **`.pre-commit-config.yaml`** - Pre-commit hook configuration for code quality enforcement (Black, Flake8, tests)
 - **`.coveragerc`** - Coverage configuration excluding migrations and database vendor-specific code
 - **`.flake8`** - Flake8 linter configuration (max line length 88, excludes venv)
-- **`scripts/run_tests.sh`** - Alternative test runner using Django's test framework
+- **`scripts/run_tests.sh`** - The same suites under Django's own test runner; see below
+
+**Two test runners, on purpose.** `pytest` is the gate: the pre-commit hook
+runs it on every commit and `pytest.ini` fails the commit under 100%
+coverage. `conftest.py` also clears every cache alias between tests, which
+hides a test that leaks cache or process state into the next one.
+`scripts/run_tests.sh` runs the same four suites under `manage.py test`,
+where conftest does not apply, so such a leak fails there. On 2026-10-17 it
+found 181 failures and 55 errors that a fully green pytest run had missed,
+after the cache was split into aliases. It would nearly double a commit's
+test time (~45 s on top of pytest's ~60 s), so it is a manual-stage hook. Run
+it when a change touches caching, sessions or any other process-wide state:
+
+```bash
+venv/bin/pre-commit run django-tests --hook-stage manual
+```
+
+It used to run on every commit from a hand-placed
+`.git/hooks/pre-commit.legacy`, until a `pre-commit install` silently replaced
+it. Keep hooks in `.pre-commit-config.yaml`, never in `.git/hooks`, which
+`pre-commit install` owns and every worktree shares. `tblib` is in
+`requirements.txt` so that a failure under `--parallel` reports its traceback
+instead of crashing the runner on an unpicklable one.
 
 ## Database
 

@@ -174,18 +174,14 @@ if settings.DEBUG:
 
     from django.views.defaults import page_not_found
 
-    urlpatterns = (
-        [
-            path("__debug__/", include(debug_toolbar.urls)),
-            # Test route to preview custom 404 page
-            path(
-                "test-404/",
-                lambda request: page_not_found(request, Exception("Test 404")),
-            ),
-            *urlpatterns,
-        ]
-        + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
-        + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-    )
+    urlpatterns = [
+        path("__debug__/", include(debug_toolbar.urls)),
+        # Test route to preview custom 404 page
+        path(
+            "test-404/",
+            lambda request: page_not_found(request, Exception("Test 404")),
+        ),
+        *urlpatterns,
+    ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 else:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

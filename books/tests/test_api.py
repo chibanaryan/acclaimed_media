@@ -13,7 +13,9 @@ import unittest
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
 from core.tests.utils import clear_all_caches
@@ -467,6 +469,43 @@ class BookAllDataAPIViewTests(StaffAPITestMixin, TestCase):
         self.assertIn(self.genre_root.id, genres)
         self.assertIn(self.genre_child.id, genres)
         self.assertIn(self.genre_child.id, genres[self.genre_root.id]["d"])
+
+    def test_genre_hierarchy_is_one_query_and_keeps_descendant_order(self):
+        """The genre payload reads the table once, however deep the tree.
+
+        Walking `children` per genre cost a query per node. `"d"` must still
+        come out as `get_descendant_ids` orders it.
+        """
+        for index in range(3):
+            middle = models.BookGenre.objects.create(
+                name=f"Middle {index}",
+                slug=f"middle-{index}",
+                parent=self.genre_child,
+                level=2,
+                display_order=3 - index,
+            )
+            models.BookGenre.objects.create(
+                name=f"Leaf {index}", slug=f"leaf-{index}", parent=middle, level=3
+            )
+
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.get("/api/books/all/")
+        self.assertEqual(response.status_code, 200)
+
+        # The books' own genres arrive by a prefetch join and the data version
+        # counts the table; the remaining read is the hierarchy.
+        hierarchy_reads = [
+            query["sql"]
+            for query in captured.captured_queries
+            if 'FROM "books_bookgenre"' in query["sql"]
+            and "INNER JOIN" not in query["sql"]
+            and "COUNT(" not in query["sql"]
+        ]
+        self.assertEqual(len(hierarchy_reads), 1)
+
+        genres = {g["id"]: g for g in response.json()["data"]["genres"]}
+        for genre in models.BookGenre.objects.all():
+            self.assertEqual(genres[genre.id]["d"], genre.get_descendant_ids())
 
 
 @unittest.skip("GoodreadsBookData model removed")

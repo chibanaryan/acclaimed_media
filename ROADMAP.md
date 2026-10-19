@@ -49,18 +49,6 @@ measurements favour:
 10. **Then `--worker-class gthread`** for concurrency without a third heap,
     then Standard-2X (1 GB, $50/mo vs Basic's $7).
 
-## Housekeeping
-
-11. `FORUM_ENABLED` is still set as a Heroku config var; the forum was removed
-    in 2026-10-17. `MEDIA_URL` / `MEDIA_ROOT` have no consumer either.
-12. `.git/hooks/pre-commit.legacy` runs `manage.py test games.tests` on every
-    commit, on top of pytest. It has earned its keep - it caught a cache
-    isolation bug pytest's conftest hid - but it is undocumented and roughly
-    doubles commit time.
-13. `books/api/views.py:489` has the genre-descendant N+1 that music and
-    games no longer do (`core/services/genre_tree.py` is the fix) - unfixed
-    because books is deprioritized.
-
 ## Music: not worth doing as parity
 
 - **Artist detail has no related-acts panel** where developer detail has a

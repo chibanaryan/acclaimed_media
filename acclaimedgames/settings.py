@@ -263,12 +263,6 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = []
 
-# User-uploaded files. Nothing uploads today (the forum's avatars were the
-# only consumer); Heroku's filesystem is ephemeral, so move to S3 or similar
-# if uploads ever matter.
-MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
-
 # WhiteNoise configuration for compression and caching
 # Creates hashed filenames (e.g., main.a1b2c3d4.css) for cache busting
 # Creates gzip and brotli compressed versions automatically
