@@ -105,7 +105,7 @@
 
         {# Genre #}
         {% if genre_tree %}
-        {% include 'core/includes/_mobile_filter_genres.html' with genre_icon='mdi-music-note' genre_icons_element='genre-icons-data' default_genre_icon=default_genre_icon genre_counts_include_descendants=True %}
+        {% include 'core/includes/_mobile_filter_genres.html' with genre_icon='mdi-music-note' genre_icons_element='genre-icons-data' default_genre_icon=default_genre_icon genre_counts_include_descendants=True data_credit_text='Genres use data provided by Discogs' data_credit_url='https://www.discogs.com/' %}
         {% endif %}
     </div>
 

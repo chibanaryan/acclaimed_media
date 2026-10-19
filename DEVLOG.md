@@ -1,5 +1,46 @@
 # Developer Log
 
+## 2026-10-18 (music: ready to launch behind MUSIC_ENABLED)
+
+- **`MUSIC_ENABLED` is the public-launch switch.** Off (the default, and
+  production until the config var is set) is exactly the staff-only beta.
+  On, every music read is public; the listen toggle and saved filters want a
+  login, answering a signed-out visitor as games does (login redirect, 403);
+  `/music/import/` stays staff-only. One predicate, `music.access.
+  music_visible_to`, behind `MusicVisibleMixin` and `MusicAPIGateMixin`.
+  The setting is read through `settings`, not the raw environment
+  `BOOKS_ENABLED` reads, and is forced off under test
+- **Nav keys off the flag alone**, so staff still see no link during the
+  beta. On, the media switcher gains a Music tab (and shows with books off),
+  the games mobile nav a Music icon, the sitemap four music sections, and
+  robots.txt its two music rules, which would otherwise name the hidden
+  section in a public file. The Beta badges go
+- **Fix a signed-in outsider learning the saved-filter API existed.** DRF
+  authenticates before it checks permissions, and session authentication
+  enforces CSRF for any signed-in user, so a token-less POST got "CSRF
+  Failed" 403 instead of the section's 404. The gate now runs in `initial()`
+  before authentication
+- **Discogs attribution, from its API terms** (read by hand; the site 403s
+  fetches): the non-affiliation notice verbatim at the foot of every music
+  page, and "Data provided by Discogs" beside the data, linked without
+  `nofollow` - on album detail under the genres, linked to the master, and
+  once beside the genre filter and an artist's album list. No Restricted
+  Data is used. The six-hour freshness clause and our reading of it are in
+  AGENTS.md
+- **Music SEO landing pages**, `/music/genres/<root>/` (15 of 16 roots;
+  Classical has 3 albums) and `/music/<decade>s/` (1950s-2010s), plus
+  `/music/browse/`. The rankings page at a self-canonical URL with its
+  filters injected, an ItemList, a meta description and the natural
+  heading ("Most Acclaimed Rock Albums of All Time"); sitemap-only, and
+  404 while the section is hidden. No year pages: `/music/1999/` is an album
+- **Album slugs avoid every fixed `/music/` segment**, decades included -
+  `search`, `lists`, `artists` and the rest were already shadowable by an
+  album of that name
+- **The client pushed filter URLs relative to the current path**, so on a
+  landing page clearing the genre pushed the genre's URL and a reload
+  restored it. Pushes now go to `/music/?...`, and Back to a landing page's
+  bare path restores its filters. `media-list-controls.min.js` is `?v=5` on
+  every page that loads it (the artist and source-list pages were on 3)
 ## 2026-10-18 (music genres: the MusicBrainz labels classified)
 
 - **The first MusicBrainz pass brought 104 labels the vocabulary did not

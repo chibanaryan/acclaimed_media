@@ -3,19 +3,22 @@
 
 {# Head blocks follow the games rankings page: the heading doubles as the #}
 {# page title, with the same site suffix, and as the og/twitter titles. #}
-{% block title %}{{ filter_title|default:"Most Acclaimed Albums" }} | Acclaimed Video Games{% endblock %}
+{# A landing page (/music/genres/<slug>/, /music/<decade>s/) sets seo_title #}
+{# to the same heading, plus its own description and ItemList. #}
+{% block title %}{% firstof seo_title filter_title "Most Acclaimed Albums" %} | Acclaimed Video Games{% endblock %}
 
-{% block meta_description %}The top {{ album_count }} most recommended albums across {{ list_count }} critic lists from {{ publication_count }} publications.{% endblock %}
-{% block og_title %}{{ filter_title|default:"Most Acclaimed Albums" }} | Acclaimed Video Games{% endblock %}
-{% block og_description %}Album rankings aggregated from {{ list_count }} published critics' lists.{% endblock %}
-{% block twitter_title %}{{ filter_title|default:"Most Acclaimed Albums" }} | Acclaimed Video Games{% endblock %}
-{% block twitter_description %}Album rankings aggregated from {{ list_count }} published critics' lists.{% endblock %}
+{% block meta_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}The top {{ album_count }} most recommended albums across {{ list_count }} critic lists from {{ publication_count }} publications.{% endif %}{% endblock %}
+{% block og_title %}{% firstof seo_title filter_title "Most Acclaimed Albums" %} | Acclaimed Video Games{% endblock %}
+{% block og_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}Album rankings aggregated from {{ list_count }} published critics' lists.{% endif %}{% endblock %}
+{% block twitter_title %}{% firstof seo_title filter_title "Most Acclaimed Albums" %} | Acclaimed Video Games{% endblock %}
+{% block twitter_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}Album rankings aggregated from {{ list_count }} published critics' lists.{% endif %}{% endblock %}
+{% block structured_data %}{% if itemlist_json %}{{ itemlist_json|safe }}{% else %}{{ block.super }}{% endif %}{% endblock %}
 
 {% block pre_alpine %}
 {# The shared filter sidebar components and the page's own filter state, both #}
 {# loaded before Alpine core as the games rankings page loads its own. #}
 <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/filter-subcomponents.min.js" %}?v=1');</script>
-<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/media-list-controls.min.js" %}?v=4');</script>
+<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/media-list-controls.min.js" %}?v=5');</script>
 {# Keeps the tracking id Sets current after an HTMX button swap. Loaded here #}
 {# rather than in the filtering bundle because the album detail page swaps #}
 {# the same button and loads no bundle at all. #}
@@ -40,6 +43,11 @@ fails to, the HTMX form below keeps filtering server-side.
 <script nonce="{{ csp_nonce }}">
 window.albumDataVersion = "{{ album_data_version }}";
 window.albumDataUrl = "{% url 'music-api:album-all-data' %}";
+// Where filter changes are pushed, whichever URL the page was entered by,
+// and - on a landing page - what its bare path stands for on Back.
+window.albumRankingsUrl = "{% url 'music:home' %}";
+window.albumLandingPath = "{{ landing_path|default:''|escapejs }}";
+window.albumLandingSearch = "{{ landing_search|default:''|escapejs }}";
 // This page filters in place, so the base template's redirect fallback for
 // a genre clicked in a row must stay out of the way.
 window.listFilterActive = true;
@@ -94,7 +102,9 @@ var listenStatusOptions = JSON.parse(
          statusKey: 'listened',
          statusOptions: listenStatusOptions,
          savedFiltersUrl: '{% url 'music-api:saved-filter-list' %}',
-         maxSavedFilters: {{ max_saved_filters }}
+         maxSavedFilters: {{ max_saved_filters }},
+         landingPath: '{{ landing_path|default:''|escapejs }}',
+         landingSearch: '{{ landing_search|default:''|escapejs }}'
      })">
 
 {# Page heading row - title on the left, matching the games layout widths #}
@@ -102,7 +112,7 @@ var listenStatusOptions = JSON.parse(
     <div class="min-w-0 flex-1 max-w-[calc(100%-357px-1.5rem)] flex flex-col justify-center">
         <h1 class="text-3xl font-bold line-clamp-2" id="search-title">
             <span id="search-title-text">{{ filter_title|default:"Most Acclaimed Albums" }}</span>
-            <span class="badge badge-warning badge-sm align-middle ml-1">Beta</span>
+            {% if not MUSIC_ENABLED %}<span class="badge badge-warning badge-sm align-middle ml-1">Beta</span>{% endif %}
         </h1>
         <p class="text-base-content/70 text-sm">
             The top {{ album_count|intcomma }} most recommended albums across
@@ -126,7 +136,7 @@ var listenStatusOptions = JSON.parse(
     <div class="relative z-10 bg-base-200 border-b border-base-content/10 py-4 mb-4 -mx-4 px-4 flex items-center justify-between gap-3">
         <h1 class="text-lg font-bold flex-1 min-w-0" id="search-title-mobile">
             <span id="search-title-mobile-text">{{ filter_title|default:"Most Acclaimed Albums" }}</span>
-            <span class="badge badge-warning badge-xs align-middle">Beta</span>
+            {% if not MUSIC_ENABLED %}<span class="badge badge-warning badge-xs align-middle">Beta</span>{% endif %}
         </h1>
         <button type="button" class="btn btn-primary btn-sm shrink-0" @click="filterOpen = true">
             <span class="mdi mdi-tune"></span>
@@ -255,7 +265,7 @@ var listenStatusOptions = JSON.parse(
                      data-filter-type="genres"
                      @filter-changed="handleFilterChange($event.detail.type, $event.detail.items)"
                      @filter-update="handleFilterChange($event.detail.type, $event.detail.items)">
-                    {% include 'core/includes/_genre_filter.html' with item_noun_plural='albums' genre_icons_element='genre-icons-data' default_genre_icon=default_genre_icon genre_counts_include_descendants=True %}
+                    {% include 'core/includes/_genre_filter.html' with item_noun_plural='albums' genre_icons_element='genre-icons-data' default_genre_icon=default_genre_icon genre_counts_include_descendants=True data_credit_text='Genres use data provided by Discogs' data_credit_url='https://www.discogs.com/' %}
                 </div>
                 {# The genre ids the tree writes, as the form sends them. #}
                 <input type="hidden" name="genres" value="{{ current_genres }}">

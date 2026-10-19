@@ -106,4 +106,6 @@
             </template>
         </div>
     </div>
+    {# Opt-in: a section whose genres come from a source that requires a credit names it here, directly beside the tree. #}
+    {% if data_credit_text %}{% include 'core/includes/_data_credit.html' with credit_text=data_credit_text credit_url=data_credit_url extra_class='mt-2 px-1' %}{% endif %}
 </div>

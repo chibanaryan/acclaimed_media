@@ -18,10 +18,15 @@ def feature_flags(request):
     """
     import os
 
+    from django.conf import settings
+
     return {
         # Books feature is hidden until ready for public release
-        "BOOKS_ENABLED": os.environ.get("BOOKS_ENABLED", "").lower()
-        == "true",
+        "BOOKS_ENABLED": os.environ.get("BOOKS_ENABLED", "").lower() == "true",
+        # Music's public-launch switch. Nav entries key off this alone, not
+        # off staff status, so staff see no links while the section is a
+        # beta, exactly as before the flag existed.
+        "MUSIC_ENABLED": settings.MUSIC_ENABLED,
     }
 
 

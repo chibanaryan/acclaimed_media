@@ -32,7 +32,7 @@
     {# The large listen button, where the games detail page puts its own #}
     {% include 'music/includes/_listen_button.html' with is_tracked=is_listened is_wanted=is_want_to_listen size='large' %}
     <span>{{ album.name }}{% if album.year_released %} ({{ album.year_released }}){% endif %}</span>
-    <span class="badge badge-warning badge-sm">Beta</span>
+    {% if not MUSIC_ENABLED %}<span class="badge badge-warning badge-sm">Beta</span>{% endif %}
 </h1>
 {# The artist is half of an album's identity - more than a developer is to #}
 {# a game - so the credit reads as a subtitle under the title rather than #}

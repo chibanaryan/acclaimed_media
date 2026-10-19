@@ -44,6 +44,8 @@ CACHE_KEY_ARTIST_OPTIONS = f"{CACHE_VERSION}:music_artist_options"
 CACHE_KEY_GENRE_OPTIONS = f"{CACHE_VERSION}:music_genre_options"
 CACHE_KEY_HERO_STATS = f"{CACHE_VERSION}:music_hero_stats"
 CACHE_KEY_TOTAL_ALBUM_COUNT = f"{CACHE_VERSION}:total_album_count"
+CACHE_KEY_LANDING_GENRES = f"{CACHE_VERSION}:music_landing_genres"
+CACHE_KEY_LANDING_DECADES = f"{CACHE_VERSION}:music_landing_decades"
 
 CACHE_KEYS = (
     CACHE_KEY_YEAR_STATS,
@@ -51,7 +53,19 @@ CACHE_KEYS = (
     CACHE_KEY_GENRE_OPTIONS,
     CACHE_KEY_HERO_STATS,
     CACHE_KEY_TOTAL_ALBUM_COUNT,
+    CACHE_KEY_LANDING_GENRES,
+    CACHE_KEY_LANDING_DECADES,
 )
+
+# Album detail is the catch-all `/music/<slug>/`, so every fixed first
+# segment in music/urls.py would shadow an album that slugified to it, and
+# `/music/1970s/` is a decade landing page. `Album._build_unique_slug` treats
+# these as taken; `test_every_static_route_segment_is_reserved` keeps the set
+# in step with the URLconf.
+RESERVED_ALBUM_SLUGS = frozenset(
+    {"artists", "browse", "cover", "download", "genres", "import", "lists", "search"}
+)
+RESERVED_ALBUM_SLUG_PATTERN = r"^\d{3}0s$"
 
 # Per-user tracking id sets. These are *templates*, not keys: there is one key
 # per user, so they cannot go in CACHE_KEYS and an import cannot blanket

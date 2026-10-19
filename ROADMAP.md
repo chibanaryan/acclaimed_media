@@ -3,28 +3,34 @@
 What is left, why it matters, and what it costs. Ordered within each group.
 `DEVLOG.md` records what has shipped; this file records what has not.
 
-## Music: before it can launch publicly
+## Music: launch
 
-1. **Nav entry and a `MUSIC_ENABLED` flag.** Today the only gate is
-   `StaffOnlyMixin` raising 404 and the absence of any link. A flag gives a
-   kill switch independent of staff status. ~2 hours.
-2. **Discogs attribution terms.** Needs a human: their docs 403 automated
-   fetches. Genres and styles come from Discogs, so the terms decide what the
-   site has to display.
-3. **Decide whether music gets SEO landing pages.** Games has
-   `/games/<genre>/` and `/games/<decade>/`, crawlable and self-canonical,
-   built from the same filter machinery. Music could, now that it shares the
-   filters - but only once the section is public.
+1. **Set `MUSIC_ENABLED=true` on Heroku.** That is the launch: reads go
+   public, the media switcher and mobile nav gain a Music entry, and the
+   sitemap gains the albums, artists and the `/music/genres/<slug>/` and
+   `/music/<decade>s/` landing pages. Everything it needs is built, including
+   Discogs' attribution (AGENTS.md, "Discogs API terms"). Unsetting it hides
+   the section again.
+2. **An anonymous page cache for music**, once it is public. Games' rankings
+   and landing pages use `AnonymousResponseCacheMixin`; music's have none.
+   It must sit after `MusicVisibleMixin` in the MRO, and every cached page
+   spends from the 512 MB budget, so measure before adding it.
 
 ## Production memory
 
-Items 5-8 of the previous roadmap shipped on 2026-10-18 (see DEVLOG.md):
-the rankings page is 690 KB anonymous and 833 KB logged in, and the dyno
-runs gthread with two threads per worker. What is left:
+The rankings page is 690 KB anonymous and 833 KB logged in, and the dyno
+runs gthread with two threads per worker (AGENTS.md, "Production memory
+budget").
 
-4. **Measure gthread on the dyno.** `memory.rss.bytes.max` and swap over a
+3. **Measure gthread on the dyno.** `memory.rss.bytes.max` and swap over a
    day of traffic decide whether `--threads 3` fits, or whether the next
    step is Standard-2X (1 GB, $50/mo vs Basic's $7).
+
+## Housekeeping
+
+4. `BOOKS_ENABLED` is two flags that never meet: the setting is read by
+   nothing, and `games.context_processors.feature_flags` reads the raw env
+   var instead. `MUSIC_ENABLED` is the working pattern to copy.
 
 ## Music: not worth doing as parity
 

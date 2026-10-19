@@ -797,7 +797,14 @@ function mediaListControlsData(config) {
          * @private
          */
         _syncFromUrl() {
-            const params = new URLSearchParams(window.location.search);
+            // On a landing page's bare path the path itself is the filter:
+            // `landingSearch` is what an empty query string stands for there.
+            const onLandingPath = !window.location.search
+                && settings.landingPath
+                && window.location.pathname === settings.landingPath;
+            const params = new URLSearchParams(
+                onLandingPath ? settings.landingSearch || '' : window.location.search
+            );
             const number = (name, fallback) => {
                 const parsed = parseInt(params.get(name), 10);
                 return Number.isFinite(parsed) ? parsed : fallback;

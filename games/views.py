@@ -3313,8 +3313,16 @@ def robots_txt(request):
 
     Blocks aggressive/low-value crawlers and disallows expensive filtered
     query patterns that can overwhelm the server.
+
+    The music rules appear only once ``MUSIC_ENABLED`` is on: robots.txt is
+    public, so naming the hidden section's paths would advertise it.
     """
-    content = """\
+    music_rules = (
+        "Disallow: /music/import/\nDisallow: /music/download/\n"
+        if settings.MUSIC_ENABLED
+        else ""
+    )
+    content = f"""\
 # Aggressive/low-value crawlers - block entirely
 User-agent: AhrefsBot
 Disallow: /
@@ -3344,7 +3352,7 @@ Crawl-delay: 10
 Disallow: /admin/
 Disallow: /import/
 Disallow: /api/
-Disallow: /*?*start=
+{music_rules}Disallow: /*?*start=
 Disallow: /*?*end=
 Disallow: /*?*highlight=
 Disallow: /*?*page=

@@ -1,0 +1,4 @@
+{# A source's required credit, placed beside the data it supplied. #}
+{# Props: credit_text (the wording the source's terms require), credit_url (the page holding the data), extra_class. #}
+{# Never rel="nofollow": Discogs' API terms forbid any mechanism that withholds ranking credit from the link. #}
+<p class="data-credit text-xs text-base-content/50{% if extra_class %} {{ extra_class }}{% endif %}"><a href="{{ credit_url }}" class="link link-hover" target="_blank" rel="noopener">{{ credit_text }}</a></p>

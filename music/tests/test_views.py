@@ -4,6 +4,8 @@ Every music view is staff-only, so the tests authenticate as staff and each
 suite also asserts that an anonymous visitor gets 404 rather than 403.
 """
 
+from unittest import mock
+
 from django.core.cache import cache
 from django.db import connection
 from django.test import Client, TestCase
@@ -15,6 +17,7 @@ from core.models import User
 from core.tests.utils import clear_all_caches
 from games.models import SiteMetadata
 from music import config, models, views
+from music.services import landing_pages
 from music.views import _filter_title, group_list_appearances
 
 
@@ -1075,13 +1078,14 @@ class MusicCacheInvalidationTests(MusicDataMixin, TestCase):
                 self.assertIsNone(cache.get(key))
 
     def test_every_cached_key_is_declared_for_invalidation(self):
-        # Renders the page and the detail page, so each helper populates its
-        # key, then checks nothing was cached under a key the invalidation
-        # list does not know about.
+        # Renders the page, the detail page and the landing index, so each
+        # helper populates its key, then checks nothing was cached under a
+        # key the invalidation list does not know about.
         self.client.get(reverse("music:home"))
         self.client.get(
             reverse("music:album-detail", kwargs={"slug": self.revolver.slug})
         )
+        self.client.get(reverse("music:browse"))
         populated = [key for key in config.CACHE_KEYS if cache.get(key) is not None]
         self.assertEqual(sorted(populated), sorted(config.CACHE_KEYS))
 
@@ -1563,15 +1567,52 @@ class MusicQueryBudgetTests(MusicDataMixin, TestCase):
         self.assertEqual(self._matching(sqls, self.GENRE_WALK), [])
         self.assertEqual(self._matching(sqls, self.METADATA_LAZY_LOAD), [])
 
+    def _landing_urls(self):
+        return [
+            reverse("music:by-genre", kwargs={"slug": self.rock.slug}),
+            reverse("music:by-decade", kwargs={"decade": 1960}),
+        ]
+
+    def test_the_landing_pages_never_walk_the_genre_tree_per_node(self):
+        self._add_genres(10)
+        with mock.patch.object(landing_pages, "MIN_GENRE_ALBUMS", 1), mock.patch.object(
+            landing_pages, "MIN_DECADE_ALBUMS", 1
+        ):
+            for url in self._landing_urls():
+                with self.subTest(url=url):
+                    clear_all_caches()
+                    sqls = self._capture(url)
+                    self.assertEqual(self._matching(sqls, self.GENRE_WALK), [])
+
+    def test_a_landing_page_cost_does_not_grow_with_the_genre_count(self):
+        url = self._landing_urls()[0]
+        with mock.patch.object(landing_pages, "MIN_GENRE_ALBUMS", 1):
+            self._add_genres(3)
+            clear_all_caches()
+            before = self._capture(url)
+            self._add_genres(30)
+            clear_all_caches()
+            after = self._capture(url)
+        self.assertEqual(
+            len(self._matching(after, 'FROM "music_musicgenre"')),
+            len(self._matching(before, 'FROM "music_musicgenre"')),
+        )
+
     def test_the_pages_stay_inside_a_loose_ceiling(self):
         self._add_genres(10)
         self._add_artists(12)
         clear_all_caches()
+        landing = self._landing_urls()
         for url, ceiling in (
             (reverse("music:home"), 40),
+            (landing[0], 45),
+            (landing[1], 45),
+            (reverse("music:browse"), 15),
             (reverse("music:artist-list"), 20),
             (reverse("music-api:album-all-data"), 20),
         ):
-            with self.subTest(url=url):
+            with self.subTest(url=url), mock.patch.object(
+                landing_pages, "MIN_GENRE_ALBUMS", 1
+            ), mock.patch.object(landing_pages, "MIN_DECADE_ALBUMS", 1):
                 clear_all_caches()
                 self.assertLessEqual(len(self._capture(url)), ceiling)

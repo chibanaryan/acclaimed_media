@@ -34,12 +34,15 @@
         </a>
     </li>
     {% endif %}
+    {# Once music is public the media switcher above leads back instead. #}
+    {% if not MUSIC_ENABLED %}
     <li class="mt-2 pt-2 border-t border-base-100">
         <a href="{% url 'home' %}">
             <span class="mdi mdi-arrow-left text-xl"></span>
             Back to Games
         </a>
     </li>
+    {% endif %}
 {% elif media_type == 'books' %}
     <li>
         <a href="{% url 'books:home' %}"
@@ -62,7 +65,8 @@
         </a>
     </li>
 {% else %}
-    {% if not BOOKS_ENABLED %}
+    {# The media switcher's Games tab stands in for Rankings whenever it shows. #}
+    {% if not BOOKS_ENABLED and not MUSIC_ENABLED %}
     <li>
         <a href="{% url 'home' %}"
            class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}">

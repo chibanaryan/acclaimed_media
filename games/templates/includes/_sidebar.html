@@ -4,7 +4,8 @@
     <div class="shrink-0 px-4 py-6">
         {# Main navigation - the link set depends on the current media type #}
         <nav class="mb-3">
-            {% if BOOKS_ENABLED and media_type != 'music' %}
+            {# The switcher is music's way home once it is public; in the staff beta music pages have their own Back to Games link instead. #}
+            {% if MUSIC_ENABLED or BOOKS_ENABLED and media_type != 'music' %}
             {% include 'core/includes/_media_switcher.html' with variant='tabs' size='sm' %}
             {% endif %}
             {% include 'core/includes/_sidebar_nav.html' %}

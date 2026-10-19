@@ -140,6 +140,17 @@ class FeatureFlagsContextProcessorTest(TestCase):
         self.assertIn("BOOKS_ENABLED", result)
         self.assertIsInstance(result["BOOKS_ENABLED"], bool)
 
+    def test_music_enabled_follows_the_setting(self):
+        """MUSIC_ENABLED is read from settings, not from the raw environment."""
+        from django.test import override_settings
+
+        from games.context_processors import feature_flags
+
+        request = self.factory.get("/")
+        self.assertIs(feature_flags(request)["MUSIC_ENABLED"], False)
+        with override_settings(MUSIC_ENABLED=True):
+            self.assertIs(feature_flags(request)["MUSIC_ENABLED"], True)
+
     def test_returns_dict_type(self):
         """Test that feature_flags returns a dict type."""
         from games.context_processors import feature_flags

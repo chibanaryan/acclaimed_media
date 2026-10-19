@@ -6,7 +6,7 @@
 
 {% block pre_alpine %}
 {# The shared sort controls bind to this; it must load before Alpine core. #}
-<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/media-list-controls.min.js" %}?v=3');</script>
+<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/media-list-controls.min.js" %}?v=5');</script>
 {% endblock %}
 
 {% block content %}
@@ -23,7 +23,7 @@
      })">
 <h1 class="text-3xl font-bold mb-4">
     Artists
-    <span class="badge badge-warning badge-sm align-middle ml-1">Beta</span>
+    {% if not MUSIC_ENABLED %}<span class="badge badge-warning badge-sm align-middle ml-1">Beta</span>{% endif %}
 </h1>
 
 <div id="artist-results-wrapper">

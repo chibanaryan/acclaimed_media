@@ -58,6 +58,10 @@
             <span class="flex flex-wrap gap-1">
                 {% for genre in genres %}<a href="{% url 'music:home' %}?genres={{ genre.id }}&highlight={{ album.id }}" class="badge badge-outline opacity-80 hover:opacity-100 hover:badge-primary transition-colors max-w-[200px] overflow-hidden inline-flex items-center gap-1" title="{{ genre.name }}"><span class="mdi {{ genre|music_genre_icon }} text-sm flex-shrink-0"></span><span class="truncate">{{ genre.name }}</span></a>{% endfor %}
             </span>
+            {# Discogs styles are the base of every album's genres, and its API terms want the credit directly beside them. #}
+            {% if album.discogs_master_url %}
+            {% include 'core/includes/_data_credit.html' with credit_text='Data provided by Discogs' credit_url=album.discogs_master_url extra_class='mt-1' %}
+            {% endif %}
         </td>
     </tr>
     {% endif %}
@@ -101,7 +105,7 @@
     <tr>
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-middle whitespace-nowrap">Discogs:</td>
         <td class="pb-3 align-middle">
-            <a href="https://www.discogs.com/master/{{ album.discogs_master_id }}"
+            <a href="{{ album.discogs_master_url }}"
                target="_blank" rel="noopener" class="link link-accent inline-flex items-center gap-1">
                 Master release <span class="mdi mdi-open-in-new text-sm"></span>
             </a>

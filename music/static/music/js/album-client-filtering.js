@@ -371,9 +371,32 @@ class AlbumClientSideFiltering {
         if (filters.sort && filters.sort !== 'rank') params.set('sort', filters.sort);
         if (filters.dir && filters.dir !== 'asc') params.set('dir', filters.dir);
 
+        // Always onto the rankings URL, never relative to the current path:
+        // on a landing page such as /music/genres/rock/, a relative push
+        // kept the path - and with it the path's own genre - so clearing
+        // the genre and reloading brought rock straight back.
         const query = params.toString();
-        window.history.pushState({}, '', query ? `?${query}` : window.location.pathname);
+        const base = window.albumRankingsUrl || window.location.pathname;
+        window.history.pushState({}, '', query ? `${base}?${query}` : base);
     }
+}
+
+/**
+ * The filter params the current URL stands for.
+ *
+ * A landing page's own path implies its filters with no query string, and
+ * Back can return to that bare path, so on it an empty query means the
+ * page's params (`window.albumLandingSearch`) rather than no filters.
+ */
+function albumUrlParams() {
+    if (
+        !window.location.search &&
+        window.albumLandingPath &&
+        window.location.pathname === window.albumLandingPath
+    ) {
+        return new URLSearchParams(window.albumLandingSearch || '');
+    }
+    return new URLSearchParams(window.location.search);
 }
 
 /**
@@ -620,7 +643,7 @@ function initAlbumFiltering() {
 
         window.addEventListener('popstate', () => {
             // The URL moved under us; re-read it into the form and re-render.
-            const params = new URLSearchParams(window.location.search);
+            const params = albumUrlParams();
             [
                 'q', 'start', 'end', 'artists', 'genres', 'listened', 'sort', 'dir'
             ].forEach(name => {

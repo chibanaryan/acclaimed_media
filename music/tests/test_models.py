@@ -138,6 +138,33 @@ class AlbumTests(TestCase):
     def test_name_normalized_is_left_unset_for_ascii_names(self):
         self.assertIsNone(self.album.name_normalized)
 
+    def test_a_slug_a_fixed_route_would_shadow_is_never_used(self):
+        # /music/1970s/ is a decade page and /music/browse/ the landing
+        # index, so an album slugified onto either could never be reached.
+        cases = [
+            ("1970s", "The Decade Band", "1970s-the-decade-band"),
+            ("Browse", "", "browse-2"),
+            ("Search", "Searchers", "search-searchers"),
+        ]
+        for name, credit, expected in cases:
+            with self.subTest(name=name):
+                album = models.Album.objects.create(
+                    name=name, rank=50, artist_credit=credit
+                )
+                self.assertEqual(album.slug, expected)
+
+    def test_a_year_title_keeps_its_bare_slug(self):
+        # Only a decade is reserved; "1999" is an ordinary album slug.
+        album = models.Album.objects.create(name="1999", rank=51)
+        self.assertEqual(album.slug, "1999")
+
+    def test_the_discogs_master_url(self):
+        self.assertIsNone(self.album.discogs_master_url)
+        self.album.discogs_master_id = 12345
+        self.assertEqual(
+            self.album.discogs_master_url, "https://www.discogs.com/master/12345"
+        )
+
     def test_slug_collision_disambiguates_with_the_artist(self):
         other = models.Album.objects.create(
             name="Pet Sounds", rank=2, artist_credit="Another Act"

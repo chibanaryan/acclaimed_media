@@ -140,6 +140,12 @@
             </a>
             {% endif %}
 
+            {% if MUSIC_ENABLED %}
+            <a href="{% url 'music:home' %}" class="btn btn-ghost btn-sm btn-square shrink-0 nav-item" data-nav-item="music" data-menu-label="Music" aria-label="Music">
+                <span class="mdi mdi-album text-xl"></span>
+            </a>
+            {% endif %}
+
             {# Search dropdown #}
             <div class="relative shrink-0 nav-item" data-nav-item="search" x-data="{
                      showSearchDropdown: false,

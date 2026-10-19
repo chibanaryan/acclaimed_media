@@ -474,3 +474,55 @@ class SharedPlayedMenuTests(SimpleTestCase):
         # ancestors, which is how the body's CSRF token reaches the POST.
         source = (Path(settings.BASE_DIR) / self.SOURCE).read_text()
         self.assertIn("source: wrapper, target: wrapper, swap: 'outerHTML'", source)
+
+
+class LandingPagesPushOntoTheRankingsUrlTests(SimpleTestCase):
+    """Filtering on a music landing page must not keep the landing path.
+
+    The client used to push `?query` relative to the current path, so on
+    `/music/genres/rock/` clearing the genre pushed `/music/genres/rock/`
+    and a reload brought rock back. It now pushes onto
+    `window.albumRankingsUrl`, and both popstate readers treat a landing
+    page's bare path as the params it stands for.
+    """
+
+    def _source(self, relative_path):
+        return (Path(settings.BASE_DIR) / relative_path).read_text()
+
+    def test_the_url_push_uses_the_rankings_url(self):
+        source = self._source("music/static/music/js/album-client-filtering.js")
+        push = source.split("pushUrl(filters) {", 1)[1][:1400]
+        self.assertIn("window.albumRankingsUrl", push)
+        self.assertNotIn("query ? `?${query}`", push)
+
+    def test_both_popstate_readers_know_the_landing_path(self):
+        filtering = self._source("music/static/music/js/album-client-filtering.js")
+        self.assertIn("window.albumLandingSearch", filtering)
+        self.assertIn("const params = albumUrlParams();", filtering)
+        controls = self._source("core/static/core/js/media-list-controls.js")
+        sync = controls.split("_syncFromUrl() {", 1)[1][:700]
+        self.assertIn("settings.landingSearch", sync)
+
+    def test_the_minified_copies_carry_it(self):
+        for path, needle in (
+            ("music/static/music/js/album-client-filtering.min.js", "albumRankingsUrl"),
+            (
+                "music/static/music/js/music-client-side-filtering.bundle.min.js",
+                "albumLandingSearch",
+            ),
+            ("core/static/core/js/media-list-controls.min.js", "landingSearch"),
+        ):
+            with self.subTest(path=path):
+                self.assertIn(needle, self._source(path))
+
+    def test_the_pages_bumped_their_cache_busters(self):
+        # One-way ratchet past the versions that shipped the relative push.
+        page = self._source("music/templates/music/home.html")
+        for stale, shipped in (
+            ("media-list-controls.min.js", 4),
+            ("music-client-side-filtering.bundle.min.js", 3),
+        ):
+            with self.subTest(stale=stale):
+                match = re.search(re.escape(stale) + r"[\"']? %\}\?v=(\d+)", page)
+                self.assertIsNotNone(match, f"{stale} is not loaded with a ?v=")
+                self.assertGreater(int(match.group(1)), shipped)

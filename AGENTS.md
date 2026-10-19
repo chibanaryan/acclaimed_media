@@ -123,10 +123,13 @@ heroku run -- python manage.py shell
   - **templates/books/** - Book templates
   - **static/books/js/** - Book list renderer and client-side filtering
 
-- **music/** - Music app for album rankings (staff-only beta, unlinked from the main site):
+- **music/** - Music app for album rankings (behind `MUSIC_ENABLED`: a staff-only beta, unlinked from the main site, until the flag is on):
   - **models.py** - Album, Artist, MusicGenre, MusicPublication, MusicList, AlbumListMembership
-  - **api/** - REST API with views, serializers, and URL routing (read-only, staff-only, deliberately uncached)
-  - **views.py** - Album/artist/source-list views, all behind `core.mixins.StaffOnlyMixin`
+  - **api/** - REST API with views, serializers, and URL routing (read-only but for saved filters, gated by `music.access`, deliberately uncached)
+  - **access.py** - `music_visible_to(user)` and the two gates, `MusicVisibleMixin` and `MusicAPIGateMixin`
+  - **views.py** - Album/artist/source-list views and the SEO landing pages, all behind `MusicVisibleMixin` (the import page behind `core.mixins.StaffOnlyMixin`)
+  - **sitemaps.py** - The music sitemap sections, empty until `MUSIC_ENABLED` is on
+  - **services/landing_pages.py** - Which genre and decade landing pages exist
   - **services/import_handler.py** - Imports the three-TSV album ranking release
   - **templatetags/music_filters.py** - Music-specific template filters
   - **management/commands/import_music_data.py** - Loads the ranking release files
@@ -149,7 +152,7 @@ heroku run -- python manage.py shell
 - `core` - Shared infrastructure (User model, abstract bases, mixins)
 - `games` - Main game aggregation app with HTMX and Alpine.js
 - `books` - Book rankings app (behind `BOOKS_ENABLED` feature flag)
-- `music` - Album rankings app (staff-only beta)
+- `music` - Album rankings app (behind `MUSIC_ENABLED`)
 
 **Middleware:**
 - `django.middleware.security.SecurityMiddleware` - Security headers
@@ -192,7 +195,7 @@ Books-specific models (behind `BOOKS_ENABLED` feature flag):
 - **ReadBook/WantToReadBook** - User tracking for books (like PlayedGame/WantToPlayGame)
 - **WikipediaBookData** - Wikipedia metadata for books
 
-Music-specific models (staff-only beta):
+Music-specific models:
 
 - **Album** - Albums with ranking, published artist credit, artists, genres, and Wikidata/MusicBrainz ids
 - **Artist** - Recording artists with hierarchical parent-child relationships (bands, side projects)
@@ -238,7 +241,7 @@ Books API endpoints (behind `BOOKS_ENABLED` feature flag):
 - `/api/books/authors/<slug>/` - Author details with book list
 - `/api/books/unified-search/` - Unified book search
 
-Music API endpoints (staff-only):
+Music API endpoints (public once `MUSIC_ENABLED` is on, staff-only until then):
 - `/api/music/` - List and filter albums
 - `/api/music/<slug>/` - Album details with list appearances
 - `/api/music/search/` - Album search
@@ -254,14 +257,15 @@ Music API endpoints (staff-only):
   that **write**, so the only ones CSRF applies to
 
 **Note:** these endpoints carry no `cache_page` decorator on purpose. `cache_page`
-wraps `dispatch`, so it is consulted before permissions run and a staff response
-would be replayed to anonymous callers, defeating `IsStaffOrHide`.
+wraps `dispatch`, so it is consulted before the gate runs: a staff response
+would be replayed to anonymous callers while the section is hidden, and a
+response cached while `MUSIC_ENABLED` was on would outlive turning it off.
 
-**Note:** every read view in `music/api/` and `books/api/` uses a
-`StaffReadAPIMixin` that names `SessionAuthentication`. `REST_FRAMEWORK`'s
-`DEFAULT_AUTHENTICATION_CLASSES` is empty project-wide, so a view declaring only
-`permission_classes = [IsStaffOrHide]` sees a logged-in staff member as anonymous
-and 404s. The books API shipped that way until 2026-10-17 - its whole read API
+**Note:** every view in `music/api/` names `SessionAuthentication` (through
+`music.access.MusicAPIGateMixin`), as books' `StaffReadAPIMixin` does.
+`REST_FRAMEWORK`'s `DEFAULT_AUTHENTICATION_CLASSES` is empty project-wide, so a
+view declaring only `permission_classes = [IsStaffOrHide]` sees a logged-in
+staff member as anonymous and 404s. The books API shipped that way until 2026-10-17 - its whole read API
 was unreachable from a browser - and the tests missed it because
 `APIClient.force_authenticate` bypasses authentication entirely. Test staff API
 access with a real session login.
@@ -494,9 +498,10 @@ Four things worth knowing before changing any of it:
   Defining it on `mediaListControls` lit the hook up with no template
   change - and the guard is why its absence could never throw.
 - **This is music's first *write* endpoint**, so CSRF applies to
-  `music/api/` for the first time; `StaffWriteAPIMixin` sits beside
-  `StaffReadAPIMixin` to say which views that covers. An outsider gets
-  **404**, not games' 403, because the section has to look absent. The
+  `music/api/` for the first time; `MusicWriteAPIMixin` sits beside
+  `MusicReadAPIMixin` to say which views that covers. While the section is
+  hidden an outsider gets **404**, not games' 403, because it has to look
+  absent; once it is public a signed-out caller gets games' 403. The
   ordinary Django test client does not enforce CSRF, so
   `music/tests/test_saved_filters.py` uses
   `Client(enforce_csrf_checks=True)` for the real answer.
@@ -572,8 +577,8 @@ Book routes (behind `BOOKS_ENABLED` feature flag):
 - `/authors/` - Author list with book counts
 - `/authors/<slug>/` - Author detail view with books
 
-Music routes (staff-only, and deliberately **not** linked from anywhere on
-the main site - reach them by URL):
+Music routes (staff-only and linked from nowhere until `MUSIC_ENABLED` is on -
+reach them by URL - and public, in the nav and in the sitemap after):
 - `/music/` - Album rankings with HTMX search, year/artist/genre filters and sorting
 - `/music/<slug>/` - Album detail with list appearances grouped by list type
 - `/music/artists/` - Artist list with album counts
@@ -584,22 +589,69 @@ the main site - reach them by URL):
   answering with the re-rendered button for HTMX to swap
 - `/music/cover/<release_mbid>/<image_id>-<size>.jpg` - Cover art served from our own
   store, cached a year and immutable
+- `/music/genres/<slug>/` - A root genre's rankings (SEO landing page)
+- `/music/<decade>s/` - A decade's rankings (SEO landing page)
+- `/music/browse/` - Index of the landing pages
+
+Album detail is the catch-all `/music/<slug>/`, so every fixed first segment
+above is in `music.config.RESERVED_ALBUM_SLUGS` (and a decade shape in
+`RESERVED_ALBUM_SLUG_PATTERN`), which `Album._build_unique_slug` treats as
+taken. A test fails if a route is added without reserving its segment.
+
+**Music landing pages** are games' `/games/<genre>/` and `/games/<decade>s/`
+for albums: `MusicLandingPageView` subclasses `AlbumHomePageView` and injects
+the path's filters into `request.GET` - in `get()`, not `setup()` as games
+does, so the gate 404s a hidden-section request before anything is queried.
+Root genres with a directly tagged album and at least `MIN_GENRE_ALBUMS`
+across their subtree qualify, and decades with `MIN_DECADE_ALBUMS`; the
+lists are cached under `CACHE_KEYS`. They are self-canonical, carry an
+ItemList (`core.services.seo`), and are discovered through the sitemap
+only - no nav, badge or footer link, as for games. No year pages: album
+slugs such as `1999` already own those paths. The client pushes every
+filter change onto `window.albumRankingsUrl` (`/music/?...`) rather than the
+current path, and both popstate readers read a landing page's bare path as
+`window.albumLandingSearch` - otherwise clearing the genre on
+`/music/genres/rock/` pushed the rock URL back.
 
 **Navigation:** `core/includes/_sidebar_nav.html` picks the sidebar links
 from `media_type`, so each section has its own navigation while the common
-bottom block stays shared. Music is not linked from the games chrome.
+bottom block stays shared. With `MUSIC_ENABLED` on, the media switcher gains a
+Music tab (and appears even with books off), the games mobile nav a Music
+icon, and the switcher stands in for the games "Rankings" and music's "Back
+to Games" sidebar links. The nav keys off the flag alone, never staff status,
+so staff see no links while the section is a beta.
 
-**Access:** every music view and API endpoint uses `core.mixins.StaffOnlyMixin`
-or `core.permissions.IsStaffOrHide`, which raise 404 (not 403) for anyone else.
-There is no feature flag: the staff gate is the single access mechanism, and the
-section has no entry point in the sidebar, mobile nav or media switcher, so a
-normal visitor has no way to discover it. Music is also kept out of
-`sitemap.xml`. Add a nav entry (and a flag, if you want a kill switch) when the
-section is ready to launch publicly. A POST is hidden too: `CsrfViewMiddleware`
-rejects it before the view's mixin runs, so `CSRF_FAILURE_VIEW` points at
-`core.views.csrf_failure`, which answers a failed check under `/music/` with 404
-for anyone but staff. Test it with `Client(enforce_csrf_checks=True)`; the
-ordinary test client skips CSRF.
+**Access:** `settings.MUSIC_ENABLED` (env var, default off, forced off under
+test) is the public-launch switch, and `music/access.py` holds the one
+predicate, `music_visible_to(user)`: the flag, or staff. Off, every music view
+and endpoint 404s (not 403s) for anyone but staff, the section has no entry
+point in the chrome, and it is out of `sitemap.xml` and `robots.txt` - so a
+normal visitor has no way to discover it. On, reads are public; the listen
+toggle answers a signed-out visitor with games' login redirect and the
+saved-filter API with games' 403; `/music/import/` stays staff-only either
+way. Turning it off hides everything again.
+
+- `MusicVisibleMixin` is a plain `dispatch` check, deliberately not a
+  `UserPassesTestMixin`, whose `handle_no_permission` would override
+  `LoginRequiredMixin`'s on the toggle and 404 a signed-out visitor to the
+  public section.
+- `MusicAPIGateMixin` gates in `initial()` *before* DRF authenticates.
+  DRF runs authentication before permissions and `SessionAuthentication`
+  enforces CSRF for any signed-in user, so with the gate as a permission a
+  signed-in outsider's token-less POST to `saved-filters/` got "CSRF Failed"
+  403 - proof the endpoint existed - until 2026-10-18.
+- A POST to a page is hidden too: `CsrfViewMiddleware` rejects it before the
+  view's mixin runs, so `CSRF_FAILURE_VIEW` points at `core.views.csrf_failure`,
+  which answers a failed check under `/music/` with 404 for anyone the
+  section is hidden from. Test it with `Client(enforce_csrf_checks=True)`;
+  the ordinary test client skips CSRF.
+- Books still uses `core.mixins.StaffOnlyMixin` / `core.permissions.IsStaffOrHide`.
+- Flipping the flag is the launch: `heroku config:set MUSIC_ENABLED=true`.
+  The games pages are whole-page cached for anonymous visitors in the
+  per-process `local` alias, nav and all; that is safe only because a config
+  var change restarts every dyno and so empties it. Flipping the flag any
+  other way (a settings change without a restart) would leave cached pages
+  showing the old nav for up to their TTL.
 
 **HTMX Integration:**
 - Dynamic filtering without full page reloads
@@ -885,6 +937,38 @@ Decisions worth knowing before changing any of it:
 `Album.thumbnail` and `Album.image` are what the pages render and prefer the local
 copy.
 
+### Discogs API terms
+
+Discogs' [API Terms of Use](https://support.discogs.com/hc/en-us/articles/360009334593-API-Terms-of-Use)
+(last updated 2025-05-27; their site 403s automated fetches, so read it in a
+browser) ask for two notices, both rendered and both pinned by
+`music/tests/test_discogs_attribution.py`:
+
+- **The non-affiliation notice, verbatim and prominently**: "This application
+  uses Discogs’ API but is not affiliated with, sponsored or endorsed by
+  Discogs. ‘Discogs’ is a trademark of Zink Media, LLC." `base.html` renders
+  `music/includes/_discogs_notice.html` at the foot of every music page.
+- **"Data provided by Discogs" directly beside the data**, linking to the
+  discogs.com page that holds it, never `rel="nofollow"`.
+  `core/includes/_data_credit.html` is the one markup for it. Album detail
+  puts it under the genre badges, linked to `Album.discogs_master_url`. The
+  list pages put one "Genres use data provided by Discogs" line beside the
+  genre filter (the shared `_genre_filter.html` / `_mobile_filter_genres.html`
+  take `data_credit_text` / `data_credit_url`, so games shows none) and
+  above an artist's albums. Rows and cards carry no per-row credit, which
+  would add ~100 links of HTML to every page.
+
+We use no **Restricted Data** (user, marketplace and image data): covers come
+from the Cover Art Archive, and genres and styles are not in the restricted
+list, so the ban on commercial use of Restricted Data does not bite. The terms
+also say content may not be displayed "more than six (6) hours older" than
+discogs.com, nor stored "longer than is necessary". Our reading: what the site
+displays is its own genre vocabulary, derived by `rebuild_album_genres` from
+three voting sources, not Discogs content verbatim; the verbatim
+`DiscogsAlbumData` rows are kept as provenance and to rebuild offline, and
+the refresh runs weekly on Heroku Scheduler. Revisit this if Discogs content
+is ever shown as-is.
+
 ## Music and games query budgets
 
 `/music/` cost 443 queries and `/music/artists/` 305, measured against the
@@ -1011,6 +1095,12 @@ HTML, at 1.4 MB each for any client that did not send `Accept-Encoding: gzip`,
 was most of why the dyno sat over its 512 MB quota. See "Production memory
 budget" below.
 
+**Music has no whole-page cache, and adding one needs care.** Every music
+view checks `MUSIC_ENABLED` in `dispatch`, so `AnonymousResponseCacheMixin`
+would have to sit *after* `MusicVisibleMixin` in the MRO - before it, a page
+cached while the flag was on would go on being served after it was turned off
+- and every cached rankings page spends from the 512 MB budget below.
+
 Music's cache keys all live in `music/config.py` as `CACHE_KEYS`, which
 `_invalidate_music_caches()` iterates - add a cached value there or it will not
 be invalidated. Every key carries `CACHE_VERSION`, so bumping that string
@@ -1111,6 +1201,8 @@ Environment variables are managed via django-environ (`.env` file):
 - `IGDB_USE_PRO_TIER` - Enable IGDB Pro tier (default: False)
 - `WIKIDATA_ACCESS_TOKEN` - For faster Wikipedia processing (2.5x speedup)
 - `BOOKS_ENABLED` - Enable books feature (default: False, enabled in DEBUG/TEST modes)
+- `MUSIC_ENABLED` - Launch the music section publicly (default: False, forced off
+  under test). Off is the staff-only beta; see "Access" under Routes
 - `HARDCOVER_API_TOKEN` - Optional Hardcover API token for additional book metadata
 - `DISCOGS_TOKEN` - Optional Discogs personal access token; raises the music
   metadata rate limit above the 25 requests/minute anonymous tier

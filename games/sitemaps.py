@@ -17,9 +17,10 @@ class StaticViewSitemap(Sitemap):
     changefreq = "weekly"
 
     def items(self):
-        # Book and music pages are staff-only (they 404 for anonymous
-        # visitors and crawlers), so they stay out of the sitemap until
-        # those sections launch publicly
+        # Book pages are staff-only (they 404 for anonymous visitors and
+        # crawlers), so they stay out of the sitemap until books launches.
+        # Music has its own sections in music/sitemaps.py, empty until
+        # MUSIC_ENABLED is on
         return [
             "home",
             "developers-list",

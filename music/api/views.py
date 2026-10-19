@@ -1,14 +1,15 @@
 """
 Music API views.
 
-Staff-only, and almost all read-only. ``all/`` is the bulk endpoint feeding
-the client-side filtering bundle; there is deliberately no ``version/``
-endpoint beside it, because the album rankings page renders the same data
-version into the page itself, so the client can tell a stale copy from a
-current one without a second request.
+Behind ``music.access.MusicAPIGateMixin`` - public once ``MUSIC_ENABLED``
+is on, a staff-only 404 until then - and almost all read-only. ``all/`` is
+the bulk endpoint feeding the client-side filtering bundle; there is
+deliberately no ``version/`` endpoint beside it, because the album rankings
+page renders the same data version into the page itself, so the client can
+tell a stale copy from a current one without a second request.
 
 ``saved-filters/`` is the exception and the only endpoint here that writes.
-It is why there are two staff mixins below rather than one: CSRF enforcement
+It is why there are two mixins below rather than one: CSRF enforcement
 now applies to this module, where before no unsafe method existed to trigger
 it.
 """
@@ -17,15 +18,15 @@ from django.db.models import Count, Max, Min, Prefetch, Q
 from django.db.models.functions import Lower
 from django.shortcuts import get_object_or_404
 from rest_framework import status
-from rest_framework.authentication import SessionAuthentication
 from rest_framework.generics import ListAPIView, RetrieveAPIView
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView, Response
 
 from core import constants as core_constants
-from core.permissions import IsStaffOrHide
 from core.services import genre_tree
 
 from .. import config, models
+from ..access import MusicAPIGateMixin
 from ..services.data_version import compute_album_data_version
 from . import serializers
 
@@ -39,49 +40,48 @@ def _parse_limit(raw, default, maximum=20):
     return max(1, min(value, maximum))
 
 
-class StaffReadAPIMixin:
-    """Authenticate by session, then allow staff only.
+class MusicReadAPIMixin(MusicAPIGateMixin):
+    """The section's gate, and nothing more, for the read-only endpoints.
 
-    ``DEFAULT_AUTHENTICATION_CLASSES`` is empty project-wide, so a DRF view
-    that does not name an authenticator sees every request as anonymous -
-    which, combined with ``IsStaffOrHide``, would 404 even for a logged-in
-    staff member holding a valid session cookie. Naming
-    ``SessionAuthentication`` here is what makes these endpoints reachable
-    from the browser. The views using *this* mixin are all read-only, so
-    CSRF enforcement never comes into play for them; the saved-filter views
-    use :class:`StaffWriteAPIMixin` instead.
+    ``MusicAPIGateMixin`` names ``SessionAuthentication`` - without it a DRF
+    view sees every request as anonymous, since
+    ``DEFAULT_AUTHENTICATION_CLASSES`` is empty project-wide - and 404s
+    anyone the section is hidden from. Past that gate a read needs no
+    permission, so once ``MUSIC_ENABLED`` is on these are as public as
+    games' API. The saved-filter views use :class:`MusicWriteAPIMixin`.
     """
 
-    authentication_classes = [SessionAuthentication]
-    permission_classes = [IsStaffOrHide]
+    permission_classes = []
 
 
-class StaffWriteAPIMixin:
-    """The same gate, for the endpoints that write.
+class MusicWriteAPIMixin(MusicAPIGateMixin):
+    """The same gate, for the endpoints that write, plus a login.
 
-    Identical to :class:`StaffReadAPIMixin` in configuration and separate
-    from it in name on purpose: ``SessionAuthentication`` enforces CSRF on
-    unsafe methods, so every caller of a view using this mixin has to send
-    ``X-CSRFToken``. Keeping the two apart means a reader can tell which
-    endpoints that applies to without reading the methods.
+    Separate from :class:`MusicReadAPIMixin` in name on purpose:
+    ``SessionAuthentication`` enforces CSRF on unsafe methods, so every
+    caller of a view using this mixin has to send ``X-CSRFToken``, and a
+    reader can tell which endpoints that applies to without reading the
+    methods.
 
-    Note the status code this yields for an outsider. ``IsStaffOrHide``
-    raises 404 where games' ``IsAuthenticated`` answers 403, because the
-    music section has to look absent rather than merely forbidden.
+    Note the status codes this yields. While the section is hidden an
+    outsider gets 404 from the gate, because it has to look absent rather
+    than merely forbidden. Once it is public a signed-out caller gets
+    ``IsAuthenticated``'s 403, as games' saved filters answer.
     """
 
-    authentication_classes = [SessionAuthentication]
-    permission_classes = [IsStaffOrHide]
+    permission_classes = [IsAuthenticated]
 
 
 # Note on caching: these endpoints are deliberately uncached. `cache_page`
-# wraps `dispatch`, so it is consulted *before* permissions run - a response
+# wraps `dispatch`, so it is consulted *before* the gate runs - a response
 # generated for a staff member is then replayed to anonymous callers, which
-# defeats `IsStaffOrHide` entirely. The dataset is 500 albums, so there is
-# nothing here worth that risk. Any future caching must vary on the user.
+# defeats the hidden section entirely, and one cached while `MUSIC_ENABLED`
+# was on would go on being served after it was turned off. The dataset is
+# 1000 albums, so there is nothing here worth that risk. Any future caching
+# must vary on the user and on the flag.
 
 
-class AlbumAllDataView(StaffReadAPIMixin, APIView):
+class AlbumAllDataView(MusicReadAPIMixin, APIView):
     """
     Every album in one payload, for client-side filtering.
 
@@ -187,7 +187,7 @@ class AlbumAllDataView(StaffReadAPIMixin, APIView):
         )
 
 
-class MusicUnifiedSearchView(StaffReadAPIMixin, APIView):
+class MusicUnifiedSearchView(MusicReadAPIMixin, APIView):
     """Albums and artists in one response, for the sidebar search box.
 
     The games equivalent (``games.api.views.UnifiedSearchView``) feeds the
@@ -248,7 +248,7 @@ class MusicUnifiedSearchView(StaffReadAPIMixin, APIView):
         )
 
 
-class AlbumListView(StaffReadAPIMixin, ListAPIView):
+class AlbumListView(MusicReadAPIMixin, ListAPIView):
     """
     List albums with filtering and search.
 
@@ -284,7 +284,7 @@ class AlbumListView(StaffReadAPIMixin, ListAPIView):
         return qs.distinct().order_by("rank")
 
 
-class AlbumDetailView(StaffReadAPIMixin, RetrieveAPIView):
+class AlbumDetailView(MusicReadAPIMixin, RetrieveAPIView):
     """One album with its list appearances."""
 
     serializer_class = serializers.AlbumDetailSerializer
@@ -294,7 +294,7 @@ class AlbumDetailView(StaffReadAPIMixin, RetrieveAPIView):
         return models.Album.objects.with_relations().with_list_count()
 
 
-class AlbumSearchAPIView(StaffReadAPIMixin, ListAPIView):
+class AlbumSearchAPIView(MusicReadAPIMixin, ListAPIView):
     """Album search, capped at 20 results."""
 
     serializer_class = serializers.AlbumSummarySerializer
@@ -312,7 +312,7 @@ class AlbumSearchAPIView(StaffReadAPIMixin, ListAPIView):
         )
 
 
-class ArtistListView(StaffReadAPIMixin, ListAPIView):
+class ArtistListView(MusicReadAPIMixin, ListAPIView):
     """Artists with at least one ranked album."""
 
     serializer_class = serializers.ArtistSerializer
@@ -329,7 +329,7 @@ class ArtistListView(StaffReadAPIMixin, ListAPIView):
         return qs
 
 
-class ArtistDetailView(StaffReadAPIMixin, RetrieveAPIView):
+class ArtistDetailView(MusicReadAPIMixin, RetrieveAPIView):
     """One artist with their ranked albums."""
 
     serializer_class = serializers.ArtistDetailSerializer
@@ -348,7 +348,7 @@ class ArtistDetailView(StaffReadAPIMixin, RetrieveAPIView):
         )
 
 
-class MusicListListView(StaffReadAPIMixin, ListAPIView):
+class MusicListListView(MusicReadAPIMixin, ListAPIView):
     """The published source lists."""
 
     serializer_class = serializers.MusicListSerializer
@@ -361,7 +361,7 @@ class MusicListListView(StaffReadAPIMixin, ListAPIView):
         return qs
 
 
-class MusicGenreListView(StaffReadAPIMixin, ListAPIView):
+class MusicGenreListView(MusicReadAPIMixin, ListAPIView):
     """Every music genre, flat, ordered for tree reassembly."""
 
     serializer_class = serializers.MusicGenreSerializer
@@ -373,7 +373,7 @@ class MusicGenreListView(StaffReadAPIMixin, ListAPIView):
         )
 
 
-class MusicMetaView(StaffReadAPIMixin, APIView):
+class MusicMetaView(MusicReadAPIMixin, APIView):
     """Counts and year distributions for the music database."""
 
     def get(self, request, *args, **kwargs):
@@ -465,7 +465,7 @@ def _validate_saved_filter_name(name, user, exclude_pk=None):
     return None
 
 
-class SavedAlbumFilterSetListCreateView(StaffWriteAPIMixin, APIView):
+class SavedAlbumFilterSetListCreateView(MusicWriteAPIMixin, APIView):
     """List this reader's saved album filters, or save the current one.
 
     The cap is ``config.MAX_SAVED_FILTERS`` and is enforced here rather than
@@ -508,7 +508,7 @@ class SavedAlbumFilterSetListCreateView(StaffWriteAPIMixin, APIView):
         )
 
 
-class SavedAlbumFilterSetDetailView(StaffWriteAPIMixin, APIView):
+class SavedAlbumFilterSetDetailView(MusicWriteAPIMixin, APIView):
     """Rename or delete one saved album filter.
 
     Both methods go through an owner-scoped lookup, so another reader's id

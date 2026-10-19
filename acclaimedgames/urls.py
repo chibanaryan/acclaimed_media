@@ -7,6 +7,7 @@ from django.views.generic import RedirectView
 
 from games import views
 from games.sitemaps import sitemaps
+from music.sitemaps import music_sitemaps
 
 # Custom 404 handler
 handler404 = "games.views.custom_404_view"
@@ -16,7 +17,8 @@ urlpatterns = [
     path(
         "sitemap.xml",
         sitemap,
-        {"sitemaps": sitemaps},
+        # Music's sections are empty until MUSIC_ENABLED is on.
+        {"sitemaps": {**sitemaps, **music_sitemaps}},
         name="django.contrib.sitemaps.views.sitemap",
     ),
     path("robots.txt", views.robots_txt, name="robots-txt"),

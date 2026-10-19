@@ -1,9 +1,10 @@
 """
 Music views for the multi-media platform.
 
-Every view is staff-only: the section is a beta and should look absent, not
-forbidden, to everyone else. That gate is ``core.mixins.StaffOnlyMixin``,
-which raises 404.
+Every view is behind ``music.access.MusicVisibleMixin``: public once
+``settings.MUSIC_ENABLED`` is on, and until then a staff-only beta that looks
+absent, not forbidden, to everyone else (404). The import page is the
+exception and stays behind ``core.mixins.StaffOnlyMixin`` either way.
 
 The album list is server-rendered with HTMX filtering and progressively
 enhanced by music/static/music/js/, so every variable these templates read is
@@ -29,18 +30,21 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
 from django.http import Http404, HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
 from django.utils.functional import cached_property
+from django.utils.http import urlencode
 from django.utils.text import slugify
 from django.views import View
-from django.views.generic import DetailView, ListView
+from django.views.generic import DetailView, ListView, TemplateView
 
 from core import constants as core_constants
 from core.cache_helpers import get_year_bounds
 from core.mixins import HTMXPartialMixin, RobustPaginationMixin, StaffOnlyMixin
-from core.services import genre_tree
+from core.services import genre_tree, seo
 from music import config, models
+from music.access import MusicVisibleMixin
 from music.forms import MusicImportForm
-from music.services import caching, import_handler
+from music.services import caching, import_handler, landing_pages
 from core.services import ranking, titles
 from games.models import SiteMetadata
 from music.templatetags import music_filters
@@ -556,7 +560,7 @@ def group_list_appearances(memberships):
     ]
 
 
-class AlbumHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
+class AlbumHomePageView(MusicVisibleMixin, RobustPaginationMixin, ListView):
     """
     The album rankings page, with search, filtering and HTMX updates.
 
@@ -777,7 +781,117 @@ class AlbumHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
         return params.urlencode()
 
 
-class AlbumDownloadView(StaffOnlyMixin, View):
+class MusicLandingPageView(AlbumHomePageView):
+    """The album rankings page at a crawlable, self-canonical URL.
+
+    The genre or decade in the path becomes the equivalent filter params,
+    injected into ``request.GET`` before the rankings machinery runs, so the
+    filter UI, Load More and client-side filtering all work unchanged - as
+    ``games.views.SeoRankingPageView`` does. A param the request names
+    itself wins over the path's.
+
+    The injection happens in ``get()``, not ``setup()`` as games does it:
+    ``setup()`` runs before ``dispatch()``, so resolving the page there
+    would query the database for a request the section's gate is about to
+    404.
+    """
+
+    def get_page_seo(self):
+        """Return ``{"params", "meta_description"}`` for this URL, or 404."""
+        raise NotImplementedError
+
+    def get(self, request, *args, **kwargs):
+        self.seo = self.get_page_seo()
+        params = request.GET.copy()
+        for key, value in self.seo["params"].items():
+            if key not in params:
+                params[key] = value
+        request.GET = params
+        return super().get(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # The natural filter title doubles as the page title, so the landing
+        # page and the same filters chosen by hand read identically.
+        context["seo_title"] = context["filter_title"]
+        context["seo_meta_description"] = self.seo["meta_description"]
+        context["itemlist_json"] = seo.itemlist_json(
+            context["filter_title"],
+            (
+                (album.name, album.get_absolute_url())
+                for album in list(context["albums"])[: landing_pages.TOP_N]
+            ),
+        )
+        # The client pushes every filter change to /music/?..., so history
+        # entries that land back on this path carry no query string; these
+        # say what that bare path means.
+        context["landing_path"] = self.request.path
+        context["landing_search"] = urlencode(self.seo["params"])
+        return context
+
+
+class GenreLandingView(MusicLandingPageView):
+    """A root genre's rankings at /music/genres/<slug>/."""
+
+    def get_page_seo(self):
+        entry = landing_pages.resolve_genre_slug(self.kwargs["slug"])
+        if entry is None:
+            raise Http404("No landing page for this genre")
+        list_count = _cached_hero_stats()["list_count"]
+        return {
+            "params": {"genres": str(entry["id"])},
+            "meta_description": (
+                f"The most critically acclaimed {entry['name']} albums of all "
+                f"time, ranked by aggregating {list_count} critic lists. "
+                f"Explore {entry['album_count']} acclaimed albums."
+            ),
+        }
+
+
+class DecadeLandingView(MusicLandingPageView):
+    """A decade's rankings at /music/<decade>s/."""
+
+    def get_page_seo(self):
+        decade = int(self.kwargs["decade"])
+        if decade not in landing_pages.get_landing_decades():
+            raise Http404("No landing page for this decade")
+        list_count = _cached_hero_stats()["list_count"]
+        return {
+            "params": {"start": str(decade), "end": str(decade + 9)},
+            "meta_description": (
+                f"The most critically acclaimed albums of the {decade}s, "
+                f"ranked by critic consensus across {list_count} published "
+                f"lists."
+            ),
+        }
+
+
+class MusicBrowseIndexView(MusicVisibleMixin, TemplateView):
+    """Index of every music landing page, reached from the sitemap only."""
+
+    template_name = "music/landing/browse.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["genre_pages"] = [
+            {
+                "label": f"{genre['name']} Albums",
+                "url": reverse("music:by-genre", kwargs={"slug": genre["slug"]}),
+            }
+            for genre in landing_pages.get_landing_genres()
+        ]
+        context["decade_pages"] = [
+            {
+                "label": f"Albums of the {decade}s",
+                "url": reverse("music:by-decade", kwargs={"decade": decade}),
+            }
+            for decade in landing_pages.get_landing_decades()
+        ]
+        context.update(_cached_hero_stats())
+        return context
+
+
+class AlbumDownloadView(MusicVisibleMixin, View):
     """The current filter state as a CSV, as the games sidebar offers.
 
     Same filters as the rankings page, so the file is exactly what the
@@ -840,16 +954,17 @@ class AlbumDownloadView(StaffOnlyMixin, View):
         return response
 
 
-class ToggleListenedAlbumView(StaffOnlyMixin, LoginRequiredMixin, View):
+class ToggleListenedAlbumView(MusicVisibleMixin, LoginRequiredMixin, View):
     """Set an album's listen status, answering with the re-rendered button.
 
     ``?status=none|want|listened`` sets a status directly. Games also carries
     a legacy cycle for a bare POST; the dropdown here only ever sets a status
     outright, so a cycle would be a second code path nothing reaches.
 
-    ``StaffOnlyMixin`` comes first deliberately: a signed-out visitor should
-    get the section's 404, not a login redirect advertising that the URL
-    exists.
+    ``MusicVisibleMixin`` comes first deliberately: while the section is
+    hidden, a signed-out visitor should get its 404, not a login redirect
+    advertising that the URL exists. Once it is public, a signed-out visitor
+    gets ``LoginRequiredMixin``'s redirect, as games' toggle does.
 
     Two things games and books both get wrong here are fixed. The delete and
     the write run in one transaction, so a failure between them cannot leave
@@ -902,7 +1017,7 @@ class ToggleListenedAlbumView(StaffOnlyMixin, LoginRequiredMixin, View):
         return response
 
 
-class AlbumDetailView(StaffOnlyMixin, DetailView):
+class AlbumDetailView(MusicVisibleMixin, DetailView):
     """One album, with every list it appears on grouped by list type."""
 
     model = models.Album
@@ -976,7 +1091,9 @@ class AlbumDetailView(StaffOnlyMixin, DetailView):
         return context
 
 
-class ArtistListView(StaffOnlyMixin, RobustPaginationMixin, HTMXPartialMixin, ListView):
+class ArtistListView(
+    MusicVisibleMixin, RobustPaginationMixin, HTMXPartialMixin, ListView
+):
     """Artists that have at least one ranked album, with search and sorting."""
 
     model = models.Artist
@@ -1051,7 +1168,7 @@ class ArtistListView(StaffOnlyMixin, RobustPaginationMixin, HTMXPartialMixin, Li
         return context
 
 
-class ArtistDetailView(StaffOnlyMixin, DetailView):
+class ArtistDetailView(MusicVisibleMixin, DetailView):
     """One artist, with their ranked albums and any subsidiary acts."""
 
     model = models.Artist
@@ -1096,7 +1213,7 @@ class ArtistDetailView(StaffOnlyMixin, DetailView):
         return context
 
 
-class AlbumSearchView(StaffOnlyMixin, ListView):
+class AlbumSearchView(MusicVisibleMixin, ListView):
     """HTMX search results for the album search box."""
 
     model = models.Album
@@ -1181,7 +1298,7 @@ def _publication_importance(group):
     )
 
 
-class MusicListListView(StaffOnlyMixin, HTMXPartialMixin, ListView):
+class MusicListListView(MusicVisibleMixin, HTMXPartialMixin, ListView):
     """The source lists behind the album rankings, grouped by publication."""
 
     model = models.MusicList
@@ -1269,7 +1386,7 @@ class MusicListListView(StaffOnlyMixin, HTMXPartialMixin, ListView):
         return context
 
 
-class AlbumCoverView(StaffOnlyMixin, View):
+class AlbumCoverView(MusicVisibleMixin, View):
     """Serve our own stored copy of an album cover.
 
     The Cover Art Archive is the source of this art, but hotlinking it means

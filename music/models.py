@@ -6,6 +6,7 @@ and Author plays for books. Everything shared lives in ``core.models``, so
 this module only adds what is specific to recorded music.
 """
 
+import re
 from functools import cached_property
 from typing import Any, List, Optional
 
@@ -194,6 +195,13 @@ class AlbumQuerySet(models.QuerySet):
         )
 
 
+def _is_reserved_slug(slug: str) -> bool:
+    """Whether ``slug`` would be shadowed by a fixed route under /music/."""
+    return slug in config.RESERVED_ALBUM_SLUGS or bool(
+        re.match(config.RESERVED_ALBUM_SLUG_PATTERN, slug)
+    )
+
+
 class Album(MediaItemBase):
     """
     A studio album, ranked by aggregating published critics' lists.
@@ -298,6 +306,8 @@ class Album(MediaItemBase):
 
         taken = Album.objects.exclude(pk=self.pk) if self.pk else Album.objects.all()
         for candidate in candidates:
+            if _is_reserved_slug(candidate):
+                continue
             if not taken.filter(slug=candidate).exists():
                 return candidate
 
@@ -308,6 +318,13 @@ class Album(MediaItemBase):
 
     def get_absolute_url(self) -> str:
         return reverse("music:album-detail", kwargs={"slug": self.slug})
+
+    @property
+    def discogs_master_url(self) -> Optional[str]:
+        """The Discogs master page, which its API terms want credited."""
+        if not self.discogs_master_id:
+            return None
+        return f"https://www.discogs.com/master/{self.discogs_master_id}"
 
     @cached_property
     def decade(self) -> Optional[int]:

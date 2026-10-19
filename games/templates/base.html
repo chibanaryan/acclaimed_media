@@ -214,6 +214,7 @@
             <div class="container mx-auto px-4 max-w-7xl py-4">
                 {% block pre_content %}{% endblock %}
                 {% block content %}{% endblock %}
+                {% if media_type == 'music' %}{% include 'music/includes/_discogs_notice.html' %}{% endif %}
             </div>
         </main>
     </div>
