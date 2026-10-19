@@ -322,3 +322,81 @@ class TrackingAdminTests(TestCase):
                 self.assertIn("user__username", fields)
                 self.assertIn("album__name", fields)
                 self.assertIn("wikidata_id", fields)
+
+
+class SavedAlbumFilterAdminTests(TestCase):
+    """The one-line summary of a stored filter blob.
+
+    Each dimension is checked on its own, because the summary is the only
+    place an admin sees what a saved filter actually does - the JSON column
+    itself is unreadable at a glance.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="saver", password="pw")
+        self.admin_obj = site._registry[models.SavedAlbumFilterSet]
+
+    def summarise(self, filters):
+        row = models.SavedAlbumFilterSet(
+            user=self.user, name="Example", filters=filters
+        )
+        return self.admin_obj.filter_summary(row)
+
+    def test_an_empty_blob_says_so(self):
+        self.assertEqual(self.summarise({}), "(no filters)")
+
+    def test_a_null_blob_says_so(self):
+        # `filters` is non-null in the schema, but a row written by hand or
+        # by an older client can still hold JSON null.
+        self.assertEqual(self.summarise(None), "(no filters)")
+
+    def test_a_search_term_is_shown_and_truncated(self):
+        self.assertEqual(self.summarise({"q": "miles"}), "search: miles")
+        self.assertEqual(self.summarise({"q": "x" * 40}), "search: " + "x" * 20)
+
+    def test_genres_are_counted(self):
+        self.assertEqual(self.summarise({"genres": ["1", "2"]}), "2 genres")
+
+    def test_the_listen_status_is_named(self):
+        self.assertEqual(
+            self.summarise({"listened": ["yes", "want"]}), "listen: yes,want"
+        )
+
+    def test_a_year_window_is_shown(self):
+        self.assertEqual(self.summarise({"start": 1970, "end": 1979}), "1970-1979")
+
+    def test_a_half_open_window_marks_the_missing_end(self):
+        self.assertEqual(self.summarise({"start": 1970}), "1970-?")
+        self.assertEqual(self.summarise({"end": 1979}), "?-1979")
+
+    def test_the_default_sort_is_left_out(self):
+        self.assertEqual(self.summarise({"sort": "rank"}), "(no filters)")
+
+    def test_a_non_default_sort_is_named(self):
+        self.assertEqual(self.summarise({"sort": "year"}), "sort: year")
+
+    def test_every_dimension_reads_together(self):
+        self.assertEqual(
+            self.summarise(
+                {
+                    "q": "jazz",
+                    "genres": ["3"],
+                    "listened": ["yes"],
+                    "start": 1960,
+                    "end": 1969,
+                    "sort": "year",
+                }
+            ),
+            "search: jazz, 1 genres, listen: yes, 1960-1969, sort: year",
+        )
+
+    def test_the_changelist_loads(self):
+        User.objects.create_user(
+            username="sfadmin", password="pw", is_staff=True, is_superuser=True
+        )
+        self.client.login(username="sfadmin", password="pw")
+        models.SavedAlbumFilterSet.objects.create(
+            user=self.user, name="Seventies", filters={"start": 1970, "end": 1979}
+        )
+        url = reverse("admin:music_savedalbumfilterset_changelist")
+        self.assertEqual(self.client.get(url).status_code, 200)

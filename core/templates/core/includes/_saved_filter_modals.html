@@ -1,0 +1,140 @@
+{% comment %}
+The save / rename / delete modals for saved filters.
+
+Included once per page, anywhere inside the Alpine component that owns the
+saved-filter state - both the sidebar dropdown and the mobile sheet drive
+these same three, so there is one copy, not one per entry point.
+
+The input ids are part of the contract: `saveCurrentFilters()` and
+`renameSavedFilter()` focus `save-filter-name-input` and
+`rename-filter-name-input` by id on $nextTick.
+
+Parameters:
+  name_placeholder  an example name, in the section's own vocabulary
+{% endcomment %}
+
+{# Save #}
+<dialog class="modal"
+        :class="{ 'modal-open': saveFilterModalOpen }"
+        @keydown.escape.window="saveFilterModalOpen = false">
+    <div class="modal-box max-w-sm">
+        <h3 class="font-bold text-lg mb-4">
+            <span class="mdi mdi-bookmark-plus text-info"></span>
+            Save Filter
+        </h3>
+        <form @submit.prevent="submitSaveFilter()">
+            <div class="form-control">
+                <label class="label" for="save-filter-name-input">
+                    <span class="label-text">Filter name</span>
+                </label>
+                <input type="text"
+                       id="save-filter-name-input"
+                       x-model="saveFilterName"
+                       class="input input-bordered w-full"
+                       :class="{ 'input-error': saveFilterError }"
+                       placeholder="{{ name_placeholder|default:'e.g., Favourites' }}"
+                       maxlength="255"
+                       autocomplete="off">
+                <label class="label" x-show="saveFilterError" x-cloak>
+                    <span class="label-text-alt text-error" x-text="saveFilterError"></span>
+                </label>
+            </div>
+            <div class="modal-action">
+                <button type="button"
+                        class="btn btn-ghost"
+                        @click="saveFilterModalOpen = false"
+                        :disabled="saveFilterSaving">
+                    Cancel
+                </button>
+                <button type="submit"
+                        class="btn btn-info"
+                        :disabled="saveFilterSaving || !saveFilterName.trim()">
+                    <span class="loading loading-spinner loading-sm" x-show="saveFilterSaving"></span>
+                    <span x-show="!saveFilterSaving">Save</span>
+                </button>
+            </div>
+        </form>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button @click="saveFilterModalOpen = false">close</button>
+    </form>
+</dialog>
+
+{# Rename #}
+<dialog class="modal"
+        :class="{ 'modal-open': renameFilterModalOpen }"
+        @keydown.escape.window="renameFilterModalOpen = false">
+    <div class="modal-box max-w-sm">
+        <h3 class="font-bold text-lg mb-4">
+            <span class="mdi mdi-pencil text-info"></span>
+            Rename Filter
+        </h3>
+        <form @submit.prevent="submitRenameFilter()">
+            <div class="form-control">
+                <label class="label" for="rename-filter-name-input">
+                    <span class="label-text">Filter name</span>
+                </label>
+                <input type="text"
+                       id="rename-filter-name-input"
+                       x-model="renameFilterName"
+                       class="input input-bordered w-full"
+                       :class="{ 'input-error': renameFilterError }"
+                       maxlength="255"
+                       autocomplete="off">
+                <label class="label" x-show="renameFilterError" x-cloak>
+                    <span class="label-text-alt text-error" x-text="renameFilterError"></span>
+                </label>
+            </div>
+            <div class="modal-action">
+                <button type="button"
+                        class="btn btn-ghost"
+                        @click="renameFilterModalOpen = false"
+                        :disabled="renameFilterSaving">
+                    Cancel
+                </button>
+                <button type="submit"
+                        class="btn btn-info"
+                        :disabled="renameFilterSaving || !renameFilterName.trim()">
+                    <span class="loading loading-spinner loading-sm" x-show="renameFilterSaving"></span>
+                    <span x-show="!renameFilterSaving">Rename</span>
+                </button>
+            </div>
+        </form>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button @click="renameFilterModalOpen = false">close</button>
+    </form>
+</dialog>
+
+{# Delete #}
+<dialog class="modal"
+        :class="{ 'modal-open': deleteFilterModalOpen }"
+        @keydown.escape.window="deleteFilterModalOpen = false">
+    <div class="modal-box max-w-sm">
+        <h3 class="font-bold text-lg mb-4">
+            <span class="mdi mdi-delete text-error"></span>
+            Delete Filter
+        </h3>
+        <p class="py-2">
+            Are you sure you want to delete "<span x-text="deleteFilterTarget?.name" class="font-semibold"></span>"?
+        </p>
+        <div class="modal-action">
+            <button type="button"
+                    class="btn btn-ghost"
+                    @click="deleteFilterModalOpen = false"
+                    :disabled="deleteFilterDeleting">
+                Cancel
+            </button>
+            <button type="button"
+                    class="btn btn-error"
+                    @click="confirmDeleteFilter()"
+                    :disabled="deleteFilterDeleting">
+                <span class="loading loading-spinner loading-sm" x-show="deleteFilterDeleting"></span>
+                <span x-show="!deleteFilterDeleting">Delete</span>
+            </button>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button @click="deleteFilterModalOpen = false">close</button>
+    </form>
+</dialog>

@@ -7,7 +7,7 @@ is the one person who *could* be shown a link.
 """
 
 from django.test import TestCase
-from django.urls import reverse
+from django.urls import resolve, reverse
 
 from core.models import User
 from music import models
@@ -97,3 +97,36 @@ class ReachableByUrlTests(TestCase):
         for url in [reverse("music:home"), self.album.get_absolute_url()]:
             with self.subTest(url=url):
                 self.assertEqual(self.client.get(url).status_code, 404)
+
+
+class SavedFilterApiIsHiddenTests(TestCase):
+    """The saved-filter endpoints are the section's only writes.
+
+    They are checked here as well as in `test_saved_filters` because this
+    file is the sweep a reader consults to ask "is anything reachable?", and
+    a write endpoint is the one worth being sure of.
+    """
+
+    def test_staff_reach_the_saved_filter_api(self):
+        User.objects.create_user(username="sfstaff", password="sfpass", is_staff=True)
+        self.client.login(username="sfstaff", password="sfpass")
+        response = self.client.get(reverse("music-api:saved-filter-list"))
+        self.assertEqual(response.status_code, 200)
+
+    def test_a_normal_visitor_gets_404(self):
+        User.objects.create_user(username="sfplain", password="sfpass")
+        self.client.login(username="sfplain", password="sfpass")
+        self.assertEqual(
+            self.client.get(reverse("music-api:saved-filter-list")).status_code, 404
+        )
+
+    def test_an_anonymous_visitor_gets_404(self):
+        self.assertEqual(
+            self.client.get(reverse("music-api:saved-filter-list")).status_code, 404
+        )
+
+    def test_the_route_sits_before_the_album_slug_catch_all(self):
+        # `saved-filters/` would otherwise resolve as an album slug, which
+        # would make a POST to it a 405 from the detail view instead.
+        match = resolve("/api/music/saved-filters/")
+        self.assertEqual(match.url_name, "saved-filter-list")

@@ -1,0 +1,93 @@
+{% comment %}
+The "Saved" dropdown for a ranking page's filter sidebar header.
+
+Binds to the enclosing Alpine component's saved-filter contract:
+savedFiltersOpen / savedFiltersLoading / savedFiltersLoaded / savedFilters,
+loadSavedFilters(), applySavedFilter(), saveCurrentFilters(),
+renameSavedFilter(), deleteSavedFilter() and hasActiveFilters(). Both
+`mediaListControls` and games' `filterComponent` expose those names, so this
+partial can serve either section.
+
+Parameters:
+  max_saved        how many a reader may keep, for the limit message
+  signed_out_hint  the tooltip on the disabled button for a visitor
+
+The parent element must be positioned (`relative`): the menu below is
+absolute, and without it the dropdown anchors to the page instead.
+{% endcomment %}
+{% if user.is_authenticated %}
+<button type="button"
+        class="btn btn-ghost btn-xs text-base-content/70 hover:text-info"
+        @click="loadSavedFilters()"
+        title="Saved filters">
+    <span class="mdi mdi-bookmark-outline text-sm"></span>
+    <span>Saved</span>
+</button>
+<ul class="absolute right-0 top-full menu bg-base-100 rounded-box w-96 p-2 shadow-lg z-50 mt-2 overflow-hidden"
+    x-show="savedFiltersOpen"
+    @click.away="savedFiltersOpen = false"
+    x-cloak>
+    {# Offered only when there is something to save and room to save it. #}
+    <template x-if="hasActiveFilters() && savedFiltersLoaded && savedFilters.length < {{ max_saved|default:10 }}">
+        <li class="border-b border-base-200 mb-1 pb-1">
+            <button type="button"
+                    class="flex items-center gap-2 text-info font-medium"
+                    @click="saveCurrentFilters()">
+                <span class="mdi mdi-bookmark-plus"></span>
+                Save current filters
+            </button>
+        </li>
+    </template>
+    <template x-if="hasActiveFilters() && savedFiltersLoaded && savedFilters.length >= {{ max_saved|default:10 }}">
+        <li class="border-b border-base-200 mb-1 pb-1">
+            <span class="text-base-content/70 text-sm pointer-events-none">
+                <span class="mdi mdi-bookmark-off"></span>
+                Limit reached ({{ max_saved|default:10 }}/{{ max_saved|default:10 }})
+            </span>
+        </li>
+    </template>
+    <li x-show="savedFiltersLoading" class="p-4 text-center">
+        <span class="loading loading-spinner loading-sm"></span>
+    </li>
+    {# Only once loading has finished, or it flashes on every first open. #}
+    <template x-if="savedFiltersLoaded && !savedFiltersLoading && savedFilters.length === 0 && !hasActiveFilters()">
+        <li class="p-3 text-center text-base-content/70 text-sm pointer-events-none">
+            No saved filters yet
+        </li>
+    </template>
+    <template x-for="filter in savedFilters" :key="filter.id">
+        <li>
+            <div class="flex items-start gap-2 py-1.5 px-2 hover:bg-base-200 rounded">
+                <button type="button"
+                        class="flex-1 text-left text-sm break-words"
+                        @click="applySavedFilter(filter)"
+                        x-text="filter.name">
+                </button>
+                <div class="flex gap-0.5 shrink-0 ml-auto">
+                    <button type="button"
+                            class="btn btn-ghost btn-xs text-base-content/50 hover:text-info hover:bg-transparent"
+                            @click.stop="renameSavedFilter(filter)"
+                            title="Rename">
+                        <span class="mdi mdi-pencil text-sm"></span>
+                    </button>
+                    <button type="button"
+                            class="btn btn-ghost btn-xs text-base-content/50 hover:text-error hover:bg-transparent"
+                            @click.stop="deleteSavedFilter(filter)"
+                            title="Delete">
+                        <span class="mdi mdi-delete text-sm"></span>
+                    </button>
+                </div>
+            </div>
+        </li>
+    </template>
+</ul>
+{% else %}
+<button type="button"
+        class="btn btn-ghost btn-xs text-base-content/40 cursor-not-allowed"
+        title="{{ signed_out_hint|default:'Sign in to save filters' }}"
+        aria-label="Saved. {{ signed_out_hint|default:'Sign in to save filters' }}"
+        onclick="return false;">
+    <span class="mdi mdi-bookmark-outline text-sm"></span>
+    <span>Saved</span>
+</button>
+{% endif %}

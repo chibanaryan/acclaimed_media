@@ -15,7 +15,7 @@
 {# The shared filter sidebar components and the page's own filter state, both #}
 {# loaded before Alpine core as the games rankings page loads its own. #}
 <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/filter-subcomponents.min.js" %}?v=1');</script>
-<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/media-list-controls.min.js" %}?v=3');</script>
+<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/media-list-controls.min.js" %}?v=4');</script>
 {# Keeps the tracking id Sets current after an HTMX button swap. Loaded here #}
 {# rather than in the filtering bundle because the album detail page swaps #}
 {# the same button and loads no bundle at all. #}
@@ -92,7 +92,9 @@ var listenStatusOptions = JSON.parse(
          titleNoun: 'Albums',
          titleSearchNoun: 'Albums',
          statusKey: 'listened',
-         statusOptions: listenStatusOptions
+         statusOptions: listenStatusOptions,
+         savedFiltersUrl: '{% url 'music-api:saved-filter-list' %}',
+         maxSavedFilters: {{ max_saved_filters }}
      })">
 
 {# Page heading row - title on the left, matching the games layout widths #}
@@ -167,8 +169,10 @@ var listenStatusOptions = JSON.parse(
                     <span class="mdi mdi-filter-variant text-xl text-accent"></span>
                     <span class="font-bold text-base">Filters</span>
                 </div>
-                <div class="flex gap-2 items-center">
+                {# `relative` anchors the Saved dropdown's absolute menu. #}
+                <div class="flex gap-2 items-center relative">
                     <span id="album-loading" class="htmx-indicator loading loading-spinner loading-xs"></span>
+                    {% include 'core/includes/_saved_filters_dropdown.html' with max_saved=max_saved_filters signed_out_hint='Sign in to save filters' %}
                     <a :href="'{% url 'music:download' %}?' + downloadQuery()"
                        class="btn btn-ghost btn-xs text-base-content/70 hover:text-success"
                        title="Download CSV">
@@ -266,6 +270,11 @@ var listenStatusOptions = JSON.parse(
         </form>
     </div>
 </div>
+
+{# The saved-filter modals, once for the page. Both the sidebar dropdown #}
+{# and the mobile sheet open these same three, and both are inside this #}
+{# component's root, so one copy serves them. #}
+{% include 'core/includes/_saved_filter_modals.html' with name_placeholder='e.g., Jazz of the 1960s' %}
 </div>
 
 {% comment %}

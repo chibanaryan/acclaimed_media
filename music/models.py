@@ -21,6 +21,7 @@ from core.models import (
     ListMembershipBase,
     MediaItemBase,
     PublicationBase,
+    SavedFilterSetBase,
     UserTrackingBase,
 )
 from music import config
@@ -515,6 +516,24 @@ class WantToListenAlbum(UserTrackingBase):
     def __str__(self) -> str:
         label = self.album.name if self.album else f"Wikidata:{self.wikidata_id}"
         return f"{self.user.username} wants to listen to {label}"
+
+
+class SavedAlbumFilterSet(SavedFilterSetBase):
+    """A named album filter combination, saved by one reader.
+
+    Adds nothing to :class:`core.models.SavedFilterSetBase`: the point of a
+    concrete model is a table of music's own, so the games and music
+    sections neither share rows nor constrain each other's migrations.
+
+    Unlike :class:`ListenedAlbum` this carries no external id and needs no
+    reconnection pass after an import. A saved filter references genres by
+    id, and an import replaces albums, not genres.
+    """
+
+    class Meta(SavedFilterSetBase.Meta):
+        db_table = "music_savedalbumfilterset"
+        verbose_name = "Saved Album Filter"
+        verbose_name_plural = "Saved Album Filters"
 
 
 class WikipediaAlbumData(ExternalDataBase):

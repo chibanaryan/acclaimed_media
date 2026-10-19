@@ -1,5 +1,98 @@
 # Developer Log
 
+## 2026-10-18 (parallel worktrees; one local interpreter)
+
+- **`scripts/setup_worktree.sh` provisions a worktree in ~2 seconds**, so
+  several sessions can run at once without each paying for a checkout.
+  `venv` (243 MB) and `theme/static_src/node_modules` (351 MB) are symlinked
+  to the main checkout, `db.sqlite3` is cloned with `cp -c` - APFS
+  copy-on-write, 100 MB in 4 ms, sharing blocks until one side writes - and
+  the untracked `.env`, `.env.development.local` and
+  `.claude/settings.local.json` are copied. That last one is ignored by the
+  *global* gitignore, so a fresh worktree had been silently losing the
+  permission allowlist. The old `conductor.json` setup built a whole venv per
+  worktree and then migrated an **empty** database, so every worktree started
+  with no games, no albums and no staff user
+- **A `SessionStart` hook provisions whatever made the worktree** - Conductor,
+  claude-squad, opencode, `/worktree`. It locates the script through
+  `--git-common-dir`, so it runs the main checkout's copy even on a branch
+  that predates the file, and `--quiet` keeps it silent when there is nothing
+  to do, since a hook's output lands in every session's context
+- **All eight existing worktrees were unusable, not merely stale.** Their
+  `.git` files still pointed at `/Users/rchibana/Development/acclaimedgames`,
+  the pre-rename path, so git refused to run inside any of them. Repaired
+  with `git worktree repair` first in order to read them, which showed every
+  branch fully merged and 8-10 months old but three holding uncommitted work
+  - archived, then all eight removed, along with 47 merged branches
+- **The venv was a major Django version ahead of production.** Django 6.0
+  requires Python 3.12+, so prod's 3.11 resolved unpinned `django` to 5.2.18
+  while a 3.14 venv resolved the same line to 6.0.1; the framework 3.14
+  interpreter had 5.2.8, and a dead `activate` (also pre-rename) meant
+  `source venv/bin/activate && pytest` silently ran that one instead. Rebuilt
+  on 3.11 per `.python-version`, `django` pinned `>=5.2,<6.0` so a future
+  `.python-version` bump cannot become a silent major upgrade, and
+  `pre-commit` moved into the venv with the hook repointed at it - which ends
+  the rule that every dependency had to be installed into both interpreters
+- **Framework 3.11 ships no CA bundle**, and its certificate installer cannot
+  write to `/Library` without root, so `ssl.create_default_context()` trusted
+  nothing and every aiohttp call failed - the HLTB fetch above all. A
+  `sitecustomize.py` in the venv points `SSL_CERT_FILE` at certifi. `requests`
+  was never affected because it carries certifi itself, which is why only the
+  aiohttp paths broke
+
+## 2026-10-18 (saved album filters, on shared components)
+
+- **The album rankings page can save a filter combination by name**, which
+  was the roadmap's last open parity item. `core.models.SavedFilterSetBase`
+  abstract, `music.SavedAlbumFilterSet` concrete,
+  `/api/music/saved-filters/` for list/create/rename/delete, and three new
+  `core/includes/` partials: the sidebar dropdown, the three modals and the
+  sheet's collapsible block
+- **Built shared, wired to music only** - the precedent album tracking set.
+  The partials were lifted from games' own markup and bind to the method
+  names games' `filterComponent` already exposes (`loadSavedFilters`,
+  `applySavedFilter`, and six more), so games can migrate by swapping three
+  includes. Nothing of games' own saved-filter code was touched
+- **The whole feature is inert without a `savedFiltersUrl`**, so adding the
+  methods to the shared `mediaListControls` gave books and any future
+  section the capability without rendering them a button they cannot use
+- **Applying a saved filter must not announce `year-reset`/`genres-reset`.**
+  It did at first, on the reasonable-sounding theory that the sidebar needed
+  telling. But those events do not mean "refresh": the mobile sheet's two
+  subcomponents answer them by assigning the full year range and `[]`, and
+  **the sheet shares the page's Alpine state at every width**. So applying a
+  filter restored the sort and its direction and then silently dropped the
+  genre and the years, with the heading naming the unfiltered page. Every
+  server-side test passed and the stored JSON was correct throughout; only
+  a real browser showed it. The grid and the tree read `filters` reactively
+  and need no telling
+- **`applyingSavedFilter` was a hook with nothing on the other end.**
+  `_year_grid.html` has always passed `isApplyingSavedFilter` behind a
+  `typeof` guard, so a component without the flag got `false` and the grid
+  treated a programmatic range as a hover preview. Defining it lit the hook
+  up with no template change - and the guard is why the omission could
+  never throw, which is what made it worth a test
+- **Games' `applySavedFilter` never restored `sortDirection`**, though
+  `submitSaveFilter` had stored it since the feature shipped, so a saved
+  "Year, newest first" came back ascending. One line, and pinned in source
+  *and* minified form for both components, since the page loads only the
+  minified copy
+- **Music's first write endpoint**, so CSRF now applies to `music/api/`,
+  whose docstring had said no unsafe method existed to trigger it.
+  `StaffWriteAPIMixin` sits beside `StaffReadAPIMixin` to mark which views
+  that covers. An outsider gets 404 rather than games' 403, and the CSRF
+  behaviour is tested with `Client(enforce_csrf_checks=True)` because the
+  ordinary test client does not enforce it at all
+- **Three multi-line `{# #}` comments rendered as visible page text.**
+  Django's `{# #}` cannot span lines; the headers had to be
+  `{% comment %}` blocks. A sweep found no other instance in the repo
+- **Verified beyond the suite**: 28 browser checks in real Chrome covering
+  save, reload, apply, rename, delete, the duplicate-name error and the
+  mobile sheet; a 5-case client/server parity check confirming the engine's
+  rendered ids match `?partial=true` exactly, in order, with the engine
+  confirmed to be answering locally; and seven games pages diffed
+  byte-identical once the `?v=` literal is masked
+
 ## 2026-10-18 (music query counts; the filtered heading)
 
 - **`/music/` cost 443 queries and now costs 26**, `/music/artists/` 305 and

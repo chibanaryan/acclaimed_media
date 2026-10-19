@@ -34,6 +34,19 @@ urlpatterns = [
     path("genres/", views.MusicGenreListView.as_view(), name="genre-list"),
     # Metadata
     path("meta/", views.MusicMetaView.as_view(), name="meta"),
+    # Saved filter combinations. The only endpoints here that write, so the
+    # only ones CSRF applies to. Before <slug:slug>/ so "saved-filters" is
+    # not read as an album slug.
+    path(
+        "saved-filters/",
+        views.SavedAlbumFilterSetListCreateView.as_view(),
+        name="saved-filter-list",
+    ),
+    path(
+        "saved-filters/<int:pk>/",
+        views.SavedAlbumFilterSetDetailView.as_view(),
+        name="saved-filter-detail",
+    ),
     # Album detail - must be last (the slug pattern catches everything)
     path("<slug:slug>/", views.AlbumDetailView.as_view(), name="album-detail"),
 ]

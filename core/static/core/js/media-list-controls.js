@@ -41,6 +41,18 @@ function storePreference(key, value) {
     }
 }
 
+/**
+ * The CSRF token from the cookie.
+ *
+ * `BaseMediaListRenderer` has one of these too, but it is a method on a
+ * class in the deferred filtering bundle, while this file has to load
+ * before Alpine - so it is not reachable from here.
+ */
+function readCsrfToken() {
+    const match = document.cookie.match(/csrftoken=([^;]+)/);
+    return match ? decodeURIComponent(match[1]) : '';
+}
+
 /** Parse a JSON <script> block the page rendered, or return a fallback. */
 function readJsonScript(id, fallback) {
     const el = id && document.getElementById(id);
@@ -111,6 +123,34 @@ function mediaListControlsData(config) {
         _popstateListener: null,
         _genresSelectedListener: null,
 
+        // -- saved filters ---------------------------------------------------
+        // Inert unless the page passed a `savedFiltersUrl`: the shared
+        // partials render nothing without one, so a section that has not
+        // opted in carries this state and never shows it.
+        savedFiltersUrl: settings.savedFiltersUrl || '',
+        maxSavedFilters: settings.maxSavedFilters || 10,
+        savedFiltersOpen: false,
+        savedFiltersLoading: false,
+        savedFiltersLoaded: false,
+        savedFilters: [],
+        // Read by the shared year grid, which has always passed
+        // `isApplyingSavedFilter` behind a `typeof` guard. Defining it here
+        // is what makes the grid stop previewing a range mid-apply.
+        applyingSavedFilter: false,
+        saveFilterModalOpen: false,
+        saveFilterName: '',
+        saveFilterError: '',
+        saveFilterSaving: false,
+        renameFilterModalOpen: false,
+        renameFilterName: '',
+        renameFilterError: '',
+        renameFilterSaving: false,
+        renameFilterTarget: null,
+        deleteFilterModalOpen: false,
+        deleteFilterTarget: null,
+        deleteFilterDeleting: false,
+        _savedFilterResetHandler: null,
+
         init() {
             this._applyViewMode();
             this._popstateListener = () => this._syncFromUrl();
@@ -168,6 +208,12 @@ function mediaListControlsData(config) {
             if (this._swapListener) {
                 document.body.removeEventListener('htmx:afterSwap', this._swapListener);
                 this._swapListener = null;
+            }
+            if (this._savedFilterResetHandler) {
+                document.removeEventListener(
+                    'htmx:afterSwap', this._savedFilterResetHandler
+                );
+                this._savedFilterResetHandler = null;
             }
             clearTimeout(this._commitTimer);
         },
@@ -317,7 +363,301 @@ function mediaListControlsData(config) {
             );
         },
 
+        // -- saved filters ---------------------------------------------------
+        //
+        // A filter combination worth returning to is stored as the JSON this
+        // component already keeps, so applying one is a local assignment plus
+        // the ordinary `commit()`. There is no apply endpoint and no reload:
+        // `commit()` writes the form and fires the bubbling `change` that
+        // drives either HTMX or the client-side filtering bundle, whichever
+        // is live.
+
+        /**
+         * Open the dropdown, fetching the list the first time only.
+         *
+         * The dropdown opens straight away rather than after the request, so
+         * it never feels like the button missed the click.
+         */
+        async loadSavedFilters() {
+            if (this.savedFiltersLoading) return;
+            this.savedFiltersOpen = true;
+            if (this.savedFiltersLoaded) return;
+
+            this.savedFiltersLoading = true;
+            try {
+                const response = await fetch(this.savedFiltersUrl);
+                if (response.ok) {
+                    const data = await response.json();
+                    this.savedFilters = data.filter_sets || [];
+                    this.savedFiltersLoaded = true;
+                }
+            } catch (e) {
+                // Offline or blocked: the dropdown stays empty rather than
+                // leaving a spinner running forever.
+            } finally {
+                this.savedFiltersLoading = false;
+            }
+        },
+
+        /**
+         * Apply a stored combination to the live filter state.
+         *
+         * `applyingSavedFilter` is held for the duration because the year
+         * grid treats a range it is mid-way through building as a preview;
+         * it is cleared on the swap that the commit causes, with a timer as
+         * the fallback for the case where nothing swaps because the engine
+         * answered locally.
+         */
+        applySavedFilter(filter) {
+            const saved = (filter && filter.filters) || {};
+            this.applyingSavedFilter = true;
+
+            this.filters.q = saved.q || '';
+            this.filters.start = saved.start || this.minYear;
+            this.filters.end = saved.end || this.maxYear;
+            // Both through `_asList`: the stored blob is accepted
+            // unvalidated, so a hand-written or hand-edited one can hold
+            // the comma-joined spelling the URL uses, and a bare string
+            // has no `.map` to call.
+            this.filters.genres = this._asList(saved.genres).map(String);
+            this.filters[statusKey] = this._asList(saved[statusKey]);
+            this.filters.sort = saved.sort || this.defaultSort;
+            // Games saved this and never restored it, so a saved filter
+            // silently lost its direction. Both halves round-trip here.
+            this.filters.sortDirection = saved.sortDirection || 'asc';
+
+            this.savedFiltersOpen = false;
+            // Deliberately *not* announcing `year-reset` / `genres-reset`
+            // here. The mobile sheet's two subcomponents answer those by
+            // clearing `filters.start`, `filters.end` and `filters.genres`
+            // outright (see core/includes/_mobile_filter_time.html and
+            // _mobile_filter_genres.html), and the sheet shares this
+            // component's state at every width - so telling the sidebar to
+            // refresh wiped the very state just restored, leaving the sort
+            // applied and the genre and years silently dropped. The grid
+            // and the tree both derive their selected state from `filters`
+            // reactively, so they follow without being told.
+            this.commit();
+            this._clearApplyingFlagSoon();
+        },
+
+        /** Open the save modal, named after the heading it would produce. */
+        saveCurrentFilters() {
+            this.saveFilterName = this.buildTitle();
+            this.saveFilterError = '';
+            this.saveFilterSaving = false;
+            this.saveFilterModalOpen = true;
+            this.savedFiltersOpen = false;
+            this.$nextTick(() => {
+                const input = document.getElementById('save-filter-name-input');
+                if (input) {
+                    input.focus();
+                    input.select();
+                }
+            });
+        },
+
+        async submitSaveFilter() {
+            const name = this.saveFilterName.trim();
+            const invalid = this._nameProblem(name);
+            if (invalid) {
+                this.saveFilterError = invalid;
+                return;
+            }
+
+            this.saveFilterSaving = true;
+            this.saveFilterError = '';
+            try {
+                const response = await this._send(this.savedFiltersUrl, 'POST', {
+                    name: name,
+                    filters: this.savedFilterPayload()
+                });
+                if (response.ok) {
+                    this.savedFilters.unshift(await response.json());
+                    this.saveFilterModalOpen = false;
+                } else {
+                    this.saveFilterError = await this._errorMessage(
+                        response, 'Failed to save filter'
+                    );
+                }
+            } catch (e) {
+                this.saveFilterError = 'Network error - please try again';
+            } finally {
+                this.saveFilterSaving = false;
+            }
+        },
+
+        /**
+         * The filter state as it is stored.
+         *
+         * Only the dimensions this component owns. The status key is named
+         * for the section's parameter, so the stored shape matches what the
+         * server would have put in the URL.
+         */
+        savedFilterPayload() {
+            return {
+                q: this.filters.q,
+                start: this.filters.start,
+                end: this.filters.end,
+                genres: this.filters.genres,
+                [statusKey]: this.filters[statusKey] || [],
+                sort: this.filters.sort,
+                sortDirection: this.filters.sortDirection
+            };
+        },
+
+        renameSavedFilter(filter) {
+            this.renameFilterTarget = filter;
+            this.renameFilterName = filter.name;
+            this.renameFilterError = '';
+            this.renameFilterSaving = false;
+            this.renameFilterModalOpen = true;
+            this.savedFiltersOpen = false;
+            this.$nextTick(() => {
+                const input = document.getElementById('rename-filter-name-input');
+                if (input) {
+                    input.focus();
+                    input.select();
+                }
+            });
+        },
+
+        async submitRenameFilter() {
+            const name = this.renameFilterName.trim();
+            const invalid = this._nameProblem(name);
+            if (invalid) {
+                this.renameFilterError = invalid;
+                return;
+            }
+            // Renaming to the name it already has is not worth a request,
+            // and the server would reject it as a duplicate of itself.
+            if (name === this.renameFilterTarget.name) {
+                this.renameFilterModalOpen = false;
+                return;
+            }
+
+            this.renameFilterSaving = true;
+            this.renameFilterError = '';
+            try {
+                const response = await this._send(
+                    this._savedFilterUrl(this.renameFilterTarget.id),
+                    'PATCH',
+                    { name: name }
+                );
+                if (response.ok) {
+                    // Alpine proxies the array's entries, so writing the
+                    // name here is what re-renders the dropdown row.
+                    this.renameFilterTarget.name = name;
+                    this.renameFilterModalOpen = false;
+                } else {
+                    this.renameFilterError = await this._errorMessage(
+                        response, 'Failed to rename filter'
+                    );
+                }
+            } catch (e) {
+                this.renameFilterError = 'Network error - please try again';
+            } finally {
+                this.renameFilterSaving = false;
+            }
+        },
+
+        deleteSavedFilter(filter) {
+            this.deleteFilterTarget = filter;
+            this.deleteFilterDeleting = false;
+            this.deleteFilterModalOpen = true;
+            this.savedFiltersOpen = false;
+        },
+
+        async confirmDeleteFilter() {
+            this.deleteFilterDeleting = true;
+            try {
+                const response = await this._send(
+                    this._savedFilterUrl(this.deleteFilterTarget.id), 'DELETE'
+                );
+                if (response.ok) {
+                    const index = this.savedFilters.indexOf(this.deleteFilterTarget);
+                    if (index > -1) this.savedFilters.splice(index, 1);
+                    this.deleteFilterModalOpen = false;
+                }
+            } catch (e) {
+                // Leave the modal open so the reader can try again.
+            } finally {
+                this.deleteFilterDeleting = false;
+            }
+        },
+
         // -- plumbing --------------------------------------------------------
+
+        /**
+         * A stored multi-value filter in the array form `filters` holds.
+         *
+         * The `filters` blob is stored unvalidated, so a row can carry the
+         * comma-joined spelling the URL uses rather than an array, and a
+         * bare string would have no `.map`.
+         * @private
+         */
+        _asList(value) {
+            if (Array.isArray(value)) return value;
+            if (typeof value === 'string') {
+                return value.split(',').filter(Boolean);
+            }
+            return [];
+        },
+
+        /** @private */
+        _savedFilterUrl(id) {
+            return this.savedFiltersUrl + id + '/';
+        },
+
+        /** The name rules the server enforces, checked before asking. @private */
+        _nameProblem(name) {
+            if (!name) return 'Filter name is required';
+            if (name.length > 255) {
+                return 'Filter name must be 255 characters or less';
+            }
+            return null;
+        },
+
+        /** @private */
+        _send(url, method, body) {
+            const options = {
+                method: method,
+                headers: { 'X-CSRFToken': readCsrfToken() }
+            };
+            if (body !== undefined) {
+                options.headers['Content-Type'] = 'application/json';
+                options.body = JSON.stringify(body);
+            }
+            return fetch(url, options);
+        },
+
+        /** The server's own message where it sent one. @private */
+        async _errorMessage(response, fallback) {
+            try {
+                const payload = await response.json();
+                return payload.error || fallback;
+            } catch (e) {
+                return 'Error ' + response.status + ': ' + response.statusText;
+            }
+        },
+
+        /** @private */
+        _clearApplyingFlagSoon() {
+            const clear = () => {
+                this.applyingSavedFilter = false;
+                if (this._savedFilterResetHandler) {
+                    document.removeEventListener(
+                        'htmx:afterSwap', this._savedFilterResetHandler
+                    );
+                    this._savedFilterResetHandler = null;
+                }
+            };
+            this._savedFilterResetHandler = clear;
+            document.addEventListener('htmx:afterSwap', clear, { once: true });
+            // Nothing swaps when the browser answered the filter locally,
+            // so the flag needs a deadline of its own.
+            setTimeout(clear, 500);
+        },
 
         /** @private */
         _form() {

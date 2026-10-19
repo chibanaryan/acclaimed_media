@@ -1,7 +1,7 @@
 {
   "scripts": {
-    "setup": "cp $CONDUCTOR_ROOT_PATH/.env . && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt && python3 manage.py migrate",
-    "run": "source venv/bin/activate && DEBUG=True python3 manage.py runserver",
+    "setup": "$CONDUCTOR_ROOT_PATH/scripts/setup_worktree.sh",
+    "run": "DEBUG=True venv/bin/python manage.py runserver $($CONDUCTOR_ROOT_PATH/scripts/setup_worktree.sh --print-port)",
     "archive": ""
   }
 }

@@ -695,6 +695,10 @@ class AlbumHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
         context["current_genres"] = self.request.GET.get("genres", "")
         context["current_listened"] = self.request.GET.get("listened", "")
         context["listen_status_options"] = config.LISTEN_STATUS_OPTIONS
+        # The saved-filter cap, for the sidebar's and the sheet's limit
+        # labels. Rendered rather than hard-coded in either, so the two
+        # cannot come to state different ceilings.
+        context["max_saved_filters"] = config.MAX_SAVED_FILTERS
         context["current_sort"] = self.request.GET.get("sort", "rank")
         context["current_dir"] = self.request.GET.get("dir", "asc")
         context["is_filtered"] = any(

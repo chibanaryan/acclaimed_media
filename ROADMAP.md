@@ -6,9 +6,10 @@ What is left, why it matters, and what it costs. Ordered within each group.
 ## Music: the last parity gaps
 
 A mechanical diff of the games and music feature sets (every `aria-label`,
-`title`, form field and control on each pair of pages) leaves two real gaps.
-Everything else either matches or is genuinely games-only (platforms,
-playtime, series).
+`title`, form field and control on each pair of pages) left two real gaps.
+**Both are now closed**, and everything else either matches or is genuinely
+games-only (platforms, playtime, series) - so there is no open parity item
+here, only the notes below on what was deliberately not done.
 
 1. ~~**Album tracking: `ListenedAlbum` / `WantToListenAlbum`.**~~ Done
    2026-10-18. The models, the toggle endpoint, the 48px column on both row
@@ -16,10 +17,21 @@ playtime, series).
    page button. The button and the status filter were built as shared
    `core/` partials rather than a third copy of games'; games and books are
    untouched and can migrate to them. See AGENTS.md, "Album tracking".
-2. **Saved filters.** Games has `SavedFilter`, the Saved dropdown, and the
-   save/rename/delete modals in both the sidebar and the mobile sheet. Music
-   has none. Worth less than tracking: the album filter state is smaller.
-   **Now the top parity item.**
+2. ~~**Saved filters.**~~ Done 2026-10-18. `core.models.SavedFilterSetBase`
+   with a concrete `music.SavedAlbumFilterSet`, `/api/music/saved-filters/`
+   (the section's first **write** endpoint, so CSRF now applies to
+   `music/api/`), and three shared `core/includes/` partials - the sidebar
+   dropdown, the three modals, and the sheet's collapsible block - driven by
+   saved-filter methods added to `core/js/media-list-controls.js` under the
+   names games already uses. Games is untouched and can migrate by swapping
+   includes. See AGENTS.md, "Saved filters".
+
+   Two things the work turned up, both only visible in a browser:
+   `applySavedFilter` must **not** announce `year-reset`/`genres-reset` -
+   the mobile sheet answers those by clearing the state, at every width, so
+   it wiped the combination just restored - and games'
+   `applySavedFilter` had never restored `sortDirection` at all, though it
+   had always been stored. Both pinned by source tests.
 
 Not worth doing as parity:
 
@@ -30,10 +42,16 @@ Not worth doing as parity:
 - **Games' source-lists page still carries its own inline sort control**
   rather than `core/includes/_entity_sort_controls.html`. It looks identical;
   it is the last un-shared duplicate, so it is tidying, not parity.
-- **Migrating games and books onto `core/includes/_tracking_button.html`**
-  and `_status_filter.html`. The shared partials exist and are parameterised
-  for it, but games' tracking button is working code with a 743-line suite
-  behind it; the duplication costs nothing until one of them changes.
+- **Migrating games and books onto the shared `core/includes/` partials** -
+  `_tracking_button.html` and `_status_filter.html`, and now
+  `_saved_filters_dropdown.html`, `_saved_filter_modals.html` and
+  `_mobile_saved_filters.html` too. All are parameterised for it, and the
+  saved-filter three were lifted from games' own markup against the method
+  names games already exposes, so that migration is a template change. But
+  games' versions are working code with sizeable suites behind them, and the
+  duplication costs nothing until one of them changes. The `sortDirection`
+  bug is the argument for doing it eventually: it sat in games for as long
+  as the feature existed, and the shared copy never had it.
 
 ## Music: before it can launch publicly
 

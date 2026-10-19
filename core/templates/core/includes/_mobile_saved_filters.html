@@ -1,0 +1,80 @@
+{% comment %}
+The Saved Filters block for a ranking page's mobile filter sheet.
+
+The bottom-sheet counterpart of core/includes/_saved_filters_dropdown.html,
+binding to the same component contract and driving the same three modals from
+core/includes/_saved_filter_modals.html. Collapsed by default and fetched on
+first expand, because the sheet opens on every filter change and the list is
+only wanted when it is looked at.
+
+Applying one closes the sheet: the point of the tap was to see the results.
+`filterOpen` belongs to the sheet's own wrapper, so this partial is only
+valid inside it.
+
+Parameters:
+  max_saved  how many a reader may keep, for the limit label
+{% endcomment %}
+{% if user.is_authenticated %}
+<div class="pb-3 border-b border-base-100" x-data="{ expanded: false }">
+    <button type="button"
+            class="flex items-center justify-between w-full py-1"
+            @click="expanded = !expanded; if (expanded && !savedFiltersLoaded) loadSavedFilters();">
+        <span class="text-sm font-semibold text-base-content/85 flex items-center gap-1">
+            <span class="mdi mdi-bookmark text-info"></span>
+            Saved Filters
+            <span x-show="savedFiltersLoaded && savedFilters.length > 0"
+                  class="badge badge-sm badge-info"
+                  x-text="savedFilters.length"></span>
+        </span>
+        <span class="mdi text-lg transition-transform duration-200"
+              :class="expanded ? 'mdi-chevron-up' : 'mdi-chevron-down'"></span>
+    </button>
+
+    <div x-show="expanded" x-collapse class="space-y-2 mt-2">
+        <div x-show="savedFiltersLoading && !savedFiltersLoaded" class="py-2 text-center">
+            <span class="loading loading-spinner loading-sm"></span>
+        </div>
+
+        <div x-show="savedFiltersLoaded && savedFilters.length > 0" class="space-y-1">
+            <template x-for="filter in savedFilters" :key="filter.id">
+                <div class="flex items-start gap-2 py-2 px-3 bg-base-200 rounded-lg">
+                    <button type="button"
+                            class="flex-1 text-left text-sm break-words"
+                            @click="applySavedFilter(filter); filterOpen = false;"
+                            x-text="filter.name">
+                    </button>
+                    <div class="flex shrink-0">
+                        <button type="button"
+                                class="btn btn-ghost btn-sm btn-square text-base-content/50 active:text-info"
+                                @click.stop="renameSavedFilter(filter)"
+                                title="Rename">
+                            <span class="mdi mdi-pencil text-lg"></span>
+                        </button>
+                        <button type="button"
+                                class="btn btn-ghost btn-sm btn-square text-base-content/50 active:text-error"
+                                @click.stop="deleteSavedFilter(filter)"
+                                title="Delete">
+                            <span class="mdi mdi-delete text-lg"></span>
+                        </button>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <p x-show="savedFiltersLoaded && savedFilters.length === 0"
+           class="text-sm text-base-content/50">
+            No saved filters yet
+        </p>
+
+        <button type="button"
+                x-show="hasActiveFilters() && savedFiltersLoaded"
+                @click="saveCurrentFilters()"
+                class="btn btn-sm btn-info btn-outline w-full"
+                :disabled="savedFilters.length >= {{ max_saved|default:10 }}">
+            <span class="mdi mdi-bookmark-plus"></span>
+            <span x-show="savedFilters.length < {{ max_saved|default:10 }}">Save Current Filters</span>
+            <span x-show="savedFilters.length >= {{ max_saved|default:10 }}">Limit Reached ({{ max_saved|default:10 }}/{{ max_saved|default:10 }})</span>
+        </button>
+    </div>
+</div>
+{% endif %}

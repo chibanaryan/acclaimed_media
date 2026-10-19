@@ -362,6 +362,50 @@ class UserTrackingBase(models.Model):
         return f"{self.user.username} tracked {self.__class__.__name__}"
 
 
+class SavedFilterSetBase(models.Model):
+    """
+    Abstract base model for a saved filter configuration.
+
+    A reader who has built up a filter combination worth returning to saves
+    it by name; the state is stored as JSON rather than as a query string,
+    so the shape is the filter component's own and no parsing is needed to
+    reapply it.
+
+    The per-section limit and the duplicate-name rule are enforced in the
+    API rather than here: each section sets its own ceiling, and there is no
+    database constraint on ``(user, name)`` because two concurrent POSTs can
+    both pass an ``exists()`` check anyway - the cap is a courtesy, not an
+    invariant worth a migration.
+
+    Concrete models need add nothing; they exist only to give each media
+    section its own table, as the concrete Publication models do.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="%(app_label)s_saved_filters",
+    )
+    name = models.CharField(
+        max_length=255, help_text="User-defined or auto-generated filter name"
+    )
+    filters = models.JSONField(
+        help_text="Filter configuration, in the shape the filter component reads"
+    )
+    created = models.DateTimeField(auto_now_add=True)
+    modified = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+        ordering = ["-modified"]
+        indexes = [
+            models.Index(fields=["user", "-modified"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user.username}: {self.name}"
+
+
 class PublicationBase(models.Model):
     """
     Abstract base model for publications (magazines, websites, etc.) that publish lists.

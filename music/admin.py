@@ -326,3 +326,37 @@ class WantToListenAlbumAdmin(admin.ModelAdmin):
     def link_status(self, obj):
         """Whether an import has left this row waiting for its album."""
         return "Connected" if obj.album else "Orphaned"
+
+
+@admin.register(models.SavedAlbumFilterSet)
+class SavedAlbumFilterSetAdmin(admin.ModelAdmin):
+    """Album filter combinations readers have saved."""
+
+    list_display = ["name", "user", "filter_summary", "modified", "created"]
+    list_filter = ["modified", "created"]
+    search_fields = ["name", "user__username", "user__email"]
+    raw_id_fields = ["user"]
+    readonly_fields = ["created", "modified"]
+    ordering = ["-modified"]
+
+    @admin.display(description="Filters")
+    def filter_summary(self, obj):
+        """What the stored JSON actually filters on, in one line.
+
+        Music's dimensions, not games': there are no platforms or series
+        here, and the listen status is a list of the values the sidebar
+        offers rather than a single choice.
+        """
+        saved = obj.filters or {}
+        parts = []
+        if saved.get("q"):
+            parts.append(f"search: {saved['q'][:20]}")
+        if saved.get("genres"):
+            parts.append(f"{len(saved['genres'])} genres")
+        if saved.get("listened"):
+            parts.append(f"listen: {','.join(saved['listened'])}")
+        if saved.get("start") or saved.get("end"):
+            parts.append(f"{saved.get('start', '?')}-{saved.get('end', '?')}")
+        if saved.get("sort") and saved["sort"] != "rank":
+            parts.append(f"sort: {saved['sort']}")
+        return ", ".join(parts) if parts else "(no filters)"

@@ -495,3 +495,83 @@ class GenreDescendantMapTests(MusicDataMixin, TestCase):
                     views.expand_genre_ids([genre.id]),
                     views.expand_genre_ids([genre.id], shared),
                 )
+
+
+class SavedFilterShapeTests(MusicDataMixin, TestCase):
+    """What a saved filter stores has to be what the page filters on.
+
+    `savedFilterPayload()` in `core/static/core/js/media-list-controls.js`
+    enumerates the keys it stores. The server builds the same state in
+    `AlbumHomePageView`'s `filters` context. Nothing joins the two, so a new
+    filter dimension can be added to the page and silently not be saved -
+    the dropdown would keep working and quietly drop that dimension.
+    """
+
+    #: The keys `savedFilterPayload()` writes, in that function's own order.
+    SAVED_KEYS = {"q", "start", "end", "genres", "listened", "sort", "sortDirection"}
+
+    def test_the_saved_keys_are_exactly_the_servers_filter_state(self):
+        filters = self.client.get(reverse("music:home")).context["filters"]
+        self.assertEqual(set(filters), self.SAVED_KEYS)
+
+    def test_the_js_payload_names_every_one_of_them(self):
+        from pathlib import Path
+
+        from django.conf import settings
+
+        source = (
+            Path(settings.BASE_DIR) / "core/static/core/js/media-list-controls.js"
+        ).read_text()
+        body = source.split("savedFilterPayload() {", 1)
+        self.assertEqual(len(body), 2, "no savedFilterPayload to check")
+        body = body[1][:700]
+        for key in self.SAVED_KEYS:
+            with self.subTest(key=key):
+                # `listened` is written through the statusKey variable, so
+                # it is the one key that appears by indirection.
+                needle = "[statusKey]" if key == "listened" else key
+                self.assertIn(needle, body)
+
+    def test_a_round_trip_through_the_api_preserves_the_state(self):
+        # The end-to-end property the dropdown depends on: whatever the page
+        # put in `filters` comes back out of the API byte for byte.
+        state = self.client.get(
+            reverse("music:home"),
+            {"q": "rust", "start": 1970, "end": 1979, "genres": str(self.rock.id)},
+        ).context["filters"]
+
+        created = self.client.post(
+            reverse("music-api:saved-filter-list"),
+            {"name": "Seventies rock", "filters": state},
+            content_type="application/json",
+        )
+        self.assertEqual(created.status_code, 201)
+        listed = self.client.get(reverse("music-api:saved-filter-list")).json()
+        self.assertEqual(listed["filter_sets"][0]["filters"], state)
+
+
+class SavedFilterSidebarTests(MusicDataMixin, TestCase):
+    def test_the_sidebar_offers_the_saved_dropdown(self):
+        page = self.client.get(reverse("music:home")).content.decode()
+        self.assertIn("loadSavedFilters()", page)
+
+    def test_the_mobile_sheet_offers_the_saved_block(self):
+        soup = BeautifulSoup(
+            self.client.get(reverse("music:home")).content.decode(), "html.parser"
+        )
+        sheet = soup.select_one("#mobile-filter-form")
+        self.assertIsNotNone(sheet)
+        self.assertIn("Saved Filters", sheet.get_text())
+
+    def test_a_signed_out_visitor_never_sees_it(self):
+        # Unreachable in practice - the section 404s for them - but the
+        # partial is shared, so its signed-out branch is what games will
+        # render once it migrates.
+        from django.template.loader import render_to_string
+
+        rendered = render_to_string(
+            "core/includes/_saved_filters_dropdown.html",
+            {"max_saved": 10, "user": AnonymousUser()},
+        )
+        self.assertNotIn("loadSavedFilters()", rendered)
+        self.assertIn("Sign in to save filters", rendered)

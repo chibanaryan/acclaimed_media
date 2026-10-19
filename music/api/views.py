@@ -1,15 +1,22 @@
 """
 Music API views.
 
-Read-only and staff-only. ``all/`` is the bulk endpoint feeding the
-client-side filtering bundle; there is deliberately no ``version/`` endpoint
-beside it, because the album rankings page renders the same data version into
-the page itself, so the client can tell a stale copy from a current one
-without a second request.
+Staff-only, and almost all read-only. ``all/`` is the bulk endpoint feeding
+the client-side filtering bundle; there is deliberately no ``version/``
+endpoint beside it, because the album rankings page renders the same data
+version into the page itself, so the client can tell a stale copy from a
+current one without a second request.
+
+``saved-filters/`` is the exception and the only endpoint here that writes.
+It is why there are two staff mixins below rather than one: CSRF enforcement
+now applies to this module, where before no unsafe method existed to trigger
+it.
 """
 
 from django.db.models import Count, Max, Min, Prefetch, Q
 from django.db.models.functions import Lower
+from django.shortcuts import get_object_or_404
+from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.views import APIView, Response
@@ -18,7 +25,7 @@ from core import constants as core_constants
 from core.permissions import IsStaffOrHide
 from core.services import genre_tree
 
-from .. import models
+from .. import config, models
 from ..services.data_version import compute_album_data_version
 from . import serializers
 
@@ -40,8 +47,27 @@ class StaffReadAPIMixin:
     which, combined with ``IsStaffOrHide``, would 404 even for a logged-in
     staff member holding a valid session cookie. Naming
     ``SessionAuthentication`` here is what makes these endpoints reachable
-    from the browser. Every music endpoint is read-only, so CSRF enforcement
-    on unsafe methods never comes into play.
+    from the browser. The views using *this* mixin are all read-only, so
+    CSRF enforcement never comes into play for them; the saved-filter views
+    use :class:`StaffWriteAPIMixin` instead.
+    """
+
+    authentication_classes = [SessionAuthentication]
+    permission_classes = [IsStaffOrHide]
+
+
+class StaffWriteAPIMixin:
+    """The same gate, for the endpoints that write.
+
+    Identical to :class:`StaffReadAPIMixin` in configuration and separate
+    from it in name on purpose: ``SessionAuthentication`` enforces CSRF on
+    unsafe methods, so every caller of a view using this mixin has to send
+    ``X-CSRFToken``. Keeping the two apart means a reader can tell which
+    endpoints that applies to without reading the methods.
+
+    Note the status code this yields for an outsider. ``IsStaffOrHide``
+    raises 404 where games' ``IsAuthenticated`` answers 403, because the
+    music section has to look absent rather than merely forbidden.
     """
 
     authentication_classes = [SessionAuthentication]
@@ -405,3 +431,107 @@ class MusicMetaView(StaffReadAPIMixin, APIView):
                 },
             }
         )
+
+
+def _saved_filter_payload(filter_set):
+    """One saved filter, in the shape the sidebar's dropdown reads."""
+    return {
+        "id": filter_set.id,
+        "name": filter_set.name,
+        "filters": filter_set.filters,
+        "modified": filter_set.modified.isoformat(),
+    }
+
+
+def _validate_saved_filter_name(name, user, exclude_pk=None):
+    """The name rules, or an error string if the name breaks one.
+
+    Shared by create and rename so the two cannot disagree about the
+    ceiling or about what counts as a duplicate - games enforces the same
+    three rules twice over, once per method.
+    """
+    if not name:
+        return "Filter name is required."
+    if len(name) > config.SAVED_FILTER_NAME_MAX_LENGTH:
+        return (
+            f"Filter name must be {config.SAVED_FILTER_NAME_MAX_LENGTH} "
+            "characters or less."
+        )
+    duplicates = models.SavedAlbumFilterSet.objects.filter(user=user, name=name)
+    if exclude_pk is not None:
+        duplicates = duplicates.exclude(pk=exclude_pk)
+    if duplicates.exists():
+        return "A filter with this name already exists."
+    return None
+
+
+class SavedAlbumFilterSetListCreateView(StaffWriteAPIMixin, APIView):
+    """List this reader's saved album filters, or save the current one.
+
+    The cap is ``config.MAX_SAVED_FILTERS`` and is enforced here rather than
+    by a constraint, as games' is: it is a courtesy to keep the dropdown
+    readable, not an invariant.
+    """
+
+    def get(self, request):
+        filter_sets = models.SavedAlbumFilterSet.objects.filter(
+            user=request.user
+        ).order_by("-modified")[: config.MAX_SAVED_FILTERS]
+        data = [_saved_filter_payload(entry) for entry in filter_sets]
+        return Response({"filter_sets": data, "count": len(data)})
+
+    def post(self, request):
+        current_count = models.SavedAlbumFilterSet.objects.filter(
+            user=request.user
+        ).count()
+        if current_count >= config.MAX_SAVED_FILTERS:
+            return Response(
+                {
+                    "error": f"Maximum of {config.MAX_SAVED_FILTERS} saved "
+                    "filters allowed. Delete one to save a new filter."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        name = str(request.data.get("name", "")).strip()
+        error = _validate_saved_filter_name(name, request.user)
+        if error:
+            return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+
+        filter_set = models.SavedAlbumFilterSet.objects.create(
+            user=request.user,
+            name=name,
+            filters=request.data.get("filters", {}),
+        )
+        return Response(
+            _saved_filter_payload(filter_set), status=status.HTTP_201_CREATED
+        )
+
+
+class SavedAlbumFilterSetDetailView(StaffWriteAPIMixin, APIView):
+    """Rename or delete one saved album filter.
+
+    Both methods go through an owner-scoped lookup, so another reader's id
+    is a 404 rather than a 403 - the same answer the whole section gives an
+    outsider.
+    """
+
+    def get_object(self, pk, user):
+        return get_object_or_404(models.SavedAlbumFilterSet, pk=pk, user=user)
+
+    def patch(self, request, pk):
+        filter_set = self.get_object(pk, request.user)
+        name = str(request.data.get("name", "")).strip()
+        error = _validate_saved_filter_name(name, request.user, exclude_pk=pk)
+        if error:
+            return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+
+        filter_set.name = name
+        # `modified` is auto_now, so it has to be named for the update to
+        # bump it - and the ordering the dropdown relies on is by `modified`.
+        filter_set.save(update_fields=["name", "modified"])
+        return Response({"id": filter_set.id, "name": filter_set.name})
+
+    def delete(self, request, pk):
+        self.get_object(pk, request.user).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

@@ -157,3 +157,215 @@ class RowGenreClickReachesTheHeadingTests(SimpleTestCase):
         ):
             with self.subTest(path=path):
                 self.assertIn(self.EVENT, self._source(path))
+
+
+class SavedFilterSortDirectionRoundTripsTests(SimpleTestCase):
+    """A saved filter has to come back with the direction it went in with.
+
+    Games stored `sortDirection` from the day saved filters shipped and
+    never read it back, so applying a saved "Year, newest first" quietly
+    returned it ascending. The bug was invisible from the server: the blob
+    was correct in the database, and only the apply path dropped it.
+
+    Pinned in source *and* minified form for both components, because the
+    page loads only the minified copy - a fix that forgets `/minify` ships
+    the bug with its own fix sitting beside it.
+    """
+
+    COMPONENTS = (
+        "core/static/core/js/media-list-controls.js",
+        "games/static/games/js/filter-component.js",
+    )
+
+    def _source(self, relative_path):
+        path = Path(settings.BASE_DIR) / relative_path
+        self.assertTrue(path.exists(), f"missing {relative_path}")
+        return path.read_text()
+
+    def test_each_component_writes_the_direction_when_applying(self):
+        for relative_path in self.COMPONENTS:
+            with self.subTest(component=relative_path):
+                source = self._source(relative_path)
+                applied = source.split("applySavedFilter(filter) {", 1)
+                self.assertEqual(len(applied), 2, "no applySavedFilter to check")
+                # The body ends at the next method; 2000 characters covers
+                # the longest of the two by a wide margin.
+                self.assertIn(
+                    "filters.sortDirection",
+                    applied[1][:2000],
+                    "applySavedFilter no longer restores sortDirection, so a "
+                    "saved filter loses its sort direction when applied",
+                )
+
+    def test_each_component_stores_the_direction_when_saving(self):
+        # The other half of the round trip: restoring a key nothing saves
+        # would be just as broken, and reads as correct in isolation.
+        for relative_path in self.COMPONENTS:
+            with self.subTest(component=relative_path):
+                self.assertIn("sortDirection", self._source(relative_path))
+
+    def test_the_minified_copies_carry_it(self):
+        for relative_path in self.COMPONENTS:
+            minified = relative_path.replace(".js", ".min.js")
+            with self.subTest(component=minified):
+                self.assertIn("sortDirection", self._source(minified))
+
+
+class SavedFilterYearGridHookIsLiveTests(SimpleTestCase):
+    """The shared year grid's saved-filter hook needs a flag to read.
+
+    `core/includes/_year_grid.html` has always passed
+    `isApplyingSavedFilter` behind a `typeof` guard, so a component without
+    an `applyingSavedFilter` flag silently gets `false` and the grid treats
+    a range mid-apply as a hover preview. The guard means the omission
+    cannot throw, which is exactly why it needs a test.
+    """
+
+    def _source(self, relative_path):
+        return (Path(settings.BASE_DIR) / relative_path).read_text()
+
+    def test_the_grid_still_asks_for_the_flag(self):
+        template = self._source("core/templates/core/includes/_year_grid.html")
+        self.assertIn("isApplyingSavedFilter", template)
+        self.assertIn("applyingSavedFilter", template)
+
+    def test_the_subcomponent_consults_it(self):
+        self.assertIn(
+            "isApplyingSavedFilter",
+            self._source("core/static/core/js/filter-subcomponents.js"),
+        )
+
+    def test_both_filter_components_define_the_flag(self):
+        for relative_path in (
+            "core/static/core/js/media-list-controls.js",
+            "games/static/games/js/filter-component.js",
+        ):
+            with self.subTest(component=relative_path):
+                self.assertIn(
+                    "applyingSavedFilter:",
+                    self._source(relative_path),
+                    "the component defines no applyingSavedFilter, so the "
+                    "year grid's guard resolves to false and the grid "
+                    "previews a range while a saved filter is applied",
+                )
+
+
+class SavedFilterPartialsAreSharedTests(SimpleTestCase):
+    """The saved-filter UI lives in core, and music is wired to it.
+
+    Games keeps its own copy for now, deliberately. This records which of
+    the two is on the shared partials, so the migration is a visible change
+    rather than a silent drift.
+    """
+
+    PARTIALS = (
+        "core/templates/core/includes/_saved_filters_dropdown.html",
+        "core/templates/core/includes/_saved_filter_modals.html",
+        "core/templates/core/includes/_mobile_saved_filters.html",
+    )
+
+    def test_every_shared_partial_exists(self):
+        for relative_path in self.PARTIALS:
+            with self.subTest(partial=relative_path):
+                self.assertTrue((Path(settings.BASE_DIR) / relative_path).exists())
+
+    def test_music_includes_all_three(self):
+        pages = "".join(
+            (Path(settings.BASE_DIR) / relative_path).read_text()
+            for relative_path in (
+                "music/templates/music/home.html",
+                "music/templates/music/includes/_mobile_filter_sheet.html",
+            )
+        )
+        for partial in (
+            "core/includes/_saved_filters_dropdown.html",
+            "core/includes/_saved_filter_modals.html",
+            "core/includes/_mobile_saved_filters.html",
+        ):
+            with self.subTest(partial=partial):
+                self.assertIn(partial, pages)
+
+    def test_both_pages_bumped_their_cache_busters(self):
+        """A one-way ratchet past the version that shipped without the fix.
+
+        The `?v=` literals are hand-maintained, and both saved-filter
+        changes live in files loaded that way: music gained the methods,
+        games gained the `sortDirection` restore. Without a bump a
+        returning reader keeps the cached copy, so the dropdown does
+        nothing and the direction still goes missing.
+        """
+        for template, stale in (
+            ("music/templates/music/home.html", "media-list-controls.min.js"),
+            ("games/templates/games/home.html", "filter-component.min.js"),
+        ):
+            with self.subTest(template=template):
+                page = (Path(settings.BASE_DIR) / template).read_text()
+                match = re.search(re.escape(stale) + r"[\"']? %\}\?v=(\d+)", page)
+                self.assertIsNotNone(match, f"{stale} is not loaded with a ?v=")
+                self.assertGreater(int(match.group(1)), 3 if "media" in stale else 8)
+
+
+class ApplyingASavedFilterMustNotAnnounceAResetTests(SimpleTestCase):
+    """Applying a saved filter must not announce `year-reset`/`genres-reset`.
+
+    Those two events do not mean "refresh yourselves". The mobile sheet's
+    subcomponents answer them by clearing the state outright -
+    `core/includes/_mobile_filter_time.html` assigns the full year range and
+    `_mobile_filter_genres.html` assigns `[]` - and the sheet shares the
+    rankings page's Alpine state at every width, desktop included.
+
+    So dispatching them *after* restoring a stored combination wiped it:
+    the sort and its direction survived, while the genre and the year range
+    silently did not, and the heading went on naming the unfiltered page.
+    Caught in a real browser, because every server-side test passed and the
+    stored JSON was correct throughout.
+
+    The selected state in both controls is derived from `filters`
+    reactively, so neither needs telling.
+    """
+
+    RESET_EVENTS = ("year-reset", "genres-reset")
+
+    def _apply_body(self, relative_path):
+        source = (Path(settings.BASE_DIR) / relative_path).read_text()
+        parts = source.split("applySavedFilter(filter) {", 1)
+        self.assertEqual(len(parts), 2, f"no applySavedFilter in {relative_path}")
+        # Up to the next method at the same indentation.
+        body = parts[1]
+        end = body.find("\n        },")
+        self.assertNotEqual(end, -1, "could not find the end of applySavedFilter")
+        # Comments are stripped, because the comment explaining *why* the
+        # reset is not dispatched necessarily names the events.
+        return "\n".join(
+            line for line in body[:end].split("\n") if not line.strip().startswith("//")
+        )
+
+    def test_the_mobile_subcomponents_really_do_clear_on_reset(self):
+        # The premise of the rule above. If these ever stop clearing state,
+        # the rule stops being necessary and this suite should be revisited.
+        time_sheet = (
+            Path(settings.BASE_DIR)
+            / "core/templates/core/includes/_mobile_filter_time.html"
+        ).read_text()
+        genre_sheet = (
+            Path(settings.BASE_DIR)
+            / "core/templates/core/includes/_mobile_filter_genres.html"
+        ).read_text()
+        self.assertIn('@year-reset.window="filters.start', time_sheet)
+        self.assertIn('@genres-reset.window="filters.genres = []', genre_sheet)
+
+    def test_neither_component_dispatches_a_reset_while_applying(self):
+        for relative_path in (
+            "core/static/core/js/media-list-controls.js",
+            "games/static/games/js/filter-component.js",
+        ):
+            body = self._apply_body(relative_path)
+            for event in self.RESET_EVENTS:
+                with self.subTest(component=relative_path, event=event):
+                    self.assertNotIn(
+                        event,
+                        body,
+                        f"applySavedFilter announces {event}, which the "
+                        f"mobile sheet answers by clearing the state the "
+                        f"saved filter just restored",
+                    )

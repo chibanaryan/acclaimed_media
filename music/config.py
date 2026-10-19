@@ -203,3 +203,22 @@ MUSIC_LIST_SORT_OPTIONS = (
     {"value": "importance", "label": "# Lists"},
     {"value": "alpha", "label": "Alphabetical"},
 )
+
+# =============================================================================
+# Saved filters
+# =============================================================================
+
+# How many filter combinations one reader may keep, and how long a name may
+# be. Both live here rather than in the view because games hard-codes its
+# ceiling in the view *and* in both of its templates, which is how its
+# sidebar and its mobile sheet came to state the limit in two places.
+MAX_SAVED_FILTERS = 10
+SAVED_FILTER_NAME_MAX_LENGTH = 255
+
+# Saved filters are deliberately **uncached**. Every other note in this file
+# says a new value has to be registered for invalidation, so the absence
+# needs stating: these rows are per-user, read once when the dropdown is
+# first opened, and written by the reader who is about to re-read them - so a
+# cache would be invalidated on nearly every read and would have to be
+# dropped on every write. Nothing here joins CACHE_KEYS or
+# PER_USER_CACHE_KEY_TEMPLATES.

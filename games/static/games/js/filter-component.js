@@ -460,6 +460,9 @@ document.addEventListener('alpine:init', () => {
             this.filters.platforms = f.platforms || [];
             this.filters.series = f.series || [];
             this.filters.sort = f.sort || 'rank';
+            // `submitSaveFilter` has always stored this; nothing read it
+            // back, so applying a saved filter dropped its direction.
+            this.filters.sortDirection = f.sortDirection || 'asc';
             this.filters.played = Array.isArray(f.played) ? f.played : (f.played ? f.played.split(',').filter(s => s) : []);
             this.filters.hltb_mode = f.hltb_mode || 'main';
             this.filters.hltb_min = f.hltb_min || null;

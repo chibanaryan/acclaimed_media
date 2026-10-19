@@ -249,6 +249,9 @@ Music API endpoints (staff-only):
 - `/api/music/all/` - Every album in one payload, for client-side filtering
 - `/api/music/unified-search/` - Albums and artists together, for the sidebar
   and mobile search boxes
+- `/api/music/saved-filters/` and `/api/music/saved-filters/<pk>/` - a
+  reader's saved filter combinations. The only endpoints in `music/api/`
+  that **write**, so the only ones CSRF applies to
 
 **Note:** these endpoints carry no `cache_page` decorator on purpose. `cache_page`
 wraps `dispatch`, so it is consulted before permissions run and a staff response
@@ -285,12 +288,14 @@ the hover.
 | `core/includes/_search_box.html` | the standard search input, with its clear button |
 | `core/includes/_tracking_button.html` | the three-state tracking dropdown, and `_tracking_button_template.html`, its clone twin |
 | `core/includes/_status_filter.html`, `_mobile_filter_status.html` | the tracking status filter |
+| `core/includes/_saved_filters_dropdown.html`, `_saved_filter_modals.html`, `_mobile_saved_filters.html` | saved filter combinations, in the sidebar and the sheet |
 | `core/services/titles.py` | the heading's wording: `join_names`, `build_time_window` |
 | `core/services/ranking.py` | `rank_distribution`, the chart's binning |
 | `core/js/filter-subcomponents.js` | `yearGridComponent`, `genreFilterComponent` and their mobile forms |
 | `core/js/media-list-controls.js` | `mediaListControls`, `entityListControls` |
 | `core/js/media-search.js` | `createMediaSearchData`, for a section's search box |
 | `core/js/media-tracking.js` | `MediaTracking`, which keeps the tracking id Sets current after a button swap |
+| `core/js/media-list-controls.js` | also the saved-filter state and methods, inert without a `savedFiltersUrl` |
 
 The templates are the contract. Each binds to an Alpine component exposing
 `filters`, `genres`, `initialized`, `debouncedFilterUpdate()`,
@@ -440,6 +445,74 @@ are correlated subqueries, not `Count("relation", distinct=True)`: four
 multi-valued joins on one queryset multiply, and a user with 822 listened
 albums and 178 want-to-listen rows produced 146k intermediate rows before
 `distinct` collapsed them again.
+
+### Saved filters
+
+A reader who has built up a genre + decade + listen-status combination keeps
+it by name. Games has had this since `SavedFilterSet`; music's was built as
+**shared `core/` components with music wired to them**, the way album
+tracking was - games is untouched and can migrate by swapping three
+includes.
+
+| Piece | Where |
+|---|---|
+| `core.models.SavedFilterSetBase` | abstract: user, name, `filters` JSON, created/modified, `-modified` ordering |
+| `music.models.SavedAlbumFilterSet` | the concrete table; adds nothing |
+| `core/includes/_saved_filters_dropdown.html` | the sidebar "Saved" menu |
+| `core/includes/_saved_filter_modals.html` | save / rename / delete, one copy per page |
+| `core/includes/_mobile_saved_filters.html` | the bottom sheet's collapsible equivalent |
+| `core/js/media-list-controls.js` | the state and the eight methods, named as games' are |
+| `/api/music/saved-filters/` | list, create, rename, delete |
+
+The partials bind to a **method contract**, not to a page:
+`loadSavedFilters`, `applySavedFilter`, `saveCurrentFilters`,
+`submitSaveFilter`, `renameSavedFilter`, `submitRenameFilter`,
+`deleteSavedFilter`, `confirmDeleteFilter`, plus `hasActiveFilters` and
+`savedFilters*`. Both `mediaListControls` and games' `filterComponent`
+expose exactly those names, which is what makes the migration a template
+change. The whole feature is inert unless the page passes a
+`savedFiltersUrl`, so a section that has not opted in renders no button.
+
+Four things worth knowing before changing any of it:
+
+- **Applying a saved filter must not announce `year-reset` or
+  `genres-reset`.** Those events do not mean "refresh yourselves":
+  `core/includes/_mobile_filter_time.html` answers `year-reset` by assigning
+  the full year range and `_mobile_filter_genres.html` answers
+  `genres-reset` by assigning `[]`, and **the mobile sheet shares the
+  rankings page's Alpine state at every width, desktop included**. So
+  dispatching them after restoring a combination wiped it: the sort and its
+  direction survived while the genre and the years were silently dropped,
+  and the heading went on naming the unfiltered page. The grid and the tree
+  derive their selected state from `filters` reactively and need no
+  telling. Pinned by
+  `core/tests/test_static_bundles.py::ApplyingASavedFilterMustNotAnnounceAResetTests`.
+- **`applyingSavedFilter` was a hook with nothing on the other end.**
+  `core/includes/_year_grid.html` has always passed `isApplyingSavedFilter`
+  behind a `typeof` guard, so a component without the flag silently got
+  `false` and the grid treated a programmatic range as a hover preview.
+  Defining it on `mediaListControls` lit the hook up with no template
+  change - and the guard is why its absence could never throw.
+- **This is music's first *write* endpoint**, so CSRF applies to
+  `music/api/` for the first time; `StaffWriteAPIMixin` sits beside
+  `StaffReadAPIMixin` to say which views that covers. An outsider gets
+  **404**, not games' 403, because the section has to look absent. The
+  ordinary Django test client does not enforce CSRF, so
+  `music/tests/test_saved_filters.py` uses
+  `Client(enforce_csrf_checks=True)` for the real answer.
+- **Deliberately uncached**, and `music/config.py` says so where a reader
+  would otherwise expect a `CACHE_KEYS` entry: the rows are per-user, read
+  once when the dropdown first opens, and written by the person about to
+  re-read them.
+
+`SavedAlbumFilterSet` needs no reconnection pass after an import, unlike the
+tracking models - a saved filter references genres by id, and an import
+replaces albums, not genres.
+
+**Games' `applySavedFilter` never restored `sortDirection`**, though
+`submitSaveFilter` had always stored it, so applying a saved "Year, newest
+first" quietly came back ascending. Fixed on both sides, and pinned in
+source and minified form, because the page loads only the minified copy.
 
 ### Template Architecture
 

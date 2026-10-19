@@ -8,6 +8,7 @@ the other two controls at all. These tests pin the partial's contract and
 check both rankings pages actually render it.
 """
 
+from django.contrib.auth.models import AnonymousUser
 from django.template.loader import render_to_string
 from django.test import TestCase
 from django.urls import reverse
@@ -142,3 +143,154 @@ class BothRankingPagesRenderTheControlsTests(TestCase):
         form = soup.select_one("#album-filters")
         self.assertEqual(form.select_one('[name="sort"]')["type"], "hidden")
         self.assertEqual(form.select_one('[name="dir"]')["type"], "hidden")
+
+
+def render_saved_dropdown(**context):
+    base = {"max_saved": 10, "user": AnonymousUser()}
+    base.update(context)
+    return BeautifulSoup(
+        render_to_string("core/includes/_saved_filters_dropdown.html", base),
+        "html.parser",
+    )
+
+
+class SavedFilterPartialTests(TestCase):
+    """The three saved-filter partials are shared, so they are pinned here.
+
+    They bind to a component contract rather than to a page -
+    `loadSavedFilters`, `applySavedFilter`, `saveCurrentFilters`,
+    `renameSavedFilter`, `deleteSavedFilter`, `hasActiveFilters` - and both
+    `mediaListControls` and games' `filterComponent` expose those names. The
+    contract is what lets games migrate onto them later, so a renamed method
+    has to fail here.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="saved", password="savedpass")
+
+    def test_a_signed_in_reader_gets_the_working_button(self):
+        soup = render_saved_dropdown(user=self.user)
+        trigger = soup.select_one('[\\@click="loadSavedFilters()"]')
+        self.assertIsNotNone(trigger)
+        self.assertNotIn("cursor-not-allowed", trigger.get("class", []))
+
+    def test_a_signed_out_visitor_gets_a_disabled_button_that_says_why(self):
+        soup = render_saved_dropdown(signed_out_hint="Sign in to save filters")
+        button = soup.select_one("button")
+        self.assertIn("cursor-not-allowed", button.get("class", []))
+        self.assertEqual(button["aria-label"], "Saved. Sign in to save filters")
+        # Nothing to drive, so none of the component's methods are bound.
+        self.assertFalse(soup.select('[\\@click="loadSavedFilters()"]'))
+
+    def test_the_row_actions_cover_apply_rename_and_delete(self):
+        soup = render_saved_dropdown(user=self.user)
+        self.assertTrue(soup.select('[\\@click="applySavedFilter(filter)"]'))
+        self.assertTrue(soup.select('[\\@click\\.stop="renameSavedFilter(filter)"]'))
+        self.assertTrue(soup.select('[\\@click\\.stop="deleteSavedFilter(filter)"]'))
+
+    def test_saving_is_offered_only_when_there_is_something_to_save(self):
+        rendered = render_to_string(
+            "core/includes/_saved_filters_dropdown.html",
+            {"max_saved": 10, "user": self.user},
+        )
+        self.assertIn("hasActiveFilters() && savedFiltersLoaded", rendered)
+
+    def test_the_cap_is_rendered_rather_than_hard_coded(self):
+        rendered = render_to_string(
+            "core/includes/_saved_filters_dropdown.html",
+            {"max_saved": 4, "user": self.user},
+        )
+        self.assertIn("savedFilters.length < 4", rendered)
+        self.assertIn("Limit reached (4/4)", rendered)
+        self.assertNotIn("(10/10)", rendered)
+
+    def test_the_mobile_block_closes_the_sheet_when_a_filter_is_applied(self):
+        rendered = render_to_string(
+            "core/includes/_mobile_saved_filters.html",
+            {"max_saved": 10, "user": self.user},
+        )
+        self.assertIn("applySavedFilter(filter); filterOpen = false;", rendered)
+
+    def test_the_mobile_block_loads_lazily_on_first_expand(self):
+        rendered = render_to_string(
+            "core/includes/_mobile_saved_filters.html",
+            {"max_saved": 10, "user": self.user},
+        )
+        self.assertIn("if (expanded && !savedFiltersLoaded)", rendered)
+
+    def test_the_mobile_block_is_absent_for_a_signed_out_visitor(self):
+        rendered = render_to_string(
+            "core/includes/_mobile_saved_filters.html",
+            {"max_saved": 10, "user": AnonymousUser()},
+        )
+        self.assertEqual(rendered.strip(), "")
+
+    def test_the_modals_carry_the_ids_the_component_focuses(self):
+        # `saveCurrentFilters` and `renameSavedFilter` focus these by id on
+        # $nextTick, so a renamed id silently stops the focus working.
+        soup = BeautifulSoup(
+            render_to_string("core/includes/_saved_filter_modals.html", {}),
+            "html.parser",
+        )
+        self.assertIsNotNone(soup.select_one("#save-filter-name-input"))
+        self.assertIsNotNone(soup.select_one("#rename-filter-name-input"))
+
+    def test_each_modal_submits_to_its_own_handler(self):
+        rendered = render_to_string("core/includes/_saved_filter_modals.html", {})
+        for handler in (
+            "submitSaveFilter()",
+            "submitRenameFilter()",
+            "confirmDeleteFilter()",
+        ):
+            with self.subTest(handler=handler):
+                self.assertIn(handler, rendered)
+
+    def test_the_name_placeholder_is_the_sections_own(self):
+        rendered = render_to_string(
+            "core/includes/_saved_filter_modals.html",
+            {"name_placeholder": "e.g., Jazz of the 1960s"},
+        )
+        self.assertIn("e.g., Jazz of the 1960s", rendered)
+
+
+class MusicRendersTheSavedFilterUiTests(TestCase):
+    """Music is the section wired to the partials; games keeps its own copy."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="musicsaved", password="savedpass", is_staff=True
+        )
+        self.client.login(username="musicsaved", password="savedpass")
+        music_models.Album.objects.create(
+            name="Doolittle", rank=1, slug="doolittle", year_released=1989
+        )
+
+    def test_the_album_page_renders_the_dropdown_the_sheet_and_the_modals(self):
+        page = self.client.get(reverse("music:home")).content.decode()
+        self.assertIn("loadSavedFilters()", page)
+        self.assertIn("Saved Filters", page)
+        self.assertIn("save-filter-name-input", page)
+        self.assertIn("rename-filter-name-input", page)
+
+    def test_the_component_is_given_the_endpoint_and_the_cap(self):
+        page = self.client.get(reverse("music:home")).content.decode()
+        self.assertIn(
+            f"savedFiltersUrl: '{reverse('music-api:saved-filter-list')}'", page
+        )
+        self.assertIn(f"maxSavedFilters: {music_config.MAX_SAVED_FILTERS}", page)
+
+    def test_the_dropdowns_menu_has_a_positioned_parent(self):
+        # The menu is absolutely positioned; without `relative` on the
+        # actions row it anchors to the page instead of to the button.
+        soup = BeautifulSoup(
+            self.client.get(reverse("music:home")).content.decode(), "html.parser"
+        )
+        trigger = soup.select_one('[\\@click="loadSavedFilters()"]')
+        self.assertIn("relative", trigger.parent.get("class", []))
+
+    def test_only_one_copy_of_each_modal_is_rendered(self):
+        # The sidebar and the sheet drive the same three; a second copy
+        # would give two elements the same id and break the focus call.
+        page = self.client.get(reverse("music:home")).content.decode()
+        self.assertEqual(page.count('id="save-filter-name-input"'), 1)
+        self.assertEqual(page.count('id="rename-filter-name-input"'), 1)

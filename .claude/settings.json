@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && \"$(git rev-parse --path-format=absolute --git-common-dir)/../scripts/setup_worktree.sh\" --no-migrate --quiet",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}
