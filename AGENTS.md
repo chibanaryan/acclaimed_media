@@ -1057,6 +1057,9 @@ Environment variables are managed via django-environ (`.env` file):
 - `CACHE_URL` - Cache backend URL. Production uses `dbcache://cache_table`;
   local dev falls back to LocMem whatever this says, and tests set
   `locmemcache://`. See the Caching section
+- `SENTRY_ENVIRONMENT` - Sentry's environment tag. Defaults to `production`
+  when `DYNO` is set (any Heroku dyno) and `development` everywhere else, so a
+  local shell script's traceback is not filed as a production issue
 
 ### Configuration Files
 

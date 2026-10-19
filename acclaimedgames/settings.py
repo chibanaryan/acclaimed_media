@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import sys
 
@@ -22,10 +23,18 @@ TEST_MODE = "test" in sys.argv or "pytest" in sys.modules
 RUNNING_DEVSERVER = "runserver" in sys.argv
 
 SENTRY_DSN = env("SENTRY_DSN", default=None)
+# Heroku sets DYNO on every dyno; anywhere else is a developer's machine.
+# Without this the SDK defaults to "production", so a local shell script's
+# traceback was filed as a production issue.
+SENTRY_ENVIRONMENT = env(
+    "SENTRY_ENVIRONMENT",
+    default="production" if "DYNO" in os.environ else "development",
+)
 # Don't initialize Sentry during test runs to avoid capturing test errors
 if SENTRY_DSN and not TEST_MODE:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
+        environment=SENTRY_ENVIRONMENT,
         integrations=[DjangoIntegration()],
         send_default_pii=True,
         # Sampled, not exhaustive: tracing and profiling every request cost

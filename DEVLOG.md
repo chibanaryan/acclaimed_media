@@ -1,5 +1,14 @@
 # Developer Log
 
+## 2026-10-18 (Sentry: a laptop is not production)
+
+- **Two "production" issues came from a local shell script.** The local
+  `.env` carries `SENTRY_DSN` and `sentry_sdk.init` never set `environment`,
+  so the SDK's default filed every local runserver, shell and agent script
+  as production. Neither error (ACCLAIMED-VIDEO-GAMES-7W/7X) was in app code
+- **`SENTRY_ENVIRONMENT` now defaults from `DYNO`**: `production` on any
+  Heroku dyno, `development` everywhere else, overridable by setting it
+
 ## 2026-10-18 (housekeeping)
 
 - **The second test runner had already been lost.** `manage.py test
