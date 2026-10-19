@@ -121,12 +121,15 @@ class AlbumFilterEngine {
             });
         });
 
-        return {
-            years: [...yearCounts.entries()]
-                .sort((a, b) => a[0] - b[0])
-                .map(([year, count]) => ({ year, count })),
-            genres: genreCounts
-        };
+        // Every year in the corpus range, zeros included, as `_year_counts`
+        // sends it - so both sides give the same array for the same filter.
+        const bounds = this.getYearBounds();
+        const years = [];
+        for (let year = bounds.min; year <= bounds.max; year++) {
+            years.push({ year, count: yearCounts.get(year) || 0 });
+        }
+
+        return { years, genres: genreCounts };
     }
 
     /**

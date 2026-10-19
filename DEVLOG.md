@@ -1,5 +1,32 @@
 # Developer Log
 
+## 2026-10-18 (artist Load More, hidden POSTs, year-count parity)
+
+- **Load More on `/music/artists/` only ever loaded page 2, and never on a
+  phone.** The button targeted the desktop `<tbody>`, removed itself after
+  its request, and the append response sent no replacement. The response
+  now wraps its rows in a `<table>` that the button's `hx-select` lifts the
+  `<tr>`s out of, and swaps the mobile cards, `#loaded-count` and the next
+  button in out of band. htmx 1.9 runs out-of-band swaps before
+  `hx-select`, which is what makes one response feed both layouts.
+  Checked in Chrome at 1440 and 420 px through all seven pages (627 rows,
+  627 cards, the button gone at the end, appended cells the same width as
+  the first page's)
+- **An anonymous POST to any `/music/` path now answers 404.**
+  `CsrfViewMiddleware` used to reject it with 403 before `StaffOnlyMixin`
+  ran, which told an outsider which paths resolve. `CSRF_FAILURE_VIEW` is
+  `core.views.csrf_failure`; staff still get the real 403
+- **Under a genre or artist filter, every year cell read 1.** Those filters
+  call `.distinct()`, a DISTINCT query has to select its ordering columns,
+  and so `Album`'s default `rank` ordering went into `_year_counts`'s GROUP
+  BY, making each album its own group. Found by the AGENTS.md parity check
+  rather than by a test - the fixture had one album per year. Fixed with
+  `.order_by()` and pinned with two albums in one year
+- **`AlbumFilterEngine.facets()` now sends every year in the corpus range,
+  zeros included**, as `_year_counts` does. The engine's year arrays now
+  equal the server's for no filter, a narrow genre, a genre plus a decade,
+  and the listened status. Bundle cache-buster bumped to `?v=3`
+
 ## 2026-10-18 (parallel worktrees; one local interpreter)
 
 - **`scripts/setup_worktree.sh` provisions a worktree in ~2 seconds**, so

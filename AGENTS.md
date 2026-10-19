@@ -595,7 +595,11 @@ There is no feature flag: the staff gate is the single access mechanism, and the
 section has no entry point in the sidebar, mobile nav or media switcher, so a
 normal visitor has no way to discover it. Music is also kept out of
 `sitemap.xml`. Add a nav entry (and a flag, if you want a kill switch) when the
-section is ready to launch publicly.
+section is ready to launch publicly. A POST is hidden too: `CsrfViewMiddleware`
+rejects it before the view's mixin runs, so `CSRF_FAILURE_VIEW` points at
+`core.views.csrf_failure`, which answers a failed check under `/music/` with 404
+for anyone but staff. Test it with `Client(enforce_csrf_checks=True)`; the
+ordinary test client skips CSRF.
 
 **HTMX Integration:**
 - Dynamic filtering without full page reloads

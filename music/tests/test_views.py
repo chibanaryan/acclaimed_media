@@ -6,7 +6,7 @@ suite also asserts that an anonymous visitor gets 404 rather than 403.
 
 from django.core.cache import cache
 from django.db import connection
-from django.test import TestCase
+from django.test import Client, TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
@@ -601,6 +601,57 @@ class ArtistListViewTests(MusicDataMixin, TestCase):
         self.assertEqual(response.context["loaded_count"], 0)
         self.assertContains(response, "No artists found")
 
+    def _add_artists(self, count):
+        for index in range(count):
+            artist = models.Artist.objects.create(
+                name=f"Act {index:03d}", slug=f"act-{index:03d}"
+            )
+            album = models.Album.objects.create(name=f"LP {index}", rank=200 + index)
+            album.artists.set([artist])
+
+    def test_append_feeds_the_mobile_cards_out_of_band(self):
+        # The button targets the desktop <tbody>, so without this the mobile
+        # card list never grew past the first page.
+        self._add_artists(120)
+        response = self.client.get(
+            reverse("music:artist-list"), {"page": "2", "append": "true"}
+        )
+        self.assertContains(
+            response, 'hx-swap-oob="beforeend:#artist-list-container-mobile"'
+        )
+        self.assertTemplateUsed(
+            response, "music/artists/includes/_artist_card_mobile.html"
+        )
+        self.assertContains(response, '<tbody id="artist-append-rows">')
+
+    def test_append_replaces_the_button_while_pages_remain(self):
+        # The button removed itself after its request and no response sent
+        # a new one, so only page 2 could ever be loaded.
+        self._add_artists(250)
+        response = self.client.get(
+            reverse("music:artist-list"), {"page": "2", "append": "true"}
+        )
+        self.assertContains(response, 'id="artist-load-more"')
+        self.assertContains(response, "page=3&append=true")
+        self.assertContains(response, 'hx-select="#artist-append-rows > tr"')
+        self.assertContains(response, '<span id="loaded-count" hx-swap-oob="true">')
+
+    def test_the_last_append_clears_the_button(self):
+        self._add_artists(120)
+        response = self.client.get(
+            reverse("music:artist-list"), {"page": "2", "append": "true"}
+        )
+        self.assertContains(
+            response, '<div id="artist-load-more" hx-swap-oob="true"></div>', html=True
+        )
+        self.assertNotContains(response, "Load more artists")
+
+    def test_the_first_page_button_is_not_out_of_band(self):
+        self._add_artists(120)
+        response = self.client.get(reverse("music:artist-list"))
+        self.assertContains(response, "Load more artists")
+        self.assertNotContains(response, 'id="artist-load-more" hx-swap-oob')
+
 
 class ArtistDetailViewTests(MusicDataMixin, TestCase):
     def test_renders_the_artist_and_their_albums(self):
@@ -639,6 +690,37 @@ class ArtistDetailViewTests(MusicDataMixin, TestCase):
         response = self.client.get(self.beatles.get_absolute_url())
         self.assertContains(response, "wikidata.org/wiki/Q1299")
         self.assertContains(response, "musicbrainz.org/artist/")
+
+
+class CsrfFailureTests(StaffUserTestMixin, TestCase):
+    """A failed CSRF check must not reveal which music paths resolve.
+
+    The ordinary test client skips CSRF entirely, so these use a client that
+    enforces it - which is the only way to see the production answer.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.csrf_client = Client(enforce_csrf_checks=True)
+
+    def test_anonymous_post_to_a_music_path_gets_404(self):
+        for url in (reverse("music:home"), "/music/nonexistent-slug/"):
+            with self.subTest(url=url):
+                self.assertEqual(self.csrf_client.post(url).status_code, 404)
+
+    def test_non_staff_post_gets_404(self):
+        User.objects.create_user(username="plain", password="plainpass")
+        self.csrf_client.login(username="plain", password="plainpass")
+        self.assertEqual(self.csrf_client.post(reverse("music:home")).status_code, 404)
+
+    def test_staff_still_see_the_real_403(self):
+        self.csrf_client.login(username="musicstaff", password="musicpass")
+        response = self.csrf_client.post(reverse("music:home"))
+        self.assertEqual(response.status_code, 403)
+        self.assertContains(response, "CSRF", status_code=403)
+
+    def test_paths_outside_music_keep_the_403(self):
+        self.assertEqual(self.csrf_client.post(reverse("contact")).status_code, 403)
 
 
 class AlbumSearchViewTests(MusicDataMixin, TestCase):

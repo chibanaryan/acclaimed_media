@@ -1,0 +1,24 @@
+{# One artist as a mobile card. Shared by the results page and the Load More append. #}
+{# Props: artist #}
+{% load music_filters %}
+<div class="entity-row card bg-base-200 p-3 mb-2">
+    <div class="flex items-center justify-between gap-2">
+        <div class="min-w-0">
+            {% if artist.slug %}
+            <a href="{{ artist.get_absolute_url }}" class="link link-accent font-semibold truncate">{{ artist.name }}</a>
+            {% else %}
+            <span class="font-semibold truncate">{{ artist|artist_display_name }}</span>
+            {% endif %}
+            {% with best=artist.albums.first %}
+            {% if best %}
+            <div class="text-xs text-base-content/70 truncate">
+                Best: {{ best.name }} (#{{ best.rank }})
+            </div>
+            {% endif %}
+            {% endwith %}
+        </div>
+        <span class="tabular-nums text-sm whitespace-nowrap shrink-0">
+            {{ artist.albums_count }} album{{ artist.albums_count|pluralize }}
+        </span>
+    </div>
+</div>

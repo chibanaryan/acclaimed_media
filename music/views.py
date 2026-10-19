@@ -368,10 +368,16 @@ def _year_counts(queryset, min_year, max_year):
     `distinct=True` because the genre and artist filters join through M2M
     tables, so an album matching two genres in the selected subtree would
     otherwise be counted once per match.
+
+    `order_by()` because those filters also call `.distinct()`, and a
+    DISTINCT query must select its ordering columns - so `Album`'s default
+    `rank` ordering went into the GROUP BY, every album became its own
+    group, and under any genre or artist filter every year cell said 1.
     """
     counts = {
         row["year_released"]: row["count"]
         for row in queryset.exclude(year_released__isnull=True)
+        .order_by()
         .values("year_released")
         .annotate(count=Count("id", distinct=True))
     }

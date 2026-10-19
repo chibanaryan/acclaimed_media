@@ -58,42 +58,11 @@
 {# Mobile cards #}
 <div class="desktop:hidden" id="artist-list-container-mobile">
     {% for artist in artists %}
-    <div class="entity-row card bg-base-200 p-3 mb-2">
-        <div class="flex items-center justify-between gap-2">
-            <div class="min-w-0">
-                {% if artist.slug %}
-                <a href="{{ artist.get_absolute_url }}" class="link link-accent font-semibold truncate">{{ artist.name }}</a>
-                {% else %}
-                <span class="font-semibold truncate">{{ artist|artist_display_name }}</span>
-                {% endif %}
-                {% with best=artist.albums.first %}
-                {% if best %}
-                <div class="text-xs text-base-content/70 truncate">
-                    Best: {{ best.name }} (#{{ best.rank }})
-                </div>
-                {% endif %}
-                {% endwith %}
-            </div>
-            <span class="tabular-nums text-sm whitespace-nowrap shrink-0">
-                {{ artist.albums_count }} album{{ artist.albums_count|pluralize }}
-            </span>
-        </div>
-    </div>
+    {% include 'music/artists/includes/_artist_card_mobile.html' with artist=artist %}
     {% endfor %}
 </div>
 
-{% if has_more %}
-<div class="load-more-container flex justify-center mt-4">
-    <button type="button"
-            class="btn btn-outline btn-sm"
-            hx-get="{% url 'music:artist-list' %}?page={{ next_page }}&append=true&q={{ current_q|urlencode }}&sort={{ current_sort }}&dir={{ current_dir }}"
-            hx-target="#artist-list-container"
-            hx-swap="beforeend"
-            hx-on::after-request="this.closest('.load-more-container').remove()">
-        Load more artists
-    </button>
-</div>
-{% endif %}
+{% include 'music/artists/includes/_artist_load_more.html' %}
 
 {% else %}
 <div class="alert">

@@ -217,6 +217,10 @@ LOGIN_REDIRECT_URL = "/"
 LOGIN_URL = "/accounts/login/"
 LOGOUT_REDIRECT_URL = "/"
 
+# 404s a failed CSRF check under /music/ for non-staff, so a POST cannot
+# reveal which paths of the staff-only section resolve.
+CSRF_FAILURE_VIEW = "core.views.csrf_failure"
+
 # Authentication backends
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",

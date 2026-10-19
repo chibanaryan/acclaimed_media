@@ -119,6 +119,20 @@ class FacetCountTests(MusicDataMixin, TestCase):
         counts = {row["year"]: row["count"] for row in response.context["year_counts"]}
         self.assertEqual(counts[1966], 1)
 
+    def test_two_albums_in_one_year_count_two_under_a_genre_filter(self):
+        # The genre filter's `.distinct()` pulled `Album`'s default `rank`
+        # ordering into the GROUP BY, so each album was its own group and
+        # every year cell read 1 however many albums it held.
+        pop = models.MusicGenre.objects.create(name="Pop")
+        twin = models.Album.objects.create(
+            name="Rubber Soul", slug="rubber-soul", rank=4, year_released=1966
+        )
+        self.revolver.genres.set([pop])
+        twin.genres.set([pop])
+        response = self.client.get(reverse("music:home"), {"genres": str(pop.id)})
+        counts = {row["year"]: row["count"] for row in response.context["year_counts"]}
+        self.assertEqual(counts[1966], 2)
+
     def test_genre_counts_ignore_the_genre_filter_itself(self):
         electronic = models.MusicGenre.objects.create(name="Electronic")
         self.kid_a.genres.set([electronic])

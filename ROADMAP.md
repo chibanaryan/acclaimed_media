@@ -155,27 +155,21 @@ Not worth doing as parity:
     - **`/` (games home) issues 75 `games_wikipediagenre` selects** of its
       own, inside its 112. Smaller than music's was and not measured
       further.
-    - **Mobile Load More on `/music/artists/` appends into the wrong
-      container.** `_artist_list_results.html:89` targets
-      `#artist-list-container`, the desktop `<tbody>`, rather than
-      `#artist-list-container-mobile`, so it never extends the mobile card
-      list. Pre-existing and unrelated to query counts.
+    - ~~**Mobile Load More on `/music/artists/` appends into the wrong
+      container.**~~ Fixed 2026-10-18, along with a second bug in the same
+      button: it removed itself after its request and no response sent a
+      new one, so only page 2 could ever be loaded, on any width. The append
+      response now wraps its rows in a table that `hx-select` lifts the
+      `<tr>`s out of, and sends the mobile cards, the loaded count and the
+      next button out of band.
 
 ## Housekeeping
 
-12. **A POST to any `/music/` URL answers 403, not 404.** `CsrfViewMiddleware`
-    runs after URL resolution and before the view, so it rejects an
-    anonymous POST before `StaffOnlyMixin` can 404 it - which distinguishes
-    "this path resolves" from "it does not" and so slightly undercuts the
-    section's "looks absent" property. Pre-existing rather than new: the
-    `<slug:slug>/` catch-all has always done it, and
-    `/music/nonexistent-slug/` answers 403 too. Every **GET** still 404s,
-    which is what hides the section in practice, and seeing this at all
-    means already guessing that `/music/` exists. Fixable with a
-    `CSRF_FAILURE_VIEW` that 404s for music paths, or by moving the staff
-    check ahead of CSRF in middleware. Noted because
-    `music/tests/test_views.py` asserts 404 here and passes: the Django test
-    client does not enforce CSRF, so no test sees the production answer.
+12. ~~**A POST to any `/music/` URL answers 403, not 404.**~~ Fixed
+    2026-10-18 with a `CSRF_FAILURE_VIEW` (`core.views.csrf_failure`) that
+    404s a failed check under `/music/` for anyone but staff. The tests use
+    `Client(enforce_csrf_checks=True)`, so they now see the production
+    answer.
 
 9. `FORUM_ENABLED` is still set as a Heroku config var; the forum was removed
    in 2026-10-17. `MEDIA_URL` / `MEDIA_ROOT` have no consumer either.
@@ -197,14 +191,6 @@ Not worth doing as parity:
   while the heading above it narrows to a genre. Games has no filtered
   equivalent either, and the filtered count is already shown on the results
   line.
-- **The browser's `facets()` still emits only the years it has albums
-  for**, while the server now sends every year in the corpus range. The
-  shared year grid normalises a short update against the structure it was
-  seeded with, so the grid is correct either way - but the two sides no
-  longer produce the same array for the same filter, which is exactly what
-  the parity check in AGENTS.md ("Music client-side filtering") exists to
-  catch. Worth aligning next time that file is open.
-
 ## Explicitly not doing
 
 - **Books.** The client-side filtering stack was repaired on 2026-10-17 so it

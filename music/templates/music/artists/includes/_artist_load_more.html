@@ -1,0 +1,19 @@
+{# The Load More button. Props: oob - rendered as an out-of-band swap when appending a page #}
+{# #}
+{# One button feeds both layouts. The append response wraps its rows in a table so they parse, and hx-select lifts out only the <tr>s for the desktop <tbody>; the mobile cards arrive out of band. #}
+{# The button sits outside both containers, so each page's response replaces it out of band - otherwise the first Load More would be the last. #}
+{# Keep every template comment on a single line. #}
+{% if has_more %}
+<div id="artist-load-more" class="load-more-container flex justify-center mt-4"{% if oob %} hx-swap-oob="true"{% endif %}>
+    <button type="button"
+            class="btn btn-outline btn-sm"
+            hx-get="{% url 'music:artist-list' %}?page={{ next_page }}&append=true&q={{ current_q|urlencode }}&sort={{ current_sort }}&dir={{ current_dir }}"
+            hx-target="#artist-list-container"
+            hx-swap="beforeend"
+            hx-select="#artist-append-rows > tr">
+        Load more artists
+    </button>
+</div>
+{% elif oob %}
+<div id="artist-load-more" hx-swap-oob="true"></div>
+{% endif %}
