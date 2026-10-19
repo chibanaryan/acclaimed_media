@@ -965,9 +965,13 @@ also say content may not be displayed "more than six (6) hours older" than
 discogs.com, nor stored "longer than is necessary". Our reading: what the site
 displays is its own genre vocabulary, derived by `rebuild_album_genres` from
 three voting sources, not Discogs content verbatim; the verbatim
-`DiscogsAlbumData` rows are kept as provenance and to rebuild offline, and
-the refresh runs weekly on Heroku Scheduler. Revisit this if Discogs content
-is ever shown as-is.
+`DiscogsAlbumData` rows are kept as provenance and to rebuild offline. The
+weekly Heroku Scheduler job does **not** refresh them: without `--force` the
+Discogs pass skips albums that already have a row, so each master is fetched
+once and re-fetched only by a manual
+`fetch_album_metadata --discogs-only --force`. The reading therefore rests on
+what we display, not on how fresh the stored copy is. Revisit this if Discogs
+content is ever shown as-is.
 
 ## Music and games query budgets
 
