@@ -161,6 +161,25 @@ CONTACT_PLACEHOLDER_DOMAINS = {"example.com", "example.org", "example.net"}
 # updateSort(). `label_expr` is an Alpine expression for the one label that
 # depends on other filter state - playtime reads as "Playtime (100%)" while
 # the completionist mode is selected.
+# The quick-mark picker's choices (core/includes/_quick_mark_picker.html),
+# in the shared played menu's order and with its art. `status` is the
+# toggle's vocabulary (`?status=played`), as games/includes/_played_menu.html.
+QUICK_MARK_OPTIONS = (
+    {"status": "played", "label": "Played", "image": "games/images/mario-star.png"},
+    {
+        "status": "want",
+        "label": "Want to Play",
+        "icon": "mdi-star-plus-outline",
+        "icon_class": "text-warning",
+    },
+    {
+        "status": "none",
+        "label": "Clear",
+        "icon": "mdi-star-outline",
+        "icon_class": "text-base-content/50",
+    },
+)
+
 SORT_OPTIONS = (
     {"value": "rank", "label": "Rank"},
     {"value": "year", "label": "Year"},

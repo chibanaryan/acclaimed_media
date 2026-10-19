@@ -47,6 +47,9 @@ class AlbumListRenderer extends BaseMediaListRenderer {
      * @private
      */
     _albumStatus(albumId) {
+        if (window.ownedAlbumIds && window.ownedAlbumIds.has(albumId)) {
+            return 'own';
+        }
         if (window.listenedAlbumIds && window.listenedAlbumIds.has(albumId)) {
             return 'listened';
         }
@@ -81,17 +84,21 @@ class AlbumListRenderer extends BaseMediaListRenderer {
         if (!wrapper) return null;
 
         const status = this._albumStatus(album.id);
+        const toggleUrl = `/music/${album.id}/toggle-listened/`;
         wrapper.dataset.itemId = String(album.id);
+        wrapper.dataset.toggleUrl = toggleUrl;
         wrapper.dataset.status = status;
 
         const tips = {
-            listened: 'You have listened to this album!',
-            want: 'You want to listen to this album!',
+            own: 'You have this album!',
+            listened: 'You have heard this album!',
+            want: 'You want this album!',
             none: "You aren't tracking this album."
         };
         const labels = {
-            listened: 'Listened',
-            want: 'Want to Listen',
+            own: 'Have',
+            listened: 'Heard',
+            want: 'Want',
             none: 'Untracked'
         };
         const button = wrapper.querySelector('[data-slot="tracking-button"]');
@@ -100,8 +107,9 @@ class AlbumListRenderer extends BaseMediaListRenderer {
             button.setAttribute('aria-label', `${labels[status]} - click to change`);
         }
 
-        // Show the icon for the current state and hide the other two.
+        // Show the icon for the current state and hide the others.
         const icons = {
+            own: 'owned-icon',
             listened: 'tracked-icon',
             want: 'wanted-icon',
             none: 'untracked-icon'
@@ -115,6 +123,7 @@ class AlbumListRenderer extends BaseMediaListRenderer {
         // because it is rendered once with no album.
         const csrf = this._getCsrfToken();
         const targets = {
+            'btn-owned': 'own',
             'btn-tracked': 'listened',
             'btn-wanted': 'want',
             'btn-untracked': 'none'
@@ -124,13 +133,14 @@ class AlbumListRenderer extends BaseMediaListRenderer {
             if (!el) return;
             el.setAttribute(
                 'hx-post',
-                `/music/${album.id}/toggle-listened/?status=${targets[slot]}`
+                `${toggleUrl}?status=${targets[slot]}`
             );
             el.setAttribute('hx-headers', `{"X-CSRFToken": "${csrf}"}`);
         });
 
         // Offer only the states this album is not already in.
         const menus = {
+            own: 'menu-owned',
             listened: 'menu-tracked',
             want: 'menu-wanted',
             none: 'menu-untracked'
@@ -563,13 +573,16 @@ AlbumListRenderer.SLOTS = [
 AlbumListRenderer.TRACKING_SLOTS = [
     'tracking-wrapper',
     'tracking-button',
+    'owned-icon',
     'tracked-icon',
     'wanted-icon',
     'untracked-icon',
     'dropdown-menu',
+    'menu-owned',
     'menu-tracked',
     'menu-wanted',
     'menu-untracked',
+    'btn-owned',
     'btn-tracked',
     'btn-wanted',
     'btn-untracked'

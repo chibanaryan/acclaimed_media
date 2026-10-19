@@ -489,7 +489,7 @@
     {% if user.is_authenticated %}
     {# The one game status menu every played button opens #}
     {% include 'games/includes/_played_menu.html' %}
-    <script defer src="{% static 'games/js/played-menu.min.js' %}?v=1" nonce="{{ csp_nonce }}"></script>
+    <script defer src="{% static 'games/js/played-menu.min.js' %}?v=2" nonce="{{ csp_nonce }}"></script>
     {% endif %}
 </body>
 </html>

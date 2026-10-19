@@ -7,8 +7,9 @@
 {# clone and the renderer silently has nowhere to write. #}
 {# #}
 {# Props: the icon, label and tip triples, plus tracking_scope. No item and #}
-{# no URLs: the renderer fills data-item-id, data-status and the three #}
-{# hx-post attributes per row, because they differ per item. #}
+{# no URLs: the renderer fills data-item-id, data-toggle-url, data-status #}
+{# and the hx-post attributes per row, because they differ per item. #}
+{# owned_icon, owned_icon_class and owned_label add the optional fourth state; the owned slots exist only when owned_label is given, which is a section constant, never per item. #}
 {# #}
 {# The dropdown opens upward (bottom-full), the list-row position; the #}
 {# detail page renders the real partial at size='large' instead. #}
@@ -22,6 +23,7 @@
      data-slot="tracking-wrapper"
      data-tracking-scope="{{ tracking_scope }}"
      data-item-id=""
+     data-toggle-url=""
      data-status="none"
      data-size="row"
      onclick="event.stopPropagation()">
@@ -32,6 +34,11 @@
             aria-label="{{ untracked_label }} - click to change"
             aria-haspopup="true"
             :aria-expanded="open">
+        {% if owned_label %}
+        <span class="flex items-center justify-center w-6 h-6 hidden" data-slot="owned-icon">
+            <span class="mdi {{ owned_icon }} text-2xl {{ owned_icon_class }}"></span>
+        </span>
+        {% endif %}
         <span class="flex items-center justify-center w-6 h-6 hidden" data-slot="tracked-icon">
             <span class="mdi {{ tracked_icon }} text-2xl {{ tracked_icon_class }}"></span>
         </span>
@@ -51,6 +58,20 @@
         x-transition:leave-end="opacity-0 scale-95"
         class="absolute bottom-full mb-1 left-0 menu bg-base-100 rounded-box shadow-lg p-1 min-w-max"
         data-slot="dropdown-menu">
+        {% if owned_label %}
+        <li data-slot="menu-owned">
+            <button type="button"
+                class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
+                data-slot="btn-owned"
+                hx-swap="outerHTML"
+                hx-target="closest .tracking-button-wrapper">
+                <span class="w-5 h-5 flex items-center justify-center">
+                    <span class="mdi {{ owned_icon }} text-xl {{ owned_icon_class }}"></span>
+                </span>
+                <span>{{ owned_label }}</span>
+            </button>
+        </li>
+        {% endif %}
         <li data-slot="menu-tracked">
             <button type="button"
                 class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"

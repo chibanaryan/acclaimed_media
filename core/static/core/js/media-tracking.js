@@ -12,13 +12,19 @@
  * A page registers what its scope means:
  *
  *   window.MediaTracking.register('album', {
- *       doneSet: 'listenedAlbumIds',
- *       wantSet: 'wantToListenAlbumIds',
- *       doneStatus: 'listened',
+ *       sets: {
+ *           own: 'ownedAlbumIds',
+ *           listened: 'listenedAlbumIds',
+ *           want: 'wantToListenAlbumIds'
+ *       },
  *       event: 'album-status-changed'
  *   });
  *
- * so nothing here knows about albums, games or books. The button itself
+ * `sets` maps each tracked status to the global Set holding its ids. The
+ * states are exclusive, so a toggle adds the id to its status's Set and
+ * removes it from every other; `none` has no Set and so clears them all.
+ * A section may track any number of states, and nothing here knows about
+ * albums, games or books. The button itself
  * carries data-tracking-scope, data-item-id and data-status, which is all
  * the listener reads.
  */
@@ -96,18 +102,15 @@
         },
 
         _updateSets(config, itemId, status) {
-            const done = window[config.doneSet];
-            const want = window[config.wantSet];
-            if (status === config.doneStatus) {
-                if (done) done.add(itemId);
-                if (want) want.delete(itemId);
-            } else if (status === 'want') {
-                if (done) done.delete(itemId);
-                if (want) want.add(itemId);
-            } else {
-                if (done) done.delete(itemId);
-                if (want) want.delete(itemId);
-            }
+            Object.keys(config.sets || {}).forEach((setStatus) => {
+                const ids = window[config.sets[setStatus]];
+                if (!ids) return;
+                if (setStatus === status) {
+                    ids.add(itemId);
+                } else {
+                    ids.delete(itemId);
+                }
+            });
         },
 
         /**

@@ -795,6 +795,31 @@ class PlayedButtonPageWeightTests(TestCase):
         self.assertNotIn('id="played-menu"', html)
         self.assertNotIn("played-menu.min.js", html)
 
+    def test_the_rankings_offer_the_quick_mark_picker(self):
+        from django.urls import reverse
+
+        from games import config
+
+        html = self.client.get(reverse("home")).content.decode()
+        # The results header on desktop, beside Filters on mobile.
+        self.assertEqual(html.count('data-quick-mark-scope="game"'), 2)
+        for option in config.QUICK_MARK_OPTIONS:
+            with self.subTest(status=option["status"]):
+                self.assertIn(
+                    f"window.QuickMark.set('game', '{option['status']}')", html
+                )
+        # The played star is an image, not a glyph.
+        self.assertIn("games/images/mario-star.png", html)
+
+    def test_an_anonymous_page_ships_no_quick_mark_picker(self):
+        # And so the whole-page cache, which serves only signed-out
+        # visitors, never stores one.
+        from django.urls import reverse
+
+        self.client.logout()
+        html = self.client.get(reverse("home")).content.decode()
+        self.assertNotIn("data-quick-mark-scope", html)
+
     def test_the_toggle_response_ships_exactly_one(self):
         from django.urls import reverse
 

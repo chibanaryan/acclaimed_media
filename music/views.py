@@ -178,38 +178,51 @@ def _filter_title(params, min_year=None, max_year=None, genres=None, artists=Non
     return " ".join(title.split())
 
 
-def _get_listened_album_ids(user):
-    """The album ids this user has marked as listened to, cached briefly.
+def _tracked_album_ids(user, cache_key, queryset):
+    """A user's tracked album ids from ``queryset``, cached briefly.
 
-    Album ids rather than Wikidata ids because this set is joined against the
-    client-side payload, which carries the album pk. Rows orphaned by a
+    Album ids rather than Wikidata ids because these sets are joined against
+    the client-side payload, which carries the album pk. Rows orphaned by a
     reimport are left out until the reconnection pass re-adopts them -
     without the FK there is no id to join on.
     """
-    key = config.CACHE_KEY_LISTENED_ALBUMS.format(user_id=user.id)
+    key = cache_key.format(user_id=user.id)
     ids = cache.get(key)
     if ids is None:
         ids = list(
-            models.ListenedAlbum.objects.filter(
-                user=user, album__isnull=False
-            ).values_list("album_id", flat=True)
+            queryset.filter(user=user, album__isnull=False).values_list(
+                "album_id", flat=True
+            )
         )
         cache.set(key, ids, config.CACHE_TIMEOUT_TRACKING)
     return ids
+
+
+def _get_listened_album_ids(user):
+    """The album ids this user has heard but does not own."""
+    return _tracked_album_ids(
+        user,
+        config.CACHE_KEY_LISTENED_ALBUMS,
+        models.ListenedAlbum.objects.filter(owned=False),
+    )
+
+
+def _get_owned_album_ids(user):
+    """The album ids this user has a copy of."""
+    return _tracked_album_ids(
+        user,
+        config.CACHE_KEY_OWNED_ALBUMS,
+        models.ListenedAlbum.objects.filter(owned=True),
+    )
 
 
 def _get_want_to_listen_album_ids(user):
-    """The album ids this user wants to listen to, cached briefly."""
-    key = config.CACHE_KEY_WANT_TO_LISTEN_ALBUMS.format(user_id=user.id)
-    ids = cache.get(key)
-    if ids is None:
-        ids = list(
-            models.WantToListenAlbum.objects.filter(
-                user=user, album__isnull=False
-            ).values_list("album_id", flat=True)
-        )
-        cache.set(key, ids, config.CACHE_TIMEOUT_TRACKING)
-    return ids
+    """The album ids this user wants to listen to."""
+    return _tracked_album_ids(
+        user,
+        config.CACHE_KEY_WANT_TO_LISTEN_ALBUMS,
+        models.WantToListenAlbum.objects.all(),
+    )
 
 
 def _get_year_bounds():
@@ -269,12 +282,18 @@ def _apply_listen_filter(queryset, user, listened_param):
 
     q_filter = Q()
     for status in statuses:
-        if status == "yes":
+        if status == "own":
+            q_filter |= Q(is_owned_by_user=True)
+        elif status == "yes":
             q_filter |= Q(is_listened_by_user=True)
         elif status == "want":
             q_filter |= Q(is_want_to_listen_by_user=True)
-        else:  # "no" - tracked by neither
-            q_filter |= Q(is_listened_by_user=False, is_want_to_listen_by_user=False)
+        else:  # "no" - in none of the three states
+            q_filter |= Q(
+                is_owned_by_user=False,
+                is_listened_by_user=False,
+                is_want_to_listen_by_user=False,
+            )
     return queryset.filter(q_filter)
 
 
@@ -785,6 +804,7 @@ class AlbumHomePageView(MusicVisibleMixin, RobustPaginationMixin, ListView):
         # it. Games does the same for the same reason.
         if self.request.user.is_authenticated:
             context["listened_album_ids"] = _get_listened_album_ids(self.request.user)
+            context["owned_album_ids"] = _get_owned_album_ids(self.request.user)
             context["want_to_listen_album_ids"] = _get_want_to_listen_album_ids(
                 self.request.user
             )
@@ -793,6 +813,7 @@ class AlbumHomePageView(MusicVisibleMixin, RobustPaginationMixin, ListView):
         # (core/includes/_media_list_controls.html), the same partial the
         # games rankings page renders.
         context["sort_options"] = config.SORT_OPTIONS
+        context["quick_mark_options"] = config.QUICK_MARK_OPTIONS
         # Out-of-band updates belong in a swap response, not in a full page.
         context["is_partial_response"] = self._is_partial_request()
         context["last_update"] = SiteMetadata.get_instance(
@@ -985,9 +1006,12 @@ class AlbumDownloadView(MusicVisibleMixin, View):
 class ToggleListenedAlbumView(MusicVisibleMixin, LoginRequiredMixin, View):
     """Set an album's listen status, answering with the re-rendered button.
 
-    ``?status=none|want|listened`` sets a status directly. Games also carries
-    a legacy cycle for a bare POST; the dropdown here only ever sets a status
-    outright, so a cycle would be a second code path nothing reaches.
+    ``?status=none|want|listened|own`` sets a status directly. ``own`` and
+    ``listened`` are the same ``ListenedAlbum`` row with ``owned`` set or
+    cleared, so moving between Have and Heard keeps the row's ``created``.
+    Games also carries a legacy cycle for a bare POST; the dropdown here only
+    ever sets a status outright, so a cycle would be a second code path
+    nothing reaches.
 
     ``MusicVisibleMixin`` comes first deliberately: while the section is
     hidden, a signed-out visitor should get its 404, not a login redirect
@@ -1010,10 +1034,10 @@ class ToggleListenedAlbumView(MusicVisibleMixin, LoginRequiredMixin, View):
 
         key = {"user": request.user, "wikidata_id": album.wikidata_id}
         with transaction.atomic():
-            if target == "listened":
+            if target in ("listened", "own"):
                 models.WantToListenAlbum.objects.filter(**key).delete()
                 models.ListenedAlbum.objects.update_or_create(
-                    **key, defaults={"album": album}
+                    **key, defaults={"album": album, "owned": target == "own"}
                 )
             elif target == "want":
                 models.ListenedAlbum.objects.filter(**key).delete()
@@ -1034,6 +1058,7 @@ class ToggleListenedAlbumView(MusicVisibleMixin, LoginRequiredMixin, View):
             "music/includes/_listen_button.html",
             {
                 "album": album,
+                "is_owned": target == "own",
                 "is_tracked": target == "listened",
                 "is_wanted": target == "want",
                 "size": request.GET.get("size"),
@@ -1100,9 +1125,13 @@ class AlbumDetailView(MusicVisibleMixin, DetailView):
             ).count()
 
         if self.request.user.is_authenticated:
-            context["is_listened"] = models.ListenedAlbum.objects.filter(
-                user=self.request.user, album=album
-            ).exists()
+            owned = (
+                models.ListenedAlbum.objects.filter(user=self.request.user, album=album)
+                .values_list("owned", flat=True)
+                .first()
+            )
+            context["is_owned"] = owned is True
+            context["is_listened"] = owned is False
             context["is_want_to_listen"] = models.WantToListenAlbum.objects.filter(
                 user=self.request.user, album=album
             ).exists()

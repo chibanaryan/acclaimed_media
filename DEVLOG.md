@@ -2,6 +2,19 @@
 
 ## 2026-10-19
 
+- **Quick-mark mode**, from a reader marking off their collection: a
+  "Mark" button in the results header (beside Filters on mobile) picks a
+  status, and one click on an item's button then applies it - a second
+  click clears it - instead of opening the menu each time. Music and games
+  both; remembered per browser, off on detail pages. The results header is
+  now a three-column grid, so the count sits at the true centre and no
+  longer overflows narrow desktop windows
+- **Albums gain a "Have" state** for readers who track what they own:
+  Have / Heard / Want / Untracked, exclusive, with "Listened" relabelled
+  "Heard". Stored as `ListenedAlbum.owned` (migration `0007`), so old
+  `?listened=yes` links and saved filters are unchanged; new
+  `?listened=own` filter and `?status=own` toggle. Its icon is the record in
+  a filled sleeve
 - **Fix `?highlight=` links not landing on the album.** A genre or decade
   link from album detail opened the rankings with the row marked but
   nothing scrolled to it, and an album past the first hundred was not

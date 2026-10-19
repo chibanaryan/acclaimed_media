@@ -97,6 +97,7 @@
          x-effect="document.body.classList.toggle('filter-sheet-open', filterOpen)">
         <div class="relative z-10 bg-base-200 border-b border-base-content/10 py-4 mb-4 -mx-4 px-4 flex items-center justify-between gap-3">
             <h1 class="text-lg font-bold flex-1 min-w-0" id="search-title-mobile">{{ filter_title|default:"Most Acclaimed Video Games of All Time" }}</h1>
+            {% include 'core/includes/_quick_mark_picker.html' with scope='game' options=quick_mark_options mobile=True %}
             <button type="button" class="btn btn-primary btn-sm shrink-0" @click="filterOpen = true">
                 <span class="mdi mdi-tune"></span>
                 Filters

@@ -177,7 +177,11 @@ class AlbumQuerySet(models.QuerySet):
         return self.annotate(list_count=Count("lists", distinct=True))
 
     def with_listen_status(self, user) -> "AlbumQuerySet":
-        """Annotate listened / want-to-listen status for ``user``.
+        """Annotate have / heard / want-to-listen status for ``user``.
+
+        The three are exclusive, so each annotation names exactly one state:
+        an owned album is ``is_owned_by_user`` and not ``is_listened_by_user``,
+        though both are ``ListenedAlbum`` rows.
 
         A no-op for an anonymous user, so callers that filter on the
         annotations must guard the same way rather than assume they exist.
@@ -186,8 +190,15 @@ class AlbumQuerySet(models.QuerySet):
             return self
 
         return self.annotate(
+            is_owned_by_user=Exists(
+                ListenedAlbum.objects.filter(
+                    user=user, album=OuterRef("pk"), owned=True
+                )
+            ),
             is_listened_by_user=Exists(
-                ListenedAlbum.objects.filter(user=user, album=OuterRef("pk"))
+                ListenedAlbum.objects.filter(
+                    user=user, album=OuterRef("pk"), owned=False
+                )
             ),
             is_want_to_listen_by_user=Exists(
                 WantToListenAlbum.objects.filter(user=user, album=OuterRef("pk"))
@@ -488,6 +499,12 @@ class ListenedAlbum(UserTrackingBase):
     import replaces every ``Album`` row, so without the external id a
     reimport would silently empty everybody's collection; with it,
     ``music.services.user_tracking_service`` re-adopts the rows afterwards.
+
+    ``owned`` is the "Have" state: an album the user owns a copy of. It is a
+    flag on this row rather than a table of its own because owning implies
+    having heard, and because the row then inherits the reconnection pass,
+    the bulk command and the toggle's atomic write unchanged. The page's
+    "Heard" state is therefore a row with ``owned=False``.
     """
 
     album = models.ForeignKey(
@@ -502,6 +519,10 @@ class ListenedAlbum(UserTrackingBase):
         db_index=True,
         help_text="Wikidata QID, for reconnection after an album reimport",
     )
+    owned = models.BooleanField(
+        default=False,
+        help_text="The user has a copy of this album (shown as 'Have')",
+    )
 
     class Meta:
         db_table = "music_listenedalbum"
@@ -512,7 +533,8 @@ class ListenedAlbum(UserTrackingBase):
 
     def __str__(self) -> str:
         label = self.album.name if self.album else f"Wikidata:{self.wikidata_id}"
-        return f"{self.user.username} listened to {label}"
+        verb = "has" if self.owned else "listened to"
+        return f"{self.user.username} {verb} {label}"
 
 
 class WantToListenAlbum(UserTrackingBase):

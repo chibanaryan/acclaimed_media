@@ -26,7 +26,7 @@
 
 {# Sort, direction, view toggle and jump-to-rank. mediaListControls on #}
 {# home.html supplies the Alpine contract this partial binds to. #}
-{% include 'core/includes/_media_list_controls.html' with sort_options=sort_options default_sort_label='Rank' item_noun='Album' %}
+{% include 'core/includes/_media_list_controls.html' with sort_options=sort_options default_sort_label='Rank' item_noun='Album' quick_mark_scope='album' quick_mark_options=quick_mark_options %}
 
 {% if albums %}
 {# Set the initial view mode from localStorage before paint, as the games #}

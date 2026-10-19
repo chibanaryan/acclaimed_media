@@ -8,7 +8,7 @@ from unittest import mock
 
 from django.core.cache import cache
 from django.db import connection
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
@@ -1307,18 +1307,18 @@ class ListenStatusPageTests(MusicDataMixin, TestCase):
 
     def test_the_heading_names_the_status(self):
         response = self.client.get(self.url + "?listened=yes")
-        self.assertIn(": Listened", response.context["filter_title"])
+        self.assertIn(": Heard", response.context["filter_title"])
 
     def test_the_heading_joins_several_statuses(self):
         # Games appends one label by hand and so cannot say this, although
         # its parameter is multi-select too.
         response = self.client.get(self.url + "?listened=no,yes")
-        self.assertIn(": Untracked and Listened", response.context["filter_title"])
+        self.assertIn(": Untracked and Heard", response.context["filter_title"])
 
     def test_the_heading_joins_three_statuses(self):
         response = self.client.get(self.url + "?listened=no,want,yes")
         self.assertIn(
-            ": Untracked, Want to Listen, and Listened",
+            ": Untracked, Want to Listen, and Heard",
             response.context["filter_title"],
         )
 
@@ -1326,7 +1326,7 @@ class ListenStatusPageTests(MusicDataMixin, TestCase):
         response = self.client.get(self.url + "?listened=yes&start=1960&end=1969")
         title = response.context["filter_title"]
         self.assertIn("of the 1960s", title)
-        self.assertIn(": Listened", title)
+        self.assertIn(": Heard", title)
 
     def test_an_unknown_status_leaves_the_heading_alone(self):
         response = self.client.get(self.url + "?listened=sideways")
@@ -1344,7 +1344,7 @@ class ListenStatusPageTests(MusicDataMixin, TestCase):
     def test_the_status_options_reach_the_template(self):
         response = self.client.get(self.url)
         values = [o["value"] for o in response.context["listen_status_options"]]
-        self.assertEqual(values, ["no", "want", "yes"])
+        self.assertEqual(values, ["no", "want", "yes", "own"])
 
     def test_the_page_renders_the_tracking_id_sets(self):
         # The client-side predicate reads these, which is why they are album
@@ -1367,7 +1367,7 @@ class ListenStatusPageTests(MusicDataMixin, TestCase):
     def test_the_sidebar_renders_the_status_control(self):
         response = self.client.get(self.url)
         html = response.content.decode()
-        self.assertIn("Listen Status", html)
+        self.assertIn("Album Status", html)
         self.assertIn("toggleStatusValue('listened', 'yes')", html)
         self.assertIn('name="listened"', html)
 
@@ -1416,6 +1416,69 @@ class ListenStatusPageTests(MusicDataMixin, TestCase):
         names = [album.name for album in response.context["albums"]]
         self.assertEqual(names, ["Rust Never Sleeps"])
 
+    # Have: the fourth state, exclusive of Heard
+
+    def _own_kid_a(self):
+        models.ListenedAlbum.objects.create(
+            user=self.staff_user, album=self.kid_a, wikidata_id="Q-kid-a", owned=True
+        )
+
+    def _names(self, query):
+        response = self.client.get(self.url + query)
+        return sorted(album.name for album in response.context["albums"])
+
+    def test_the_have_filter_shows_only_owned_albums(self):
+        self._own_kid_a()
+        self.assertEqual(self._names("?listened=own"), ["Kid A"])
+
+    def test_the_heard_filter_leaves_owned_albums_out(self):
+        self._own_kid_a()
+        self.assertEqual(self._names("?listened=yes"), ["Revolver"])
+
+    def test_the_untracked_filter_leaves_owned_albums_out(self):
+        self._own_kid_a()
+        self.assertNotIn("Kid A", self._names("?listened=no"))
+
+    def test_the_heading_names_the_owned_status(self):
+        response = self.client.get(self.url + "?listened=own")
+        self.assertIn(": Owned", response.context["filter_title"])
+
+    def test_the_page_renders_the_owned_id_set(self):
+        self._own_kid_a()
+        html = self.client.get(self.url).content.decode()
+        self.assertIn(f"window.ownedAlbumIds = new Set([{self.kid_a.id}])", html)
+        self.assertIn(f"window.listenedAlbumIds = new Set([{self.revolver.id}])", html)
+
+    def test_an_owned_row_renders_its_own_state(self):
+        self._own_kid_a()
+        html = self.client.get(self.url).content.decode()
+        self.assertIn('data-status="own"', html)
+        self.assertIn("mdi-album-jacket", html)
+
+    def test_the_sync_listener_is_given_every_set(self):
+        html = self.client.get(self.url).content.decode()
+        for name in ("ownedAlbumIds", "listenedAlbumIds", "wantToListenAlbumIds"):
+            with self.subTest(name=name):
+                self.assertIn(f"'{name}'", html)
+
+    def test_the_quick_mark_picker_is_offered(self):
+        html = self.client.get(self.url).content.decode()
+        # Two copies: the results header on desktop, and beside the Filters
+        # button on mobile, whose controls row has no room left at 360px.
+        self.assertEqual(html.count('data-quick-mark-scope="album"'), 2)
+        self.assertIn("quick-mark.min.js", html)
+        for option in config.QUICK_MARK_OPTIONS:
+            with self.subTest(status=option["status"]):
+                self.assertIn(
+                    f"window.QuickMark.set('album', '{option['status']}')", html
+                )
+
+    def test_the_quick_mark_picker_survives_a_results_swap(self):
+        # It sits in the results header, which every filter change replaces.
+        response = self.client.get(self.url + "?partial=true")
+        html = response.content.decode()
+        self.assertEqual(html.count('data-quick-mark-scope="album"'), 1)
+
 
 class ListenStatusAnonymousPageTests(MusicDataMixin, TestCase):
     """The control is visible but inert without a sign-in."""
@@ -1429,6 +1492,14 @@ class ListenStatusAnonymousPageTests(MusicDataMixin, TestCase):
     def test_the_status_filter_does_nothing_for_an_untracking_user(self):
         response = self.client.get(reverse("music:home") + "?listened=yes")
         self.assertEqual(len(response.context["albums"]), 0)
+
+    @override_settings(MUSIC_ENABLED=True)
+    def test_a_signed_out_reader_gets_no_quick_mark_picker(self):
+        # There is nothing they could mark.
+        self.client.logout()
+        response = self.client.get(reverse("music:home"))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "data-quick-mark-scope")
 
 
 class AlbumDetailListenButtonTests(MusicDataMixin, TestCase):
@@ -1447,6 +1518,24 @@ class AlbumDetailListenButtonTests(MusicDataMixin, TestCase):
         response = self.client.get(self.url)
         self.assertTrue(response.context["is_listened"])
         self.assertFalse(response.context["is_want_to_listen"])
+
+    def test_the_owned_flag_reaches_the_template(self):
+        models.ListenedAlbum.objects.create(
+            user=self.staff_user,
+            album=self.revolver,
+            wikidata_id="Q-revolver",
+            owned=True,
+        )
+        response = self.client.get(self.url)
+        self.assertTrue(response.context["is_owned"])
+        self.assertFalse(response.context["is_listened"])
+        self.assertContains(response, 'data-status="own"')
+
+    def test_the_detail_page_offers_no_quick_mark_picker(self):
+        # Without a picker on the page a stored mode does nothing, so the
+        # button here always opens its menu.
+        response = self.client.get(self.url)
+        self.assertNotContains(response, "data-quick-mark-scope")
 
     def test_the_want_flag_reaches_the_template(self):
         models.WantToListenAlbum.objects.create(

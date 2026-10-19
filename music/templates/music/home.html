@@ -19,15 +19,18 @@
 {# loaded before Alpine core as the games rankings page loads its own. #}
 <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/filter-subcomponents.min.js" %}?v=1');</script>
 <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/media-list-controls.min.js" %}?v=5');</script>
+<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/quick-mark.min.js" %}?v=1');</script>
 {# Keeps the tracking id Sets current after an HTMX button swap. Loaded here #}
 {# rather than in the filtering bundle because the album detail page swaps #}
 {# the same button and loads no bundle at all. #}
-<script src="{% static 'core/js/media-tracking.min.js' %}?v=1" nonce="{{ csp_nonce }}"></script>
+<script src="{% static 'core/js/media-tracking.min.js' %}?v=2" nonce="{{ csp_nonce }}"></script>
 <script nonce="{{ csp_nonce }}">
 window.MediaTracking.register('album', {
-    doneSet: 'listenedAlbumIds',
-    wantSet: 'wantToListenAlbumIds',
-    doneStatus: 'listened',
+    sets: {
+        own: 'ownedAlbumIds',
+        listened: 'listenedAlbumIds',
+        want: 'wantToListenAlbumIds'
+    },
     event: 'album-status-changed'
 });
 </script>
@@ -57,16 +60,18 @@ window.listFilterActive = true;
 {# on its version, so two users sharing a session would share it. #}
 <script nonce="{{ csp_nonce }}">
 {% if user.is_authenticated %}
+window.ownedAlbumIds = new Set([{% for album_id in owned_album_ids %}{{ album_id }}{% if not forloop.last %},{% endif %}{% endfor %}]);
 window.listenedAlbumIds = new Set([{% for album_id in listened_album_ids %}{{ album_id }}{% if not forloop.last %},{% endif %}{% endfor %}]);
 window.wantToListenAlbumIds = new Set([{% for album_id in want_to_listen_album_ids %}{{ album_id }}{% if not forloop.last %},{% endif %}{% endfor %}]);
 window.isAuthenticated = true;
 {% else %}
+window.ownedAlbumIds = new Set();
 window.listenedAlbumIds = new Set();
 window.wantToListenAlbumIds = new Set();
 window.isAuthenticated = false;
 {% endif %}
 </script>
-<script src="{% static 'music/js/music-client-side-filtering.bundle.min.js' %}?v=6"
+<script src="{% static 'music/js/music-client-side-filtering.bundle.min.js' %}?v=7"
         defer fetchpriority="low" nonce="{{ csp_nonce }}"></script>
 {% endif %}
 {% endblock %}
@@ -138,6 +143,7 @@ var listenStatusOptions = JSON.parse(
             <span id="search-title-mobile-text">{{ filter_title|default:"Most Acclaimed Albums" }}</span>
             {% if not MUSIC_ENABLED %}<span class="badge badge-warning badge-xs align-middle">Beta</span>{% endif %}
         </h1>
+        {% include 'core/includes/_quick_mark_picker.html' with scope='album' options=quick_mark_options mobile=True %}
         <button type="button" class="btn btn-primary btn-sm shrink-0" @click="filterOpen = true">
             <span class="mdi mdi-tune"></span>
             Filters
@@ -200,7 +206,7 @@ var listenStatusOptions = JSON.parse(
             </div>
 
             {# Listen status - the shared control, as games' sidebar has #}
-            {% include 'core/includes/_status_filter.html' with status_param='listened' status_label='Listen Status' status_icon='mdi-album' status_options=listen_status_options signed_out_hint='Sign in to track albums' %}
+            {% include 'core/includes/_status_filter.html' with status_param='listened' status_label='Album Status' status_icon='mdi-album' status_options=listen_status_options signed_out_hint='Sign in to track albums' %}
             <input type="hidden" name="listened" value="{{ current_listened }}">
 
             {# Search #}

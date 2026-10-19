@@ -7,11 +7,12 @@
 {# #}
 {# Props: #}
 {#   status_param - the filter's parameter and Alpine key ('listened') #}
-{#   status_label - the section heading ('Listen Status') #}
+{#   status_label - the section heading ('Album Status') #}
 {#   status_icon - the mdi class beside that heading #}
 {#   status_options - [{value, label, title, icon}], in display order #}
 {#   signed_out_hint - the title on the disabled buttons #}
 {#   mobile - truthy for the bottom-sheet sizing #}
+{# Both sizes keep their padding tight so four states and All fit the sidebar and a 360px sheet; the sheet keeps a 40px touch height. #}
 {# #}
 {# Contract: an enclosing Alpine component exposing filters, #}
 {# debouncedFilterUpdate(), toggleStatusValue(key, value) and #}
@@ -39,13 +40,13 @@
     <div class="flex justify-center">
         <div class="join" title="{{ status_label }} (multi-select)">
             <button type="button"
-                    class="join-item btn {% if mobile %}btn-md{% else %}btn-sm{% endif %}"
+                    class="join-item btn {% if mobile %}btn-sm h-10 px-2 gap-1{% else %}btn-xs h-8 px-2 gap-1{% endif %}"
                     :class="{ 'btn-primary': !(filters.{{ status_param }} || []).length }"
                     @click="filters.{{ status_param }} = []; debouncedFilterUpdate()">All</button>
             {% for option in status_options %}
             {% if user.is_authenticated %}
             <button type="button"
-                    class="join-item btn {% if mobile %}btn-md{% else %}btn-sm{% endif %}"
+                    class="join-item btn {% if mobile %}btn-sm h-10 px-2 gap-1{% else %}btn-xs h-8 px-2 gap-1{% endif %}"
                     :class="{ 'btn-primary': (filters.{{ status_param }} || []).includes('{{ option.value }}') }"
                     @click="toggleStatusValue('{{ status_param }}', '{{ option.value }}')"
                     title="{{ option.title }}"
@@ -55,7 +56,7 @@
             </button>
             {% else %}
             <button type="button"
-                    class="join-item btn {% if mobile %}btn-md{% else %}btn-sm{% endif %} opacity-40 cursor-not-allowed"
+                    class="join-item btn {% if mobile %}btn-sm h-10 px-2 gap-1{% else %}btn-xs h-8 px-2 gap-1{% endif %} opacity-40 cursor-not-allowed"
                     title="{{ signed_out_hint }}"
                     aria-label="{{ signed_out_hint }}">
                 <span class="mdi {{ option.icon }}" aria-hidden="true"></span>

@@ -476,6 +476,82 @@ class SharedPlayedMenuTests(SimpleTestCase):
         self.assertIn("source: wrapper, target: wrapper, swap: 'outerHTML'", source)
 
 
+class QuickMarkTests(SimpleTestCase):
+    """One click applies the picked status (core/js/quick-mark.js).
+
+    Like the played menu, the listener has to capture: the tracking button's
+    own Alpine handler would open its menu, and the wrapper stops the click
+    in the bubble phase. Pinned in source and in the minified copy, because
+    the pages load only the latter.
+    """
+
+    SOURCE = "core/static/core/js/quick-mark.js"
+    MINIFIED = "core/static/core/js/quick-mark.min.js"
+
+    def _read(self, path):
+        return (Path(settings.BASE_DIR) / path).read_text()
+
+    def test_the_minified_script_is_findable(self):
+        self.assertIsNotNone(finders.find("core/js/quick-mark.min.js"))
+
+    def test_the_click_listener_captures(self):
+        source = self._read(self.SOURCE)
+        listener = source.split("document.addEventListener('click'", 1)
+        self.assertEqual(len(listener), 2, "no click listener")
+        body = listener[1].split("const sync", 1)[0]
+        self.assertIn("}, true);", body)
+        self.assertIn("event.stopPropagation()", body)
+
+    def test_a_double_click_does_not_undo_its_own_mark(self):
+        # The second click of a double-click reports detail 2; acting on it
+        # would mark and then clear the item.
+        self.assertIn("event.detail >= 2", self._read(self.SOURCE))
+        self.assertIn(
+            "event.detail < 2", self._read("games/static/games/js/played-menu.js")
+        )
+
+    def test_a_mode_only_acts_where_a_picker_is_shown(self):
+        # Otherwise a mode set on the rankings page would also take over the
+        # album page's button, which has no picker to switch it off.
+        source = self._read(self.SOURCE)
+        active = source.split("active(scope) {", 1)[1].split("next(", 1)[0]
+        self.assertIn("data-quick-mark-scope", active)
+
+    def test_clicking_a_marked_item_again_clears_it(self):
+        source = self._read(self.SOURCE)
+        self.assertIn("current === mode ? 'none' : mode", source)
+
+    def test_the_post_inherits_the_csrf_header_from_the_wrapper(self):
+        for path in (self.SOURCE, self.MINIFIED):
+            with self.subTest(path=path):
+                source = self._read(path)
+                self.assertIn("htmx.ajax(", source)
+                self.assertRegex(source, r"source:\s*\w+,\s*target:\s*\w+")
+
+    def test_the_played_menu_asks_quick_mark_before_opening(self):
+        for path in (
+            "games/static/games/js/played-menu.js",
+            "games/static/games/js/played-menu.min.js",
+        ):
+            with self.subTest(path=path):
+                source = self._read(path)
+                self.assertIn("QuickMark.active('game')", source.replace('"', "'"))
+                self.assertIn("QuickMark.mark(", source)
+
+    def test_both_rankings_pages_load_it_before_alpine(self):
+        # The picker's x-data reads window.QuickMark as Alpine initialises.
+        for path in (
+            "games/templates/games/home.html",
+            "music/templates/music/home.html",
+        ):
+            with self.subTest(path=path):
+                self.assertIn(
+                    "window.alpineScripts.push("
+                    '\'{% static "core/js/quick-mark.min.js" %}',
+                    self._read(path),
+                )
+
+
 class LandingPagesPushOntoTheRankingsUrlTests(SimpleTestCase):
     """Filtering on a music landing page must not keep the landing path.
 

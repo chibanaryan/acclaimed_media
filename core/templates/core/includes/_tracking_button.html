@@ -16,6 +16,7 @@
 {#     {% url %} cannot take a dynamic kwarg name. A section's toggle route #}
 {#     must therefore take the item's pk as its one positional argument. #}
 {#   is_tracked / is_wanted - the current state, mutually exclusive #}
+{#   is_owned, owned_status, owned_icon, owned_icon_class, owned_label, owned_tip - an optional fourth state above tracked (music's 'Have'). Without owned_status none of it renders, so a section with three states is unchanged. #}
 {#   tracked_status - the 'done' value for ?status= ('listened', 'played') #}
 {#   tracked_icon / wanted_icon / untracked_icon and their _class twins #}
 {#   tracked_label / wanted_label / untracked_label - the dropdown rows #}
@@ -23,7 +24,8 @@
 {#   size - 'large' for a detail page, anything else for a list row #}
 {#   just_toggled - set by the toggle view, to play the appear animation #}
 {# #}
-{# 'want' and 'none' are hard-coded: only the done verb varies by medium. #}
+{# 'want' and 'none' are hard-coded: only the done verbs vary by medium. #}
+{# data-toggle-url is the bare route, for core/js/quick-mark.js to post to. #}
 {# Unlike games' and books' versions this ships no inline <script>. The #}
 {# global Sets are kept up to date by one delegated listener instead. #}
 {# Keep every template comment on a single line - Django only strips those. #}
@@ -36,7 +38,8 @@
     @close-tracking-dropdowns.window="if ($event.detail !== $el) open = false"
     data-tracking-scope="{{ tracking_scope }}"
     data-item-id="{{ item.id }}"
-    data-status="{% if is_tracked %}{{ tracked_status }}{% elif is_wanted %}want{% else %}none{% endif %}"
+    data-toggle-url="{% url toggle_url_name item.id %}"
+    data-status="{% if owned_status and is_owned %}{{ owned_status }}{% elif is_tracked %}{{ tracked_status }}{% elif is_wanted %}want{% else %}none{% endif %}"
     data-size="{% if size == 'large' %}large{% else %}row{% endif %}"
     onclick="event.stopPropagation()">
 
@@ -44,12 +47,14 @@
     <button
         @click="$dispatch('close-tracking-dropdowns', $el.closest('.tracking-button-wrapper')); open = !open"
         class="tracking-button desktop:tooltip {% if size == 'large' %}desktop:tooltip-bottom{% else %}desktop:tooltip-top{% endif %} flex items-center justify-center shrink-0 cursor-pointer {% if size == 'large' %}h-12 w-12 min-w-12{% else %}h-8 w-8 min-w-8{% endif %}"
-        data-tip="{% if is_tracked %}{{ tracked_tip }}{% elif is_wanted %}{{ wanted_tip }}{% else %}{{ untracked_tip }}{% endif %}"
-        aria-label="{% if is_tracked %}{{ tracked_label }}{% elif is_wanted %}{{ wanted_label }}{% else %}{{ untracked_label }}{% endif %} - click to change"
+        data-tip="{% if owned_status and is_owned %}{{ owned_tip }}{% elif is_tracked %}{{ tracked_tip }}{% elif is_wanted %}{{ wanted_tip }}{% else %}{{ untracked_tip }}{% endif %}"
+        aria-label="{% if owned_status and is_owned %}{{ owned_label }}{% elif is_tracked %}{{ tracked_label }}{% elif is_wanted %}{{ wanted_label }}{% else %}{{ untracked_label }}{% endif %} - click to change"
         aria-haspopup="true"
         :aria-expanded="open">
-        <span class="flex items-center justify-center {% if size == 'large' %}w-10 h-10{% else %}w-6 h-6{% endif %}{% if just_toggled and is_tracked %} star-appear{% elif is_tracked %} star-idle{% elif just_toggled and is_wanted %} star-appear{% endif %}">
-            {% if is_tracked %}
+        <span class="flex items-center justify-center {% if size == 'large' %}w-10 h-10{% else %}w-6 h-6{% endif %}{% if owned_status and is_owned %}{% if just_toggled %} star-appear{% else %} star-idle{% endif %}{% elif just_toggled and is_tracked %} star-appear{% elif is_tracked %} star-idle{% elif just_toggled and is_wanted %} star-appear{% endif %}">
+            {% if owned_status and is_owned %}
+            <span class="mdi {{ owned_icon }} {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} {{ owned_icon_class }}"></span>
+            {% elif is_tracked %}
             <span class="mdi {{ tracked_icon }} {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} {{ tracked_icon_class }}"></span>
             {% elif is_wanted %}
             <span class="mdi {{ wanted_icon }} {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} {{ wanted_icon_class }}"></span>
@@ -70,6 +75,20 @@
         x-transition:leave-start="opacity-100 scale-100"
         x-transition:leave-end="opacity-0 scale-95"
         class="absolute {% if size == 'large' %}top-full mt-1{% else %}bottom-full mb-1{% endif %} left-0 menu bg-base-100 rounded-box shadow-lg p-1 min-w-max">
+        {% if owned_status and not is_owned %}
+        <li>
+            <button type="button"
+                class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
+                hx-post="{% url toggle_url_name item.id %}?status={{ owned_status }}{% if size == 'large' %}&size=large{% endif %}"
+                hx-target="closest .tracking-button-wrapper"
+                hx-swap="outerHTML">
+                <span class="w-5 h-5 flex items-center justify-center">
+                    <span class="mdi {{ owned_icon }} text-xl {{ owned_icon_class }}"></span>
+                </span>
+                <span>{{ owned_label }}</span>
+            </button>
+        </li>
+        {% endif %}
         {% if not is_tracked %}
         <li>
             <button type="button"
@@ -98,7 +117,7 @@
             </button>
         </li>
         {% endif %}
-        {% if is_tracked or is_wanted %}
+        {% if is_tracked or is_wanted or owned_status and is_owned %}
         <li>
             <button type="button"
                 class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"

@@ -21,7 +21,7 @@
 {# Sort, direction, view toggle and jump-to-rank, from the shared #}
 {# partial the album rankings page uses too. filterComponent supplies #}
 {# the filters.sort / updateSort / viewMode contract it binds to. #}
-{% include 'core/includes/_media_list_controls.html' with sort_options=sort_options default_sort_label='Rank' item_noun='Game' empty_count_label='Advanced Search' %}
+{% include 'core/includes/_media_list_controls.html' with sort_options=sort_options default_sort_label='Rank' item_noun='Game' empty_count_label='Advanced Search' quick_mark_scope='game' quick_mark_options=quick_mark_options %}
 
 {% if games %}
 {# Grid view is built only by the client-side filtering bundle, from #}

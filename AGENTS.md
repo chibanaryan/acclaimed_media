@@ -1,6 +1,6 @@
 # AGENTS.md (Canonical)
 
-Last synchronized: 2026-10-18
+Last synchronized: 2026-10-19
 
 This file is the canonical instruction source for Codex in this repository.
 
@@ -215,7 +215,9 @@ Music-specific models:
   import deletes every `Album`: the rows survive on `SET_NULL` and
   `music.services.user_tracking_service` re-adopts them by that id afterwards.
   Mutual exclusivity is enforced by the toggle view, not by a constraint -
-  they are separate tables, so no one constraint spans them
+  they are separate tables, so no one constraint spans them. "Have" (an album
+  the user owns) is a `ListenedAlbum` row with `owned=True`, not a third
+  table, so it inherits the reconnection pass and the bulk command unchanged
 
 ### API Architecture
 
@@ -299,6 +301,7 @@ the hover.
 | `core/js/media-list-controls.js` | `mediaListControls`, `entityListControls` |
 | `core/js/media-search.js` | `createMediaSearchData`, for a section's search box |
 | `core/js/media-tracking.js` | `MediaTracking`, which keeps the tracking id Sets current after a button swap |
+| `core/includes/_quick_mark_picker.html`, `core/js/quick-mark.js` | quick-mark mode: one click applies a picked status (see "Album tracking") |
 | `core/js/media-list-controls.js` | also the saved-filter state and methods, inert without a `savedFiltersUrl` |
 
 The templates are the contract. Each binds to an Alpine component exposing
@@ -429,11 +432,55 @@ now pinned by `core/tests/test_media_tracking.py` and the source tests in
   the button do nothing at all, but only once the bundle had loaded, which is
   why it looked intermittent.
 
-Two filter vocabularies, as games has: `?listened=yes|want|no` (multi-select,
-comma-joined) for filtering, and `?status=listened|want|none` for the toggle.
-`?listened=yes` reads correctly in a URL and `data-status="listened"` reads
-correctly on an element; `music/config.py:LISTEN_STATUS_OPTIONS` maps the two
-server-side and the scope registry in `media-tracking.js` does client-side.
+Two filter vocabularies, as games has: `?listened=own|yes|want|no`
+(multi-select, comma-joined) for filtering, and `?status=own|listened|want|none`
+for the toggle. `?listened=yes` reads correctly in a URL and
+`data-status="listened"` reads correctly on an element;
+`music/config.py:LISTEN_STATUS_OPTIONS` maps the two server-side and the scope
+registry in `media-tracking.js` does client-side.
+
+**Four exclusive states: Have, Heard, Want, Untracked.** Have was added
+(2026-10-19) for readers who track what they own rather than what they have
+heard, and "Listened" was relabelled "Heard" at the same time. The internal
+spelling kept `listened` / `yes`, so old links, saved filters and
+`mark_albums_listened` still mean "heard". Each state is exactly one thing
+everywhere: `is_owned_by_user` and `is_listened_by_user` annotate
+`owned=True` and `owned=False` rows respectively, `?listened=yes` leaves owned
+albums out, and the page renders three disjoint Sets (`ownedAlbumIds`,
+`listenedAlbumIds`, `wantToListenAlbumIds`), which `media-tracking.js` keeps
+current through a status-to-Set map. The reconnection merge keeps `owned` if
+any merged row had it. The Have icon, `mdi-album-jacket`, is not an MDI glyph:
+it is the `mdi-album` record knocked out of a filled square in `styles.css`,
+so it differs from Heard by shape and not only colour.
+
+**Quick-mark mode.** A "Mark" button opens a menu of Have, Heard, Want,
+Clear and Off (games: Played, Want to Play, Clear, Off). With a mode picked,
+one click on a tracking button applies that status, and a click on an item
+already in it clears it. The button shows the mode's icon and is tinted while
+one is on. It is `core/includes/_quick_mark_picker.html` and
+`core/js/quick-mark.js`, which both rankings pages push onto
+`window.alpineScripts`. On desktop `_media_list_controls.html` includes it
+when the page passes `quick_mark_scope` and `quick_mark_options`, on the
+right beside jump-to-rank. That row is a three-column grid
+(`minmax(max-content,1fr) minmax(0,1fr) minmax(max-content,1fr)`), so the
+count sits at the true centre. Below xl, words give way to icons (Asc, the
+Mark label), and a container query hides the count once the middle column is
+too narrow for it, rather than truncating it to a stray letter. On mobile
+it sits beside the Filters button, because the controls row is already full
+at 360px. It was first a strip of five buttons in the results header, which
+crowded that row. Four things it depends on:
+
+- The mode is per scope in `localStorage` (`quickMark:<scope>`) and acts only
+  while a picker for that scope is on the page, so detail pages keep the menu.
+- Its click listener **captures**, for the same reason the played menu's
+  does: the button's Alpine handler would open the menu and the wrapper stops
+  propagation in the bubble phase.
+- It ignores `event.detail >= 2`: the second click of a double-click would
+  otherwise undo the first.
+- It posts with the wrapper as source and target, to the wrapper's
+  `data-toggle-url` (games: the played menu's `data-url`), so the swap goes
+  through the same path as a menu choice. Games' `played-menu.js` asks
+  `QuickMark.active('game')` before opening its shared menu.
 
 Per-user cache keys cannot live in `CACHE_KEYS`, which is a flat tuple an
 import iterates. They are templates in `PER_USER_CACHE_KEY_TEMPLATES`, dropped
@@ -601,7 +648,7 @@ reach them by URL - and public, in the nav and in the sitemap after):
 - `/music/artists/<slug>/` - Artist detail with ranked albums
 - `/music/lists/` - The published source lists behind the rankings
 - `/music/import/` - Staff import for the three release files
-- `/music/<album_id>/toggle-listened/` - POST, `?status=none|want|listened`,
+- `/music/<album_id>/toggle-listened/` - POST, `?status=none|want|listened|own`,
   answering with the re-rendered button for HTMX to swap
 - `/music/cover/<release_mbid>/<image_id>-<size>.jpg` - Cover art served from our own
   store, cached a year and immutable

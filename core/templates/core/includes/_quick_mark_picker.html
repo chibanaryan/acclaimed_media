@@ -1,0 +1,90 @@
+{# The quick-mark mode picker: what one click on a tracking button does. #}
+{# #}
+{# Off leaves each button opening its status menu. Any other choice makes a #}
+{# click apply that status at once, and a click on an item already in it #}
+{# clear it again (core/js/quick-mark.js). The picker is also what switches #}
+{# the mode on: a page without one keeps the menu whatever is stored. #}
+{# #}
+{# One button and a menu, because the results header it sits in already #}
+{# holds sort, direction, view, count and jump-to-rank; a strip of five #}
+{# buttons crowded it. The button shows the active mode's icon and is tinted #}
+{# while one is on, so the page's changed behaviour stays visible. Below xl #}
+{# the desktop trigger drops its words for the icon alone, to fit the row. #}
+{# #}
+{# Self-contained: its state is QuickMark's, read from localStorage, so it #}
+{# survives the HTMX re-render of the results header it sits in and needs #}
+{# nothing from the page's filter component. The desktop copy sits in the #}
+{# results header and the mobile one beside the Filters button; they stay #}
+{# in step through the quick-mark-change event. #}
+{# #}
+{# Props: #}
+{#   scope - the tracking scope ('album', 'game'); a literal, never request data, since it is interpolated into Alpine expressions #}
+{#   options - [{status, label, icon, icon_class, image}], in display order; image is a static path used instead of icon #}
+{#   mobile - truthy for the touch-sized, icon-only trigger #}
+{# #}
+{# Signed-out readers get nothing, so a cached anonymous page carries none. #}
+{# Keep every template comment on a single line. #}
+{% load static %}
+{% if user.is_authenticated and options %}
+<div class="relative{% if mobile %} shrink-0{% endif %}"
+     data-quick-mark-scope="{{ scope }}"
+     x-data="{ mode: window.QuickMark ? window.QuickMark.get('{{ scope }}') : '', open: false }"
+     @quick-mark-change.window="if ($event.detail.scope === '{{ scope }}') mode = $event.detail.mode"
+     @click.away="open = false"
+     @keydown.escape="open = false">
+    <button type="button"
+            class="btn {% if mobile %}btn-sm px-2{% else %}btn-xs px-2{% endif %} btn-ghost gap-1 font-normal"
+            :class="mode ? 'bg-primary/10 ring-1 ring-primary' : 'text-base-content/70'"
+            @click="open = !open"
+            aria-haspopup="menu"
+            :aria-expanded="open"
+            title="Quick mark: one click on an item's button sets the status picked here">
+        <span class="mdi mdi-pencil text-base" x-show="!mode" aria-hidden="true"></span>
+        {% for option in options %}
+        <span class="flex items-center gap-1" x-show="mode === '{{ option.status }}'" x-cloak>
+            {% if option.image %}
+            <img src="{% static option.image %}" alt="" class="w-4 h-4" aria-hidden="true">
+            {% else %}
+            <span class="mdi {{ option.icon }} text-base {{ option.icon_class }}" aria-hidden="true"></span>
+            {% endif %}
+            {% if not mobile %}<span class="hidden xl:inline">Mark: {{ option.label }}</span>{% else %}<span class="sr-only">Marking as {{ option.label }}</span>{% endif %}
+        </span>
+        {% endfor %}
+        {% if not mobile %}<span class="hidden xl:inline" x-show="!mode">Mark</span>{% else %}<span class="sr-only" x-show="!mode">Quick mark off</span>{% endif %}
+        <span class="mdi mdi-chevron-down text-xs" aria-hidden="true"></span>
+    </button>
+    <ul x-show="open" x-cloak
+        class="absolute right-0 top-full mt-1 menu menu-sm bg-base-100 rounded-box shadow-lg z-50 p-1 min-w-max"
+        role="menu"
+        aria-label="Quick-mark mode"
+        @click="open = false">
+        <li class="menu-title text-xs">One click marks as</li>
+        {% for option in options %}
+        <li>
+            <button type="button"
+                    role="menuitemradio"
+                    :aria-checked="mode === '{{ option.status }}'"
+                    :class="mode === '{{ option.status }}' ? 'active' : ''"
+                    @click="window.QuickMark && window.QuickMark.set('{{ scope }}', '{{ option.status }}')">
+                {% if option.image %}
+                <img src="{% static option.image %}" alt="" class="w-4 h-4" aria-hidden="true">
+                {% else %}
+                <span class="mdi {{ option.icon }} text-base {{ option.icon_class }}" aria-hidden="true"></span>
+                {% endif %}
+                <span>{{ option.label }}</span>
+            </button>
+        </li>
+        {% endfor %}
+        <li>
+            <button type="button"
+                    role="menuitemradio"
+                    :aria-checked="mode === ''"
+                    :class="mode === '' ? 'active' : ''"
+                    @click="window.QuickMark && window.QuickMark.set('{{ scope }}', '')">
+                <span class="mdi mdi-close text-base" aria-hidden="true"></span>
+                <span>Off <span class="text-base-content/60">(open the menu)</span></span>
+            </button>
+        </li>
+    </ul>
+</div>
+{% endif %}

@@ -14,6 +14,7 @@
 {#   empty_count_label - what the count line reads when nothing matched #}
 {#   show_view_toggle, show_jump_to_rank - default on #}
 {#   per_page - page size the jump box pages through, default 100 #}
+{#   quick_mark_scope, quick_mark_options - opt in to the quick-mark picker (core/includes/_quick_mark_picker.html) on desktop, for signed-in readers only. The mobile row has no room for it at 360px, so a page puts its mobile copy beside the Filters button instead. #}
 {# #}
 {# Contract: the enclosing element must be inside an Alpine component that #}
 {# exposes filters.sort, filters.sortDirection, updateSort(value), #}
@@ -22,10 +23,15 @@
 {# Keep every template comment on a single line - Django only strips those. #}
 {% load humanize %}
 
-{# Desktop: sort + result count + jump to rank #}
-<div class="hidden desktop:flex items-center justify-between gap-4 mb-2 text-sm">
+{# Desktop: sort + result count + quick mark and jump to rank #}
+{# Three equal columns, the outer two never below their content: with room #}
+{# to spare the count sits at the true centre (justify-between centred it #}
+{# only between the clusters), and in a narrow window the sides keep their #}
+{# size and the middle shrinks. The count is hidden by a container query #}
+{# once the middle is too narrow for it, rather than showing a stray letter. #}
+<div class="hidden desktop:grid grid-cols-[minmax(max-content,1fr)_minmax(0,1fr)_minmax(max-content,1fr)] items-center gap-3 mb-2 text-sm">
     {# Sort - left #}
-    <div class="flex items-center gap-2 flex-shrink-0">
+    <div class="flex items-center gap-2 justify-self-start">
         <div class="dropdown" x-data="{ sortOpen: false }" @click.away="sortOpen = false">
             <button type="button"
                     class="flex items-center gap-1 text-base-content/70 hover:text-base-content transition-colors cursor-pointer"
@@ -51,7 +57,7 @@
                 :title="(filters.sortDirection || 'asc') === 'asc' ? 'Ascending order' : 'Descending order'"
                 :aria-label="(filters.sortDirection || 'asc') === 'asc' ? 'Sort ascending, click to change' : 'Sort descending, click to change'">
             <span class="mdi text-base" :class="(filters.sortDirection || 'asc') === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending'" aria-hidden="true"></span>
-            <span class="text-xs" x-text="(filters.sortDirection || 'asc') === 'asc' ? 'Asc' : 'Desc'"></span>
+            <span class="text-xs hidden xl:inline" x-text="(filters.sortDirection || 'asc') === 'asc' ? 'Asc' : 'Desc'"></span>
         </button>
         {% if show_view_toggle|default_if_none:True %}
         {# View toggle #}
@@ -78,17 +84,23 @@
         {% endif %}
     </div>
     {# Result count - middle #}
-    <div class="result-count text-base-content/70 whitespace-nowrap" data-result-count="desktop">
+    <div class="@container min-w-0">
+    <div class="result-count text-base-content/70 whitespace-nowrap text-center hidden @min-[9rem]:block" data-result-count="desktop">
         {% if total_count %}Showing <span id="loaded-count" class="loaded-count-value">{{ loaded_count|intcomma }}</span> of {{ total_count|intcomma }}{% else %}{{ empty_count_label|default_if_none:"" }}{% endif %}
     </div>
-    {# Jump to rank - right #}
+    </div>
+    {# Quick mark and jump to rank - right #}
+    <div class="flex items-center gap-2 xl:gap-3 justify-self-end xl:pr-4">
+    {% if quick_mark_scope and user.is_authenticated %}
+    {% include 'core/includes/_quick_mark_picker.html' with scope=quick_mark_scope options=quick_mark_options mobile=False %}
+    {% endif %}
     {% if show_jump_to_rank|default_if_none:True %}
-    <div class="flex items-center gap-2 flex-shrink-0 pr-4">
+    <div class="flex items-center gap-2">
         <input type="number"
                min="1"
                max="{{ total_count }}"
                placeholder="{{ item_noun|default:'Item' }} #"
-               class="jump-to-rank-input input input-xs input-bordered w-20 text-center"
+               class="jump-to-rank-input input input-xs input-bordered w-[4.5rem] xl:w-20 text-center"
                data-total="{{ total_count }}"
                data-loaded="{{ loaded_count }}"
                data-per-page="{{ per_page|default:100 }}"
@@ -101,6 +113,7 @@
         </button>
     </div>
     {% endif %}
+    </div>
 </div>
 
 {# Mobile: the same controls, with a native select for touch #}

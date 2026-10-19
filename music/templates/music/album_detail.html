@@ -30,7 +30,7 @@
 {% if album %}
 <h1 class="text-3xl font-bold mb-4 flex items-center gap-3 flex-wrap">
     {# The large listen button, where the games detail page puts its own #}
-    {% include 'music/includes/_listen_button.html' with is_tracked=is_listened is_wanted=is_want_to_listen size='large' %}
+    {% include 'music/includes/_listen_button.html' with is_owned=is_owned is_tracked=is_listened is_wanted=is_want_to_listen size='large' %}
     <span>{{ album.name }}{% if album.year_released %} ({{ album.year_released }}){% endif %}</span>
     {% if not MUSIC_ENABLED %}<span class="badge badge-warning badge-sm">Beta</span>{% endif %}
 </h1>
@@ -42,12 +42,14 @@
 {% block pre_alpine %}
 {# The button here is HTMX-swapped like the rows', so the same listener has #}
 {# to keep the tracking Sets current. This page loads no filtering bundle. #}
-<script src="{% static 'core/js/media-tracking.min.js' %}?v=1" nonce="{{ csp_nonce }}"></script>
+<script src="{% static 'core/js/media-tracking.min.js' %}?v=2" nonce="{{ csp_nonce }}"></script>
 <script nonce="{{ csp_nonce }}">
 window.MediaTracking.register('album', {
-    doneSet: 'listenedAlbumIds',
-    wantSet: 'wantToListenAlbumIds',
-    doneStatus: 'listened',
+    sets: {
+        own: 'ownedAlbumIds',
+        listened: 'listenedAlbumIds',
+        want: 'wantToListenAlbumIds'
+    },
     event: 'album-status-changed'
 });
 </script>

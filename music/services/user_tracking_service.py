@@ -84,6 +84,11 @@ def _reconnect_model_records(*, model_class, id_to_album: Dict) -> Dict:
         # duplicate is an artefact of the id change.
         group.sort(key=lambda row: (row.created is None, row.created, row.pk))
         keeper = group[0]
+        # Ownership is a fact about the user, not about which id they used:
+        # merging must not drop a "Have" because the earliest row was a
+        # plain "Heard".
+        if hasattr(keeper, "owned"):
+            keeper.owned = any(row.owned for row in group)
         album = id_to_album[keeper.wikidata_id]
         keeper.album = album
         keeper.wikidata_id = album.wikidata_id
@@ -95,7 +100,10 @@ def _reconnect_model_records(*, model_class, id_to_album: Dict) -> Dict:
     with transaction.atomic():
         if duplicates:
             model_class.objects.filter(pk__in=[row.pk for row in duplicates]).delete()
-        model_class.objects.bulk_update(survivors, ["album", "wikidata_id"])
+        fields = ["album", "wikidata_id"]
+        if hasattr(model_class, "owned"):
+            fields.append("owned")
+        model_class.objects.bulk_update(survivors, fields)
 
     return {
         "reconnected": len(survivors),

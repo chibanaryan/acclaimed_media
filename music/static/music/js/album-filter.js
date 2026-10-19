@@ -170,14 +170,14 @@ class AlbumFilterEngine {
      * @param {number} [filters.end] - inclusive release-year ceiling
      * @param {number[]} [filters.artists] - artist ids, OR-ed
      * @param {number[]} [filters.genres] - genre ids, OR-ed
-     * @param {string[]} [filters.listened] - 'yes' | 'want' | 'no', OR-ed
+     * @param {string[]} [filters.listened] - 'own' | 'yes' | 'want' | 'no', OR-ed
      * @returns {Array} Matching albums
      */
     /**
      * Whether an album passes the listen-status filter.
      *
      * Mirrors `music.views._apply_listen_filter`. The state is read from the
-     * two global Sets the page renders, not from the album payload: that
+     * three global Sets the page renders, not from the album payload: that
      * payload is shared between whoever uses the browser session, so it
      * carries nothing per-user. Games needs a `game.i` guard because an IGDB
      * id may be missing; the album pk is always there.
@@ -187,14 +187,16 @@ class AlbumFilterEngine {
     _passesListenStatus(album, listened) {
         if (!listened || !listened.length || !window.isAuthenticated) return true;
 
+        const owned = window.ownedAlbumIds && window.ownedAlbumIds.has(album.id);
         const done = window.listenedAlbumIds && window.listenedAlbumIds.has(album.id);
         const want =
             window.wantToListenAlbumIds && window.wantToListenAlbumIds.has(album.id);
 
         return listened.some(status => {
+            if (status === 'own') return Boolean(owned);
             if (status === 'yes') return Boolean(done);
             if (status === 'want') return Boolean(want);
-            if (status === 'no') return !done && !want;
+            if (status === 'no') return !owned && !done && !want;
             return false;
         });
     }

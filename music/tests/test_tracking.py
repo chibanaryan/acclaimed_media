@@ -134,7 +134,7 @@ class ToggleListenedAlbumViewTests(TestCase):
         self.assertIn(f'data-item-id="{self.album.pk}"', html)
         self.assertIn('data-tracking-scope="album"', html)
         self.assertIn("mdi-album", html)
-        self.assertIn("You have listened to this album!", html)
+        self.assertIn("You have heard this album!", html)
 
     def test_the_menu_buttons_inherit_the_csrf_header_from_body(self):
         # base.html's <body hx-headers> already carries the token; three
@@ -230,6 +230,98 @@ class ToggleListenedAlbumViewTests(TestCase):
         other = User.objects.create_user(username="other", password="pw", is_staff=True)
         self._post("listened")
         self.assertFalse(models.ListenedAlbum.objects.filter(user=other).exists())
+
+    # Have: a ListenedAlbum row with owned set, exclusive of the other states
+
+    def _owned(self):
+        return models.ListenedAlbum.objects.filter(
+            user=self.user, album=self.album, owned=True
+        ).exists()
+
+    def test_setting_own_creates_an_owned_row(self):
+        response = self._post("own")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(self._owned())
+        self.assertFalse(self._wanted())
+
+    def test_setting_own_clears_a_want(self):
+        self._post("want")
+        self._post("own")
+        self.assertTrue(self._owned())
+        self.assertFalse(self._wanted())
+
+    def test_moving_between_have_and_heard_keeps_the_one_row(self):
+        # The same row with the flag flipped, so its `created` - when the
+        # user first marked the album - survives the move.
+        self._post("listened")
+        created = models.ListenedAlbum.objects.get().created
+        self._post("own")
+        row = models.ListenedAlbum.objects.get()
+        self.assertTrue(row.owned)
+        self.assertEqual(row.created, created)
+        self._post("listened")
+        self.assertFalse(models.ListenedAlbum.objects.get().owned)
+
+    def test_setting_none_clears_an_owned_row(self):
+        self._post("own")
+        self._post("none")
+        self.assertFalse(models.ListenedAlbum.objects.exists())
+
+    def test_the_owned_response_shows_the_jacket(self):
+        html = self._post("own").content.decode()
+        self.assertIn('data-status="own"', html)
+        self.assertIn("mdi mdi-album-jacket text-2xl text-accent", html)
+        self.assertIn("You have this album!", html)
+        self.assertIn('aria-label="Have - click to change"', html)
+        self.assertIn("star-appear", html)
+
+    def test_the_owned_response_offers_the_other_three_states(self):
+        html = self._post("own").content.decode()
+        self.assertNotIn("status=own", html)
+        self.assertIn("status=listened", html)
+        self.assertIn("status=want", html)
+        self.assertIn("status=none", html)
+
+    def test_an_untracked_menu_offers_have_first(self):
+        html = self._post("none").content.decode()
+        self.assertLess(html.index("status=own"), html.index("status=listened"))
+
+    def test_the_wrapper_carries_its_toggle_url_for_quick_mark(self):
+        html = self._post("none").content.decode()
+        self.assertIn(f'data-toggle-url="{self.url}"', html)
+
+    def test_the_toggle_drops_the_cached_owned_set(self):
+        from music import views
+
+        views._get_owned_album_ids(self.user)
+        key = config.CACHE_KEY_OWNED_ALBUMS.format(user_id=self.user.id)
+        self.assertIsNotNone(cache.get(key))
+        with self.captureOnCommitCallbacks(execute=True):
+            self._post("own")
+        self.assertIsNone(cache.get(key))
+
+    def test_the_owned_and_heard_id_sets_are_disjoint(self):
+        from music import views
+
+        heard = models.Album.objects.create(
+            name="Surfer Rosa", rank=2, slug="surfer-rosa", wikidata_id="Q456"
+        )
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=self.album, wikidata_id="Q123", owned=True
+        )
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=heard, wikidata_id="Q456"
+        )
+        self.assertEqual(views._get_owned_album_ids(self.user), [self.album.pk])
+        self.assertEqual(views._get_listened_album_ids(self.user), [heard.pk])
+
+    def test_the_row_names_what_it_records(self):
+        row = models.ListenedAlbum.objects.create(
+            user=self.user, album=self.album, wikidata_id="Q123", owned=True
+        )
+        self.assertEqual(str(row), "staffer has Doolittle")
+        row.owned = False
+        self.assertEqual(str(row), "staffer listened to Doolittle")
 
 
 class ToggleListenedAccessTests(TestCase):

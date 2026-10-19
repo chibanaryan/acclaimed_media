@@ -1409,8 +1409,46 @@ input[type="number"] {
 }
 
 /* The listened record gets the same glow the played star's image has. */
-.tracking-button-wrapper:hover .mdi-album {
+.tracking-button-wrapper:hover .mdi-album,
+.tracking-button-wrapper:hover .mdi-album-jacket {
   filter: drop-shadow(0 0 10px oklch(var(--a) / 0.9));
+}
+
+/* "Have": the same record in a filled sleeve. MDI has no record-in-a-jacket
+   glyph, so it is the mdi-album glyph knocked out of a square drawn in the
+   icon's own colour. It differs from Heard by its shape, not only its
+   colour, and stays one class so every `<span class="mdi {{ icon }}">` call
+   site - the button, the status filter, the quick-mark picker - takes it. */
+.mdi-album-jacket {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  line-height: 1;
+  border-radius: 0.12em;
+  background-color: currentColor;
+  vertical-align: middle;
+}
+
+.mdi-album-jacket::before {
+  content: "\F0025";
+  font-size: 0.84em;
+  color: var(--color-base-100);
+}
+
+/* Quick-mark mode (core/js/quick-mark.js): while a mode is on, a click on a
+   tracking button applies it rather than opening the menu, so the buttons
+   say so with their cursor and a ring on hover. */
+html.quick-mark-album .tracking-button-wrapper[data-tracking-scope="album"] .tracking-button,
+html.quick-mark-game .played-button {
+  cursor: copy;
+}
+
+html.quick-mark-album .tracking-button-wrapper[data-tracking-scope="album"]:hover .tracking-button,
+html.quick-mark-game .played-button-wrapper:hover .played-button {
+  border-radius: 9999px;
+  box-shadow: 0 0 0 2px var(--color-primary);
 }
 
 /* =============================================================================

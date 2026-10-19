@@ -62,3 +62,14 @@ class MediaTrackingSourceTests(SimpleTestCase):
         for noun in ("album", "Album", "game", "Game", "book", "Book"):
             with self.subTest(noun=noun):
                 self.assertNotIn(noun, code)
+
+    def test_a_status_is_added_to_its_own_set_and_removed_from_the_rest(self):
+        # The states are exclusive and a section may have any number of them
+        # (music has three), so the Sets are a status -> Set map rather than
+        # a done/want pair: anything else needs a branch per state.
+        self.assertIn("config.sets", self.source)
+        update = self.source.split("_updateSets(config, itemId, status) {", 1)[1]
+        update = update.split("_mirrorTwins", 1)[0]
+        self.assertIn("setStatus === status", update)
+        self.assertIn("ids.add(itemId)", update)
+        self.assertIn("ids.delete(itemId)", update)

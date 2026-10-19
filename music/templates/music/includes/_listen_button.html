@@ -8,6 +8,10 @@
 {# middle first and read as an orange blob at row size, being the only one #}
 {# of the three that was not a record; MDI has no record-with-a-plus. #}
 {# #}
-{# Props: album, is_tracked, is_wanted, and optionally size and just_toggled. #}
+{# Have is the same record in a filled sleeve (mdi-album-jacket, drawn in #}
+{# styles.css), so the progression stays one family and Have differs from #}
+{# Heard by shape as well as colour. #}
+{# #}
+{# Props: album, is_owned, is_tracked, is_wanted, and optionally size and just_toggled. #}
 {# Keep every template comment on a single line. #}
-{% include 'core/includes/_tracking_button.html' with item=album external_id=album.wikidata_id tracking_scope='album' toggle_url_name='music:toggle-listened' tracked_status='listened' tracked_icon='mdi-album' tracked_icon_class='text-accent' wanted_icon='mdi-record-circle' wanted_icon_class='text-warning' untracked_icon='mdi-record-circle-outline' untracked_icon_class='text-base-content/30' tracked_label='Listened' wanted_label='Want to Listen' untracked_label='Untracked' tracked_tip='You have listened to this album!' wanted_tip='You want to listen to this album!' untracked_tip="You aren't tracking this album." %}
+{% include 'core/includes/_tracking_button.html' with item=album external_id=album.wikidata_id tracking_scope='album' toggle_url_name='music:toggle-listened' owned_status='own' owned_icon='mdi-album-jacket' owned_icon_class='text-accent' owned_label='Have' owned_tip='You have this album!' tracked_status='listened' tracked_icon='mdi-album' tracked_icon_class='text-accent' wanted_icon='mdi-record-circle' wanted_icon_class='text-warning' untracked_icon='mdi-record-circle-outline' untracked_icon_class='text-base-content/30' tracked_label='Heard' wanted_label='Want' untracked_label='Untracked' tracked_tip='You have heard this album!' wanted_tip='You want this album!' untracked_tip="You aren't tracking this album." %}

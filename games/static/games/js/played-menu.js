@@ -11,6 +11,10 @@
  *
  * The wrapper stops click propagation so the mobile row does not navigate,
  * so this listens in the capture phase, ahead of that.
+ *
+ * With a quick-mark mode on (core/js/quick-mark.js, set from the picker in
+ * the results header) a click posts that status straight away instead of
+ * opening the menu.
  */
 (function() {
     'use strict';
@@ -77,16 +81,31 @@
         }
     }
 
-    function choose(status) {
+    function toggleUrl(wrapper) {
         const menu = getMenu();
-        const wrapper = activeWrapper;
-        close(false);
-        if (!menu || !wrapper || typeof htmx === 'undefined') return;
-        const url = menu.dataset.url.replace('/0/', '/' + wrapper.dataset.igdbId + '/') +
+        return menu.dataset.url.replace('/0/', '/' + wrapper.dataset.igdbId + '/');
+    }
+
+    function post(wrapper, status) {
+        if (typeof htmx === 'undefined') return;
+        const url = toggleUrl(wrapper) +
             '?status=' + status +
             (wrapper.dataset.size === 'large' ? '&size=large' : '');
         // The wrapper as source inherits the body's hx-headers CSRF token.
         htmx.ajax('POST', url, { source: wrapper, target: wrapper, swap: 'outerHTML' });
+    }
+
+    function choose(status) {
+        const menu = getMenu();
+        const wrapper = activeWrapper;
+        close(false);
+        if (!menu || !wrapper) return;
+        post(wrapper, status);
+    }
+
+    // The quick-mark mode for games, or '' when off or not on this page.
+    function quickMode() {
+        return window.QuickMark ? window.QuickMark.active('game') : '';
     }
 
     document.addEventListener('click', function(event) {
@@ -102,6 +121,15 @@
         const button = event.target.closest('.played-button');
         const wrapper = button && button.closest('.played-button-wrapper');
         if (wrapper) {
+            const mode = quickMode();
+            if (mode) {
+                close(false);
+                // The second click of a double-click would undo the first.
+                if (event.detail < 2) {
+                    window.QuickMark.mark(wrapper, toggleUrl(wrapper), mode);
+                }
+                return;
+            }
             const reopen = wrapper !== activeWrapper;
             close(false);
             // A keyboard activation reports no pointer, so it gets focus moved

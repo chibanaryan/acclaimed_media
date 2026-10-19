@@ -23,7 +23,7 @@
 {% block tracking_button %}
 {% if not hide_tracking_button and user.is_authenticated or not item %}
 <div class="w-12 min-w-12 max-w-12 shrink-0 flex items-center justify-center" data-slot="tracking-column">
-    {% if item %}{% include 'music/includes/_listen_button.html' with album=item is_tracked=item.is_listened_by_user is_wanted=item.is_want_to_listen_by_user %}{% endif %}
+    {% if item %}{% include 'music/includes/_listen_button.html' with album=item is_owned=item.is_owned_by_user is_tracked=item.is_listened_by_user is_wanted=item.is_want_to_listen_by_user %}{% endif %}
 </div>
 {% endif %}
 {% endblock %}
@@ -31,7 +31,7 @@
 {% block mobile_tracking_button %}
 {% if not hide_tracking_button and user.is_authenticated or not item %}
 <div class="w-8 h-8 min-w-8 max-w-8 shrink-0 flex items-center justify-center" data-slot="tracking-column-mobile">
-    {% if item %}{% include 'music/includes/_listen_button.html' with album=item is_tracked=item.is_listened_by_user is_wanted=item.is_want_to_listen_by_user %}{% endif %}
+    {% if item %}{% include 'music/includes/_listen_button.html' with album=item is_owned=item.is_owned_by_user is_tracked=item.is_listened_by_user is_wanted=item.is_want_to_listen_by_user %}{% endif %}
 </div>
 {% endif %}
 {% endblock %}

@@ -75,9 +75,11 @@ RESERVED_ALBUM_SLUG_PATTERN = r"^\d{3}0s$"
 # this tuple for the same reason a new global one belongs in CACHE_KEYS.
 CACHE_KEY_LISTENED_ALBUMS = f"{CACHE_VERSION}:listened_albums_{{user_id}}"
 CACHE_KEY_WANT_TO_LISTEN_ALBUMS = f"{CACHE_VERSION}:want_to_listen_albums_{{user_id}}"
+CACHE_KEY_OWNED_ALBUMS = f"{CACHE_VERSION}:owned_albums_{{user_id}}"
 
 PER_USER_CACHE_KEY_TEMPLATES = (
     CACHE_KEY_LISTENED_ALBUMS,
+    CACHE_KEY_OWNED_ALBUMS,
     CACHE_KEY_WANT_TO_LISTEN_ALBUMS,
 )
 
@@ -95,6 +97,13 @@ CACHE_TIMEOUT_TRACKING = CACHE_TIMEOUT_5_MINUTES
 # data-status="listened" reads correctly on an element, so neither spelling
 # is forced to serve both. This table is the only place the two are mapped
 # server-side; `core/static/core/js/media-tracking.js` holds the client's.
+#
+# The states are exclusive: Have, Heard, Want or Untracked. "Heard" kept the
+# `listened` / `yes` spelling it had when it was labelled "Listened", so old
+# links, saved filters and `mark_albums_listened` still mean the same thing.
+# "Have" is a ListenedAlbum row with owned=True. `mdi-album-jacket` is not an
+# MDI glyph but the record drawn in a filled sleeve, in styles.css: the record
+# family again, told apart from Heard by its shape and not only its colour.
 LISTEN_STATUS_OPTIONS = (
     {
         "value": "no",
@@ -113,9 +122,46 @@ LISTEN_STATUS_OPTIONS = (
     {
         "value": "yes",
         "status": "listened",
-        "label": "Listened",
-        "title": "Listened",
+        "label": "Heard",
+        "title": "Heard",
         "icon": "mdi-album",
+    },
+    {
+        "value": "own",
+        "status": "own",
+        "label": "Have",
+        "title": "Owned",
+        "icon": "mdi-album-jacket",
+    },
+)
+
+# The quick-mark picker's choices (core/includes/_quick_mark_picker.html),
+# most-collected first. `status` is the toggle's vocabulary; "Clear" sets
+# none, which a reader tidying up a run of mis-marks wants as much as a mark.
+QUICK_MARK_OPTIONS = (
+    {
+        "status": "own",
+        "label": "Have",
+        "icon": "mdi-album-jacket",
+        "icon_class": "text-accent",
+    },
+    {
+        "status": "listened",
+        "label": "Heard",
+        "icon": "mdi-album",
+        "icon_class": "text-accent",
+    },
+    {
+        "status": "want",
+        "label": "Want",
+        "icon": "mdi-record-circle",
+        "icon_class": "text-warning",
+    },
+    {
+        "status": "none",
+        "label": "Clear",
+        "icon": "mdi-record-circle-outline",
+        "icon_class": "text-base-content/50",
     },
 )
 

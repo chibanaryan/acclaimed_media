@@ -134,6 +134,30 @@ class ReconnectTrackingRecordsTests(TestCase):
 
         self.assertEqual(models.ListenedAlbum.objects.get().pk, first.pk)
 
+    def test_the_merge_keeps_ownership_from_a_later_row(self):
+        # The earliest row is kept for its timestamp, but "Have" is a fact
+        # about the user, not about which of the album's ids they marked.
+        self.album.all_wikidata_ids = ["Q123", "Q999"]
+        self.album.save()
+        first = models.ListenedAlbum.objects.create(
+            user=self.user, album=None, wikidata_id="Q999"
+        )
+        second = models.ListenedAlbum.objects.create(
+            user=self.user, album=None, wikidata_id="Q123", owned=True
+        )
+        models.ListenedAlbum.objects.filter(pk=first.pk).update(
+            created=datetime(2020, 1, 1)
+        )
+        models.ListenedAlbum.objects.filter(pk=second.pk).update(
+            created=datetime(2024, 1, 1)
+        )
+
+        user_tracking_service.reconnect_tracking_records(self._id_map(self.album))
+
+        survivor = models.ListenedAlbum.objects.get()
+        self.assertEqual(survivor.pk, first.pk)
+        self.assertTrue(survivor.owned)
+
     def test_two_users_tracking_one_album_are_both_kept(self):
         # Grouping is per user; these are not duplicates of each other.
         other = User.objects.create_user(username="other", password="pw")
