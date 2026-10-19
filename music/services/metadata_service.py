@@ -35,7 +35,12 @@ from django.db import transaction
 
 from music import config, models
 from music.discogs import DiscogsClient
-from music.musicbrainz import CoverArt, CoverArtArchiveClient, MusicBrainzClient
+from music.musicbrainz import (
+    COVER_CLEAN,
+    CoverArt,
+    CoverArtArchiveClient,
+    MusicBrainzClient,
+)
 from music.services.import_handler import _unique_artist_slug, split_artist_credit
 from music.wikidata import WikidataClient
 
@@ -470,16 +475,29 @@ class AlbumMetadataService:
         album.save(update_fields=["musicbrainz_release_group_id"])
 
     def _find_downloadable_cover(self, album, client):
-        """The first cover for this album whose bytes actually download.
+        """The cleanest cover for this album whose bytes actually download.
 
         The release group's own art is asked for first - it is the image the
-        community chose to represent the album - and only if that will not
-        download are the group's individual releases tried.
+        community chose to represent the album - and a clean scan of it ends
+        the search there, as it does for nearly every album. Only if it will
+        not download, or is tagged as more than the sleeve (an obi strip, a
+        photo of the whole package), are the group's individual releases
+        tried for a clean one. Failing that the best of what downloaded is
+        kept, the group's own winning a tie: a cover with an obi strip beats
+        a placeholder.
         """
         art = client.fetch_front_cover(album.musicbrainz_release_group_id)
-        if art is not None and self._cover_downloads(art, client):
+        if art is not None and not self._cover_downloads(art, client):
+            art = None
+        if art is not None and art.quality == COVER_CLEAN:
             return art
-        return self._front_cover_via_releases(album, client)
+        if art is not None:
+            logger.debug(
+                "Group cover for %s is tagged %s; looking for a cleaner one",
+                album.name,
+                ", ".join(art.types),
+            )
+        return self._front_cover_via_releases(album, client, best=art)
 
     def _cover_downloads(self, art, client) -> bool:
         """Cheap check that the row size is really there, before storing both."""
@@ -495,15 +513,22 @@ class AlbumMetadataService:
         )
         return client.get_bytes(url) is not None
 
-    def _front_cover_via_releases(self, album, cover_client):
-        """Look for cover art on the group's individual releases.
+    def _front_cover_via_releases(self, album, cover_client, best=None):
+        """Look for a clean cover on the group's individual releases.
 
         The release-group endpoint is the right first question - it is the
         art the community chose to represent the album - but it answers for
         only most albums. Two release groups here return a persistent 500,
-        and a group can simply have no art of its own while its releases do.
+        a group can simply have no art of its own while its releases do, and
+        its chosen image is sometimes a Japanese pressing or a cassette.
         Releases are tried earliest first, so the original pressing's sleeve
         wins over a reissue's.
+
+        The first clean cover that downloads is returned. Otherwise the
+        cleanest that did, starting from ``best``, which an earlier candidate
+        keeps on a tie. "It Takes a Nation of Millions" is why: its group art
+        is broken on archive.org, and its earliest release's only image is a
+        photo of the jewel case with the disc beside it.
 
         This costs one MusicBrainz request per album that needs it, at
         1 req/sec, which is why it is a fallback and not the first move.
@@ -511,12 +536,15 @@ class AlbumMetadataService:
         mbids = self._release_mbids(album.musicbrainz_release_group_id)
         for release_mbid in mbids[:MAX_RELEASE_CANDIDATES]:
             art = cover_client.fetch_release_front_cover(release_mbid)
-            if art is not None and self._cover_downloads(art, cover_client):
-                logger.info(
-                    "Found cover for %s on release %s", album.name, release_mbid
-                )
+            if art is None or (best is not None and art.quality >= best.quality):
+                continue
+            if not self._cover_downloads(art, cover_client):
+                continue
+            logger.info("Found cover for %s on release %s", album.name, release_mbid)
+            if art.quality == COVER_CLEAN:
                 return art
-        return None
+            best = art
+        return best
 
     def _release_mbids(self, release_group_mbid: str) -> List[str]:
         """Browse a group's releases, for the cover-art fallback."""

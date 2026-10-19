@@ -19,7 +19,7 @@ The two have very different standing in the pipeline:
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from music import config
 from music.services.http_client import RateLimitedClient
@@ -28,6 +28,34 @@ logger = logging.getLogger(__name__)
 
 #: MusicBrainz search scores run 0-100; below this a match is not trustworthy.
 MIN_SEARCH_SCORE = 90
+
+#: How well an image tagged ``Front`` shows the sleeve, judged by the other
+#: Cover Art Archive types it carries. ``Booklet``, ``Track`` and ``Liner``
+#: are neutral: a CD booklet's front *is* the sleeve.
+COVER_CLEAN, COVER_COMPROMISED, COVER_PACKAGE_PHOTO = 0, 1, 2
+
+#: The sleeve, but a variant of it: a Japanese obi strip, a shrink-wrap
+#: sticker, or a cassette J-card's spine. Kept only when nothing cleaner is
+#: on offer. An audit of 1000 stored covers found 8 of these.
+COMPROMISED_COVER_TYPES = frozenset({"Obi", "Sticker", "Spine"})
+
+#: More than the sleeve: a photo of the whole package, or a scan that runs
+#: onto the back. "It Takes a Nation of Millions" showed a jewel case with
+#: the disc beside it, from a release whose one image was tagged
+#: Front + Back + Medium.
+PACKAGE_PHOTO_COVER_TYPES = frozenset(
+    {"Back", "Medium", "Tray", "Matrix/Runout", "Raw/Unedited", "Watermark"}
+)
+
+
+def cover_quality(types: Iterable[str]) -> int:
+    """Rank a front image by its types: lower is a cleaner sleeve."""
+    types = set(types)
+    if types & PACKAGE_PHOTO_COVER_TYPES:
+        return COVER_PACKAGE_PHOTO
+    if types & COMPROMISED_COVER_TYPES:
+        return COVER_COMPROMISED
+    return COVER_CLEAN
 
 
 @dataclass
@@ -51,6 +79,11 @@ class CoverArt:
 
     release_mbid: str
     image_id: str
+    types: Tuple[str, ...] = ()
+
+    @property
+    def quality(self) -> int:
+        return cover_quality(self.types)
 
 
 class MusicBrainzClient(RateLimitedClient):
@@ -137,11 +170,17 @@ class MusicBrainzClient(RateLimitedClient):
         Used only as a cover-art fallback: when the Cover Art Archive has no
         art filed against a release group (or persistently errors on it), its
         individual releases usually do have some.
+
+        Cassette releases go after every other format, earliest first within
+        each. A J-card is scanned and tagged as a plain ``Front``, so its
+        types cannot give it away: "The Rising" swapped a photographed CD for
+        a cassette's tall J-card until the format was consulted too.
         """
         payload = self.get_json(
             f"{config.MUSICBRAINZ_API_URL}/release",
             params={
                 "release-group": release_group_mbid,
+                "inc": "media",
                 "fmt": "json",
                 "limit": 100,
             },
@@ -149,10 +188,29 @@ class MusicBrainzClient(RateLimitedClient):
         if not isinstance(payload, dict):
             return []
 
-        releases = payload.get("releases") or []
+        # A release MusicBrainz says has no front art is dropped here, before
+        # the caller's cap, so it cannot crowd out one that does.
+        releases = [
+            release
+            for release in payload.get("releases") or []
+            if (release.get("cover-art-archive") or {}).get("front") is not False
+        ]
         # An undated release sorts last rather than first.
-        releases.sort(key=lambda release: release.get("date") or "9999")
+        releases.sort(
+            key=lambda release: (
+                self._is_cassette(release),
+                release.get("date") or "9999",
+            )
+        )
         return [release["id"] for release in releases if release.get("id")]
+
+    @staticmethod
+    def _is_cassette(release: Dict[str, Any]) -> bool:
+        """True if any of a release's media is a cassette of some kind."""
+        return any(
+            "Cassette" in (medium.get("format") or "")
+            for medium in release.get("media") or []
+        )
 
     @staticmethod
     def _build_release_group(mbid: str, payload: Dict[str, Any]) -> ReleaseGroup:
@@ -222,12 +280,22 @@ class CoverArtArchiveClient(RateLimitedClient):
         return self._pick_front_cover(payload, release_mbid)
 
     def _pick_front_cover(self, payload: Any, mbid: str) -> Optional[CoverArt]:
-        """Choose the front image out of a Cover Art Archive listing."""
+        """Choose the front image out of a Cover Art Archive listing.
+
+        A listing can hold more than one image flagged ``front``, and the
+        flag alone says nothing about what the image shows, so the cleanest
+        by ``cover_quality`` wins, the archive's own order breaking ties.
+        """
         if not isinstance(payload, dict):
             return None
 
         images = payload.get("images") or []
-        front = next((image for image in images if image.get("front")), None)
+        fronts = [image for image in images if image.get("front")]
+        front = min(
+            fronts,
+            key=lambda image: cover_quality(image.get("types") or ()),
+            default=None,
+        )
         if front is None:
             logger.debug("No front cover among %d images for %s", len(images), mbid)
             return None
@@ -238,7 +306,11 @@ class CoverArtArchiveClient(RateLimitedClient):
             logger.warning("Cover art for %s is missing an id or release MBID", mbid)
             return None
 
-        return CoverArt(release_mbid=release_mbid, image_id=str(image_id))
+        return CoverArt(
+            release_mbid=release_mbid,
+            image_id=str(image_id),
+            types=tuple(front.get("types") or ()),
+        )
 
     @staticmethod
     def _release_mbid_from_image_url(url: str) -> Optional[str]:

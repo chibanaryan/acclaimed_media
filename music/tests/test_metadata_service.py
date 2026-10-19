@@ -397,6 +397,60 @@ class CoverPassTests(ServiceTestCase):
             result = self.run_pass(client)
         self.assertEqual(result.processed, 1)
 
+    def stored_image_id(self):
+        return self.album.musicbrainz_album_data_set.get().cover_art_image_id
+
+    def test_a_clean_group_cover_ends_the_search(self):
+        client = self.build_client(front=self.art)
+        with mock.patch.object(self.service, "_release_mbids") as releases:
+            self.run_pass(client)
+        releases.assert_not_called()
+
+    def test_a_package_photo_loses_to_a_later_clean_release(self):
+        """It Takes a Nation of Millions: broken group art, then a photo of
+        the jewel case on the earliest release, then a clean scan."""
+        photo = CoverArt("rel-1", "1", ("Front", "Back", "Medium"))
+        clean = CoverArt("rel-2", "2", ("Front",))
+        client = self.build_client(front=None)
+        client.fetch_release_front_cover.side_effect = [photo, clean]
+        with mock.patch.object(
+            self.service, "_release_mbids", return_value=["rel-1", "rel-2"]
+        ):
+            self.run_pass(client)
+        self.assertEqual(self.stored_image_id(), "2")
+
+    def test_a_compromised_group_cover_gives_way_to_a_clean_release(self):
+        obi = CoverArt(RELEASE_MBID, "obi", ("Front", "Obi"))
+        clean = CoverArt("rel-1", "clean", ("Front",))
+        client = self.build_client(front=obi, release_front=clean)
+        with mock.patch.object(self.service, "_release_mbids", return_value=["rel-1"]):
+            self.run_pass(client)
+        self.assertEqual(self.stored_image_id(), "clean")
+
+    def test_a_compromised_group_cover_is_kept_over_nothing_better(self):
+        obi = CoverArt(RELEASE_MBID, "obi", ("Front", "Obi"))
+        sticker = CoverArt("rel-1", "sticker", ("Front", "Sticker"))
+        photo = CoverArt("rel-2", "photo", ("Front", "Back", "Medium"))
+        client = self.build_client(front=obi)
+        client.fetch_release_front_cover.side_effect = [sticker, photo, None]
+        with mock.patch.object(
+            self.service, "_release_mbids", return_value=["rel-1", "rel-2", "rel-3"]
+        ):
+            result = self.run_pass(client)
+        self.assertEqual(result.processed, 1)
+        self.assertEqual(self.stored_image_id(), "obi")
+
+    def test_a_package_photo_is_better_than_no_cover(self):
+        photo = CoverArt("rel-1", "photo", ("Front", "Back", "Medium"))
+        obi = CoverArt("rel-2", "obi", ("Front", "Obi"))
+        client = self.build_client(front=None)
+        client.fetch_release_front_cover.side_effect = [photo, obi]
+        with mock.patch.object(
+            self.service, "_release_mbids", return_value=["rel-1", "rel-2"]
+        ):
+            self.run_pass(client)
+        self.assertEqual(self.stored_image_id(), "obi")
+
     def test_only_the_first_few_releases_are_tried(self):
         client = self.build_client(front=None, release_front=None)
         many = [f"rel-{i}" for i in range(40)]

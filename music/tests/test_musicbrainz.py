@@ -6,10 +6,14 @@ from django.test import SimpleTestCase
 
 from music import config
 from music.musicbrainz import (
+    COVER_CLEAN,
+    COVER_COMPROMISED,
+    COVER_PACKAGE_PHOTO,
     MIN_SEARCH_SCORE,
     CoverArt,
     CoverArtArchiveClient,
     MusicBrainzClient,
+    cover_quality,
 )
 
 RG_MBID = "fdd96703-7b21-365e-bdea-38029fbeb84e"
@@ -162,6 +166,39 @@ class BrowseReleasesTests(ClientTestCase):
             client.browse_release_mbids(RG_MBID)
         self.assertEqual(get.call_args.kwargs["params"]["release-group"], RG_MBID)
 
+    def test_cassettes_sort_after_every_other_format(self):
+        """A J-card is tagged a plain Front, so the format has to say it."""
+        client = self.build()
+        payload = {
+            "releases": [
+                {"id": "tape", "date": "2002", "media": [{"format": "Cassette"}]},
+                {"id": "cd", "date": "2003", "media": [{"format": "CD"}]},
+                {"id": "unknown", "date": "2004", "media": [{"format": None}]},
+                {
+                    "id": "earlier-tape",
+                    "date": "2001",
+                    "media": [{"format": "Cassette"}],
+                },
+            ]
+        }
+        with mock.patch.object(client, "get_json", return_value=payload) as get:
+            mbids = client.browse_release_mbids(RG_MBID)
+        self.assertEqual(mbids, ["cd", "unknown", "earlier-tape", "tape"])
+        self.assertEqual(get.call_args.kwargs["params"]["inc"], "media")
+
+    def test_a_release_with_no_front_art_is_dropped(self):
+        """So art-less releases cannot crowd real candidates past the cap."""
+        client = self.build()
+        payload = {
+            "releases": [
+                {"id": "bare", "date": "1988", "cover-art-archive": {"front": False}},
+                {"id": "art", "date": "1989", "cover-art-archive": {"front": True}},
+                {"id": "unknown", "date": "1990"},
+            ]
+        }
+        with mock.patch.object(client, "get_json", return_value=payload):
+            self.assertEqual(client.browse_release_mbids(RG_MBID), ["art", "unknown"])
+
 
 class SearchReleaseGroupTests(ClientTestCase):
     def test_an_album_is_preferred_over_a_single_of_the_same_name(self):
@@ -280,8 +317,62 @@ class SearchReleaseGroupTests(ClientTestCase):
             self.assertEqual(client.search_release_group("X", year=1970), "a")
 
 
+class CoverQualityTests(SimpleTestCase):
+    def test_a_plain_front_is_clean(self):
+        self.assertEqual(cover_quality(["Front"]), COVER_CLEAN)
+
+    def test_untyped_art_is_clean(self):
+        self.assertEqual(cover_quality([]), COVER_CLEAN)
+
+    def test_a_booklet_front_is_the_sleeve(self):
+        self.assertEqual(cover_quality(["Front", "Booklet"]), COVER_CLEAN)
+
+    def test_an_obi_strip_is_compromised(self):
+        self.assertEqual(cover_quality(["Front", "Obi"]), COVER_COMPROMISED)
+
+    def test_a_package_photo_is_worst(self):
+        self.assertEqual(
+            cover_quality(["Front", "Back", "Medium"]), COVER_PACKAGE_PHOTO
+        )
+
+    def test_a_package_photo_outranks_a_compromise(self):
+        self.assertEqual(cover_quality(["Front", "Back", "Spine"]), COVER_PACKAGE_PHOTO)
+
+
 class CoverArtArchiveTests(ClientTestCase):
     client_class = CoverArtArchiveClient
+
+    def image(self, image_id, types):
+        url = f"http://coverartarchive.org/release/{RELEASE_MBID}/{image_id}.jpg"
+        return {"id": image_id, "front": True, "types": types, "image": url}
+
+    def test_a_clean_front_beats_a_package_photo(self):
+        client = self.build()
+        listing = {
+            "images": [
+                self.image("1", ["Front", "Back", "Medium"]),
+                self.image("2", ["Front"]),
+            ]
+        }
+        with mock.patch.object(client, "get_json", return_value=listing):
+            art = client.fetch_release_front_cover(RELEASE_MBID)
+        self.assertEqual(art.image_id, "2")
+        self.assertEqual(art.quality, COVER_CLEAN)
+
+    def test_a_package_photo_is_still_returned_when_it_is_all_there_is(self):
+        """The caller decides whether to look further; this reports the types."""
+        client = self.build()
+        listing = {"images": [self.image("1", ["Front", "Back", "Medium"])]}
+        with mock.patch.object(client, "get_json", return_value=listing):
+            art = client.fetch_release_front_cover(RELEASE_MBID)
+        self.assertEqual(art.types, ("Front", "Back", "Medium"))
+        self.assertEqual(art.quality, COVER_PACKAGE_PHOTO)
+
+    def test_equal_fronts_keep_the_archive_order(self):
+        client = self.build()
+        listing = {"images": [self.image("1", ["Front"]), self.image("2", ["Front"])]}
+        with mock.patch.object(client, "get_json", return_value=listing):
+            self.assertEqual(client.fetch_front_cover(RG_MBID).image_id, "1")
 
     def listing(self, front=True, image_id="25254108559"):
         url = f"http://coverartarchive.org/release/{RELEASE_MBID}/{image_id}.jpg"

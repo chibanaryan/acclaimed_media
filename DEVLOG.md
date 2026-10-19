@@ -1,5 +1,21 @@
 # Developer Log
 
+## 2026-10-18 (album covers: a front flag is not a sleeve)
+
+- **"It Takes a Nation of Millions" showed a photo of its jewel case and
+  disc.** Its release group's art is broken on archive.org, so the cover pass
+  fell back to the earliest release, whose only image is one photo of the
+  whole package tagged Front + Back + Medium. `_pick_front_cover` took the
+  first `front` image and never read its `types`
+- **Covers are now ranked by their Cover Art Archive types**
+  (`music.musicbrainz.cover_quality`): clean, compromised (Obi, Sticker,
+  Spine) or package photo (Back, Medium, Tray, ...). A non-clean pick sends
+  the pass through the releases for a clean scan, keeping the best that
+  downloaded rather than none. An audit of all 1000 covers found 9 to re-pick
+- **Cassette releases sort last in that walk**, from `inc=media` on the same
+  browse request: a J-card is tagged a plain Front, and The Rising swapped a
+  shrink-wrapped CD for one until the format was consulted. Releases
+  MusicBrainz says have no front art are dropped before the 12-release cap
 ## 2026-10-18 (music genres: our own vocabulary, voted on by three sources)
 
 - **The album genre tree had 207 leaves, 73 holding a single album.** Every

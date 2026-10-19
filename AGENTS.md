@@ -852,6 +852,17 @@ Decisions worth knowing before changing any of it:
   doubles as verification, and there are three fallbacks: the release group's own
   art, then any release in the group (earliest first), then a MusicBrainz search
   by title and artist for albums whose Wikidata entity has no P436.
+- **A `front` flag is not a sleeve.** The archive tags each image with types,
+  and a front can also be `Obi`, `Sticker` or `Spine` (a Japanese pressing,
+  shrink-wrap, a cassette J-card) or `Back`/`Medium` (a photo of the whole
+  package - "It Takes a Nation of Millions" showed its jewel case and disc).
+  `musicbrainz.cover_quality` ranks them; anything short of a clean scan sends
+  the pass on through the releases for one, and keeps the best it found
+  rather than none. A cassette's J-card is tagged a plain `Front`, so the
+  release walk also puts cassette releases last (`inc=media` on the browse).
+  An audit of 1000 covers found 27 non-plain fronts, 18 of them harmless
+  `Booklet`/`Track` scans. Re-pick an album with
+  `--covers-only --force --slug <slug>`, since a stored cover is otherwise skipped.
 
 `Album.cover_image_url` keeps the remote URL for the API and Open Graph scrapers;
 `Album.thumbnail` and `Album.image` are what the pages render and prefer the local
