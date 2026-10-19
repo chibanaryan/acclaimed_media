@@ -438,6 +438,15 @@ class AlbumDetailViewTests(MusicDataMixin, TestCase):
             self.client.get(self.revolver.get_absolute_url()).status_code, 404
         )
 
+    def test_the_artist_is_linked_once_under_the_title(self):
+        # The subtitle under the title carries the credit; the properties
+        # table used to repeat it as an "Artist:" row.
+        response = self.client.get(self.revolver.get_absolute_url())
+        self.assertContains(
+            response, f'href="{self.beatles.get_absolute_url()}"', count=1
+        )
+        self.assertNotContains(response, "Artist:")
+
     def test_unknown_slug_is_404(self):
         self.assertEqual(self.client.get("/music/no-such-album/").status_code, 404)
 

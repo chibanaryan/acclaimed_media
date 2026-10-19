@@ -46,10 +46,6 @@
         </td>
     </tr>
     {% endif %}
-    <tr>
-        <td class="text-base-content/70 font-semibold pr-4 pb-3 align-top whitespace-nowrap">Artist{{ album.artists.count|pluralize }}:</td>
-        <td class="pb-3">{% artist_links album 'link link-accent' %}</td>
-    </tr>
     {% with genres=album.genres.all %}
     {% if genres %}
     <tr>

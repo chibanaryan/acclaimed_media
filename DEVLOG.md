@@ -1,5 +1,17 @@
 # Developer Log
 
+## 2026-10-19
+
+- **Fix `?highlight=` links not landing on the album.** A genre or decade
+  link from album detail opened the rankings with the row marked but
+  nothing scrolled to it, and an album past the first hundred was not
+  rendered at all. `album-client-filtering.js` now scrolls on load, paging
+  down through the engine when the album is further on, as the games page
+  does. View mode comes from the engine, not the container's Alpine class,
+  which is not applied yet on a fresh load in grid view
+- **Album detail names the artist once**, in the subtitle under the title;
+  the properties table's "Artist:" row repeated it
+
 ## 2026-10-18 (music: ready to launch behind MUSIC_ENABLED)
 
 - **`MUSIC_ENABLED` is the public-launch switch.** Off (the default, and

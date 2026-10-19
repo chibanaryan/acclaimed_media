@@ -444,14 +444,111 @@ function scrollToAlbumPosition(position) {
     }, 3000);
 }
 
-/** How many rows are on the page now, in whichever view is showing. */
-function loadedAlbumCount() {
+/**
+ * Scroll to an album's row or card by id and flash it.
+ *
+ * What a `?highlight=` link from album detail lands on, as the games
+ * rankings page does: the highlight fades after a couple of seconds, or as
+ * soon as the reader hovers another row.
+ * @param {number} albumId
+ * @param {string} [viewMode] - see loadedAlbumCount
+ * @returns {boolean} Whether the album is on the page
+ */
+function scrollToAlbumById(albumId, viewMode) {
+    const isGrid = albumViewIsGrid(viewMode);
+
+    let target = null;
+    const highlight = [];
+
+    if (isGrid) {
+        const card = document.getElementById(`music-${albumId}-grid`);
+        if (card) {
+            target = card;
+            highlight.push(card);
+        }
+    } else {
+        const desktop = document.getElementById(`music-${albumId}`);
+        const mobile = document.getElementById(`music-${albumId}-mobile`);
+        // As in scrollToAlbumPosition: the half with a layout box is the
+        // one the reader can see.
+        target =
+            (desktop && desktop.offsetParent !== null && desktop) ||
+            (mobile && mobile.offsetParent !== null && mobile) ||
+            desktop ||
+            mobile ||
+            null;
+        if (desktop) highlight.push(desktop);
+        if (mobile) highlight.push(mobile);
+    }
+
+    if (!target) return false;
+
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    highlight.forEach(el => el.classList.add('is-highlighted'));
+
+    const fadeOut = () => highlight.forEach(el => el.classList.add('fade-out'));
+    const fadeTimeout = setTimeout(fadeOut, 2000);
+    const selector = isGrid ? '.media-card-grid' : '.media-row';
+    document.querySelectorAll(selector).forEach(item => {
+        if (highlight.includes(item)) return;
+        item.addEventListener('mouseenter', () => {
+            clearTimeout(fadeTimeout);
+            fadeOut();
+        }, { once: true });
+    });
+    return true;
+}
+
+/**
+ * Whether the list is in grid view: `viewMode` if given, otherwise the
+ * container's class. The class is Alpine's `:class`, which on a fresh load
+ * may not be applied yet when the engine is ready, so a caller that knows
+ * the mode passes it.
+ */
+function albumViewIsGrid(viewMode) {
+    if (viewMode) return viewMode === 'grid';
+    const container = document.getElementById('album-list-container');
+    return Boolean(container && container.classList.contains('view-grid'));
+}
+
+/**
+ * How many rows are on the page now, in whichever view is showing.
+ * @param {string} [viewMode] - 'list' or 'grid'; read off the container if omitted
+ */
+function loadedAlbumCount(viewMode) {
     const container = document.getElementById('album-list-container');
     if (!container) return 0;
-    const selector = container.classList.contains('view-grid')
+    const selector = albumViewIsGrid(viewMode)
         ? '.media-card-grid'
         : '.media-row.desktop';
     return container.querySelectorAll(selector).length;
+}
+
+/**
+ * Page until at least `count` rows are on the page, or there are no more.
+ *
+ * With the engine ready this pages through the data in memory; without it the
+ * page's own HTMX load-more is clicked instead, which is slower but keeps
+ * working if the bundle's data never arrives.
+ */
+async function loadAlbumsThrough(csf, count) {
+    // The engine's mode is the one its loadMore appends in.
+    const loaded = () => loadedAlbumCount(csf.isReady() ? csf.viewMode : undefined);
+    while (loaded() < count) {
+        const before = loaded();
+        if (csf.isReady()) {
+            csf.loadMore();
+        } else {
+            const button = document.querySelector(
+                '#load-more-container .load-more-button'
+            );
+            if (!button) break;
+            button.click();
+            // Give HTMX a moment to swap the next page in.
+            await new Promise(resolve => setTimeout(resolve, 400));
+        }
+        if (loaded() === before) break;
+    }
 }
 
 /**
@@ -459,9 +556,6 @@ function loadedAlbumCount() {
  *
  * The controls partial renders a pair of them, one for each breakpoint, so
  * the handlers are delegated from the document rather than bound per input.
- * With the engine ready this pages through the data in memory; without it the
- * page's own HTMX load-more is clicked instead, which is slower but keeps the
- * box working if the bundle never arrives.
  */
 function initAlbumJumpToRank(csf) {
     const jump = async input => {
@@ -477,22 +571,7 @@ function initAlbumJumpToRank(csf) {
             return;
         }
 
-        while (loadedAlbumCount() < target) {
-            const before = loadedAlbumCount();
-            if (csf.isReady()) {
-                csf.loadMore();
-            } else {
-                const button = document.querySelector(
-                    '#load-more-container .load-more-button'
-                );
-                if (!button) break;
-                button.click();
-                // Give HTMX a moment to swap the next page in.
-                await new Promise(resolve => setTimeout(resolve, 400));
-            }
-            if (loadedAlbumCount() === before) break;
-        }
-
+        await loadAlbumsThrough(csf, target);
         scrollToAlbumPosition(target);
         input.value = '';
     };
@@ -603,7 +682,26 @@ function initAlbumFiltering() {
         rerender({ push: false, highlightId: currentHighlight() });
     });
 
-    csf.init().then(ok => {
+    // A `?highlight=` link from album detail lands on the album, as it does
+    // on the games rankings page. If the server rendered its row, scroll now
+    // - after a beat, so Alpine has laid out the heading and sidebar above
+    // it - without waiting on the data. Otherwise it is further down the
+    // result set, and finding it waits for the engine below.
+    const highlightOnLoad = currentHighlight();
+    const viewModeOnLoad = csf._storedViewMode();
+    let highlightPending = false;
+    if (highlightOnLoad !== null) {
+        const onPage =
+            document.getElementById(`music-${highlightOnLoad}`) ||
+            document.getElementById(`music-${highlightOnLoad}-grid`);
+        if (onPage) {
+            setTimeout(() => scrollToAlbumById(highlightOnLoad, viewModeOnLoad), 300);
+        } else {
+            highlightPending = true;
+        }
+    }
+
+    csf.init().then(async ok => {
         if (!ok) return;
         ready = true;
         csf.attach(form);
@@ -655,7 +753,19 @@ function initAlbumFiltering() {
 
         // Nothing is re-rendered on load: the server already rendered this
         // exact filter state, and re-rendering would only make the page
-        // flicker. The engine takes over from the next interaction.
+        // flicker. The engine takes over from the next interaction - except
+        // to page down to a highlighted album the server did not render.
+        if (highlightPending) {
+            csf._syncRendererWithPage();
+            const position = csf.renderer.currentItems.findIndex(
+                album => album.id === highlightOnLoad
+            ) + 1;
+            // Not in this result set at all: nothing to land on.
+            if (position > 0) {
+                await loadAlbumsThrough(csf, position);
+                scrollToAlbumById(highlightOnLoad, csf.viewMode);
+            }
+        }
     });
 }
 

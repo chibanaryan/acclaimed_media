@@ -526,3 +526,47 @@ class LandingPagesPushOntoTheRankingsUrlTests(SimpleTestCase):
                 match = re.search(re.escape(stale) + r"[\"']? %\}\?v=(\d+)", page)
                 self.assertIsNotNone(match, f"{stale} is not loaded with a ?v=")
                 self.assertGreater(int(match.group(1)), shipped)
+
+
+class MusicHighlightScrollsOnLoadTests(SimpleTestCase):
+    """A `?highlight=` link from album detail must land on the album.
+
+    The server marked the row highlighted, but nothing on the music page
+    scrolled to it, and an album past the first hundred was not rendered at
+    all. The games page has always done both; music now does too, from the
+    bundle, so the minified copies have to carry it.
+    """
+
+    SOURCE = "music/static/music/js/album-client-filtering.js"
+
+    def _source(self, relative_path):
+        return (Path(settings.BASE_DIR) / relative_path).read_text()
+
+    def test_the_highlight_is_read_and_scrolled_to_on_load(self):
+        source = self._source(self.SOURCE)
+        init = source.split("function initAlbumFiltering() {", 1)[1]
+        self.assertIn("const highlightOnLoad = currentHighlight();", init)
+        self.assertIn("scrollToAlbumById(highlightOnLoad, ", init)
+
+    def test_an_album_past_the_rendered_rows_is_paged_down_to(self):
+        source = self._source(self.SOURCE)
+        init = source.split("function initAlbumFiltering() {", 1)[1]
+        self.assertIn("await loadAlbumsThrough(csf, position);", init)
+
+    def test_the_minified_copies_carry_it(self):
+        for path in (
+            "music/static/music/js/album-client-filtering.min.js",
+            "music/static/music/js/music-client-side-filtering.bundle.min.js",
+        ):
+            with self.subTest(path=path):
+                minified = self._source(path)
+                self.assertIn("scrollToAlbumById", minified)
+                self.assertIn("loadAlbumsThrough", minified)
+
+    def test_the_page_bumped_the_bundle_cache_buster(self):
+        page = self._source("music/templates/music/home.html")
+        match = re.search(
+            r"music-client-side-filtering\.bundle\.min\.js[\"']? %\}\?v=(\d+)", page
+        )
+        self.assertIsNotNone(match)
+        self.assertGreater(int(match.group(1)), 4)
