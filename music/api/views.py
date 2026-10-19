@@ -146,6 +146,9 @@ class AlbumAllDataView(MusicReadAPIMixin, APIView):
                     "s": album.slug,
                     "r": album.rank,
                     "y": album.year_released,
+                    # The release date orders a year's albums. ISO, so the
+                    # client compares it as a string; null when undated.
+                    "rd": album.release_date and album.release_date.isoformat(),
                     "c": album.artist_credit,  # published credit
                     "t": album.thumbnail,  # 250px cover, local copy preferred
                     "ar": artist_ids,

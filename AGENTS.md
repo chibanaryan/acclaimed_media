@@ -349,6 +349,22 @@ Two payload fields exist to keep the client and the server agreeing exactly:
   is weighted differently again. The client sorts alphabetically by this
   integer, which also stops local SQLite disagreeing with production Postgres.
 
+The "Release Date" sort (`?sort=year`, kept for old links and saved filters)
+is `year_released`, then `release_date` within the year (undated last in both
+directions), then rank - `RELEASE_ORDER` in `music/views.py`,
+`_compareReleaseDates` on the client, which reads the payload's `rd`. The
+year leads because it is the published one every filter and row shows.
+`Album.release_date` is derived from Wikidata P577, else MusicBrainz's first
+release, by `music.services.release_dates.refresh_release_dates` at the end of
+any `fetch_album_metadata` run with a Wikidata or MusicBrainz pass. An import
+wipes it until that run, as it does genres.
+
+`release_date_precision` ("day", "month", or blank) matters because a
+month-precise date is stored as the 1st: the artist page's rows show
+"May 16, 1966" only for "day", else "May 1966" (`release_date_label`, passed
+to the row as `year_text`). Blank reads as a month - it is what a Wikidata row
+fetched before the precision was stored carries until its next pass.
+
 The genre filter expands a selected genre to its descendants on both sides,
 as `games.services.query_filters.apply_genre_filter` does: picking "Rock"
 means rock, including the Discogs styles filed under it. `expand_genre_ids`

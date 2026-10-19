@@ -704,6 +704,84 @@ class ArtistDetailViewTests(MusicDataMixin, TestCase):
         self.assertContains(response, "musicbrainz.org/artist/")
 
 
+class ArtistDetailAlbumSortTests(MusicDataMixin, TestCase):
+    """An artist's albums by rank, or in release order."""
+
+    def setUp(self):
+        super().setUp()
+        self.bowie = models.Artist.objects.create(name="David Bowie", slug="bowie")
+        # Rank order is Ziggy, Low, Man; release order Man, Ziggy, Low.
+        self.ziggy = self._album("Ziggy Stardust", rank=10, year=1972)
+        self.low = self._album("Low", rank=20, year=1977)
+        self.man = self._album("The Man Who Sold the World", rank=30, year=1970)
+
+    def _album(self, name, rank, year):
+        album = models.Album.objects.create(
+            name=name, rank=rank, artist_credit="David Bowie", year_released=year
+        )
+        album.artists.set([self.bowie])
+        return album
+
+    def _albums(self, query="", **headers):
+        response = self.client.get(self.bowie.get_absolute_url() + query, **headers)
+        self.assertEqual(response.status_code, 200)
+        return response, response.context["artist_albums"]
+
+    def test_rank_is_the_default(self):
+        response, albums = self._albums()
+        self.assertEqual(albums, [self.ziggy, self.low, self.man])
+        self.assertEqual(response.context["current_sort"], "rank")
+        self.assertEqual(response.context["current_dir"], "asc")
+
+    def test_year_sort_is_oldest_first(self):
+        _, albums = self._albums("?sort=year")
+        self.assertEqual(albums, [self.man, self.ziggy, self.low])
+
+    def test_year_sort_descending_is_newest_first(self):
+        _, albums = self._albums("?sort=year&dir=desc")
+        self.assertEqual(albums, [self.low, self.ziggy, self.man])
+
+    def test_an_unknown_sort_falls_back_to_rank(self):
+        response, albums = self._albums("?sort=bogus&dir=sideways")
+        self.assertEqual(albums, [self.ziggy, self.low, self.man])
+        self.assertEqual(response.context["current_sort"], "rank")
+        self.assertEqual(response.context["current_dir"], "asc")
+
+    def test_best_album_is_the_top_ranked_in_any_order(self):
+        response, _ = self._albums("?sort=year")
+        self.assertEqual(response.context["best_album"], self.ziggy)
+        self.assertContains(response, "at #10")
+
+    def test_the_control_shows_from_three_albums(self):
+        response, _ = self._albums()
+        self.assertTrue(response.context["show_album_sort"])
+        self.assertContains(response, "Release Date")
+        self.assertContains(response, "media-list-controls.min.js")
+
+    def test_the_control_is_hidden_below_three_albums(self):
+        response = self.client.get(self.beatles.get_absolute_url())
+        self.assertFalse(response.context["show_album_sort"])
+        self.assertNotContains(response, "Release Date")
+
+    def test_an_htmx_request_gets_only_the_albums(self):
+        response, albums = self._albums("?sort=year", HTTP_HX_REQUEST="true")
+        self.assertTemplateUsed(
+            response, "music/artists/includes/_artist_album_results.html"
+        )
+        self.assertNotContains(response, "<h1")
+        content = response.content.decode()
+        self.assertLess(
+            content.index("The Man Who Sold the World"), content.index("Ziggy")
+        )
+
+    def test_sorting_by_year_costs_no_extra_queries(self):
+        self.client.get(self.bowie.get_absolute_url())  # warm the caches
+        with CaptureQueriesContext(connection) as default:
+            self.client.get(self.bowie.get_absolute_url())
+        with self.assertNumQueries(len(default)):
+            self.client.get(self.bowie.get_absolute_url() + "?sort=year")
+
+
 class CsrfFailureTests(StaffUserTestMixin, TestCase):
     """A failed CSRF check must not reveal which music paths resolve.
 

@@ -15,7 +15,7 @@ from .. import models
 
 # Bumped when the shape of the ``all/`` payload changes, so a client holding
 # a copy of it discards that copy rather than reading fields that moved.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def compute_album_data_version():

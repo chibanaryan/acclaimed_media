@@ -87,7 +87,7 @@
 {% block year_link %}
 <a {% if item and item.year_released %}href="{% url 'music:home' %}?start={{ item.year_released }}&end={{ item.year_released }}&highlight={{ item.id }}"{% endif %}
    class="text-base-content/80 ml-1.5" data-slot="year-link">
-    (<span data-slot="year">{% if item %}{{ item.year|default_if_none:"" }}{% endif %}</span>)
+    (<span data-slot="year">{% if item %}{% firstof year_text item.year %}{% endif %}</span>)
 </a>
 {% endblock %}
 

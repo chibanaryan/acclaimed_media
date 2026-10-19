@@ -22,7 +22,8 @@ already landed, so a routine run only fills what an import left missing.
 
 Genres are rebuilt from the stored data at the end of any run that included
 the Wikidata, Discogs or MusicBrainz pass; ``rebuild_album_genres`` does the
-same thing on its own, with no network.
+same thing on its own, with no network. Release dates, which order a year's
+albums in the year sort, are re-derived after any Wikidata or MusicBrainz pass.
 """
 
 import logging
@@ -36,12 +37,15 @@ from music import views as music_views
 from music.management.commands.rebuild_album_genres import write_report
 from music.models import Album
 from music.services.genre_rebuild import rebuild_album_genres
+from music.services.release_dates import refresh_release_dates
 from music.services.metadata_service import AlbumMetadataService
 
 logger = logging.getLogger(__name__)
 
 #: The passes that store something genres are derived from.
 GENRE_SOURCE_PASSES = frozenset({"wikidata", "discogs", "musicbrainz"})
+# The passes that store a release date: Wikidata P577, MusicBrainz first release.
+DATE_SOURCE_PASSES = frozenset({"wikidata", "musicbrainz"})
 
 
 class Command(BaseCommand):
@@ -150,6 +154,11 @@ class Command(BaseCommand):
         if GENRE_SOURCE_PASSES.intersection(passes):
             self.stdout.write("")
             write_report(self, rebuild_album_genres())
+
+        # Corpus-wide for the same reason, and one query: see release_dates.
+        if DATE_SOURCE_PASSES.intersection(passes):
+            changed = refresh_release_dates()
+            self.stdout.write(f"Release dates: {changed} updated")
 
         music_views._invalidate_music_caches()
         self._print_summary(results, time.time() - start)

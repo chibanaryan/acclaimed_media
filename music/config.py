@@ -197,7 +197,7 @@ SITE_METADATA_KEY = "music"
 # partial the games rankings page uses.
 SORT_OPTIONS = (
     {"value": "rank", "label": "Rank"},
-    {"value": "year", "label": "Year"},
+    {"value": "year", "label": "Release Date"},
     {"value": "name", "label": "A-Z"},
 )
 
@@ -209,6 +209,15 @@ ARTIST_SORT_OPTIONS = (
     {"value": "rank", "label": "Top Rank"},
     {"value": "name", "label": "Name (A-Z)"},
 )
+
+# An artist's own albums, by acclaim or as a career in release order. Keys
+# match ARTIST_ALBUM_SORTS in music/views.py. The control appears only from
+# ARTIST_ALBUM_SORT_MIN_ALBUMS up: with one or two albums the order is moot.
+ARTIST_ALBUM_SORT_OPTIONS = (
+    {"value": "rank", "label": "Rank"},
+    {"value": "year", "label": "Release Date"},
+)
+ARTIST_ALBUM_SORT_MIN_ALBUMS = 3
 
 # The source-lists page sorts publications, not loose lists, now that it
 # groups by publication - so it offers what the games page offers in the

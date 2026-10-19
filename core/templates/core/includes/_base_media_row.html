@@ -7,6 +7,8 @@
 {#   show_rank ('alltime'|'filtered'|'none') - How to show the rank #}
 {#   index - Filtered rank number (when show_rank='filtered') #}
 {#   highlight - Item ID to highlight #}
+{#   year_text (optional) - shown in place of item.year, e.g. a full release #}
+{#     date where a page has room for one #}
 {# #}
 {# When item is not provided, renders empty template structure for JS cloning #}
 {# with data-slot attributes for client-side population. #}
@@ -116,7 +118,7 @@
                 {% endif %}
                 {% if item %}{{ item.name }}{% endif %}
                 <span class="font-normal text-sm text-base-content/70" data-slot="year-mobile">
-                    {% if item %}({{ item.year }}){% endif %}
+                    {% if item %}({% firstof year_text item.year %}){% endif %}
                 </span>
             </div>
             <div class="text-xs text-base-content/65" data-slot="meta-mobile">

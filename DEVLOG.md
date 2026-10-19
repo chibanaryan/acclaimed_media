@@ -11,6 +11,20 @@
   which is not applied yet on a fresh load in grid view
 - **Album detail names the artist once**, in the subtitle under the title;
   the properties table's "Artist:" row repeated it
+- **Artist pages sort by Rank or Release Date**, for artists with three or
+  more albums, swapped in place over HTMX with the shared entity sort
+  control. Rank stays the default; "best is" names the top-ranked album
+  whatever the order
+- **Music's year sort is now "Release Date"**: within a year, albums run in
+  release order instead of by rank, on the rankings, landing pages, CSV and
+  artist pages, server and client alike. New `Album.release_date` from
+  Wikidata P577 or MusicBrainz, refreshed after each metadata run and
+  backfilled by migration `0006`; the year stays the published one, and
+  undated albums sit last in their year. `?sort=year` is unchanged
+- **Artist pages show the full release date** ("November 4, 1970"), or the
+  month where that is all that is known - a month-precise date is stored as
+  the 1st, so its precision is stored too. Until the next Wikidata pass in
+  production, Wikidata dates show their month only
 
 ## 2026-10-18 (music: ready to launch behind MUSIC_ENABLED)
 

@@ -377,11 +377,12 @@ class AlbumAllDataAPITests(MusicAPITestMixin, TestCase):
         album = data["albums"][0]
         self.assertEqual(
             sorted(album),
-            ["ar", "c", "g", "id", "lc", "n", "ni", "nn", "r", "s", "t", "y"],
+            ["ar", "c", "g", "id", "lc", "n", "ni", "nn", "r", "rd", "s", "t", "y"],
         )
         self.assertEqual(album["id"], self.kid_a.id)
         self.assertEqual(album["s"], "kid-a")
         self.assertEqual(album["y"], 2000)
+        self.assertIsNone(album["rd"])  # undated until the metadata pass
         self.assertEqual(album["c"], "Radiohead")
         self.assertEqual(album["ar"], [self.artist.id])
         self.assertEqual(album["g"], [self.genre.id])

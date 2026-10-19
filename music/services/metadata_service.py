@@ -262,6 +262,7 @@ class AlbumMetadataService:
         model = models.WikipediaAlbumData
         record.page_title = fit(model, "page_title", album_meta.page_title)
         record.release_date = album_meta.release_date
+        record.release_date_precision = album_meta.release_date_precision
         record.record_label = fit(model, "record_label", record_label)
         record.spotify_album_id = fit(
             model, "spotify_album_id", album_meta.spotify_album_id

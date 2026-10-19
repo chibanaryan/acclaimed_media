@@ -265,8 +265,12 @@ class AlbumFilterEngine {
             // comparator reproduces a database collation faithfully, so the
             // ordering is taken rather than recomputed.
             name: (a, b) => flip * (a.ni - b.ni),
+            // The server's RELEASE_ORDER: the year, then the release date
+            // within it, both in the requested direction, then rank.
             year: (a, b) =>
-                this._compareYears(a.y, b.y, descending) || byRank(a, b),
+                this._compareYears(a.y, b.y, descending) ||
+                this._compareReleaseDates(a.rd, b.rd, descending) ||
+                byRank(a, b),
             lists: (a, b) => flip * (a.lc - b.lc) || byRank(a, b)
         };
 
@@ -287,6 +291,20 @@ class AlbumFilterEngine {
         if (leftMissing) return descending ? -1 : 1;
         if (rightMissing) return descending ? 1 : -1;
         return descending ? right - left : left - right;
+    }
+
+    /**
+     * Compare ISO release dates in the requested direction. An undated album
+     * goes last either way, as the server's `nulls_last=True` puts it.
+     * @private
+     */
+    _compareReleaseDates(left, right, descending) {
+        if (!left && !right) return 0;
+        if (!left) return 1;
+        if (!right) return -1;
+        if (left === right) return 0;
+        const ascending = left < right ? -1 : 1;
+        return descending ? -ascending : ascending;
     }
 
     /**

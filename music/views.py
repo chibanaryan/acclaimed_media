@@ -24,7 +24,8 @@ from pathlib import Path
 
 from django.conf import settings
 from django.core.cache import cache
-from django.db.models import Count, Max, Min, Prefetch, Q
+from django.db.models import Count, F, Max, Min, Prefetch, Q
+from django.db.models.expressions import OrderBy
 from django.db.models.functions import Lower
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
@@ -62,14 +63,22 @@ BUNDLED_FILES = {
 }
 
 # Sorts are declared in their natural ascending form and the direction flips
-# only the primary field, so a tiebreaker keeps pointing the same way: albums
+# only the primary key, so a tiebreaker keeps pointing the same way: albums
 # by year descending is newest-first then best-ranked, not newest-first then
 # worst-ranked. Declaring a field pre-negated here would make `dir=desc`
 # double-negate it.
+#
+# A primary key may be a tuple of fields that all follow the direction. The
+# year sort's is the year and then the release date within it, so "newest
+# first" means newest within the year too. The year leads because it is the
+# published one every filter and row shows; an album without a date sits at
+# the end of its year either way. `AlbumFilterEngine.sort` mirrors this.
+RELEASE_ORDER = ("year_released", F("release_date").asc(nulls_last=True))
+
 ALBUM_SORTS = {
     "rank": ("rank",),
     "name": (Lower("name"),),
-    "year": ("year_released", "rank"),
+    "year": (RELEASE_ORDER, "rank"),
     "lists": ("list_count", "rank"),
 }
 
@@ -91,6 +100,13 @@ ARTIST_SORTS = {
     # "ascending" in the natural sense the other sorts are declared in.
     "rank": ("best_rank", Lower("name")),
     "name": (Lower("name"),),
+}
+
+# An artist page's albums. Both read ascending first - best first, oldest
+# first - so unlike default_direction() a year here starts at the debut.
+ARTIST_ALBUM_SORTS = {
+    "rank": ("rank",),
+    "year": (RELEASE_ORDER, "rank"),
 }
 
 
@@ -263,17 +279,29 @@ def _apply_listen_filter(queryset, user, listened_param):
 
 
 def _apply_sort(queryset, sorts, sort, direction, default):
-    """Order a queryset by one of ``sorts``, flipping the primary field."""
-    fields = sorts.get(sort) or sorts[default]
+    """Order a queryset by one of ``sorts``, flipping the primary key."""
+    primary, *rest = sorts.get(sort) or sorts[default]
+    primary = primary if isinstance(primary, tuple) else (primary,)
     if direction == "desc":
-        fields = (_reverse_order(fields[0]),) + tuple(fields[1:])
-    return queryset.order_by(*fields)
+        primary = tuple(_reverse_order(field) for field in primary)
+    return queryset.order_by(*primary, *rest)
 
 
 def _reverse_order(field):
-    """Invert a single order_by term, string or expression."""
+    """Invert a single order_by term, string or expression.
+
+    An explicit ``OrderBy`` keeps its null placement, so an undated album
+    stays last whichever way the dates run.
+    """
     if isinstance(field, str):
         return field[1:] if field.startswith("-") else f"-{field}"
+    if isinstance(field, OrderBy):
+        return OrderBy(
+            field.expression,
+            descending=not field.descending,
+            nulls_first=field.nulls_first,
+            nulls_last=field.nulls_last,
+        )
     return field.desc()
 
 
@@ -1168,16 +1196,20 @@ class ArtistListView(
         return context
 
 
-class ArtistDetailView(MusicVisibleMixin, DetailView):
+class ArtistDetailView(MusicVisibleMixin, HTMXPartialMixin, DetailView):
     """One artist, with their ranked albums and any subsidiary acts."""
 
     model = models.Artist
     template_name = "music/artists/artist_detail.html"
+    htmx_partial_template = "music/artists/includes/_artist_album_results.html"
     context_object_name = "artist"
     slug_field = "slug"
     slug_url_kwarg = "slug"
 
     def get_queryset(self):
+        sort = self.request.GET.get("sort")
+        self.album_sort = sort if sort in ARTIST_ALBUM_SORTS else "rank"
+        self.album_dir = "desc" if self.request.GET.get("dir") == "desc" else "asc"
         return models.Artist.objects.prefetch_related(
             Prefetch(
                 "subsidiaries",
@@ -1185,10 +1217,15 @@ class ArtistDetailView(MusicVisibleMixin, DetailView):
             ),
             Prefetch(
                 "albums",
-                queryset=models.Album.objects.with_relations()
-                .with_list_count()
-                .with_listen_status(self.request.user)
-                .order_by("rank"),
+                queryset=_apply_sort(
+                    models.Album.objects.with_relations()
+                    .with_list_count()
+                    .with_listen_status(self.request.user),
+                    ARTIST_ALBUM_SORTS,
+                    self.album_sort,
+                    self.album_dir,
+                    default="rank",
+                ),
             ),
         )
 
@@ -1198,7 +1235,12 @@ class ArtistDetailView(MusicVisibleMixin, DetailView):
         albums = list(artist.albums.all())
         context["artist_albums"] = albums
         context["albums_count"] = len(albums)
-        context["best_album"] = albums[0] if albums else None
+        # The best album whatever order the rows are in.
+        context["best_album"] = min(albums, key=lambda a: a.rank, default=None)
+        context["current_sort"] = self.album_sort
+        context["current_dir"] = self.album_dir
+        context["sort_options"] = config.ARTIST_ALBUM_SORT_OPTIONS
+        context["show_album_sort"] = len(albums) >= config.ARTIST_ALBUM_SORT_MIN_ALBUMS
 
         # Where this artist's albums sit across the whole ranking, the chart
         # the developer detail page shows for a developer's games.

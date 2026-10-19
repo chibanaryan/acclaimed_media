@@ -12,6 +12,7 @@ from music.wikidata import (
     WikidataClient,
     _claim_values,
     _entity_ids,
+    _date_precision,
     _first_claim_value,
     _parse_time_value,
 )
@@ -97,6 +98,27 @@ class TimeParsingTests(SimpleTestCase):
 
     def test_a_non_numeric_timestamp_is_rejected(self):
         self.assertIsNone(_parse_time_value(time_value("+aaaa-bb-ccT00:00:00Z")))
+
+
+class DatePrecisionTests(SimpleTestCase):
+    """What the parsed date can be trusted to: a day is only shown if "day"."""
+
+    def test_a_day(self):
+        self.assertEqual(_date_precision(time_value("+1966-05-16T00:00:00Z")), "day")
+
+    def test_a_month(self):
+        self.assertEqual(
+            _date_precision(time_value("+1966-05-00T00:00:00Z", 10)), "month"
+        )
+
+    def test_a_zero_day_at_day_precision_is_a_month(self):
+        self.assertEqual(
+            _date_precision(time_value("+1966-05-00T00:00:00Z", 11)), "month"
+        )
+
+    def test_nothing_parsed_has_no_precision(self):
+        self.assertEqual(_date_precision(time_value("+1966-00-00T00:00:00Z", 9)), "")
+        self.assertEqual(_date_precision(None), "")
 
     def test_an_impossible_date_is_rejected(self):
         self.assertIsNone(_parse_time_value(time_value("+1966-02-31T00:00:00Z")))
@@ -201,6 +223,7 @@ class FetchAlbumMetadataTests(WikidataClientTestCase):
         meta = result["Q173643"]
         self.assertEqual(meta.page_title, "Abbey Road")
         self.assertEqual(meta.release_date, date(1969, 9, 26))
+        self.assertEqual(meta.release_date_precision, "day")
         self.assertEqual(meta.record_label_qid, "Q213710")
         self.assertEqual(meta.spotify_album_id, "0ETFjACtuP2ADo6")
         self.assertEqual(
@@ -216,6 +239,7 @@ class FetchAlbumMetadataTests(WikidataClientTestCase):
             meta = client.fetch_album_metadata(["Q1"])["Q1"]
         self.assertEqual(meta.page_title, "")
         self.assertIsNone(meta.release_date)
+        self.assertEqual(meta.release_date_precision, "")
         self.assertIsNone(meta.discogs_master_id)
         self.assertEqual(meta.performer_qids, [])
 

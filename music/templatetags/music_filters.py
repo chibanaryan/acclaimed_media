@@ -6,6 +6,7 @@ music template needs only ``{% load music_filters %}``.
 """
 
 from django import template
+from django.template.defaultfilters import date as format_date
 from django.urls import reverse
 from django.utils.html import format_html_join
 from django.utils.safestring import mark_safe
@@ -161,6 +162,22 @@ def album_rank_url(album):
     """Link to the rankings page scrolled to this album."""
     base = reverse("music:home")
     return f"{base}?highlight={album.id}"
+
+
+@register.filter
+def release_date_label(album):
+    """'May 16, 1966', 'May 1966', or just the year, as precisely as known.
+
+    A month-precise date is stored as the 1st, so only a "day" shows a day.
+    A date in another year than the published one shows the year alone,
+    since the row's year links to that year's rankings.
+    """
+    released = album.release_date
+    if not released or released.year != album.year_released:
+        return album.year
+    if album.release_date_precision == "day":
+        return format_date(released, "F j, Y")
+    return format_date(released, "F Y")
 
 
 @register.simple_tag

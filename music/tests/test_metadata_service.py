@@ -82,6 +82,7 @@ class ServiceTestCase(TestCase):
             wikidata_id="Q173643",
             page_title="Abbey Road",
             release_date=date(1969, 9, 26),
+            release_date_precision="day",
             record_label_qid="Q213710",
             spotify_album_id="0ETFjACtuP2ADo6",
             musicbrainz_release_group_id=RG_MBID,
@@ -147,6 +148,7 @@ class WikidataPassTests(ServiceTestCase):
         record = self.album.wikipedia_album_data_set.get()
         self.assertEqual(record.page_title, "Abbey Road")
         self.assertEqual(record.release_date, date(1969, 9, 26))
+        self.assertEqual(record.release_date_precision, "day")
         self.assertEqual(record.record_label, "Apple Records")
         self.assertEqual(record.spotify_album_id, "0ETFjACtuP2ADo6")
         self.assertEqual(record.primary_genre, "rock music")

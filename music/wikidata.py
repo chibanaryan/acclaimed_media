@@ -35,6 +35,9 @@ class AlbumMetadata:
     wikidata_id: str
     page_title: str = ""
     release_date: Optional[date] = None
+    # "day" or "month": a month is stored as its first day, so the date alone
+    # cannot say whether the 1st is real.
+    release_date_precision: str = ""
     record_label_qid: Optional[str] = None
     spotify_album_id: Optional[str] = None
     musicbrainz_release_group_id: Optional[str] = None
@@ -128,6 +131,18 @@ def _parse_time_value(value: Any) -> Optional[date]:
         return None
 
 
+def _date_precision(value: Any) -> str:
+    """How much of a time value ``_parse_time_value`` turned into a date.
+
+    "day" only when the claim is day-precise and names a day; a day-precision
+    claim with a zero day is read as a month, as the parser reads it.
+    """
+    if _parse_time_value(value) is None:
+        return ""
+    day = value["time"].lstrip("+-")[8:10]
+    return "day" if value["precision"] >= PRECISION_DAY and day != "00" else "month"
+
+
 class WikidataClient(RateLimitedClient):
     """Batched reads from the Wikidata Action API."""
 
@@ -192,12 +207,13 @@ class WikidataClient(RateLimitedClient):
         label_qids = _entity_ids(claims, config.WIKIDATA_LABEL_PROPERTY)
         master_id = _first_claim_value(claims, config.WIKIDATA_DISCOGS_MASTER_PROPERTY)
 
+        released = _first_claim_value(claims, config.WIKIDATA_RELEASE_DATE_PROPERTY)
+
         return AlbumMetadata(
             wikidata_id=qid,
             page_title=sitelink.get("title", ""),
-            release_date=_parse_time_value(
-                _first_claim_value(claims, config.WIKIDATA_RELEASE_DATE_PROPERTY)
-            ),
+            release_date=_parse_time_value(released),
+            release_date_precision=_date_precision(released),
             record_label_qid=label_qids[0] if label_qids else None,
             spotify_album_id=_first_claim_value(
                 claims, config.WIKIDATA_SPOTIFY_PROPERTY

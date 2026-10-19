@@ -1,0 +1,17 @@
+{# An artist's albums: the sort control, the credit and the rows. #}
+{# Rendered on first load and on every HTMX swap. #}
+{% load humanize music_filters %}
+{% if show_album_sort %}
+<div class="flex items-center mb-4">
+    {% include 'core/includes/_entity_sort_controls.html' with sort_options=sort_options default_sort_label='Rank' %}
+</div>
+{% endif %}
+{# The rows show each album's genres, whose base is Discogs' styles. #}
+{% if artist_albums %}{% include 'core/includes/_data_credit.html' with credit_text='Genres use data provided by Discogs' credit_url='https://www.discogs.com/' extra_class='mb-3' %}{% endif %}
+<div>
+    {% for album in artist_albums %}
+        {% include 'music/includes/_album_row.html' with item=album show_rank='alltime' year_text=album|release_date_label %}
+    {% empty %}
+        <div class="alert"><span>No ranked albums for this artist.</span></div>
+    {% endfor %}
+</div>

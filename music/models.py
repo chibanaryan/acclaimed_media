@@ -216,6 +216,20 @@ class Album(MediaItemBase):
     year_released = models.PositiveSmallIntegerField(
         null=True, blank=True, db_index=True
     )
+    release_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text=(
+            "First release date, to order albums within their year. Derived "
+            "from the fetched metadata by music.services.release_dates; the "
+            "year itself stays year_released, as published."
+        ),
+    )
+    release_date_precision = models.CharField(
+        max_length=5,
+        blank=True,
+        help_text="'day' or 'month'; blank shows only the month, the safe reading",
+    )
     artist_credit = models.CharField(
         max_length=300,
         blank=True,
@@ -586,6 +600,11 @@ class WikipediaAlbumData(ExternalDataBase):
     )
     release_date = models.DateField(
         null=True, blank=True, help_text="Full release date from Wikidata P577"
+    )
+    release_date_precision = models.CharField(
+        max_length=5,
+        blank=True,
+        help_text="'day' or 'month' (stored as the 1st); blank if not yet known",
     )
     record_label = models.CharField(
         max_length=300, null=True, blank=True, help_text="Record label (P264)"

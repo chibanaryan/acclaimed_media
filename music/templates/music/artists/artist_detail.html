@@ -1,10 +1,15 @@
 {% extends 'base.html' %}
-{% load humanize music_filters %}
+{% load humanize static music_filters %}
 
 {% block title %}{{ artist.name }} | Acclaimed Video Games{% endblock %}
 {% block meta_description %}{{ artist.name }} has {{ albums_count }} album{{ albums_count|pluralize }} in the acclaimed album rankings.{% endblock %}
 {% block og_title %}{{ artist.name }} | Acclaimed Video Games{% endblock %}
 {% block twitter_title %}{{ artist.name }} | Acclaimed Video Games{% endblock %}
+
+{% block pre_alpine %}
+{# The shared sort controls bind to this; it must load before Alpine core. #}
+<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/media-list-controls.min.js" %}?v=5');</script>
+{% endblock %}
 
 {% block content %}
 {# Header row: the artist on the left, the rank distribution on the right at #}
@@ -57,14 +62,20 @@
 </p>
 {% endif %}
 
+{# The sort control sits inside the swapped results, so its state lives #}
+{# out here, as on the artists list. Both sorts read ascending first. #}
+<div x-data="entityListControls({
+         url: '{{ request.path }}',
+         target: '#artist-album-results',
+         sort: '{{ current_sort }}',
+         dir: '{{ current_dir }}',
+         defaultSort: 'rank',
+         defaultDir: 'asc',
+         ascendingSorts: ['rank', 'year']
+     })">
 <h2 class="text-2xl font-bold mb-4">Albums</h2>
-{# The rows show each album's genres, whose base is Discogs' styles. #}
-{% if artist_albums %}{% include 'core/includes/_data_credit.html' with credit_text='Genres use data provided by Discogs' credit_url='https://www.discogs.com/' extra_class='mb-3' %}{% endif %}
-<div>
-    {% for album in artist_albums %}
-        {% include 'music/includes/_album_row.html' with item=album show_rank='alltime' %}
-    {% empty %}
-        <div class="alert"><span>No ranked albums for this artist.</span></div>
-    {% endfor %}
+<div id="artist-album-results">
+    {% include 'music/artists/includes/_artist_album_results.html' %}
+</div>
 </div>
 {% endblock %}
