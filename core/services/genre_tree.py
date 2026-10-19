@@ -9,9 +9,9 @@ instances it hands back carry no prefetch of their own, so recursing into
 `child.children.all()` is a fresh query per node visited.
 
 One `(id, parent_id)` fetch and an in-memory walk answers it for the entire
-table instead. The shape is the one `games.api.views.AlbumAllDataView`'s
-sibling already proved for `WikipediaGenre`; it lives here so music, games
-and books can share one copy rather than keep three.
+table instead. Music and games both use it - games' `WikipediaGenre`
+filtering, landing pages and `/api/games/all/` payload included - and books
+can fold onto it when that section is picked back up.
 """
 
 from collections import defaultdict

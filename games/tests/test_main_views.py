@@ -4416,3 +4416,84 @@ class HomePageDocumentTitleTest(TestCase):
         # page for them to read.
         html = self.client.get("/").content.decode()
         self.assertIn("window.documentTitleSuffix = ' | Acclaimed Video Games';", html)
+
+
+class GamesHomeGenreQueryBudgetTests(TestCase):
+    """The genre hierarchy costs a constant number of queries, not one per node.
+
+    `/` cost 109 queries on a cold cache against the real database, 75 of
+    them `games_wikipediagenre`: `get_landing_genres` filtered once per root
+    genre, and each filter walked `children` a query per node. A filtered
+    page also fetched the hierarchy once per facet. Pinned the way
+    `MusicQueryBudgetTests` pins music's: the walk's SQL must be absent, and
+    a deeper tree must not cost more.
+    """
+
+    # The `children.all()` lookup, which nothing else emits.
+    GENRE_WALK = '"games_wikipediagenre"."parent_id" ='
+
+    def setUp(self):
+        clear_all_caches()
+        self.game = Game.objects.create(name="Budget Game", rank=1)
+
+    def tearDown(self):
+        clear_all_caches()
+
+    def _add_genres(self, count):
+        """Three-level subtrees, so a per-node walk has somewhere to recurse."""
+        start = WikipediaGenre.objects.count()
+        roots = []
+        for index in range(start, start + count):
+            root = WikipediaGenre.objects.create(name=f"Budget Root {index:03d}")
+            child = WikipediaGenre.objects.create(
+                name=f"Budget Style {index:03d}", parent=root
+            )
+            leaf = WikipediaGenre.objects.create(
+                name=f"Budget Leaf {index:03d}", parent=child
+            )
+            self.game.wikipedia_genres.add(leaf)
+            roots.append(root)
+        return roots
+
+    def _capture(self, url):
+        clear_all_caches()
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        return [query["sql"] for query in captured.captured_queries]
+
+    def test_home_does_not_walk_the_genre_tree(self):
+        self._add_genres(3)
+        sqls = self._capture("/")
+        self.assertEqual([sql for sql in sqls if self.GENRE_WALK in sql], [])
+
+    def test_home_cost_does_not_grow_with_the_tree(self):
+        # Deepen the existing roots rather than adding roots: the landing
+        # genres count once per root, which is fixed, not once per node.
+        roots = self._add_genres(2)
+        self._capture("/")  # the first request also creates SiteMetadata
+        before = len(self._capture("/"))
+        for root in roots:
+            parent = root
+            for depth in range(4):
+                parent = WikipediaGenre.objects.create(
+                    name=f"{root.name} Depth {depth}", parent=parent
+                )
+            self.game.wikipedia_genres.add(parent)
+        self.assertEqual(len(self._capture("/")), before)
+
+    def test_filtered_page_fetches_the_hierarchy_once(self):
+        (root,) = self._add_genres(1)
+        self._add_genres(3)
+        sqls = self._capture(f"/?genres={root.id}")
+        hierarchy_fetches = [
+            sql
+            for sql in sqls
+            if 'FROM "games_wikipediagenre"' in sql
+            and "parent_id" in sql.split("FROM")[0]
+            and "WHERE" not in sql
+            and "COUNT" not in sql
+        ]
+        # One for the view's own filters and facets, one for the landing
+        # genres - both cold here, since every cache was just cleared.
+        self.assertEqual(len(hierarchy_fetches), 2)

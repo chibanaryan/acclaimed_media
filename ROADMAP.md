@@ -142,19 +142,20 @@ Not worth doing as parity:
     `core/services/genre_tree.py` now answers the whole hierarchy in one
     query, and `ArtistListView` carries a `Prefetch`. Output is
     byte-identical across eleven pages, so no `SCHEMA_VERSION` bump. See
-    DEVLOG.md and AGENTS.md, "Music query budgets".
+    DEVLOG.md and AGENTS.md, "Music and games query budgets".
 
     Left for whoever is next in these files:
 
-    - **`games/api/views.py:753-801` still has its own hand-rolled copy** of
-      the descendant walk, and `games/models.py:411-445` caches descendant
-      ids per genre with signal invalidation to work around the per-instance
-      walk being its hot path. Both can now fold onto the shared helper.
-      `books/api/views.py:489` has the identical N+1, unfixed - books is
+    - ~~**Games' descendant walk and its per-genre cache.**~~ Done
+      2026-10-18. Both folded onto the shared helper, uncached. The cache was
+      also wrong: the filter's key was not one the invalidation signal
+      deleted, so a re-parented genre filtered by its old tree for 24 hours.
+    - ~~**`/` (games home) issues 75 `games_wikipediagenre` selects.**~~
+      Done 2026-10-18: 109 -> 38 queries on a cold cache, and
+      `/?genres=<root>` 109 -> 39, output byte-identical. All 75 were
+      `get_landing_genres` walking `children` once per root genre.
+    - `books/api/views.py:489` has the identical N+1, unfixed - books is
       deprioritized.
-    - **`/` (games home) issues 75 `games_wikipediagenre` selects** of its
-      own, inside its 112. Smaller than music's was and not measured
-      further.
     - ~~**Mobile Load More on `/music/artists/` appends into the wrong
       container.**~~ Fixed 2026-10-18, along with a second bug in the same
       button: it removed itself after its request and no response sent a

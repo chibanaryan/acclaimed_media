@@ -16,6 +16,8 @@ from rest_framework.views import APIView, Response
 
 from unidecode import unidecode
 
+from core.services.genre_tree import descendants_by_id
+
 from .. import config, models, utils
 from . import serializers
 
@@ -756,37 +758,9 @@ class GameAllDataView(APIView):
                 "id", "name", "slug", "parent_id", "level", "display_order"
             ).order_by("level", "display_order", "name")
         )
-        children_by_parent_id = defaultdict(list)
-        for row in genre_rows:
-            if row["parent_id"] is not None:
-                children_by_parent_id[row["parent_id"]].append(row["id"])
-
-        descendant_ids_by_genre_id = {}
-
-        def _get_descendant_ids(genre_id):
-            if genre_id in descendant_ids_by_genre_id:
-                return descendant_ids_by_genre_id[genre_id]
-
-            stack = [(genre_id, False)]
-            while stack:
-                current_id, expanded = stack.pop()
-                if current_id in descendant_ids_by_genre_id:
-                    continue
-                if expanded:
-                    descendants = []
-                    for child_id in children_by_parent_id.get(current_id, []):
-                        descendants.append(child_id)
-                        descendants.extend(descendant_ids_by_genre_id.get(child_id, []))
-                    descendant_ids_by_genre_id[current_id] = descendants
-                    continue
-
-                stack.append((current_id, True))
-                children = children_by_parent_id.get(current_id, [])
-                for child_id in reversed(children):
-                    if child_id not in descendant_ids_by_genre_id:
-                        stack.append((child_id, False))
-
-            return descendant_ids_by_genre_id.get(genre_id, [])
+        descendant_ids_by_genre_id = descendants_by_id(
+            (row["id"], row["parent_id"]) for row in genre_rows
+        )
 
         genres_data = [
             {
@@ -795,7 +769,7 @@ class GameAllDataView(APIView):
                 "s": row["slug"],
                 "p": row["parent_id"],
                 "l": row["level"],
-                "d": _get_descendant_ids(row["id"]),
+                "d": descendant_ids_by_genre_id[row["id"]],
             }
             for row in genre_rows
         ]

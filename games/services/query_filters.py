@@ -13,12 +13,28 @@ from django.db.models import Q, QuerySet
 from games import config
 
 
+def genre_descendant_map() -> Dict[int, List[int]]:
+    """Map every WikipediaGenre id to the ids below it, from one query.
+
+    Deliberately uncached, as music's equivalent is: the table is ~60 rows,
+    and in production the shared cache is itself a Postgres table, so a hit
+    costs a query too. The per-genre cache this replaced also went stale -
+    its keys were not the ones the invalidation signal deleted, so a
+    re-parented genre kept filtering by its old tree for 24 hours.
+    """
+    from core.services.genre_tree import fetch_descendants_by_id
+    from games.models import WikipediaGenre
+
+    return fetch_descendants_by_id(WikipediaGenre.objects.all())
+
+
 def apply_genre_filter(
     queryset: QuerySet,
     genre_ids: List[int],
     match_all: bool = True,
     use_wikipedia: bool = True,  # Now defaults to Wikipedia genres
     expand_hierarchy: bool = True,
+    descendants: Optional[Dict[int, List[int]]] = None,
 ) -> QuerySet:
     """
     Filter queryset by Wikipedia genres with any/all matching.
@@ -34,6 +50,8 @@ def apply_genre_filter(
         use_wikipedia: Deprecated, always uses wikipedia_genres.
         expand_hierarchy: If True, expand parent genres to include all
                           descendants. If False, filter by exact genre IDs only.
+        descendants: A ``genre_descendant_map()`` to reuse. A caller filtering
+                     more than once per request builds it once and passes it.
 
     Returns:
         Filtered queryset
@@ -48,11 +66,12 @@ def apply_genre_filter(
     # match_all: game must have at least one from EACH expanded group
     # match_any: game must have at least one from ANY expanded group
     if expand_hierarchy:
-        expanded_groups = []
-        for genre_id in genre_ids:
-            # Get this genre plus all its descendants
-            group = _expand_single_genre_with_descendants(genre_id)
-            expanded_groups.append(group)
+        if descendants is None:
+            descendants = genre_descendant_map()
+        expanded_groups = [
+            _expand_single_genre_with_descendants(genre_id, descendants)
+            for genre_id in genre_ids
+        ]
 
         if match_all:
             # Game must have at least one genre from EACH group
@@ -83,39 +102,28 @@ def apply_genre_filter(
     return queryset.distinct()
 
 
-def _expand_single_genre_with_descendants(genre_id: int) -> List[int]:
+def _expand_single_genre_with_descendants(
+    genre_id: int, descendants: Optional[Dict[int, List[int]]] = None
+) -> List[int]:
     """
     Expand a single genre ID to include itself and all descendant IDs.
 
-    Results are cached for 24 hours to avoid repeated recursive queries.
-
     Args:
         genre_id: A single genre ID to expand
+        descendants: A ``genre_descendant_map()``; built here if not given
 
     Returns:
-        List containing the genre ID and all its descendant IDs
+        List containing the genre ID and all its descendant IDs. An unknown
+        ID expands to itself alone.
     """
-    from django.core.cache import cache
-
-    from games.models import WikipediaGenre
-
-    cache_key = f"{config.CACHE_VERSION}:genre_descendants:{genre_id}"
-    cached = cache.get(cache_key)
-    if cached is not None:
-        return cached
-
-    try:
-        genre = WikipediaGenre.objects.get(id=genre_id)
-        # Get this genre plus all descendants
-        result = genre.get_descendant_ids(include_self=True)
-    except WikipediaGenre.DoesNotExist:
-        result = [genre_id]
-
-    cache.set(cache_key, result, config.CACHE_TIMEOUT_24_HOURS)
-    return result
+    if descendants is None:
+        descendants = genre_descendant_map()
+    return [genre_id, *descendants.get(genre_id, ())]
 
 
-def _expand_genre_ids_with_descendants(genre_ids: List[int]) -> List[int]:
+def _expand_genre_ids_with_descendants(
+    genre_ids: List[int], descendants: Optional[Dict[int, List[int]]] = None
+) -> List[int]:
     """
     Expand a list of genre IDs to include all descendant IDs.
 
@@ -124,23 +132,16 @@ def _expand_genre_ids_with_descendants(genre_ids: List[int]) -> List[int]:
 
     Args:
         genre_ids: List of genre IDs to expand
+        descendants: A ``genre_descendant_map()``; built here if not given
 
     Returns:
         List of genre IDs including all descendants
     """
-    from games.models import WikipediaGenre
-
+    if descendants is None:
+        descendants = genre_descendant_map()
     expanded_ids = set(genre_ids)
-
     for genre_id in genre_ids:
-        try:
-            genre = WikipediaGenre.objects.get(id=genre_id)
-            # Add all descendant IDs
-            descendant_ids = genre.get_descendant_ids(include_self=False)
-            expanded_ids.update(descendant_ids)
-        except WikipediaGenre.DoesNotExist:
-            continue
-
+        expanded_ids.update(descendants.get(genre_id, ()))
     return list(expanded_ids)
 
 
@@ -149,6 +150,7 @@ def apply_wikipedia_genre_filter(
     genre_ids: List[int],
     match_all: bool = True,
     expand_hierarchy: bool = True,
+    descendants: Optional[Dict[int, List[int]]] = None,
 ) -> QuerySet:
     """
     Filter queryset by Wikipedia genres with hierarchical support.
@@ -160,6 +162,7 @@ def apply_wikipedia_genre_filter(
         genre_ids: List of Wikipedia genre IDs to filter by
         match_all: If True, games must have ALL genres. If False, ANY genre matches.
         expand_hierarchy: If True, expand parent genres to include all descendants.
+        descendants: A ``genre_descendant_map()`` to reuse.
 
     Returns:
         Filtered queryset
@@ -170,6 +173,7 @@ def apply_wikipedia_genre_filter(
         match_all=match_all,
         use_wikipedia=True,
         expand_hierarchy=expand_hierarchy,
+        descendants=descendants,
     )
 
 

@@ -50,6 +50,7 @@ from games.services.ranking_service import (  # noqa: F401
 from games.services.query_filters import (  # noqa: F401
     apply_genre_filter,
     apply_platform_filter,
+    genre_descendant_map,
     apply_series_filter,
     get_or_set_cache,
     apply_year_filters,

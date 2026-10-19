@@ -6,7 +6,6 @@ from django.test import TestCase
 from core.tests.utils import clear_all_caches
 from games import config
 from games.models import Developer, Game, WikipediaGenre
-from games.signals import invalidate_genre_descendant_cache
 
 
 class DeveloperCacheInvalidationSignalTests(TestCase):
@@ -197,172 +196,47 @@ class GameDeveloperM2MSignalTests(TestCase):
         # Should not raise - the except Developer.DoesNotExist should handle it
 
 
-class WikipediaGenreCacheInvalidationTests(TestCase):
-    """Tests for WikipediaGenre cache invalidation signals."""
+class GenreHierarchyChangesApplyImmediatelyTests(TestCase):
+    """A re-parented genre filters by its new tree on the very next request.
+
+    Descendant ids used to be cached per genre for 24 hours, and the filter's
+    key (`genre_descendants:<id>`) was not one the invalidation signal
+    deleted (`...:<id>:True` / `:False`). So moving a genre in the admin left
+    genre filtering expanding the old tree, in every worker, for up to a day.
+    The hierarchy is now read uncached, so there is nothing to go stale.
+    """
 
     def setUp(self):
-        """Clear cache before each test."""
         clear_all_caches()
-        # Use unique counter for each test to avoid slug collisions
-        import uuid
-
-        self.unique_id = uuid.uuid4().hex[:8]
 
     def tearDown(self):
-        """Clear cache after each test."""
         clear_all_caches()
 
-    def test_genre_save_invalidates_own_cache(self):
-        """Test that saving a genre invalidates its descendant cache."""
-        genre = WikipediaGenre.objects.create(name=f"Action-{self.unique_id}")
+    def test_reparented_genre_moves_between_filters(self):
+        from games.utils import apply_genre_filter
 
-        # Pre-populate cache (both include_self variants)
-        cache_key_true = f"{config.CACHE_VERSION}:genre_descendants:{genre.id}:True"
-        cache_key_false = f"{config.CACHE_VERSION}:genre_descendants:{genre.id}:False"
-        cache.set(cache_key_true, {"descendants": []})
-        cache.set(cache_key_false, {"descendants": []})
+        strategy = WikipediaGenre.objects.create(name="Strategy Root")
+        sports = WikipediaGenre.objects.create(name="Sports Root")
+        racing = WikipediaGenre.objects.create(name="Racing Leaf", parent=strategy)
+        game = Game.objects.create(name="Lap Game", rank=1)
+        game.wikipedia_genres.add(racing)
 
-        # Update genre (change a non-slug field to avoid unique constraint)
-        genre.description = "Updated description"
-        genre.save()
+        def matching(root):
+            return set(
+                apply_genre_filter(Game.objects.all(), [root.id], match_all=False)
+            )
 
-        # Both cache variants should be invalidated
-        self.assertIsNone(cache.get(cache_key_true))
-        self.assertIsNone(cache.get(cache_key_false))
+        # Warm whatever a filter might cache, then move the leaf.
+        self.assertEqual(matching(strategy), {game})
+        self.assertEqual(matching(sports), set())
+        self.assertEqual(strategy.get_descendant_ids(), [racing.id])
 
-    def test_genre_delete_invalidates_cache(self):
-        """Test that deleting a genre invalidates cache."""
-        genre = WikipediaGenre.objects.create(name=f"RPG-{self.unique_id}")
-        genre_id = genre.id
+        racing.parent = sports
+        racing.save()
 
-        # Pre-populate cache (both include_self variants)
-        cache_key_true = f"{config.CACHE_VERSION}:genre_descendants:{genre_id}:True"
-        cache_key_false = f"{config.CACHE_VERSION}:genre_descendants:{genre_id}:False"
-        cache.set(cache_key_true, {"descendants": []})
-        cache.set(cache_key_false, {"descendants": []})
-
-        # Delete genre
-        genre.delete()
-
-        # Both cache variants should be invalidated
-        self.assertIsNone(cache.get(cache_key_true))
-        self.assertIsNone(cache.get(cache_key_false))
-
-    def test_child_genre_invalidates_ancestor_caches(self):
-        """Test that changing a child genre invalidates ancestor caches."""
-        parent = WikipediaGenre.objects.create(name=f"Strategy-{self.unique_id}")
-        child = WikipediaGenre.objects.create(
-            name=f"RTS-{self.unique_id}", parent=parent
+        self.assertEqual(matching(strategy), set())
+        self.assertEqual(matching(sports), {game})
+        self.assertEqual(strategy.get_descendant_ids(), [])
+        self.assertEqual(
+            sports.get_descendant_ids(include_self=True), [sports.id, racing.id]
         )
-
-        # Pre-populate parent's cache (both variants)
-        parent_cache_key_true = (
-            f"{config.CACHE_VERSION}:genre_descendants:{parent.id}:True"
-        )
-        parent_cache_key_false = (
-            f"{config.CACHE_VERSION}:genre_descendants:{parent.id}:False"
-        )
-        cache.set(parent_cache_key_true, {"descendants": [child.id]})
-        cache.set(parent_cache_key_false, {"descendants": [child.id]})
-
-        # Update child (change a non-slug field)
-        child.description = "Real-time strategy games"
-        child.save()
-
-        # Parent's cache should be invalidated (both variants)
-        self.assertIsNone(cache.get(parent_cache_key_true))
-        self.assertIsNone(cache.get(parent_cache_key_false))
-
-
-class InvalidateGenreDescendantCacheTests(TestCase):
-    """Tests for the invalidate_genre_descendant_cache function."""
-
-    def setUp(self):
-        """Clear cache before each test."""
-        clear_all_caches()
-        import uuid
-
-        self.unique_id = uuid.uuid4().hex[:8]
-
-    def tearDown(self):
-        """Clear cache after each test."""
-        clear_all_caches()
-
-    def test_invalidate_specific_genre(self):
-        """Test invalidating a specific genre's cache."""
-        genre = WikipediaGenre.objects.create(name=f"Puzzle-{self.unique_id}")
-
-        cache_key_true = f"{config.CACHE_VERSION}:genre_descendants:{genre.id}:True"
-        cache_key_false = f"{config.CACHE_VERSION}:genre_descendants:{genre.id}:False"
-        cache.set(cache_key_true, {"data": "cached"})
-        cache.set(cache_key_false, {"data": "cached"})
-
-        invalidate_genre_descendant_cache(genre.id)
-
-        self.assertIsNone(cache.get(cache_key_true))
-        self.assertIsNone(cache.get(cache_key_false))
-
-    def test_invalidate_all_genres(self):
-        """Test invalidating all genre caches when no ID provided."""
-        genre1 = WikipediaGenre.objects.create(name=f"Adventure-{self.unique_id}")
-        genre2 = WikipediaGenre.objects.create(name=f"Horror-{self.unique_id}")
-
-        cache_key1_true = f"{config.CACHE_VERSION}:genre_descendants:{genre1.id}:True"
-        cache_key1_false = f"{config.CACHE_VERSION}:genre_descendants:{genre1.id}:False"
-        cache_key2_true = f"{config.CACHE_VERSION}:genre_descendants:{genre2.id}:True"
-        cache_key2_false = f"{config.CACHE_VERSION}:genre_descendants:{genre2.id}:False"
-        cache.set(cache_key1_true, {"data": "cached1"})
-        cache.set(cache_key1_false, {"data": "cached1"})
-        cache.set(cache_key2_true, {"data": "cached2"})
-        cache.set(cache_key2_false, {"data": "cached2"})
-
-        invalidate_genre_descendant_cache()
-
-        self.assertIsNone(cache.get(cache_key1_true))
-        self.assertIsNone(cache.get(cache_key1_false))
-        self.assertIsNone(cache.get(cache_key2_true))
-        self.assertIsNone(cache.get(cache_key2_false))
-
-    def test_invalidate_nonexistent_genre_does_not_raise(self):
-        """Test that invalidating a non-existent genre doesn't raise."""
-        # Should not raise exception
-        invalidate_genre_descendant_cache(99999)
-
-    def test_invalidates_ancestor_caches(self):
-        """Test that ancestor genre caches are also invalidated."""
-        grandparent = WikipediaGenre.objects.create(name=f"Games-{self.unique_id}")
-        parent = WikipediaGenre.objects.create(
-            name=f"Simulation-{self.unique_id}", parent=grandparent
-        )
-        child = WikipediaGenre.objects.create(
-            name=f"Racing-{self.unique_id}", parent=parent
-        )
-
-        # Pre-populate all caches (both variants for each)
-        gp_key_true = f"{config.CACHE_VERSION}:genre_descendants:{grandparent.id}:True"
-        gp_key_false = (
-            f"{config.CACHE_VERSION}:genre_descendants:{grandparent.id}:False"
-        )
-        p_key_true = f"{config.CACHE_VERSION}:genre_descendants:{parent.id}:True"
-        p_key_false = f"{config.CACHE_VERSION}:genre_descendants:{parent.id}:False"
-        c_key_true = f"{config.CACHE_VERSION}:genre_descendants:{child.id}:True"
-        c_key_false = f"{config.CACHE_VERSION}:genre_descendants:{child.id}:False"
-        cache.set(gp_key_true, {"data": "gp"})
-        cache.set(gp_key_false, {"data": "gp"})
-        cache.set(p_key_true, {"data": "p"})
-        cache.set(p_key_false, {"data": "p"})
-        cache.set(c_key_true, {"data": "c"})
-        cache.set(c_key_false, {"data": "c"})
-
-        # Invalidate child's cache
-        invalidate_genre_descendant_cache(child.id)
-
-        # Child's cache should be invalidated (both variants)
-        self.assertIsNone(cache.get(c_key_true))
-        self.assertIsNone(cache.get(c_key_false))
-        # Parent's cache should also be invalidated (ancestor)
-        self.assertIsNone(cache.get(p_key_true))
-        self.assertIsNone(cache.get(p_key_false))
-        # Grandparent's cache should also be invalidated (ancestor)
-        self.assertIsNone(cache.get(gp_key_true))
-        self.assertIsNone(cache.get(gp_key_false))

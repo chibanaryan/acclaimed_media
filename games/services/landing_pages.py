@@ -39,9 +39,14 @@ def get_landing_genres() -> List[Dict[str, Any]]:
     roots = models.WikipediaGenre.objects.filter(level=0).order_by(
         "display_order", "name"
     )
+    # One hierarchy fetch for every root, rather than one per root.
+    descendants = utils.genre_descendant_map()
     for genre in roots:
         game_count = utils.apply_genre_filter(
-            models.Game.objects.all(), [genre.id], match_all=False
+            models.Game.objects.all(),
+            [genre.id],
+            match_all=False,
+            descendants=descendants,
         ).count()
         if game_count > 0:
             result.append(

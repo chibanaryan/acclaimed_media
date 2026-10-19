@@ -26,6 +26,7 @@ from games.services.query_filters import (
     apply_wikipedia_genre_filter,
     _expand_single_genre_with_descendants,
     _expand_genre_ids_with_descendants,
+    genre_descendant_map,
 )
 
 
@@ -739,6 +740,18 @@ class HierarchicalGenreFilterTest(TestCase):
         """Test expansion with nonexistent genre ID."""
         ids = _expand_single_genre_with_descendants(99999)
         self.assertEqual(ids, [99999])  # Returns the ID as-is
+
+    def test_filter_reuses_a_passed_hierarchy(self):
+        """A caller filtering several times per request fetches it once."""
+        descendants = genre_descendant_map()
+        with self.assertNumQueries(0):
+            apply_genre_filter(
+                Game.objects.all(),
+                [self.action.id, self.rpg.id],
+                descendants=descendants,
+            )
+            ids = _expand_single_genre_with_descendants(self.action.id, descendants)
+        self.assertEqual(ids, [self.action.id, *descendants[self.action.id]])
 
 
 class GameWikipediaGenreNormalizationTest(TestCase):

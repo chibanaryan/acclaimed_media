@@ -412,8 +412,9 @@ class WikipediaGenre(models.Model):
         """
         Get IDs of all descendant genres (optimized for filtering).
 
-        Results are cached for 24 hours. Cache is invalidated via signals
-        when genre hierarchy changes (see games/signals.py).
+        Reads the whole hierarchy in one query rather than walking
+        ``children`` a query per node. Uncached: see
+        ``games.services.query_filters.genre_descendant_map``.
 
         Args:
             include_self: If True, include this genre's ID
@@ -421,27 +422,10 @@ class WikipediaGenre(models.Model):
         Returns:
             List of genre IDs
         """
-        from django.core.cache import cache
+        from games.services.query_filters import genre_descendant_map
 
-        from games import config
-
-        # Cache key includes include_self to cache both variants
-        cache_key = f"{config.CACHE_VERSION}:genre_descendants:{self.id}:{include_self}"
-        cached = cache.get(cache_key)
-        if cached is not None:
-            return cached
-
-        # Compute descendants recursively
-        ids = []
-        if include_self:
-            ids.append(self.id)
-
-        for child in self.children.all():
-            ids.append(child.id)
-            ids.extend(child.get_descendant_ids(include_self=False))
-
-        # Cache the result
-        cache.set(cache_key, ids, config.CACHE_TIMEOUT_24_HOURS)
+        ids = [self.id] if include_self else []
+        ids.extend(genre_descendant_map().get(self.id, ()))
         return ids
 
     def get_ancestors(self, include_self=False):

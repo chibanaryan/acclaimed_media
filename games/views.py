@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 import math
+from functools import cached_property
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -1041,6 +1042,15 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
             return None
         return f"home_page:{config.CACHE_VERSION}:default"
 
+    @cached_property
+    def _genre_descendants(self):
+        """The genre hierarchy, fetched once however often this request filters.
+
+        A filtered page applies the genre filter to the list and again to each
+        facet; uncached, each would otherwise fetch the hierarchy itself.
+        """
+        return utils.genre_descendant_map()
+
     def get_paginate_by(self, queryset):
         """Always use standard page size - client-side handles deep jumps."""
         return self.paginate_by
@@ -1094,7 +1104,11 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         if genres:
             genre_ids = [int(x) for x in genres.split(",")]
             qs = utils.apply_genre_filter(
-                qs, genre_ids, match_all=False, use_wikipedia=True
+                qs,
+                genre_ids,
+                match_all=False,
+                use_wikipedia=True,
+                descendants=self._genre_descendants,
             )
 
         # Platform filtering (with virtual ID expansion)
@@ -1499,7 +1513,11 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
             if genres_param:
                 genre_ids = [int(x) for x in genres_param.split(",")]
                 base_qs = utils.apply_genre_filter(
-                    base_qs, genre_ids, match_all=False, use_wikipedia=True
+                    base_qs,
+                    genre_ids,
+                    match_all=False,
+                    use_wikipedia=True,
+                    descendants=self._genre_descendants,
                 )
 
             # Apply platform filter (same as get_queryset, with virtual ID expansion)
@@ -1595,7 +1613,11 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
             if genres_param:
                 genre_ids = [int(x) for x in genres_param.split(",")]
                 platform_facet_qs = utils.apply_genre_filter(
-                    platform_facet_qs, genre_ids, match_all=False, use_wikipedia=True
+                    platform_facet_qs,
+                    genre_ids,
+                    match_all=False,
+                    use_wikipedia=True,
+                    descendants=self._genre_descendants,
                 )
             platform_facet_qs = _apply_played_filter(
                 platform_facet_qs, self.request.user, played_param

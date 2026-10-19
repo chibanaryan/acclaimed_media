@@ -1,5 +1,30 @@
 # Developer Log
 
+## 2026-10-18 (games genre hierarchy: one query, and no stale cache)
+
+- **`/` cost 109 queries on a cold cache, 75 of them `games_wikipediagenre`.**
+  All 75 came from `get_landing_genres`, which filters once per root genre,
+  and every filter expanded its genre through `WikipediaGenre.get_descendant_ids`,
+  which walked `children` a query per node - the N+1 music had. Games now uses
+  `core/services/genre_tree.py` like music: `genre_descendant_map()` is one
+  `(id, parent_id)` SELECT, `apply_genre_filter` takes it as `descendants=`,
+  and `HomePageView._genre_descendants` builds it once per request for the
+  list and both facets. `/` 109 -> 38, `/?genres=<root>` 109 -> 39, and
+  `/api/games/all/` drops its own copy of the walk for `descendants_by_id`.
+  All three are byte-identical to before, toolbar aside
+- **The per-genre descendant cache was stale, and is gone.**
+  `_expand_single_genre_with_descendants` cached under
+  `genre_descendants:<id>`, while the `WikipediaGenre` signal deleted
+  `genre_descendants:<id>:True` and `:False` - so re-parenting a genre in the
+  admin left the filter expanding the old tree, in every worker, for 24 hours.
+  In production the shared cache is a Postgres table, so a hit was a query
+  anyway; the cache, `invalidate_genre_descendant_cache` and its receiver are
+  deleted rather than fixed. Pinned by
+  `games/tests/test_signals.py::GenreHierarchyChangesApplyImmediatelyTests`,
+  and the page budget by
+  `games/tests/test_main_views.py::GamesHomeGenreQueryBudgetTests`. All four
+  new tests fail against the old code
+
 ## 2026-10-18 (artist Load More, hidden POSTs, year-count parity)
 
 - **Load More on `/music/artists/` only ever loaded page 2, and never on a

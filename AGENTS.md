@@ -838,7 +838,7 @@ Two decisions worth knowing before changing any of it:
 `Album.thumbnail` and `Album.image` are what the pages render and prefer the local
 copy.
 
-## Music query budgets
+## Music and games query budgets
 
 `/music/` cost 443 queries and `/music/artists/` 305, measured against the
 1000-album corpus. Both were one-shape N+1s, and both are now pinned by
@@ -860,11 +860,16 @@ copy.
   The map is returned in **arrival** order, not the post-order the walk
   resolves nodes in, because callers iterate it to build the counts dict
   the page serializes - and that dict's order has to stay the manager's.
-  It carries a cycle guard the games copy lacks.
-- **Deliberately uncached.** Games caches descendant ids per genre with
-  signal invalidation because its hot path asks for the few ids the reader
-  selected; music's needs the whole table, where ~200 round trips to the
-  shared cache lose to one SELECT of 200 two-column rows.
+  It carries a cycle guard.
+- **Deliberately uncached, in both sections.** Music's needs the whole
+  table, where ~200 round trips to the shared cache lose to one SELECT of
+  200 two-column rows. Games used to cache descendant ids per genre with
+  signal invalidation, and that cache went stale: the filter's key
+  (`genre_descendants:<id>`) was not one the signal deleted (`:<id>:True` /
+  `:False`), so a re-parented genre filtered by its old tree for 24 hours.
+  In production the shared cache is itself a Postgres table, so a hit costs
+  a query anyway. `games.services.query_filters.genre_descendant_map()` is
+  now one uncached SELECT of ~60 rows, and the signal is gone.
 - **`ArtistListView` prefetches `albums` with the MusicBrainz row joined.**
   Needed because both row halves read `artist.albums.first` - the mobile
   card block runs it a second time, which is why it was 200 album selects
@@ -875,9 +880,17 @@ copy.
   only `artists` and `genres`, so 1000 albums each lazy-loaded their
   MusicBrainz row.
 - **Add a filter dimension here and the facet passes multiply.** Build the
-  map once per request - `AlbumHomePageView._descendants` - and pass it in;
-  every consumer takes an optional `descendants=` and builds its own only
-  when called standalone.
+  map once per request - `AlbumHomePageView._descendants` and games'
+  `HomePageView._genre_descendants` - and pass it in; every consumer
+  (`apply_genre_filter` included) takes an optional `descendants=` and
+  builds its own only when called standalone.
+- **Games' `/` is pinned by
+  `games/tests/test_main_views.py::GamesHomeGenreQueryBudgetTests`.** On a
+  cold cache it cost 109 queries, 75 of them `games_wikipediagenre`:
+  `get_landing_genres` filters once per root genre, and every filter walked
+  `children` a query per node. Now 38, and `/?genres=<root>` 109 -> 39.
+  `/api/games/all/` uses `descendants_by_id` too, in place of its own copy
+  of the walk.
 
 ## The rankings heading and the tab title
 
