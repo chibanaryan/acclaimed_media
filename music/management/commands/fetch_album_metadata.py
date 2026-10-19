@@ -13,6 +13,12 @@ that; the client paces itself from the response headers either way.
     python manage.py fetch_album_metadata --discogs-only
     python manage.py fetch_album_metadata --musicbrainz
     python manage.py fetch_album_metadata --slug pet-sounds --force
+    python manage.py fetch_album_metadata --with-musicbrainz  # all four passes
+
+Heroku Scheduler runs it daily as ``--weekly --with-musicbrainz``; ``--weekly``
+exits at once on any day but Sunday, as ``refresh_all_metadata``'s does.
+Without ``--force`` the cover, Discogs and MusicBrainz passes skip records that
+already landed, so a routine run only fills what an import left missing.
 
 Genres are rebuilt from the stored data at the end of any run that included
 the Wikidata, Discogs or MusicBrainz pass; ``rebuild_album_genres`` does the
@@ -21,6 +27,7 @@ same thing on its own, with no network.
 
 import logging
 import time
+from datetime import datetime
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -54,7 +61,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--skip-existing",
             action="store_true",
-            help="Only albums with no Wikidata record yet (the default selection)",
+            help="Only albums with no Wikidata record yet",
         )
         parser.add_argument(
             "--dry-run",
@@ -73,10 +80,31 @@ class Command(BaseCommand):
         parser.add_argument(
             "--musicbrainz",
             action="store_true",
-            help="Run the MusicBrainz enrichment pass (1 req/sec, ~9 min)",
+            help="Run only the MusicBrainz enrichment pass (1 req/sec, ~17 min)",
+        )
+        parser.add_argument(
+            "--with-musicbrainz",
+            action="store_true",
+            help="Add the MusicBrainz pass to the passes that would otherwise run",
+        )
+        parser.add_argument(
+            "--weekly",
+            action="store_true",
+            help=(
+                "Only run on Sundays (for daily Heroku Scheduler jobs). "
+                "Exits silently on other days."
+            ),
         )
 
     def handle(self, *args, **options):
+        # 6 = Sunday in Python's weekday() (0=Monday, 6=Sunday)
+        if options["weekly"] and datetime.now().weekday() != 6:
+            self.stdout.write(
+                f"Skipping: Today is {datetime.now().strftime('%A')} "
+                "(weekly mode only runs on Sunday)"
+            )
+            return
+
         albums = self._get_albums(options)
         if not albums:
             self.stdout.write(self.style.WARNING("No albums matched."))
@@ -163,11 +191,13 @@ class Command(BaseCommand):
             )
             if flag
         ]
-        if explicit:
-            return explicit
         # The default omits MusicBrainz: it is enrichment, and its 1 req/sec
-        # cap would triple the runtime of a routine refresh.
-        return ["wikidata", "covers", "discogs"]
+        # cap would triple the runtime of a full refresh. A routine one skips
+        # what already landed, which is why the scheduled job can afford it.
+        passes = explicit or ["wikidata", "covers", "discogs"]
+        if options["with_musicbrainz"] and "musicbrainz" not in passes:
+            passes.append("musicbrainz")
+        return passes
 
     # --------------------------------------------------------------- output
 

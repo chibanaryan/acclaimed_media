@@ -543,6 +543,22 @@ class RefreshAllMetadataCommandTests(TestCase):
         self.assertIn("Cannot use multiple --*-only flags together", output)
 
     @mock.patch("games.management.commands.refresh_all_metadata.IGDBImportService")
+    @mock.patch("games.management.commands.refresh_all_metadata.datetime")
+    def test_weekly_flag_skips_on_any_day_but_sunday(
+        self, mock_datetime, mock_igdb_service
+    ):
+        """The daily Scheduler job relies on --weekly to run only on Sundays"""
+        from datetime import datetime
+        from io import StringIO
+
+        mock_datetime.now.return_value = datetime(2026, 10, 19)  # a Monday
+        out = StringIO()
+        call_command("refresh_all_metadata", weekly=True, stdout=out)
+
+        self.assertIn("Skipping: Today is Monday", out.getvalue())
+        mock_igdb_service.assert_not_called()
+
+    @mock.patch("games.management.commands.refresh_all_metadata.IGDBImportService")
     def test_dry_run_mode(self, mock_igdb_service):
         """Test --dry-run flag prevents database changes"""
         from io import StringIO

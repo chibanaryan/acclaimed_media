@@ -25,6 +25,28 @@
   route. The forum's avatars were their only consumer. `FORUM_ENABLED` is
   unset on Heroku (v855)
 
+## 2026-10-18 (music metadata on a schedule; first MusicBrainz pass)
+
+- **`DISCOGS_TOKEN` is set on Heroku.** The Discogs pass was paced by the
+  anonymous 25 requests a minute, about 40 minutes for 1000 albums
+- **The music refresh runs weekly on Heroku Scheduler**:
+  `python manage.py fetch_album_metadata --weekly --with-musicbrainz`, a
+  daily job that `--weekly` turns into a Sunday one, as games'
+  `refresh_all_metadata --weekly` does. Not `--force`: every pass but
+  Wikidata skips what already landed, so a routine run costs seconds plus
+  whatever an import left missing. `--with-musicbrainz` adds the pass to the
+  others; `--musicbrainz` still means that pass alone
+- **The MusicBrainz pass ran for the first time on this release.** 1000
+  release groups in 20 minutes, no errors, with a 503 backoff every few
+  seconds that the client absorbed. The genre rebuild changed 412 albums and
+  took the tree from 95 leaves to 103, none with a single album; no album is
+  without a genre. It also surfaced 105 MusicBrainz labels the vocabulary
+  does not classify (`progressive` 18 albums, `pop soul` 14, `ambient pop`
+  13, ...), which add nothing until they are classified - see ROADMAP
+- The games `--weekly` guard had no test; it has one now, and the
+  refresh-metadata skill's "Schedule: Weekly" (a frequency Heroku Scheduler
+  does not offer) now says what the job actually is
+
 ## 2026-10-18 (album covers: a front flag is not a sleeve)
 
 - **"It Takes a Nation of Millions" showed a photo of its jewel case and

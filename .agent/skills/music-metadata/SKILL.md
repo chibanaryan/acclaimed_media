@@ -32,7 +32,9 @@ python manage.py fetch_album_metadata
 | `--wikidata-only` | Run only the Wikidata pass |
 | `--covers-only` | Run only the cover-art pass |
 | `--discogs-only` | Run only the Discogs pass |
-| `--musicbrainz` | Run the MusicBrainz enrichment pass |
+| `--musicbrainz` | Run only the MusicBrainz enrichment pass |
+| `--with-musicbrainz` | Add the MusicBrainz pass to whatever else would run |
+| `--weekly` | Exit at once unless today is Sunday (for the daily Scheduler job) |
 
 ## Examples
 
@@ -48,6 +50,30 @@ python manage.py fetch_album_metadata --covers-only
 
 # Opt into the slow enrichment pass
 python manage.py fetch_album_metadata --musicbrainz
+
+# All four passes - what the scheduled job runs
+python manage.py fetch_album_metadata --with-musicbrainz
+```
+
+## Heroku Scheduler
+
+The refresh runs weekly on the `scheduler` add-on. Heroku Scheduler has no
+weekly frequency, so the job is daily and `--weekly` makes it a no-op on
+every day but Sunday (UTC), as games' `refresh_all_metadata --weekly` does:
+
+- **Command:** `python manage.py fetch_album_metadata --weekly --with-musicbrainz`
+- **Frequency:** daily, 04:00 UTC
+- **Dyno:** Basic
+
+Without `--force` every pass but Wikidata skips records that already landed,
+so a routine Sunday run is Wikidata's ~25 requests plus whatever an import
+left missing, then the genre rebuild and the cache invalidation. It is what
+picks up a new release if nobody runs the fetch by hand. A forced re-fetch of
+everything stays a manual job:
+
+```bash
+heroku run:detached -- python manage.py fetch_album_metadata --force --with-musicbrainz
+heroku logs --tail --dyno run.N
 ```
 
 ## The Passes
@@ -59,7 +85,7 @@ They are separate because their costs differ by two orders of magnitude.
 | `wikidata` | ~25 | ~30s | `WikipediaAlbumData`, both external IDs, `Artist` rows |
 | `covers` | ~1000 | ~18 min | `AlbumCover` bytes, `MusicBrainzAlbumData` cover ids |
 | `discogs` | ~500 | ~23 min anonymous | `DiscogsAlbumData` (styles and top-level genres) |
-| `musicbrainz` | ~500 | ~9 min | release type, exact date, rating, genres (by vote) |
+| `musicbrainz` | ~500 | ~9 min (~17 for 1000) | release type, exact date, rating, genres (by vote) |
 
 After any run that includes `wikidata`, `discogs` or `musicbrainz`, the
 command runs `rebuild_album_genres`, which derives every album's genres from
@@ -81,6 +107,7 @@ and its hard 1 req/sec cap would dominate a routine refresh.
 Set `DISCOGS_TOKEN` (free, from discogs.com/settings/developers) to raise the
 Discogs limit. The client reads `X-Discogs-Ratelimit` off each response and
 paces from it either way, so the token changes speed and nothing else.
+Production has had one set since 2026-10-18.
 
 ## Genres
 

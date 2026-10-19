@@ -79,7 +79,8 @@
         </p>
         <code class="text-xs break-all select-all">python manage.py fetch_album_metadata</code>
         <p class="text-xs opacity-70 mt-2">
-            On production: <code class="select-all">heroku run -- python manage.py fetch_album_metadata</code>
+            On production: <code class="select-all">heroku run:detached -- python manage.py fetch_album_metadata</code>,
+            or leave it to the weekly scheduled run, which fills whatever is missing every Sunday.
         </p>
     </div>
     {% endif %}

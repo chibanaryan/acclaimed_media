@@ -780,7 +780,8 @@ external id only when `fetch_album_metadata` next runs and adopts them. Until
 then the rankings render with placeholder artwork and no genre filter at all,
 because the sidebar hides a filter with nothing in it. The games import page
 has the same split (its "Metadata Operations" panel, with its own buttons);
-music's import page shows what is missing and the command to run.
+music's import page shows what is missing and the command to run. The weekly
+scheduled fetch (below) closes the gap by the next Sunday if nobody does.
 
 The import stamps `SiteMetadata` under the `music` key, which the rankings
 heading reads as "Updated: ...". `SiteMetadata` is keyed per section, so
@@ -801,9 +802,18 @@ identifiers the other sources are keyed by, so nothing is matched on title.
 Four passes, selectable, because their costs differ by two orders of magnitude:
 Wikidata is ~25 batched requests (seconds), cover art ~1000 downloads (~18 min),
 Discogs ~500 requests at 25/min anonymous (~23 min), and MusicBrainz ~500 at its
-hard 1 req/sec cap (~9 min, opt-in via `--musicbrainz`). Set `DISCOGS_TOKEN` to
-raise the Discogs limit; the client paces itself from the response headers either
-way.
+hard 1 req/sec cap (~9 min, opt-in via `--musicbrainz` alone or
+`--with-musicbrainz` alongside the rest). Set `DISCOGS_TOKEN` to raise the
+Discogs limit (production has one); the client paces itself from the response
+headers either way.
+
+**It runs weekly on Heroku Scheduler**, as games' `refresh_all_metadata` does:
+a daily job, `python manage.py fetch_album_metadata --weekly --with-musicbrainz`,
+where `--weekly` exits at once on any day but Sunday (UTC) - the add-on has no
+weekly frequency. It is deliberately not `--force`: every pass but Wikidata
+skips records that already landed, so a routine run costs Wikidata's ~25
+requests plus whatever an import left missing, then the genre rebuild and the
+cache invalidation. A full re-fetch stays a manual `heroku run:detached`.
 
 Decisions worth knowing before changing any of it:
 

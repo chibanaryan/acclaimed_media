@@ -16,18 +16,15 @@ What is left, why it matters, and what it costs. Ordered within each group.
    built from the same filter machinery. Music could, now that it shares the
    filters - but only once the section is public.
 
-## Data pipeline
+## Music genres
 
-4. **Set `DISCOGS_TOKEN` on Heroku.** The metadata refresh is paced by the
-   anonymous Discogs tier at 25 requests a minute, which is ~40 minutes for
-   1000 albums. A token raises the ceiling and the client paces itself from
-   the response headers either way.
-5. **Schedule the music metadata refresh.** Games has a weekly refresh on the
-   scheduler addon; music is run by hand. An import does not trigger it (on
-   either section), which is now visible on the music import page.
-6. **The MusicBrainz pass is opt-in and has never run on the new release.**
-   `--musicbrainz` fills genres for the albums with no Discogs master - three
-   of them in the previous release, unknown in this one.
+4. **Classify the 105 MusicBrainz labels the vocabulary does not know.** The
+   first MusicBrainz pass (2026-10-18) brought them in; until each is a
+   leaf, an alias, a root or a dropped label in
+   `music/services/genre_normalizer.py`, it adds nothing. The big ones are
+   `progressive` (18 albums), `pop soul` (14), `ambient pop` (13),
+   `piano rock` and `alternative pop` (10 each). The list is
+   `heroku run -- python manage.py rebuild_album_genres --dry-run --report`.
 
 ## Production memory
 
@@ -36,18 +33,18 @@ rankings page is down from 1.4 MB of HTML to 870 KB (1.32 MB logged in). See
 AGENTS.md, "Production memory budget". What is left, in the order the
 measurements favour:
 
-7. **The server-rendered grid**: 100 `_game_card_grid.html` cards, about
+5. **The server-rendered grid**: 100 `_game_card_grid.html` cards, about
    160 KB, hidden unless grid view is on. Dropping them needs a client render
    whenever grid mode is chosen before the client-side filtering bundle has
    loaded, including `gameViewMode === 'grid'` in localStorage on first
    paint. Scroll-to-rank (`utils-loadmore.js`) and the append path read them
    too.
-8. **Inline `onclick`s** on every platform and genre span, about 54 KB,
+6. **Inline `onclick`s** on every platform and genre span, about 54 KB,
    could become one delegated listener.
-9. **One played button per game** rather than a desktop and a mobile copy:
+7. **One played button per game** rather than a desktop and a mobile copy:
    up to ~300 KB logged in.
-10. **Then `--worker-class gthread`** for concurrency without a third heap,
-    then Standard-2X (1 GB, $50/mo vs Basic's $7).
+8. **Then `--worker-class gthread`** for concurrency without a third heap,
+   then Standard-2X (1 GB, $50/mo vs Basic's $7).
 
 ## Music: not worth doing as parity
 

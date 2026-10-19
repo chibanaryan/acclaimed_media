@@ -62,8 +62,9 @@ heroku addons:create scheduler:standard
 ```
 
 Configure in Heroku Dashboard (https://dashboard.heroku.com):
-- **Command:** `python3 manage.py refresh_all_metadata`
-- **Schedule:** Weekly (Sunday 2:00 AM UTC recommended)
+- **Command:** `python3 manage.py refresh_all_metadata --weekly`
+- **Schedule:** Daily. Heroku Scheduler has no weekly frequency, so
+  `--weekly` exits at once on every day but Sunday (UTC)
 - **Dyno:** Performance-M (recommended for 60-70 minute job)
 - **Duration:** ~60-70 minutes (IGDB + Wikipedia + HLTB)
 
