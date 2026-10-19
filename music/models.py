@@ -73,8 +73,8 @@ class MusicGenre(models.Model):
 
     Mirrors ``books.models.BookGenre``: a parent FK plus a cached ``level``
     and ``path`` so a filter UI can render the tree without walking it. Rows
-    arrive from the Wikidata/MusicBrainz metadata pass; the supplied ranking
-    files carry no genre data, so this starts empty.
+    are written by ``music.services.genre_rebuild`` from the stored metadata;
+    the supplied ranking files carry no genre data, so this starts empty.
     """
 
     name = models.CharField(max_length=100, unique=True, db_index=True)

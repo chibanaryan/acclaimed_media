@@ -1,5 +1,30 @@
 # Developer Log
 
+## 2026-10-18 (music genres: our own vocabulary, voted on by three sources)
+
+- **The album genre tree had 207 leaves, 73 holding a single album.** Every
+  Discogs style became its own row. `genre_normalizer.GENRE_VOCABULARY` now
+  names every genre (16 roots, ~125 leaves) and classifies each Discogs and
+  Wikidata label as a leaf, an alias ("Glam" -> Glam Rock), a root, or a
+  dropped descriptor. After pruning leaves under 3 albums: 95 leaves, none
+  with a single album
+- **45 unmapped styles were misfiled.** Their root came from the album's own
+  Discogs genres, so Bubblegum sat under Electronic, Son under Jazz, and
+  "Post-Modern" moved between Classical and Electronic every run. An
+  unclassified label now creates nothing
+- **Wikidata was evaluated as a replacement and rejected.** It has more
+  distinct labels than Discogs (272 vs 222) and names one genre for 533 of
+  973 albums. Discogs stays the base; Wikidata and MusicBrainz only add what
+  a second source corroborates. A strict two-source rule was tried and lost
+  real genres (*Purple Rain* lost Funk)
+- **Hybrid leaves tag a second root on the album.** Folk Rock, Country Rock,
+  Synth-pop and a few others sit under one parent in the tree, but *Harvest*
+  is now under Rock as well as Folk and Country
+- **`rebuild_album_genres` derives genres offline, corpus-wide.** The metadata
+  passes only store; `fetch_album_metadata` runs the rebuild at the end.
+  Aliased rows are renamed in place so `?genres=` ids survive, and saved
+  filters naming a deleted genre are remapped
+
 ## 2026-10-18 (the rankings page: 1.4 MB -> 870 KB)
 
 - **36% of every page was template indentation.** The row partials sit

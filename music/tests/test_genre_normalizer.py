@@ -1,16 +1,24 @@
-"""Tests for the Discogs style -> MusicGenre normalizer.
+"""Tests for the controlled music genre vocabulary and the sources' vote.
 
-The rule that matters most here is that a style's root is global. It was once
-taken from the album's own Discogs genre list, which made 'Alternative Rock'
-a child of Electronic because OK Computer is tagged "Electronic, Rock" - and
-that one row then represented every alternative rock album on the site.
+Two failures shaped this module. Every Discogs style once became its own genre
+row, which grew the tree to 207 leaves, 73 of them holding a single album. And
+a style nobody had mapped took its root from the album's own Discogs genres,
+which filed "Bubblegum" under Electronic and moved "Post-Modern" between
+Classical and Electronic on every run. So a label now means only what the
+vocabulary says it means, and every label the corpus uses is pinned here.
 """
+
+from unittest import mock
 
 from django.test import SimpleTestCase, TestCase
 
 from music.models import MusicGenre
 from music.services import genre_normalizer as gn
 from music.templatetags.music_filters import MUSIC_GENRE_CATEGORY_ICONS
+
+
+def votes(name, labels):
+    return gn.votes_from_labels(name, labels)
 
 
 class RootSetTests(SimpleTestCase):
@@ -27,117 +35,806 @@ class RootSetTests(SimpleTestCase):
         ]
         self.assertEqual(extra, [])
 
-    def test_every_mapped_root_is_in_the_hierarchy(self):
-        for style, root in gn.STYLE_TO_ROOT.items():
-            with self.subTest(style=style):
-                self.assertTrue(root is None or root in gn.ROOT_GENRES)
+    def test_root_aliases_name_real_roots(self):
+        self.assertEqual(set(gn.ROOT_ALIASES) - set(gn.ROOT_GENRES), set())
 
-    def test_every_discogs_default_is_in_the_hierarchy(self):
-        for name, root in gn.DISCOGS_GENRE_TO_ROOT.items():
+    def test_hybrids_are_real_leaves_with_real_extra_roots(self):
+        for leaf, roots in gn.HYBRID_ROOTS.items():
+            with self.subTest(leaf=leaf):
+                self.assertIn(leaf, gn.LEAF_PARENT)
+                for root in roots:
+                    self.assertIn(root, gn.ROOT_GENRES)
+                    self.assertNotEqual(root, gn.LEAF_PARENT[leaf])
+
+    def test_every_discogs_genre_implies_real_roots(self):
+        for name, roots in gn.DISCOGS_GENRE_ROOTS.items():
             with self.subTest(discogs_genre=name):
-                self.assertTrue(root is None or root in gn.ROOT_GENRES)
+                self.assertEqual(set(roots) - set(gn.ROOT_GENRES), set())
 
-    def test_every_keyword_target_is_in_the_hierarchy(self):
-        for keyword, root in gn.ROOT_KEYWORDS.items():
-            with self.subTest(keyword=keyword):
-                self.assertIn(root, gn.ROOT_GENRES)
-
-
-class NameInferenceTests(SimpleTestCase):
-    def test_the_rightmost_root_word_wins(self):
-        self.assertEqual(gn.root_from_style_name("Pop Rock"), "Rock")
-        self.assertEqual(gn.root_from_style_name("Indie Pop"), "Pop")
-        self.assertEqual(gn.root_from_style_name("Alternative Rock"), "Rock")
-
-    def test_a_two_word_root_is_matched_before_a_single_word(self):
-        """'Hardcore Hip Hop' is hip hop, not hardcore punk."""
-        self.assertEqual(gn.root_from_style_name("Hardcore Hip-Hop"), "Hip Hop")
-
-    def test_hyphens_are_treated_as_spaces(self):
-        self.assertEqual(gn.root_from_style_name("Jazz-Rock"), "Rock")
-
-    def test_an_unknown_name_yields_nothing(self):
-        self.assertIsNone(gn.root_from_style_name("Conscious"))
-        self.assertIsNone(gn.root_from_style_name(""))
-
-    def test_case_does_not_matter(self):
-        self.assertEqual(gn.root_from_style_name("pop ROCK"), "Rock")
+    def test_the_hierarchy_lists_every_leaf_once(self):
+        leaves = [leaf for names in gn.GENRE_HIERARCHY.values() for leaf in names]
+        self.assertEqual(len(leaves), len(set(leaves)))
+        self.assertEqual(set(leaves), set(gn.LEAF_PARENT))
 
 
-class ResolveStyleTests(SimpleTestCase):
-    def test_an_explicit_mapping_wins_over_the_name(self):
-        """Synth-pop is electronic music despite its name."""
-        self.assertEqual(gn.resolve_style("Synth-pop"), "Electronic")
+class LookupConsistencyTests(SimpleTestCase):
+    def test_a_label_classified_two_ways_is_refused(self):
+        with mock.patch.dict(gn.ROOT_ALIASES, {"Jazz": ("indie rock",)}):
+            with self.assertRaisesRegex(ValueError, "classified twice"):
+                gn._build_lookup()
 
-    def test_an_explicit_none_drops_a_descriptor(self):
-        self.assertIsNone(gn.resolve_style("Vocal", ["Rock"]))
-        self.assertIsNone(gn.resolve_style("Experimental", ["Rock"]))
+    def test_a_leaf_under_two_roots_is_refused(self):
+        with mock.patch.dict(
+            gn.GENRE_VOCABULARY, {"Pop": {"Indie Rock": ()}}, clear=False
+        ):
+            with self.assertRaisesRegex(ValueError, "two roots"):
+                gn._build_lookup()
 
-    def test_a_style_that_is_itself_a_root_resolves_to_itself(self):
-        self.assertEqual(gn.resolve_style("Funk"), "Funk")
-        self.assertEqual(gn.resolve_style("Jazz"), "Jazz")
+    def test_repeating_the_same_classification_is_allowed(self):
+        """'rock music' and 'Rock' both mean the Rock root; that is no conflict."""
+        lookup, _ = gn._build_lookup()
+        self.assertEqual(lookup["rock"], gn.Canonical(None, ("Rock",)))
 
-    def test_the_name_is_used_before_the_albums_genres(self):
-        """This is the fix for Alternative Rock landing under Electronic."""
+
+class LabelKeyTests(SimpleTestCase):
+    def test_spellings_of_one_genre_share_a_key(self):
+        for a, b in [
+            ("Hip-Hop", "hip hop"),
+            ("Rock & Roll", "rock and roll"),
+            ("heavy metal music", "Heavy Metal"),
+            ("Post Rock", "post-rock"),
+            ("P.Funk", "P-Funk"),
+            ("Cut-up/DJ", "cut up dj"),
+        ]:
+            with self.subTest(a=a, b=b):
+                self.assertEqual(gn.label_key(a), gn.label_key(b))
+
+    def test_music_alone_is_not_stripped_to_nothing(self):
+        self.assertEqual(gn.label_key("Music"), "music")
+
+
+class CanonicalizeTests(SimpleTestCase):
+    def test_a_leaf_matches_itself_with_its_root(self):
         self.assertEqual(
-            gn.resolve_style("Alternative Rock", ["Electronic", "Rock"]), "Rock"
+            gn.canonicalize("Indie Rock"), gn.Canonical("Indie Rock", ("Rock",))
         )
 
-    def test_the_same_style_resolves_the_same_way_whatever_the_album(self):
-        first = gn.resolve_style("Alternative Rock", ["Electronic", "Rock"])
-        second = gn.resolve_style("Alternative Rock", ["Rock"])
-        self.assertEqual(first, second)
+    def test_an_alias_collapses_into_its_leaf(self):
+        self.assertEqual(gn.canonicalize("Glam").leaf, "Glam Rock")
+        self.assertEqual(gn.canonicalize("thrash").leaf, "Thrash Metal")
+        self.assertEqual(gn.canonicalize("Ethereal").leaf, "Dream Pop")
 
-    def test_the_albums_genres_are_the_last_resort(self):
-        """A style nobody has mapped yet still lands somewhere sensible."""
-        self.assertEqual(gn.resolve_style("Brand New Substyle", ["Hip Hop"]), "Hip Hop")
-        self.assertEqual(gn.resolve_style("Another Unknown", ["Funk / Soul"]), "Soul")
+    def test_a_root_alias_means_only_the_root(self):
+        self.assertEqual(gn.canonicalize("rock music"), gn.Canonical(None, ("Rock",)))
+        self.assertEqual(gn.canonicalize("hip-hop"), gn.Canonical(None, ("Hip Hop",)))
 
-    def test_an_unmappable_style_returns_none(self):
-        self.assertIsNone(gn.resolve_style("Totally Unknown Thing", []))
+    def test_a_hybrid_leaf_carries_its_extra_roots(self):
+        self.assertEqual(gn.canonicalize("Folk Rock").roots, ("Rock", "Folk"))
 
-    def test_an_unknown_discogs_genre_does_not_resolve(self):
-        self.assertIsNone(gn.resolve_style("Mystery", ["Nonexistent Genre"]))
+    def test_a_dropped_label_is_classified_but_means_nothing(self):
+        self.assertIsNone(gn.canonicalize("Vocal"))
+        self.assertTrue(gn.is_classified("Vocal"))
 
-    def test_case_insensitive_matching(self):
-        self.assertEqual(gn.resolve_style("synth-POP"), "Electronic")
+    def test_an_unknown_label_is_not_classified(self):
+        self.assertIsNone(gn.canonicalize("Utterly Unknown"))
+        self.assertFalse(gn.is_classified("Utterly Unknown"))
 
-    def test_discogs_coarse_roots_split_the_way_we_want(self):
-        self.assertEqual(gn.resolve_style("Punk", ["Rock"]), "Punk")
-        self.assertEqual(gn.resolve_style("Heavy Metal", ["Rock"]), "Metal")
-        self.assertEqual(gn.resolve_style("Soul", ["Funk / Soul"]), "Soul")
-        self.assertEqual(gn.resolve_style("Contemporary R&B", ["Funk / Soul"]), "R&B")
-        self.assertEqual(gn.resolve_style("Funk", ["Funk / Soul"]), "Funk")
+    def test_roots_for_discogs_genre(self):
         self.assertEqual(
-            gn.resolve_style("Country", ["Folk, World, & Country"]), "Country"
+            gn.roots_for_discogs_genre("funk / soul"), ("Soul", "Funk", "R&B")
         )
-        self.assertEqual(gn.resolve_style("Folk", ["Folk, World, & Country"]), "Folk")
-
-    def test_root_for_discogs_genre(self):
-        self.assertEqual(gn.root_for_discogs_genre("Funk / Soul"), "Soul")
-        self.assertEqual(gn.root_for_discogs_genre("funk / soul"), "Soul")
-        self.assertIsNone(gn.root_for_discogs_genre("Non-Music"))
-        self.assertIsNone(gn.root_for_discogs_genre("Unheard Of"))
+        self.assertEqual(gn.roots_for_discogs_genre("Non-Music"), ())
+        self.assertEqual(gn.roots_for_discogs_genre("Polka"), ())
 
 
-class ResolveStylesTests(SimpleTestCase):
-    def test_order_is_preserved_and_duplicates_dropped(self):
-        resolved = gn.resolve_styles(["Punk", "New Wave", "Punk"], ["Rock"])
-        self.assertEqual(resolved, [("Punk", "Punk"), ("New Wave", "Rock")])
+class RealVocabularyTests(SimpleTestCase):
+    """Every label the real release uses must be classified.
 
-    def test_dropped_styles_do_not_appear(self):
-        resolved = gn.resolve_styles(["Vocal", "Pop Rock"], ["Rock"])
-        self.assertEqual(resolved, [("Pop Rock", "Rock")])
+    An unclassified label is ignored, so the album silently loses whatever it
+    meant. A new release with new labels fails here; add each one to
+    ``genre_normalizer`` (as a leaf, an alias, a root alias or a dropped
+    label) and to these lists. ``rebuild_album_genres --report`` lists them.
+    """
 
-    def test_blank_styles_are_ignored(self):
-        self.assertEqual(gn.resolve_styles(["", "Funk"], []), [("Funk", "Funk")])
+    # Every Discogs style and Wikidata P136 label on the 1000-album release,
+    # as of 2026-10-18.
+    DISCOGS_STYLES = [
+        "AOR",
+        "Abstract",
+        "Acid",
+        "Acid House",
+        "Acid Jazz",
+        "Acid Rock",
+        "Acoustic",
+        "African",
+        "Afro-Cuban",
+        "Afro-Cuban Jazz",
+        "Afrobeat",
+        "Alt-Pop",
+        "Alternative Metal",
+        "Alternative Rock",
+        "Ambient",
+        "Antifolk",
+        "Arena Rock",
+        "Art Rock",
+        "Avant-garde Jazz",
+        "Avantgarde",
+        "Ballad",
+        "Baroque Pop",
+        "Bass Music",
+        "Bayou Funk",
+        "Beat",
+        "Beatbox",
+        "Berlin-School",
+        "Big Band",
+        "Big Beat",
+        "Blackgaze",
+        "Blues Rock",
+        "Bolero",
+        "Boogie",
+        "Boom Bap",
+        "Bop",
+        "Bossa Nova",
+        "Breakbeat",
+        "Breaks",
+        "Britpop",
+        "Broken Beat",
+        "Bubblegum",
+        "Cajun",
+        "Celtic",
+        "Chanson",
+        "Chicago Blues",
+        "Classic Rock",
+        "Coldwave",
+        "Conjunto",
+        "Conscious",
+        "Contemporary",
+        "Contemporary Jazz",
+        "Contemporary R&B",
+        "Country",
+        "Country Rock",
+        "Crunk",
+        "Cut-up/DJ",
+        "Dance-pop",
+        "Dancehall",
+        "Danzon",
+        "Darkwave",
+        "Deconstructed Club",
+        "Deep House",
+        "Deep Techno",
+        "Delta Blues",
+        "Disco",
+        "Doo Wop",
+        "Downtempo",
+        "Dream Pop",
+        "Drone",
+        "Drum n Bass",
+        "Dub",
+        "Dubstep",
+        "Electric Blues",
+        "Electro",
+        "Electro House",
+        "Electroclash",
+        "Ethereal",
+        "Europop",
+        "Experimental",
+        "Flamenco",
+        "Folk",
+        "Folk Rock",
+        "Free Jazz",
+        "French House",
+        "Funk",
+        "Funk Metal",
+        "Fusion",
+        "Future Jazz",
+        "G-Funk",
+        "Gangsta",
+        "Garage House",
+        "Garage Rock",
+        "Glam",
+        "Glitch",
+        "Glitch Hop",
+        "Gospel",
+        "Goth Rock",
+        "Gqom",
+        "Grime",
+        "Grindcore",
+        "Groove Metal",
+        "Grunge",
+        "Guajira",
+        "Hard Bop",
+        "Hard Rock",
+        "Hardcore",
+        "Hardcore Hip-Hop",
+        "Harmonica Blues",
+        "Heavy Metal",
+        "Hip Hop",
+        "Hip-House",
+        "Holiday",
+        "Honky Tonk",
+        "Horrorcore",
+        "House",
+        "Hyperpop",
+        "Hyphy",
+        "IDM",
+        "Indie Pop",
+        "Indie Rock",
+        "Industrial",
+        "Instrumental",
+        "Jangle Pop",
+        "Jazz-Funk",
+        "Jazz-Rock",
+        "Jazzy Hip-Hop",
+        "Jungle",
+        "Krautrock",
+        "Latin Jazz",
+        "Leftfield",
+        "Lo-Fi",
+        "Louisiana Blues",
+        "Lounge",
+        "MPB",
+        "Math Rock",
+        "Mbalax",
+        "Memphis Blues",
+        "Minimal",
+        "Minimalism",
+        "Minneapolis Sound",
+        "Mod",
+        "Modal",
+        "Modern Classical",
+        "Music Hall",
+        "Musique Concrète",
+        "Neo Soul",
+        "New Age",
+        "New Jack Swing",
+        "New Wave",
+        "No Wave",
+        "Noise",
+        "Noise Rock",
+        "Norteño",
+        "Nu Metal",
+        "P.Funk",
+        "Pachanga",
+        "Parody",
+        "Piano Blues",
+        "Plunderphonics",
+        "Pop Punk",
+        "Pop Rap",
+        "Pop Rock",
+        "Post Bop",
+        "Post Rock",
+        "Post-Hardcore",
+        "Post-Metal",
+        "Post-Modern",
+        "Post-Punk",
+        "Power Pop",
+        "Prog Rock",
+        "Progressive House",
+        "Psychedelic",
+        "Psychedelic Rock",
+        "Psychobilly",
+        "Punk",
+        "Radioplay",
+        "Ragga HipHop",
+        "Reggae",
+        "Religious",
+        "Rhythm & Blues",
+        "Rock & Roll",
+        "Rock Opera",
+        "Rockabilly",
+        "Rocksteady",
+        "Roots Reggae",
+        "Samba",
+        "Score",
+        "Shoegaze",
+        "Ska",
+        "Slowcore",
+        "Smooth Jazz",
+        "Soft Rock",
+        "Son",
+        "Soul",
+        "Soul-Jazz",
+        "Sound Collage",
+        "Soundtrack",
+        "Southern Rock",
+        "Space Rock",
+        "Space-Age",
+        "Speech",
+        "Speed Metal",
+        "Spiritual Jazz",
+        "Stoner Rock",
+        "Surf",
+        "Swing",
+        "Symphonic Rock",
+        "Synth-pop",
+        "Synthpunk",
+        "Techno",
+        "Texas Blues",
+        "Theme",
+        "Thrash",
+        "Trance",
+        "Trap",
+        "Tribal",
+        "Trip Hop",
+        "Trova",
+        "UK Funky",
+        "UK Garage",
+        "Vocal",
+        "Zydeco",
+    ]
 
-    def test_case_variants_are_treated_as_one(self):
-        resolved = gn.resolve_styles(["Funk", "funk"], [])
-        self.assertEqual(len(resolved), 1)
+    WIKIDATA_LABELS = [
+        "2-step garage",
+        "Afrobeat",
+        "Berlin School of electronic music",
+        "Brill Building",
+        "British blues",
+        "British folk rock",
+        "British rock",
+        "Britpop",
+        "Canterbury scene",
+        "Chicago blues",
+        "Chicano rock",
+        "Christgau's Record Guide: Rock Albums of the Seventies",
+        "Christmas music",
+        "East Coast hip-hop",
+        "Eurodisco",
+        "Europop",
+        "French house",
+        "French pop",
+        "French rock",
+        "G-funk",
+        "Irish folk music",
+        "Krautrock",
+        "Latin rock",
+        "Lo-fi",
+        "Madchester",
+        "Midwest hip-hop",
+        "Minneapolis sound",
+        "New Orleans rhythm and blues",
+        "Southern Gothic",
+        "Southern hip-hop",
+        "Southern rock",
+        "Texas blues",
+        "Ticknor and Fields",
+        "West Coast hip-hop",
+        "acid house",
+        "acid rock",
+        "acoustic music",
+        "alternative R&B",
+        "alternative country",
+        "alternative dance",
+        "alternative hip-hop",
+        "alternative metal",
+        "alternative rock",
+        "ambient house",
+        "ambient music",
+        "ambient techno",
+        "anti-folk",
+        "arena rock",
+        "art pop",
+        "art punk",
+        "art rock",
+        "avant-funk",
+        "avant-garde jazz",
+        "avant-garde music",
+        "avant-pop",
+        "baroque pop",
+        "beat music",
+        "blue-eyed soul",
+        "bluegrass music",
+        "blues",
+        "blues rock",
+        "boogie rock",
+        "boom bap",
+        "bossa nova",
+        "breakbeat",
+        "bubblegum music",
+        "chamber pop",
+        "chill-out music",
+        "chipmunk soul",
+        "comedy hip-hop",
+        "conscious hip-hop",
+        "contemporary R&B",
+        "contemporary folk music",
+        "cool jazz",
+        "country blues",
+        "country music",
+        "country pop",
+        "country rap",
+        "country rock",
+        "crossover",
+        "dance music",
+        "dance-pop",
+        "dance-punk",
+        "dance-rock",
+        "dark ambient",
+        "dark wave",
+        "deathrock",
+        "devotional song",
+        "disco",
+        "downtempo",
+        "dream pop",
+        "drum and bass",
+        "dub music",
+        "dubstep",
+        "easy listening",
+        "electric blues",
+        "electro",
+        "electro house",
+        "electronic dance music",
+        "electronic music",
+        "electronic rock",
+        "electronica",
+        "electropop",
+        "emo",
+        "ethereal wave",
+        "experimental hip-hop",
+        "experimental music",
+        "experimental pop",
+        "experimental rock",
+        "extreme metal",
+        "flamenco",
+        "folk jazz",
+        "folk music",
+        "folk punk",
+        "folk rock",
+        "folk-pop",
+        "folktronica",
+        "free jazz",
+        "funk",
+        "funk metal",
+        "funk rock",
+        "gangsta rap",
+        "garage punk",
+        "garage rock",
+        "glam punk",
+        "glam rock",
+        "golden age hip-hop",
+        "gospel music",
+        "gothic rock",
+        "grindcore",
+        "grunge",
+        "hard rock",
+        "hardcore hip-hop",
+        "hardcore punk",
+        "heartland rock",
+        "heavy metal music",
+        "hip house",
+        "hip-hop",
+        "hip-hop soul",
+        "honky-tonk",
+        "horrorcore",
+        "house music",
+        "hyperpop",
+        "indie folk",
+        "indie pop",
+        "indie rock",
+        "indietronica",
+        "industrial music",
+        "industrial rock",
+        "instrumental music",
+        "intelligent dance music",
+        "jam band music",
+        "jangle pop",
+        "jazz",
+        "jazz fusion",
+        "jazz rap",
+        "jazz-funk",
+        "leftfield house",
+        "lo-fi music",
+        "mafioso rap",
+        "mashup",
+        "math rock",
+        "mbaqanga",
+        "minimalist music",
+        "mod revival",
+        "modal jazz",
+        "music hall",
+        "music of Africa",
+        "musique concrète",
+        "música popular brasileira",
+        "neo soul",
+        "neo-psychedelia",
+        "neofolk",
+        "new age music",
+        "new jack swing",
+        "new wave",
+        "no wave",
+        "noise music",
+        "noise pop",
+        "noise rock",
+        "nu jazz",
+        "nu metal",
+        "old-school hip-hop",
+        "opera",
+        "orchestral pop",
+        "outsider music",
+        "plunderphonics",
+        "political hip-hop",
+        "pop music",
+        "pop rap",
+        "pop rock",
+        "pop-punk",
+        "popular music",
+        "post-Britpop",
+        "post-bop",
+        "post-disco",
+        "post-hardcore",
+        "post-progressive",
+        "post-punk",
+        "post-punk revival",
+        "post-rock",
+        "power pop",
+        "progressive house",
+        "progressive pop",
+        "progressive rap",
+        "progressive rock",
+        "proto-punk",
+        "psychedelic folk",
+        "psychedelic funk",
+        "psychedelic music",
+        "psychedelic pop",
+        "psychedelic rap",
+        "psychedelic rock",
+        "psychedelic soul",
+        "psychobilly",
+        "pub rock",
+        "punk jazz",
+        "quiet storm",
+        "rap metal",
+        "rap rock",
+        "rapping",
+        "reggae",
+        "reggae fusion",
+        "reggae rock",
+        "reggaeton",
+        "religious music",
+        "rhythm and blues",
+        "rock and roll",
+        "rock music",
+        "rock opera",
+        "rockabilly",
+        "rocksteady",
+        "roots reggae",
+        "roots rock",
+        "samba rock",
+        "shoegaze",
+        "singer-songwriter music",
+        "ska",
+        "slowcore",
+        "smooth jazz",
+        "soft rock",
+        "sophisti-pop",
+        "soul",
+        "soul blues",
+        "space rock",
+        "space rock revival",
+        "speed metal",
+        "spiritual jazz",
+        "spoken word",
+        "stage and screen",
+        "stoner rock",
+        "sunshine pop",
+        "surf music",
+        "swamp rock",
+        "symphonic rock",
+        "synth-pop",
+        "synth-punk",
+        "techno",
+        "thrash metal",
+        "traditional doom metal",
+        "traditional folk music",
+        "traditional heavy metal",
+        "traditional pop",
+        "trance",
+        "trap music",
+        "trip hop",
+        "turntablism",
+        "underground hip-hop",
+        "vaporwave",
+        "vocal jazz",
+        "world music",
+        "worldbeat",
+    ]
 
-    def test_no_styles_yields_nothing(self):
-        self.assertEqual(gn.resolve_styles([], ["Rock"]), [])
+    def test_every_observed_discogs_style_is_classified(self):
+        self.assertEqual(
+            [label for label in self.DISCOGS_STYLES if not gn.is_classified(label)],
+            [],
+        )
+
+    def test_every_observed_wikidata_label_is_classified(self):
+        self.assertEqual(
+            [label for label in self.WIKIDATA_LABELS if not gn.is_classified(label)],
+            [],
+        )
+
+    def test_the_styles_the_old_fallback_misfiled(self):
+        """Each of these once took its root from the album's Discogs genres."""
+        for label, expected in [
+            ("Bubblegum", gn.Canonical(None, ("Pop",))),
+            ("Hyphy", gn.Canonical(None, ("Hip Hop",))),
+            ("Son", gn.Canonical("Latin", ("World",))),
+            ("Conjunto", gn.Canonical("Latin", ("World",))),
+            ("Mbalax", gn.Canonical("African", ("World",))),
+            ("Grindcore", gn.Canonical(None, ("Metal",))),
+            ("Doo Wop", gn.Canonical("Rhythm & Blues", ("R&B",))),
+        ]:
+            with self.subTest(label=label):
+                self.assertEqual(gn.canonicalize(label), expected)
+        for label in ("Post-Modern", "Radioplay", "Speech", "Religious", "Holiday"):
+            with self.subTest(label=label):
+                self.assertIsNone(gn.canonicalize(label))
+
+    def test_the_two_vocabularies_meet(self):
+        """Discogs' and Wikidata's spellings of one genre land on one leaf."""
+        for discogs, wikidata in [
+            ("Conscious", "conscious hip-hop"),
+            ("Jazzy Hip-Hop", "jazz rap"),
+            ("Fusion", "jazz fusion"),
+            ("Prog Rock", "progressive rock"),
+            ("Hardcore", "hardcore punk"),
+            ("Gangsta", "gangsta rap"),
+            ("Glam", "glam rock"),
+        ]:
+            with self.subTest(discogs=discogs):
+                self.assertEqual(
+                    gn.canonicalize(discogs).leaf, gn.canonicalize(wikidata).leaf
+                )
+
+
+class VotesFromLabelsTests(SimpleTestCase):
+    def test_order_is_kept_and_repeats_dropped(self):
+        result = votes("wikidata", ["glam rock", "Glam", "art rock"])
+        self.assertEqual(result.leaves, ["Glam Rock", "Art Rock"])
+
+    def test_root_labels_become_roots(self):
+        result = votes("wikidata", ["rock music", "hip-hop", "rock"])
+        self.assertEqual(result.roots, ["Rock", "Hip Hop"])
+
+    def test_unknown_labels_are_collected_and_dropped_ones_are_not(self):
+        result = votes("wikidata", ["Utterly Unknown", "Vocal", "", None, "  "])
+        self.assertEqual(result.unclassified, ["Utterly Unknown"])
+        self.assertTrue(result.is_empty)
+
+    def test_all_roots_includes_the_leaves_roots(self):
+        result = votes("discogs", ["Folk Rock", "Disco"])
+        self.assertEqual(result.all_roots, {"Rock", "Folk", "Funk"})
+
+
+class DiscogsVotesTests(SimpleTestCase):
+    def test_top_level_genres_are_evidence_not_labels(self):
+        result = gn.discogs_votes(["Pop Rock"], ["Rock", "Funk / Soul", "Polka"])
+        self.assertEqual(result.leaves, ["Pop Rock"])
+        self.assertEqual(result.roots, [])
+        self.assertEqual(
+            result.evidence_roots, ["Rock", "Punk", "Metal", "Soul", "Funk", "R&B"]
+        )
+        self.assertEqual(result.fallback_roots, ["Rock", "Soul"])
+
+    def test_evidence_alone_is_not_empty(self):
+        result = gn.discogs_votes([], ["Jazz", "Jazz"])
+        self.assertFalse(result.has_labels)
+        self.assertFalse(result.is_empty)
+        self.assertEqual(result.fallback_roots, ["Jazz"])
+
+    def test_nothing_at_all(self):
+        self.assertTrue(gn.discogs_votes(None, None).is_empty)
+
+
+class ChooseAlbumGenresTests(SimpleTestCase):
+    def choose(self, *sources):
+        return gn.choose_album_genres(sources)
+
+    def test_the_base_source_is_kept_whole(self):
+        """Purple Rain: Wikidata's lone "rock and roll" must not cost it Funk."""
+        genres = self.choose(
+            gn.discogs_votes(
+                ["Minneapolis Sound", "Funk", "Pop Rock"], ["Rock", "Funk / Soul"]
+            ),
+            votes("wikidata", ["rock and roll"]),
+        )
+        self.assertEqual(genres.roots, ["Rock", "Funk"])
+        self.assertEqual(genres.leaves, ["Minneapolis Sound", "Pop Rock"])
+
+    def test_another_sources_leaf_needs_a_second_vote(self):
+        genres = self.choose(
+            gn.discogs_votes(["Indie Rock"], ["Rock"]),
+            votes("wikidata", ["indie rock", "space rock"]),
+            votes("musicbrainz", ["space rock"]),
+        )
+        self.assertEqual(genres.leaves, ["Indie Rock", "Space Rock"])
+
+    def test_a_single_extra_opinion_in_a_covered_root_is_dropped(self):
+        """The Sophtware Slump: Wikidata's "space rock" alone adds nothing."""
+        genres = self.choose(
+            gn.discogs_votes(["Downtempo", "Indie Rock"], ["Electronic", "Rock"]),
+            votes("wikidata", ["indie rock", "space rock"]),
+        )
+        self.assertEqual(genres.leaves, ["Downtempo", "Indie Rock"])
+
+    def test_an_agreed_root_with_no_leaf_takes_the_first_one_named(self):
+        """The Velvet Underground & Nico gains Wikidata's Proto-Punk.
+
+        Discogs' "Rock" is evidence for Punk, so Wikidata's punk label makes
+        two votes for the root, and Discogs has no leaf there of its own.
+        """
+        genres = self.choose(
+            gn.discogs_votes(["Garage Rock", "Art Rock"], ["Rock"]),
+            votes("wikidata", ["art rock", "proto-punk", "art pop"]),
+        )
+        self.assertEqual(genres.leaves, ["Garage Rock", "Art Rock", "Proto-Punk"])
+        self.assertEqual(genres.roots, ["Rock", "Punk"])
+
+    def test_evidence_alone_does_not_tag_an_album(self):
+        """OK Computer is "Electronic, Rock" on Discogs, with only rock styles."""
+        genres = self.choose(
+            gn.discogs_votes(["Alternative Rock"], ["Electronic", "Rock"]),
+            votes("wikidata", ["alternative rock", "art rock"]),
+        )
+        self.assertNotIn("Electronic", genres.roots)
+
+    def test_an_agreed_root_is_kept_without_a_leaf(self):
+        genres = self.choose(
+            gn.discogs_votes(["Contemporary R&B"], ["Funk / Soul", "Pop"]),
+            votes("wikidata", ["pop music"]),
+        )
+        self.assertEqual(genres.roots, ["Pop", "R&B"])
+        self.assertEqual(genres.leaves, ["Contemporary R&B"])
+
+    def test_a_hybrid_leaf_tags_every_root_it_belongs_to(self):
+        """Harvest belongs under Rock as well as Folk and Country."""
+        genres = self.choose(
+            gn.discogs_votes(["Folk Rock", "Country Rock"], ["Rock"]),
+            votes("wikidata", ["country rock", "folk rock"]),
+        )
+        self.assertEqual(genres.roots, ["Rock", "Folk", "Country"])
+
+    def test_a_lone_source_is_trusted(self):
+        genres = self.choose(
+            gn.discogs_votes([], []),
+            votes("wikidata", []),
+            votes("musicbrainz", ["soul", "southern soul"]),
+        )
+        self.assertEqual(genres.names, ["Soul", "Southern Soul"])
+
+    def test_the_base_is_the_first_source_with_labels(self):
+        """An album whose Discogs master has no styles is based on Wikidata."""
+        genres = self.choose(
+            gn.discogs_votes([], ["Jazz"]),
+            votes("wikidata", ["modal jazz"]),
+        )
+        self.assertEqual(genres.names, ["Jazz", "Modal Jazz"])
+
+    def test_with_only_evidence_the_fallback_root_is_used(self):
+        genres = self.choose(gn.discogs_votes([], ["Funk / Soul"]))
+        self.assertEqual(genres.names, ["Soul"])
+
+    def test_no_data_at_all_yields_nothing(self):
+        self.assertEqual(self.choose().names, [])
+        self.assertEqual(self.choose(votes("wikidata", ["Vocal"])).names, [])
+
+
+class PruneRareLeavesTests(SimpleTestCase):
+    def test_a_rare_leaf_is_dropped_and_its_roots_kept(self):
+        assignments = {
+            1: gn.AlbumGenres(leaves=["Indie Rock", "Folk Rock"], roots=["Rock"]),
+            2: gn.AlbumGenres(leaves=["Indie Rock"], roots=["Rock"]),
+        }
+        pruned, rare = gn.prune_rare_leaves(assignments, min_albums=2)
+        self.assertEqual(rare, {"Folk Rock": 1})
+        self.assertEqual(pruned[1].leaves, ["Indie Rock"])
+        self.assertEqual(pruned[1].roots, ["Rock", "Folk"])
+        self.assertEqual(pruned[2].names, ["Rock", "Indie Rock"])
+
+    def test_the_default_threshold(self):
+        assignments = {
+            i: gn.AlbumGenres(leaves=["Grunge"], roots=["Rock"])
+            for i in range(gn.MIN_LEAF_ALBUMS - 1)
+        }
+        _, rare = gn.prune_rare_leaves(assignments)
+        self.assertIn("Grunge", rare)
 
 
 class GetOrCreateGenreTests(TestCase):
@@ -173,239 +870,11 @@ class GetOrCreateGenreTests(TestCase):
         leaf = gn.get_or_create_genre("Post-Punk", parent_name="Punk")
         self.assertEqual(leaf.display_order, 0)
 
-
-class GenresForAlbumTests(TestCase):
-    def test_both_the_root_and_the_leaf_are_returned(self):
-        genres = gn.genres_for_album(["Post-Punk"], ["Rock"])
-        self.assertEqual([g.name for g in genres], ["Punk", "Post-Punk"])
-
-    def test_a_style_that_is_a_root_yields_only_the_root(self):
-        genres = gn.genres_for_album(["Soul"], ["Funk / Soul"])
-        self.assertEqual([g.name for g in genres], ["Soul"])
-
-    def test_several_styles_under_one_root_share_it(self):
-        genres = gn.genres_for_album(["Pop Rock", "Art Rock"], ["Rock"])
-        self.assertEqual([g.name for g in genres], ["Rock", "Pop Rock", "Art Rock"])
-        self.assertEqual(MusicGenre.objects.filter(name="Rock").count(), 1)
-
-    def test_styles_under_different_roots_bring_both_roots(self):
-        genres = gn.genres_for_album(["Punk", "Synth-pop"], ["Rock"])
-        self.assertEqual([g.name for g in genres], ["Punk", "Electronic", "Synth-pop"])
-
-    def test_dropped_styles_contribute_nothing(self):
-        self.assertEqual(gn.genres_for_album(["Vocal"], []), [])
-
-    def test_no_styles_yields_nothing(self):
-        self.assertEqual(gn.genres_for_album([], []), [])
-
-
-class RealVocabularyTests(SimpleTestCase):
-    """Every style the real 500-album release actually uses must resolve.
-
-    An unmapped style is a silent gap: the album simply loses that genre. The
-    games app has needed four migrations to clean up strays that reached
-    production the same way, so this is pinned rather than trusted.
-    """
-
-    # Styles observed across all 498 Discogs masters in the checked-in
-    # release, as of 2026-10-17.
-    OBSERVED = [
-        "Indie Rock",
-        "Alternative Rock",
-        "Pop Rock",
-        "Art Rock",
-        "Psychedelic Rock",
-        "Blues Rock",
-        "New Wave",
-        "Rock & Roll",
-        "Hard Rock",
-        "Garage Rock",
-        "Glam",
-        "Soft Rock",
-        "Classic Rock",
-        "Noise Rock",
-        "Power Pop",
-        "Dream Pop",
-        "Grunge",
-        "Prog Rock",
-        "Post Rock",
-        "Jangle Pop",
-        "Britpop",
-        "Krautrock",
-        "Psychedelic",
-        "Shoegaze",
-        "Acid Rock",
-        "Jazz-Rock",
-        "Ethereal",
-        "Rockabilly",
-        "AOR",
-        "Beat",
-        "Space Rock",
-        "Rock Opera",
-        "Mod",
-        "Goth Rock",
-        "Antifolk",
-        "Math Rock",
-        "Stoner Rock",
-        "Arena Rock",
-        "Indie Pop",
-        "Dance-pop",
-        "Baroque Pop",
-        "Alt-Pop",
-        "Chanson",
-        "Europop",
-        "Music Hall",
-        "Conscious",
-        "Hardcore Hip-Hop",
-        "Boom Bap",
-        "Gangsta",
-        "Pop Rap",
-        "Jazzy Hip-Hop",
-        "G-Funk",
-        "Grime",
-        "Cut-up/DJ",
-        "Hip Hop",
-        "Horrorcore",
-        "Crunk",
-        "Beatbox",
-        "Ragga HipHop",
-        "Synth-pop",
-        "Downtempo",
-        "Electro",
-        "Leftfield",
-        "Ambient",
-        "Trip Hop",
-        "House",
-        "IDM",
-        "Breakbeat",
-        "French House",
-        "UK Garage",
-        "Techno",
-        "Industrial",
-        "Big Beat",
-        "Breaks",
-        "Tribal",
-        "Acid House",
-        "Electro House",
-        "Electroclash",
-        "Dubstep",
-        "Bass Music",
-        "Minimal",
-        "Deep House",
-        "Musique Concrète",
-        "Darkwave",
-        "Soul",
-        "Neo Soul",
-        "Gospel",
-        "Contemporary R&B",
-        "Rhythm & Blues",
-        "New Jack Swing",
-        "Funk",
-        "Disco",
-        "Minneapolis Sound",
-        "P.Funk",
-        "Boogie",
-        "Bayou Funk",
-        "Fusion",
-        "Modal",
-        "Soul-Jazz",
-        "Avant-garde Jazz",
-        "Post Bop",
-        "Jazz-Funk",
-        "Swing",
-        "Contemporary Jazz",
-        "Big Band",
-        "Spiritual Jazz",
-        "Free Jazz",
-        "Piano Blues",
-        "Louisiana Blues",
-        "Electric Blues",
-        "Texas Blues",
-        "Folk Rock",
-        "Folk",
-        "Celtic",
-        "Country Rock",
-        "Country",
-        "Punk",
-        "Post-Punk",
-        "Hardcore",
-        "Post-Hardcore",
-        "Pop Punk",
-        "No Wave",
-        "Synthpunk",
-        "Heavy Metal",
-        "Thrash",
-        "Alternative Metal",
-        "Funk Metal",
-        "Speed Metal",
-        "Groove Metal",
-        "Nu Metal",
-        "Reggae",
-        "Dub",
-        "Roots Reggae",
-        "Ska",
-        "Dancehall",
-        "Rocksteady",
-        "Modern Classical",
-        "African",
-        "Afrobeat",
-        "Zydeco",
-        "MPB",
-    ]
-
-    # Styles that are production or format descriptors, not genres.
-    DELIBERATELY_DROPPED = [
-        "Abstract",
-        "Acoustic",
-        "Avantgarde",
-        "Ballad",
-        "Experimental",
-        "Instrumental",
-        "Lo-Fi",
-        "Parody",
-        "Score",
-        "Soundtrack",
-        "Theme",
-        "Vocal",
-    ]
-
-    def test_every_observed_style_resolves_to_a_root(self):
-        unresolved = [
-            style for style in self.OBSERVED if gn.resolve_style(style) is None
-        ]
-        self.assertEqual(unresolved, [])
-
-    def test_the_dropped_styles_are_dropped_on_purpose(self):
-        kept = [
-            style
-            for style in self.DELIBERATELY_DROPPED
-            if gn.resolve_style(style, ["Rock"]) is not None
-        ]
-        self.assertEqual(kept, [])
-
-    def test_the_spot_checks_that_the_audit_corrected(self):
-        """Roots the Discogs-genre default got wrong before the name rule."""
-        for style, expected in [
-            ("Alternative Metal", "Metal"),
-            ("Funk Metal", "Metal"),
-            ("Groove Metal", "Metal"),
-            ("Piano Blues", "Blues"),
-            ("Texas Blues", "Blues"),
-            ("Louisiana Blues", "Blues"),
-            ("Big Band", "Jazz"),
-            ("Zydeco", "World"),
-            ("Afrobeat", "World"),
-            ("Minneapolis Sound", "Funk"),
-            ("Grime", "Hip Hop"),
-            ("Ska", "Reggae"),
-            ("Dub", "Reggae"),
-            ("New Wave", "Rock"),
-            ("Synth-pop", "Electronic"),
-            ("Folk Rock", "Folk"),
-            ("Country Rock", "Country"),
-        ]:
-            with self.subTest(style=style):
-                self.assertEqual(gn.resolve_style(style, ["Rock"]), expected)
+    def test_a_canonical_genre_lands_in_its_vocabulary_position(self):
+        self.assertEqual(
+            gn.get_or_create_canonical_genre("Folk Rock").parent.name, "Rock"
+        )
+        self.assertIsNone(gn.get_or_create_canonical_genre("Folk").parent)
 
 
 class ReparentingTests(TestCase):
@@ -448,5 +917,5 @@ class ReparentingTests(TestCase):
         self.assertEqual(first.id, again.id)
         self.assertEqual(again.parent.name, "Rock")
 
-    def test_the_real_mapping_puts_alternative_rock_under_rock(self):
-        self.assertEqual(gn.resolve_style("Alternative Rock"), "Rock")
+    def test_the_real_vocabulary_puts_alternative_rock_under_rock(self):
+        self.assertEqual(gn.LEAF_PARENT["Alternative Rock"], "Rock")

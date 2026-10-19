@@ -805,7 +805,7 @@ hard 1 req/sec cap (~9 min, opt-in via `--musicbrainz`). Set `DISCOGS_TOKEN` to
 raise the Discogs limit; the client paces itself from the response headers either
 way.
 
-Two decisions worth knowing before changing any of it:
+Decisions worth knowing before changing any of it:
 
 - **A style's root is corrected in place.** `get_or_create_genre` used to
   return an existing genre row untouched, so a style first created under the
@@ -813,19 +813,38 @@ Two decisions worth knowing before changing any of it:
   albums long after the resolution order was fixed, because the fix could not
   reach a row that already existed. It now re-parents a row whose root has
   changed, `level` and `path` with it.
-- **Genres come from Discogs, not Wikidata.** Discogs publishes a curated
-  two-level vocabulary and assigns it per album by exact master ID. Deriving a
-  tree from Wikidata's P279 graph classified only 159 of this corpus's 207 genre
-  entities unambiguously, put thrash metal under Rock, and left ska, dub and
-  ambient unreachable. `music/services/genre_normalizer.py` maps Discogs styles
-  onto our own 16 roots, which keep Punk, Metal, Soul and R&B first-class where
-  Discogs files them under Rock and "Funk / Soul". A style's root is resolved
-  **globally** - explicit mapping, then the style's own name, and only then the
-  album's genre list - because taking it from the album made `Alternative Rock` a
-  child of Electronic for OK Computer, and that row then represented every
-  alternative rock album. The `--musicbrainz` pass fills genres for the three
-  albums with no Discogs master, through the same normalizer and only where
-  Discogs supplied none.
+- **Genres are our own vocabulary, voted on by three sources.**
+  `music/services/genre_normalizer.py` names every genre the filter offers -
+  16 roots and about 125 leaves - and classifies each source label as a leaf,
+  an alias of one ("Glam" -> Glam Rock, "thrash metal" -> Thrash Metal), a
+  root ("hip-hop", "rock music"), or a label dropped on purpose ("Vocal",
+  "Classic Rock"). An unclassified label creates nothing. When every Discogs
+  style became a row of its own the tree had 207 leaves, 73 of them holding a
+  single album, and an unmapped style took its root from the album's own
+  Discogs genres, which filed Bubblegum under Electronic and Son under Jazz.
+  Discogs styles are the **base** and are kept whole. Wikidata P136 and
+  MusicBrainz genres can only **add**: a leaf another source also names, a
+  root two sources support, or a leaf for an agreed root with nothing under
+  it. A stricter "two sources must agree" rule was tried and dropped real
+  genres, because Wikidata names a single genre for over half the albums
+  (*Purple Rain* lost Funk). Leaves held by fewer than `MIN_LEAF_ALBUMS` (3)
+  albums are pruned, and their albums keep the root. Wikidata alone is no
+  better a source: it has *more* distinct labels than Discogs (272 against
+  222), and its P279 graph classified only 159 of 207 genre entities, put
+  thrash metal under Rock, and left ska, dub and ambient unreachable.
+- **The tree stays two levels and single-parent; hybrids tag extra roots.**
+  `HYBRID_ROOTS` gives Folk Rock, Country Rock, Synth-pop and a few others a
+  second root on the *album*, not a second parent on the genre, so *Harvest*
+  is under Rock, Folk and Country, while the shared tree, `genre_tree.py` and
+  the client payload keep assuming one parent.
+- **Genres are rebuilt offline, corpus-wide.** The passes only store what
+  they fetch. `python manage.py rebuild_album_genres` (run automatically at
+  the end of `fetch_album_metadata`) derives every album's genres from the
+  stored rows in seconds, with no network. `--dry-run --report` shows the
+  diff, the pruned leaves and any unclassified label - a new release's new
+  labels show up there and fail `RealVocabularyTests`. The rebuild renames
+  an alias's row in place, so its id survives, and remaps
+  `SavedAlbumFilterSet` genre ids that point at deleted rows.
 - **Cover art is downloaded, not hotlinked.** The Cover Art Archive redirects to
   archive.org, which 500s on roughly one request in ten and has a few items
   broken outright, so a hundred-cover page broke visibly on every load. The bytes

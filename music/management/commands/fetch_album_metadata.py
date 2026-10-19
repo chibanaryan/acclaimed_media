@@ -13,6 +13,10 @@ that; the client paces itself from the response headers either way.
     python manage.py fetch_album_metadata --discogs-only
     python manage.py fetch_album_metadata --musicbrainz
     python manage.py fetch_album_metadata --slug pet-sounds --force
+
+Genres are rebuilt from the stored data at the end of any run that included
+the Wikidata, Discogs or MusicBrainz pass; ``rebuild_album_genres`` does the
+same thing on its own, with no network.
 """
 
 import logging
@@ -22,10 +26,15 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from music import views as music_views
+from music.management.commands.rebuild_album_genres import write_report
 from music.models import Album
+from music.services.genre_rebuild import rebuild_album_genres
 from music.services.metadata_service import AlbumMetadataService
 
 logger = logging.getLogger(__name__)
+
+#: The passes that store something genres are derived from.
+GENRE_SOURCE_PASSES = frozenset({"wikidata", "discogs", "musicbrainz"})
 
 
 class Command(BaseCommand):
@@ -105,6 +114,14 @@ class Command(BaseCommand):
                 self.stdout.write(
                     self.style.ERROR(f"    ... and {len(result.errors) - 10} more")
                 )
+
+        # Genres are derived from what the passes stored, across the whole
+        # corpus - rare leaves are pruned by count - so they are rebuilt once
+        # here rather than album by album, and for every album even when only
+        # one was fetched.
+        if GENRE_SOURCE_PASSES.intersection(passes):
+            self.stdout.write("")
+            write_report(self, rebuild_album_genres())
 
         music_views._invalidate_music_caches()
         self._print_summary(results, time.time() - start)

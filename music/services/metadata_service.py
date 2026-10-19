@@ -36,7 +36,6 @@ from django.db import transaction
 from music import config, models
 from music.discogs import DiscogsClient
 from music.musicbrainz import CoverArt, CoverArtArchiveClient, MusicBrainzClient
-from music.services import genre_normalizer
 from music.services.import_handler import _unique_artist_slug, split_artist_credit
 from music.wikidata import WikidataClient
 
@@ -69,10 +68,6 @@ def fit(model, field_name: str, value):
     )
     return value[:max_length]
 
-
-#: How many MusicBrainz genres to take when it is the fallback source. It
-#: lists everything anyone has voted for, eight or more for a popular album.
-MAX_MUSICBRAINZ_GENRES = 5
 
 #: How many of a release group's releases to try for cover art. A group can
 #: have ninety, and the original pressings sort first, so there is nothing to
@@ -690,7 +685,7 @@ class AlbumMetadataService:
     # ---------------------------------------------------------- discogs pass
 
     def run_discogs(self, albums: Iterable[models.Album]) -> PassResult:
-        """Fetch Discogs masters and turn their styles into MusicGenre rows."""
+        """Fetch and store Discogs masters, whose styles feed the genre rebuild."""
         result = PassResult(name="Discogs")
         albums = list(albums)
         without_master = [a for a in albums if not a.discogs_master_id]
@@ -711,7 +706,7 @@ class AlbumMetadataService:
                 ).first()
 
                 if existing is not None and not self.force:
-                    self._apply_genres(album, existing)
+                    self._link_discogs(album, existing)
                     result.skipped += 1
                     continue
 
@@ -721,7 +716,7 @@ class AlbumMetadataService:
                 if orphan is not None and not self.force:
                     orphan.album = album
                     orphan.save()
-                    self._apply_genres(album, orphan)
+                    self._link_discogs(album, orphan)
                     result.adopted += 1
                     continue
 
@@ -750,7 +745,7 @@ class AlbumMetadataService:
                 record.styles = master.styles
                 record.save()
 
-                self._apply_genres(album, record)
+                self._link_discogs(album, record)
                 result.processed += 1
                 self._notify(
                     "progress",
@@ -765,55 +760,15 @@ class AlbumMetadataService:
         self._notify("complete", {"pass": "discogs", "processed": result.processed})
         return result
 
-    def _apply_genres(self, album, record) -> None:
-        """Normalize this album's Discogs styles into its genres M2M.
+    def _link_discogs(self, album, record) -> None:
+        """Make this the album's primary Discogs row.
 
-        An album with a master but no styles still has Discogs' top-level
-        genres, so it gets at least a root genre rather than nothing.
+        Genres are not written here. The sources vote on them and rare leaves
+        are pruned across the whole corpus, so ``genre_rebuild`` derives them
+        once every pass has stored its data; ``fetch_album_metadata`` runs it
+        at the end.
         """
         self._set_primary(album, record, "primary_discogs_album_data")
-
-        genres = genre_normalizer.genres_for_album(record.styles, record.genres)
-        if not genres:
-            genres = [
-                genre_normalizer.get_or_create_genre(root)
-                for root in dict.fromkeys(
-                    filter(
-                        None,
-                        (
-                            genre_normalizer.root_for_discogs_genre(name)
-                            for name in record.genres
-                        ),
-                    )
-                )
-            ]
-        album.genres.set(genres)
-
-    def _apply_musicbrainz_genres(self, album, group) -> None:
-        """Fill in genres for an album Discogs could not supply any for.
-
-        Three albums in the release have no Discogs master at all, so the
-        genre source of record has nothing to say about them. MusicBrainz
-        does, and its community genre names go through the same normalizer -
-        they only need title-casing to match the Discogs spellings, so
-        'southern soul' lands under the existing Soul root rather than
-        creating a second lower-cased row.
-
-        Only ever a fallback: Discogs stays authoritative wherever it has an
-        answer, so the taxonomy does not acquire two overlapping vocabularies.
-        """
-        if album.genres.exists():
-            return
-
-        titled = [name.title() for name in group.genres[:MAX_MUSICBRAINZ_GENRES]]
-        genres = genre_normalizer.genres_for_album(titled)
-        if genres:
-            album.genres.set(genres)
-            logger.info(
-                "Filled %s's genres from MusicBrainz: %s",
-                album.name,
-                [genre.name for genre in genres],
-            )
 
     # ------------------------------------------------------ musicbrainz pass
 
@@ -852,7 +807,6 @@ class AlbumMetadataService:
                 record.save()
 
                 self._set_primary(album, record, "primary_musicbrainz_album_data")
-                self._apply_musicbrainz_genres(album, group)
                 result.processed += 1
                 self._notify(
                     "progress",

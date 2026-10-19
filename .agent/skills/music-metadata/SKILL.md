@@ -58,8 +58,12 @@ They are separate because their costs differ by two orders of magnitude.
 | --- | --- | --- | --- |
 | `wikidata` | ~25 | ~30s | `WikipediaAlbumData`, both external IDs, `Artist` rows |
 | `covers` | ~1000 | ~18 min | `AlbumCover` bytes, `MusicBrainzAlbumData` cover ids |
-| `discogs` | ~500 | ~23 min anonymous | `DiscogsAlbumData`, `MusicGenre` rows and links |
-| `musicbrainz` | ~500 | ~9 min | release type, exact date, rating, genre fallback |
+| `discogs` | ~500 | ~23 min anonymous | `DiscogsAlbumData` (styles and top-level genres) |
+| `musicbrainz` | ~500 | ~9 min | release type, exact date, rating, genres (by vote) |
+
+After any run that includes `wikidata`, `discogs` or `musicbrainz`, the
+command runs `rebuild_album_genres`, which derives every album's genres from
+what the passes stored. See [Genres](#genres).
 
 Wikidata is batched 50 entity IDs per request, which is why it is seconds
 rather than minutes. The default run omits `musicbrainz`: it is enrichment,
@@ -80,51 +84,45 @@ paces from it either way, so the token changes speed and nothing else.
 
 ## Genres
 
-Genres come from Discogs, not Wikidata. Discogs publishes a curated two-level
-vocabulary - a closed set of top-level `genres` and a second level of `styles`
-- which is the shape `MusicGenre` already models, and it assigns them per
-album by exact master ID.
+Genres are **our own controlled vocabulary**, and the three sources vote on
+which of its genres an album gets. `music/services/genre_normalizer.py` holds
+all of it:
 
-`music/services/genre_normalizer.py` maps Discogs styles onto our own 16 root
-genres, which are finer than Discogs': Discogs files Punk and Metal as styles
-under Rock, and collapses Funk, Soul and R&B into one "Funk / Soul".
+| Table | What it holds |
+| --- | --- |
+| `GENRE_VOCABULARY` | root -> {leaf: aliases}; the only genres that exist |
+| `ROOT_ALIASES` | labels that mean only a root ("hip-hop", "rock music") |
+| `DROPPED_LABELS` | descriptors and data errors, dropped on purpose |
+| `HYBRID_ROOTS` | leaves that also tag a second root on the album |
+| `DISCOGS_GENRE_ROOTS` | Discogs' top-level genres, as evidence for roots |
 
-A style's root is resolved **globally**, never from the album in hand:
+Labels are compared by `label_key`, which folds case, hyphens, `&`/`and` and
+Wikidata's " music" suffix, so `Hip-Hop`, `hip hop` and `hip-hop music` are
+one key.
 
-1. an explicit `STYLE_TO_ROOT` entry, including `None` to drop a descriptor
-2. a style that is itself a root
-3. the rightmost root word in the style's own name (`Pop Rock` is Rock)
-4. only then the album's Discogs top-level genres
+**The vote** (`choose_album_genres`). Discogs styles are the base and are
+kept whole. Wikidata P136 and MusicBrainz genres (top 5 by votes) only add:
+a leaf another source also names, a root two sources support, or a leaf for
+an agreed root that has none. Nothing outvotes Discogs. Wikidata names a
+single genre for over half the corpus, so letting it veto dropped real
+genres. Leaves with fewer than `MIN_LEAF_ALBUMS` albums are then pruned
+corpus-wide, and their albums keep the root.
 
-Order matters. When the album's genre list came first, `Alternative Rock`
-landed under Electronic because OK Computer is tagged "Electronic, Rock", and
-that one row then represented every alternative rock album on the site.
-
-**Adding to the taxonomy.** Run the Discogs pass, then dump what it saw:
+**Rebuilding.** No network, seconds:
 
 ```bash
-python manage.py shell -c "
-from collections import Counter
-from music.models import DiscogsAlbumData
-styles = Counter()
-for record in DiscogsAlbumData.objects.all():
-    styles.update(record.styles)
-print(len(styles)); [print(f'{n:4d}  {s}') for s, n in styles.most_common()]
-"
+python manage.py rebuild_album_genres --dry-run --report   # diff, pruned leaves, unclassified labels
+python manage.py rebuild_album_genres                       # apply
 ```
 
-`music/tests/test_genre_normalizer.py::RealVocabularyTests` pins every style
-the current release uses, so a new release with new styles fails there rather
-than silently dropping genres. Add the style to `STYLE_TO_ROOT` and to that
-test's `OBSERVED` list.
-
-**The MusicBrainz fallback.** Three albums in the release have no Discogs
-master at all, so the genre source of record has nothing to say about them.
-The `--musicbrainz` pass fills genres for any album that still has none, using
-MusicBrainz's community genres through the same normalizer — they only need
-title-casing to match the Discogs spellings, so `southern soul` lands under the
-existing Soul root instead of creating a second lower-cased row. It never
-overwrites a genre Discogs supplied, so the taxonomy keeps one vocabulary.
+**Adding to the taxonomy.** A new release brings new labels. They show up
+under "Unclassified labels" in the report, and
+`music/tests/test_genre_normalizer.py::RealVocabularyTests` fails until each
+is classified. Add each label as a leaf, an alias, a root alias or a dropped
+label, then add it to that test's `DISCOGS_STYLES` / `WIKIDATA_LABELS` list.
+Renaming a leaf is safe: the rebuild renames a row whose name has become an
+alias, so the genre's id - which `?genres=` URLs and saved filters hold -
+carries over.
 
 A new **root** genre also needs an entry in
 `music_filters.MUSIC_GENRE_CATEGORY_ICONS` and a re-run of
@@ -192,12 +190,12 @@ python manage.py fetch_album_metadata   # reconnects, downloads nothing
         "release_date": date(1969, 9, 26),   # P577, day or month precision only
         "record_label": "Apple Records",     # P264, label resolved
         "spotify_album_id": "0ETFjACtuP2ADo6LFhL6HN",
-        "all_genres": "rock music",          # P136 labels, provenance only
+        "all_genres": "rock music",          # P136 labels, a genre vote
     },
     "DiscogsAlbumData": {
         "master_id": 24047,
         "genres": ["Rock"],                  # Discogs top level, verbatim
-        "styles": ["Pop Rock"],              # the genre source of record
+        "styles": ["Pop Rock"],              # the base genre vote
     },
     "MusicBrainzAlbumData": {
         "release_group_mbid": "9162580e-...",

@@ -477,8 +477,8 @@ def genre_tree_options(descendants=None):
 def group_genre_options(options):
     """Group flat genre options under their root, for <optgroup>.
 
-    The taxonomy is two levels - a root genre and the Discogs styles beneath
-    it - which is more than a flat list of two hundred names can present
+    The taxonomy is two levels - a root genre and the vocabulary's leaves
+    beneath it - which is more than a flat list of names can present
     usefully. Roots keep the order ``genre_normalizer.GENRE_HIERARCHY`` sets,
     which the query's ``display_order`` already reflects.
 
