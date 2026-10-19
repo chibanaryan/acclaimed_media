@@ -76,8 +76,7 @@
                 class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
                 hx-post="{% url toggle_url_name item.id %}?status={{ tracked_status }}{% if size == 'large' %}&size=large{% endif %}"
                 hx-target="closest .tracking-button-wrapper"
-                hx-swap="outerHTML"
-                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+                hx-swap="outerHTML">
                 <span class="w-5 h-5 flex items-center justify-center">
                     <span class="mdi {{ tracked_icon }} text-xl {{ tracked_icon_class }}"></span>
                 </span>
@@ -91,8 +90,7 @@
                 class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
                 hx-post="{% url toggle_url_name item.id %}?status=want{% if size == 'large' %}&size=large{% endif %}"
                 hx-target="closest .tracking-button-wrapper"
-                hx-swap="outerHTML"
-                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+                hx-swap="outerHTML">
                 <span class="w-5 h-5 flex items-center justify-center">
                     <span class="mdi {{ wanted_icon }} text-xl {{ wanted_icon_class }}"></span>
                 </span>
@@ -106,8 +104,7 @@
                 class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
                 hx-post="{% url toggle_url_name item.id %}?status=none{% if size == 'large' %}&size=large{% endif %}"
                 hx-target="closest .tracking-button-wrapper"
-                hx-swap="outerHTML"
-                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+                hx-swap="outerHTML">
                 <span class="w-5 h-5 flex items-center justify-center">
                     <span class="mdi {{ untracked_icon }} text-xl {{ untracked_icon_class }}"></span>
                 </span>

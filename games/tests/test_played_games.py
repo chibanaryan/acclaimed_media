@@ -741,3 +741,62 @@ class GameQuerySetWantToPlayStatusTests(TestCase):
         # Untracked game
         self.assertFalse(game_none.is_played_by_user)
         self.assertFalse(game_none.is_want_to_play_by_user)
+
+
+class PlayedButtonPageWeightTests(TestCase):
+    """The played button renders twice per game on the rankings page, so
+    whatever it repeats is paid 200 times."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="weigher", password="pw")
+        cls.game = Game.objects.create(name="Weighed", rank=1, igdb_id=4242)
+
+    def setUp(self):
+        from core.tests.utils import clear_all_caches
+
+        clear_all_caches()
+        self.client.force_login(self.user)
+
+    def test_a_page_render_ships_no_sync_script(self):
+        # The page fills the global Sets itself, and every copy of a button
+        # already matches. 200 copies of the script were 448 KB of the page.
+        from django.urls import reverse
+
+        response = self.client.get(reverse("home"))
+        self.assertContains(response, 'data-igdb-id="4242"')
+        self.assertNotContains(response, "<script data-played-sync>")
+
+    def test_the_toggle_response_ships_exactly_one(self):
+        from django.urls import reverse
+
+        url = reverse("toggle-played-game", kwargs={"igdb_id": self.game.igdb_id})
+        response = self.client.post(f"{url}?status=played")
+        self.assertContains(response, "<script data-played-sync>", count=1)
+
+    def test_menu_buttons_inherit_the_csrf_header_from_body(self):
+        import re
+
+        from django.urls import reverse
+
+        html = self.client.get(reverse("home")).content.decode()
+        self.assertRegex(html, r"<body[^>]*hx-headers='\{\"X-CSRFToken\"")
+        self.assertIn("toggle-played", html)
+        self.assertEqual(re.findall(r"<button[^>]*hx-headers", html), [])
+
+    def test_the_inherited_header_passes_a_real_csrf_check(self):
+        # The ordinary test client skips CSRF; this one enforces it, with the
+        # token read from <body> the way HTMX sends it.
+        import re
+
+        from django.test import Client
+        from django.urls import reverse
+
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.user)
+        html = client.get(reverse("home")).content.decode()
+        token = re.search(r"<body[^>]*\"X-CSRFToken\": \"([^\"]+)\"", html).group(1)
+        url = reverse("toggle-played-game", kwargs={"igdb_id": self.game.igdb_id})
+        response = client.post(f"{url}?status=played", HTTP_X_CSRFTOKEN=token)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(PlayedGame.objects.filter(user=self.user).exists())

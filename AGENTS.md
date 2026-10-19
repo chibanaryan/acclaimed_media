@@ -995,6 +995,14 @@ That arithmetic sets the shape of the `Procfile`:
 - `--max-requests 500` is a guard against slow growth, not a memory lever: a
   recycled worker is back at the plateau within ~15 page renders.
 
+**Template indentation is stripped at load.** `core/template_loaders.py`
+wraps both loaders, in dev and prod alike, and removes the leading whitespace
+of every `.html` source line, which was 36% of the rankings page. Each newline
+survives, so rendering is unchanged, except inside `<pre>`/`<textarea>`, which
+are left as written. **Do not add markup whose meaning depends on
+indentation** - `white-space: pre` in CSS, or indented text in a `<code>`
+block - without exempting it there.
+
 Anything that grows the rendered page, the boot imports, or a per-process
 cache is spending from that 512 MB twice over. `heroku ps`, and the
 metrics API (`api.metrics.heroku.com/apps/<id>/formation/web/metrics/memory

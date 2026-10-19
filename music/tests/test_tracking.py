@@ -136,6 +136,13 @@ class ToggleListenedAlbumViewTests(TestCase):
         self.assertIn("mdi-album", html)
         self.assertIn("You have listened to this album!", html)
 
+    def test_the_menu_buttons_inherit_the_csrf_header_from_body(self):
+        # base.html's <body hx-headers> already carries the token; three
+        # copies per button were repeated for every row on the page.
+        html = self._post("listened").content.decode()
+        self.assertIn("hx-post=", html)
+        self.assertNotIn("hx-headers", html)
+
     def test_the_untracked_response_shows_the_outline_record(self):
         # Untracked and listened differ in shape, not only in colour.
         html = self._post("none").content.decode()

@@ -1,5 +1,39 @@
 # Developer Log
 
+## 2026-10-18 (the rankings page: 1.4 MB -> 870 KB)
+
+- **36% of every page was template indentation.** The row partials sit
+  eight to ten levels deep and render 300 times on `/`, so 491 KB of its
+  1.36 MB was leading whitespace. `core/template_loaders.py` strips it once,
+  at load, inside the cached loader, so the cost is nothing per request.
+  Each newline is kept, so `<a>A</a>` and `<a>B</a>` on two lines still render
+  with a space between them. That is why it is not `django-spaceless-templates`
+  or `django-htmlmin`, which remove whitespace between tags, and htmlmin is a
+  per-request middleware that adds a second copy of the page anyway. The
+  inside of `<pre>`/`<textarea>`, and every non-`.html` template, is left as
+  written. `base.html` has a `<textarea>`, which is why the element is exempt
+  rather than the whole template: skipping templates left the chrome
+  unstripped. `/` 1.36 MB -> 870 KB, and every other page drops 23-39%
+- **Logged in, `/` carried 448 KB of a script that did nothing.**
+  `_played_button.html` renders twice per game, and each copy shipped a 2.2 KB
+  `<script data-played-sync>`. On a page render that script re-adds the id to
+  Sets `home.html` already filled, syncs sibling buttons the server already
+  rendered alike, and announces `game-status-changed` before anything is
+  listening. On an HTMX filter swap it announced it 200 times. It now ships
+  only with the toggle response, the one place it has work to do. The 600
+  per-button `hx-headers` CSRF copies, which repeated `<body hx-headers>`,
+  are gone, from music's shared `_tracking_button.html` too. Logged-in `/`
+  2.44 MB -> 1.32 MB
+- **Measured, not assumed**, with prod-shaped settings (DEBUG off, cached
+  loader, no toolbar). Render peak 9.0 -> 6.6 MB anonymous and 14.6 -> 9.0 MB
+  logged in. Local maxrss after 60 cold renders was 334 -> 239 MB and
+  365 -> 288 MB. 19 pages across games and music, anonymous and staff, are
+  identical to before once whitespace is normalised, and their `<pre>`
+  contents are byte-identical. In Chrome at 1440 and 420 px the rows,
+  client-side filtering (which clones the now-stripped `<template>`s) and a
+  played toggle all work, the toggle sending the token it inherits from
+  `<body>`. The new tests fail against the old code
+
 ## 2026-10-18 (games genre hierarchy: one query, and no stale cache)
 
 - **`/` cost 109 queries on a cold cache, 75 of them `games_wikipediagenre`.**

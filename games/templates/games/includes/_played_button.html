@@ -60,8 +60,7 @@
                 class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
                 hx-post="{% url 'toggle-played-game' igdb_id=game.igdb_id %}?status=played{% if size == 'large' %}&size=large{% endif %}"
                 hx-target="closest .played-button-wrapper"
-                hx-swap="outerHTML"
-                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+                hx-swap="outerHTML">
                 <span class="w-5 h-5 flex items-center justify-center">
                     <img src="{% static 'games/images/mario-star.png' %}" alt="" class="w-5 h-5">
                 </span>
@@ -76,8 +75,7 @@
                 class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
                 hx-post="{% url 'toggle-played-game' igdb_id=game.igdb_id %}?status=want{% if size == 'large' %}&size=large{% endif %}"
                 hx-target="closest .played-button-wrapper"
-                hx-swap="outerHTML"
-                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+                hx-swap="outerHTML">
                 <span class="w-5 h-5 flex items-center justify-center">
                     <span class="mdi mdi-star-plus-outline text-xl text-warning"></span>
                 </span>
@@ -92,8 +90,7 @@
                 class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
                 hx-post="{% url 'toggle-played-game' igdb_id=game.igdb_id %}?status=none{% if size == 'large' %}&size=large{% endif %}"
                 hx-target="closest .played-button-wrapper"
-                hx-swap="outerHTML"
-                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+                hx-swap="outerHTML">
                 <span class="w-5 h-5 flex items-center justify-center">
                     <span class="mdi mdi-star-outline text-xl text-base-content/30"></span>
                 </span>
@@ -103,6 +100,10 @@
         {% endif %}
     </ul>
 </div>
+{# Only the toggle response needs this. On a page render the global Sets are #}
+{# already filled from played_game_ids and every copy of the button already #}
+{# matches, so 200 copies of it were 448 KB of the logged-in rankings page. #}
+{% if just_toggled %}
 <script data-played-sync>
 (function() {
     var thisScript = document.currentScript;
@@ -160,4 +161,5 @@
     }));
 })();
 </script>
+{% endif %}
 {% endif %}

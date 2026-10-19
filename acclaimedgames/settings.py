@@ -153,19 +153,21 @@ TEMPLATES = [
             ],
             # In development/tests, don't use cached template loader
             # This ensures template changes are picked up immediately
-            # and Django's test client can track templates used
+            # and Django's test client can track templates used.
+            # Both branches strip template indentation at load time
+            # (core/template_loaders.py), so dev renders what prod renders.
             "loaders": (
                 [
-                    "django.template.loaders.filesystem.Loader",
-                    "django.template.loaders.app_directories.Loader",
+                    "core.template_loaders.FilesystemLoader",
+                    "core.template_loaders.AppDirectoriesLoader",
                 ]
                 if DEBUG or TEST_MODE
                 else [
                     (
                         "django.template.loaders.cached.Loader",
                         [
-                            "django.template.loaders.filesystem.Loader",
-                            "django.template.loaders.app_directories.Loader",
+                            "core.template_loaders.FilesystemLoader",
+                            "core.template_loaders.AppDirectoriesLoader",
                         ],
                     ),
                 ]
