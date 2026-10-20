@@ -484,32 +484,22 @@ class AlbumListRenderer extends BaseMediaListRenderer {
         if (!target) return;
 
         setTimeout(() => {
-            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            [desktop, mobile].forEach(el => {
-                if (el) el.classList.add('is-highlighted');
-            });
+            flashHighlight(target, [desktop, mobile]);
+            // Marked once: rows rendered later should not come back lit
+            this.highlightId = null;
         }, 300);
     }
 
     /**
      * Result summary, worded exactly as the shared controls partial words it
-     * server-side - which is also how the games rankings page words it.
+     * server-side - which is also how the games rankings page words it. The
+     * base class does the wording, the compact mobile form and the range a
+     * jump leaves; an empty result set shows nothing, as the partial does.
      * @returns {string} HTML
      */
     getResultSummaryHtml(loaded, total, options = {}) {
         if (!total) return '';
-        if (options.compact) {
-            // The mobile line drops the "Showing" and the element id, which
-            // only ever belongs to one element on the page.
-            return (
-                '<span class="loaded-count-value">' + loaded.toLocaleString() +
-                '</span> of ' + total.toLocaleString()
-            );
-        }
-        return (
-            'Showing <span id="loaded-count" class="loaded-count-value">' +
-            loaded.toLocaleString() + '</span> of ' + total.toLocaleString()
-        );
+        return super.getResultSummaryHtml(loaded, total, options);
     }
 
     /**

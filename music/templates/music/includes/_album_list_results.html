@@ -66,6 +66,7 @@
     }
 })();
 </script>
+{% include 'core/includes/_load_previous.html' %}
 <div id="album-list-container" class="isolate" :class="'view-' + viewMode">
     {# List view - album rows #}
     {% for album in albums %}

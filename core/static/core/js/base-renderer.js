@@ -26,8 +26,16 @@ class BaseMediaListRenderer {
     constructor(filterEngine) {
         this.engine = filterEngine;
         this.PAGE_SIZE = 100;
-        this.currentPage = 1;
+        // How many rows either side of the target a jump renders.
+        this.JUMP_RADIUS = 50;
+        // The class of the element grid cards are rendered into.
+        this.GRID_CLASS = 'media-grid';
         this.currentItems = [];
+        // The slice of currentItems on the page: 0-based, end exclusive.
+        // A jump can leave it starting part-way down the list, which is
+        // what Load Previous fills back in.
+        this.windowStart = 0;
+        this.windowEnd = 0;
         this.highlightId = null;
         this._csrfToken = null;
         this._templates = null;
@@ -116,7 +124,7 @@ class BaseMediaListRenderer {
 
         if (viewMode === 'grid') {
             const gridContainer = document.createElement('div');
-            gridContainer.className = 'media-grid';
+            gridContainer.className = this.GRID_CLASS;
 
             items.forEach((item, i) => {
                 const index = startIndex + i;
@@ -159,7 +167,8 @@ class BaseMediaListRenderer {
 
         this.currentItems = items;
         this.highlightId = highlightId;
-        this.currentPage = 1;
+        this.windowStart = 0;
+        this.windowEnd = Math.min(this.PAGE_SIZE, items.length);
         this._currentViewMode = viewMode;
         this._currentShowRank = showRank;
 
@@ -185,60 +194,259 @@ class BaseMediaListRenderer {
     }
 
     /**
+     * Take over a list the server rendered, without re-rendering it.
+     *
+     * The server always renders from the top, so the window is the first
+     * `renderedCount` items.
+     * @param {Array} items - The whole result set, in page order
+     * @param {number} renderedCount - How many of them are on the page
+     */
+    adopt(items, renderedCount) {
+        this.currentItems = items;
+        this.windowStart = 0;
+        this.windowEnd = Math.min(Math.max(renderedCount, 0), items.length);
+    }
+
+    /**
+     * Where the window stands, for redrawing the count and both buttons.
+     * `loaded` is how many rows are on the page, not how far down they go.
+     * @returns {Object}
+     */
+    windowState() {
+        const total = this.currentItems.length;
+        const start = this.windowStart;
+        const end = this.windowEnd;
+        const hasMore = end < total;
+        return {
+            start,
+            end,
+            loaded: end - start,
+            total,
+            hasMore,
+            remaining: Math.max(total - end, 0),
+            maxLoaded: !hasMore,
+            hasPrevious: start > 0,
+            previousCount: start
+        };
+    }
+
+    /**
+     * Render items into the container, before or after what is there.
+     *
+     * In grid mode the cards go into the grid element, which is created if
+     * there is none yet.
+     * @private
+     * @param {Array} items
+     * @param {number} startIndex - 1-based position of items[0]
+     * @param {Object} options - { showRank, viewMode, prepend }
+     */
+    _insertItems(container, items, startIndex, options = {}) {
+        const { showRank = 'filtered', viewMode = 'list', prepend = false } = options;
+        if (!items.length) return;
+
+        let target = container;
+        let fragment;
+        if (viewMode === 'grid') {
+            target = container.querySelector('.' + this.GRID_CLASS);
+            if (!target) {
+                target = document.createElement('div');
+                target.className = this.GRID_CLASS;
+                container.appendChild(target);
+            }
+            fragment = document.createDocumentFragment();
+            items.forEach((item, i) => {
+                const card = this._renderGridCard(item, startIndex + i, showRank);
+                if (card) fragment.appendChild(card);
+            });
+        } else {
+            fragment = this._renderItems(items, showRank, startIndex, viewMode);
+        }
+
+        if (prepend) {
+            target.insertBefore(fragment, target.firstChild);
+        } else {
+            target.appendChild(fragment);
+        }
+    }
+
+    /**
      * Load more items (for Load More button)
      *
      * @param {HTMLElement} container - Container element
      * @param {Object} options - Options
-     * @returns {Object} { loaded, total, hasMore }
+     * @returns {Object} windowState()
      */
     loadMore(container, options = {}) {
         const { showRank = 'filtered' } = options;
         const viewMode = this._currentViewMode || 'list';
 
-        this.currentPage++;
-        const start = (this.currentPage - 1) * this.PAGE_SIZE;
-        const end = start + this.PAGE_SIZE;
-        const pageItems = this.currentItems.slice(start, end);
+        const start = this.windowEnd;
+        const end = Math.min(start + this.PAGE_SIZE, this.currentItems.length);
+        if (end <= start) return this.windowState();
 
-        if (pageItems.length === 0) {
-            return {
-                loaded: Math.min((this.currentPage - 1) * this.PAGE_SIZE, this.currentItems.length),
-                total: this.currentItems.length,
-                hasMore: false
-            };
-        }
+        // A grid begun after the server's rows (which are not cards) has to
+        // hold the whole window, not just the next page.
+        const first = viewMode === 'grid' &&
+            !container.querySelector('.' + this.GRID_CLASS)
+            ? this.windowStart
+            : start;
 
-        if (viewMode === 'grid') {
-            let gridContainer = container.querySelector('.media-grid');
-            if (!gridContainer) {
-                gridContainer = document.createElement('div');
-                gridContainer.className = 'media-grid';
-                container.appendChild(gridContainer);
-            }
+        this._insertItems(container, this.currentItems.slice(first, end), first + 1, {
+            showRank,
+            viewMode
+        });
+        this.windowEnd = end;
 
-            pageItems.forEach((item, i) => {
-                const index = start + 1 + i;
-                const card = this._renderGridCard(item, index, showRank);
-                if (card) gridContainer.appendChild(card);
-            });
-        } else {
-            const fragment = this._renderItems(pageItems, showRank, start + 1, viewMode);
-            container.appendChild(fragment);
-        }
-
-        // Reinitialize HTMX
         if (typeof htmx !== 'undefined') {
             htmx.process(container);
         }
 
-        const loaded = Math.min(this.currentPage * this.PAGE_SIZE, this.currentItems.length);
-        const hasMore = loaded < this.currentItems.length;
+        return this.windowState();
+    }
 
-        return {
-            loaded,
-            total: this.currentItems.length,
-            hasMore,
-            remaining: Math.max(this.currentItems.length - loaded, 0)
+    /**
+     * Prepend the page above the window (for Load Previous).
+     *
+     * Wrap the call in captureScrollAnchor() so the reader stays on the row
+     * they were looking at rather than being pushed down by the new ones.
+     * @param {HTMLElement} container - Container element
+     * @param {Object} options - { showRank }
+     * @returns {Object} windowState()
+     */
+    loadPrevious(container, options = {}) {
+        const { showRank = 'filtered' } = options;
+        const viewMode = this._currentViewMode || 'list';
+
+        const end = this.windowStart;
+        const start = Math.max(end - this.PAGE_SIZE, 0);
+        if (end <= start) return this.windowState();
+
+        this._insertItems(container, this.currentItems.slice(start, end), start + 1, {
+            showRank,
+            viewMode,
+            prepend: true
+        });
+        this.windowStart = start;
+
+        if (typeof htmx !== 'undefined') {
+            htmx.process(container);
+        }
+
+        return this.windowState();
+    }
+
+    /**
+     * Decide what a jump to `index` (0-based) needs.
+     *
+     * - 'scroll': the item is already on the page.
+     * - 'extend': the target's neighbourhood touches the window, or is
+     *   within a page of it, so the window grows to cover it. No gap is
+     *   ever left, and nothing the reader already had is thrown away.
+     * - 'replace': anything further away. Only the neighbourhood is
+     *   rendered, and Load Previous offers the rows above it.
+     * @param {number} index
+     * @returns {{mode: string, start: number, end: number}}
+     */
+    planJump(index) {
+        const total = this.currentItems.length;
+        const start = this.windowStart;
+        const end = this.windowEnd;
+
+        if (index >= start && index < end) {
+            return { mode: 'scroll', start, end };
+        }
+
+        const wantStart = Math.max(index - this.JUMP_RADIUS, 0);
+        const wantEnd = Math.min(index + this.JUMP_RADIUS + 1, total);
+
+        if (end > start &&
+            wantStart <= end + this.PAGE_SIZE &&
+            wantEnd >= start - this.PAGE_SIZE) {
+            return {
+                mode: 'extend',
+                start: Math.min(start, wantStart),
+                end: Math.max(end, wantEnd)
+            };
+        }
+        return { mode: 'replace', start: wantStart, end: wantEnd };
+    }
+
+    /**
+     * Make the window exactly [start, end).
+     *
+     * A range that touches the current window is reached by rendering only
+     * the missing rows above and below it; any other range replaces the
+     * container's contents.
+     * @param {HTMLElement} container
+     * @param {number} start - 0-based, inclusive
+     * @param {number} end - 0-based, exclusive
+     * @param {Object} options - { showRank, viewMode }
+     */
+    showRange(container, start, end, options = {}) {
+        const { showRank = 'filtered' } = options;
+        const viewMode = options.viewMode || this._currentViewMode || 'list';
+        this._currentViewMode = viewMode;
+
+        const touches = this.windowEnd > this.windowStart &&
+            start <= this.windowEnd && end >= this.windowStart;
+        // The server renders rows, never cards, so a grid cannot be grown
+        // from them: it has to be built whole.
+        const needsGrid = viewMode === 'grid' &&
+            !container.querySelector('.' + this.GRID_CLASS);
+
+        if (!touches || needsGrid) {
+            container.innerHTML = '';
+            this._insertItems(container, this.currentItems.slice(start, end), start + 1, {
+                showRank,
+                viewMode
+            });
+        } else {
+            if (start < this.windowStart) {
+                this._insertItems(
+                    container,
+                    this.currentItems.slice(start, this.windowStart),
+                    start + 1,
+                    { showRank, viewMode, prepend: true }
+                );
+            }
+            if (end > this.windowEnd) {
+                this._insertItems(
+                    container,
+                    this.currentItems.slice(this.windowEnd, end),
+                    this.windowEnd + 1,
+                    { showRank, viewMode }
+                );
+            }
+        }
+
+        this.windowStart = start;
+        this.windowEnd = end;
+
+        if (typeof htmx !== 'undefined') {
+            htmx.process(container);
+        }
+    }
+
+    /**
+     * Remember where the first visible item sits, so that content inserted
+     * above it can be scrolled past. Returns the function that does so.
+     *
+     * By hand rather than through CSS scroll anchoring, which Safari lacks.
+     * @param {HTMLElement} container
+     * @returns {Function}
+     */
+    captureScrollAnchor(container) {
+        const grid = container.querySelector('.' + this.GRID_CLASS);
+        const holder = this._currentViewMode === 'grid' && grid ? grid : container;
+        const anchor = Array.from(holder.children).find(
+            el => el.offsetParent !== null
+        );
+        if (!anchor) return () => {};
+
+        const before = anchor.getBoundingClientRect().top;
+        return () => {
+            const shift = anchor.getBoundingClientRect().top - before;
+            if (shift) window.scrollBy(0, shift);
         };
     }
 
@@ -246,8 +454,9 @@ class BaseMediaListRenderer {
      * Reset pagination
      */
     reset() {
-        this.currentPage = 1;
         this.currentItems = [];
+        this.windowStart = 0;
+        this.windowEnd = 0;
         this.highlightId = null;
     }
 
@@ -280,36 +489,34 @@ class BaseMediaListRenderer {
             }
 
             if (elementToScroll) {
-                elementToScroll.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-                // Fade out highlight after 4 seconds
-                const fadeTimeout = setTimeout(() => {
-                    elementsToHighlight.forEach(el => el.classList.add('fade-out'));
-                }, 4000);
-
-                // Fade out on hover of other items
-                const selector = viewMode === 'grid' ? '.media-card-grid' : '.media-row';
-                const items = document.querySelectorAll(selector);
-                items.forEach((item) => {
-                    if (!elementsToHighlight.includes(item)) {
-                        item.addEventListener('mouseenter', () => {
-                            clearTimeout(fadeTimeout);
-                            elementsToHighlight.forEach(el => el.classList.add('fade-out'));
-                        }, { once: true });
-                    }
-                });
+                flashHighlight(elementToScroll, elementsToHighlight);
+                // Marked once: rows rendered later (Load More, a jump)
+                // should not come back highlighted with no fade
+                this.highlightId = null;
             }
         }, 300);
     }
 
     /**
      * Generate result summary HTML
-     * @param {number} loaded - Number loaded
+     * @param {number} loaded - Number of rows on the page
      * @param {number} total - Total count
+     * @param {Object} [options] - { start: windowStart, compact: mobile line }
      * @returns {string} HTML string
      */
-    getResultSummaryHtml(loaded, total) {
-        return 'Showing <span id="loaded-count" class="loaded-count-value">' + loaded.toLocaleString() + '</span> of ' + total.toLocaleString();
+    getResultSummaryHtml(loaded, total, options = {}) {
+        const { start = 0, compact = false } = options;
+        // Once a jump has left rows above the window, a bare count would
+        // read as "the first N", so name the range instead.
+        const shown = start > 0
+            ? (start + 1).toLocaleString() + '\u2013' + (start + loaded).toLocaleString()
+            : loaded.toLocaleString();
+        if (compact) {
+            // The mobile line drops the "Showing" and the element id, which
+            // only ever belongs to one element on the page.
+            return '<span class="loaded-count-value">' + shown + '</span> of ' + total.toLocaleString();
+        }
+        return 'Showing <span id="loaded-count" class="loaded-count-value">' + shown + '</span> of ' + total.toLocaleString();
     }
 
     /**
@@ -325,6 +532,18 @@ class BaseMediaListRenderer {
         }
 
         return '<button type="button" class="btn btn-ghost load-more-button"><span class="mdi mdi-plus-circle-outline"></span><span class="load-more-text">Load More (' + remaining.toLocaleString() + ' remaining)</span></button>';
+    }
+
+    /**
+     * Generate the Load Previous button HTML, or nothing at the top.
+     * @param {Object} state - windowState()
+     * @returns {string} HTML string
+     */
+    getLoadPreviousHtml(state) {
+        const { previousCount = 0 } = state || {};
+        if (!previousCount) return '';
+
+        return '<button type="button" class="btn btn-ghost load-previous-button"><span class="mdi mdi-chevron-up" aria-hidden="true"></span><span class="load-previous-text">Load Previous (' + previousCount.toLocaleString() + ' above)</span></button>';
     }
 }
 

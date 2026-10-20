@@ -2,6 +2,19 @@
 
 ## 2026-10-19
 
+- **Jump to rank renders 50 either side of the target**, not every row
+  from #1 down to it (8,000 DOM rows at game #4,000). A target already on
+  the page just scrolls, one within a page of the rendered rows extends
+  them, and a new **Load Previous** button fills in what a jump skipped;
+  the count reads "Showing 950–1,050 of 1,400". Games and music. Focusing
+  the games jump box now also starts the engine, which it never did, so
+  every jump had been fetching each page down to the target from the server
+- **Fix highlights fading before the row arrived.** A `?highlight=` link
+  or a jump faded on `mouseenter` of any other row, and rows sliding under
+  the still cursor during the smooth scroll fire it, so the highlight was
+  gone on arrival - and it often went on the row wrapper, which nothing
+  colours. One `flashHighlight()` in `utils-base.js` now waits for the
+  scroll to settle and fades only on a real pointer move
 - **Quick-mark mode**, from a reader marking off their collection: a
   "Mark" button in the results header (beside Filters on mobile) picks a
   status, and one click on an item's button then applies it - a second

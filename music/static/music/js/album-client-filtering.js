@@ -52,16 +52,11 @@ class AlbumClientSideFiltering {
         const filters = this.form ? this.readFilters(this.form) : this.currentFilters;
         this.currentFilters = filters;
         const { albums } = this.engine.apply(filters);
-        this.renderer.currentItems = albums;
+        this.renderer.adopt(albums, loadedAlbumCount());
         this.renderer._currentViewMode = this.viewMode;
         this.renderer._currentShowRank = this._isFiltered(filters)
             ? 'filtered'
             : 'alltime';
-        const loaded = loadedAlbumCount();
-        this.renderer.currentPage = Math.max(
-            1,
-            Math.ceil(loaded / this.renderer.PAGE_SIZE)
-        );
     }
 
     /** Whether the engine and renderer are ready to take the page over. */
@@ -257,26 +252,37 @@ class AlbumClientSideFiltering {
             });
         }
 
-        this._updateCount(Math.min(total, this.renderer.PAGE_SIZE), total);
-        this._updateLoadMore(total);
+        this._updatePaging();
         this._publishFacets(filters, albums);
         return { total };
     }
 
     /**
-     * Refresh both result-count lines - the controls partial renders one for
-     * desktop and a compact one for mobile.
+     * Redraw everything that describes the renderer's window: both
+     * result-count lines (the controls partial renders one for desktop and a
+     * compact one for mobile), Load Previous, and Load More.
      * @private
      */
-    _updateCount(loaded, total) {
-        const lines = document.querySelectorAll(
+    _updatePaging() {
+        const state = this.renderer.windowState();
+
+        document.querySelectorAll(
             '#album-results-container [data-result-count]'
-        );
-        lines.forEach(line => {
-            line.innerHTML = this.renderer.getResultSummaryHtml(loaded, total, {
+        ).forEach(line => {
+            line.innerHTML = this.renderer.getResultSummaryHtml(state.loaded, state.total, {
+                start: state.start,
                 compact: line.dataset.resultCount === 'mobile'
             });
         });
+
+        const previous = document.querySelector(
+            '#album-results-container .load-previous-container'
+        );
+        if (previous) {
+            previous.innerHTML = this.renderer.getLoadPreviousHtml(state);
+        }
+
+        this._updateLoadMore(state);
     }
 
     /**
@@ -306,18 +312,17 @@ class AlbumClientSideFiltering {
      * Replace the server's HTMX load-more button with one this class drives.
      * @private
      */
-    _updateLoadMore(total) {
+    _updateLoadMore(state) {
         const existing = document.querySelector(
             '#album-results-container .load-more-container'
         );
-        const remaining = Math.max(total - this.renderer.PAGE_SIZE, 0);
 
-        if (!remaining) {
+        if (!state.hasMore) {
             if (existing) existing.remove();
             return;
         }
 
-        const html = this.renderer.getLoadMoreHtml({ hasMore: true, remaining });
+        const html = this.renderer.getLoadMoreHtml(state);
         const container = existing || document.createElement('div');
         container.id = 'load-more-container';
         container.className = 'load-more-container text-center my-6';
@@ -325,33 +330,60 @@ class AlbumClientSideFiltering {
         if (!existing) {
             document.getElementById('album-results-container').appendChild(container);
         }
-
     }
 
-    /** Append the next page and refresh the count and button. */
+    /** The rank column to show for the current filters. @private */
+    _showRank() {
+        return this._isFiltered(this.currentFilters) ? 'filtered' : 'alltime';
+    }
+
+    /** Append the next page and refresh the count and buttons. */
     loadMore() {
         const container = document.getElementById('album-list-container');
         if (!container || !this.isInitialized) return;
 
         this._syncRendererWithPage();
+        this.renderer.loadMore(container, { showRank: this._showRank() });
+        this._updatePaging();
+    }
 
-        const showRank = this._isFiltered(this.currentFilters)
-            ? 'filtered'
-            : 'alltime';
-        const state = this.renderer.loadMore(container, { showRank });
+    /**
+     * Prepend the page above a jumped-to window, keeping the reader on the
+     * row they were looking at.
+     */
+    loadPrevious() {
+        const container = document.getElementById('album-list-container');
+        if (!container || !this.isInitialized) return;
 
-        this._updateCount(state.loaded, state.total);
+        this._syncRendererWithPage();
+        const restoreScroll = this.renderer.captureScrollAnchor(container);
+        this.renderer.loadPrevious(container, { showRank: this._showRank() });
+        // The button can disappear as well, so keep the place after both
+        this._updatePaging();
+        restoreScroll();
+    }
 
-        const wrapper = document.querySelector(
-            '#album-results-container .load-more-container'
-        );
-        if (!state.hasMore) {
-            if (wrapper) wrapper.remove();
-            return;
-        }
-        if (wrapper) {
-            wrapper.innerHTML = this.renderer.getLoadMoreHtml(state);
-        }
+    /**
+     * Bring `position` (1-based, in the current result set) onto the page.
+     *
+     * Only the target and JUMP_RADIUS rows either side are rendered, not
+     * everything above it; one already on the page is left as it is, and one
+     * near the rendered rows extends them. See BaseMediaListRenderer.planJump.
+     * @param {number} position
+     */
+    jumpTo(position) {
+        const container = document.getElementById('album-list-container');
+        if (!container || !this.isInitialized) return;
+
+        this._syncRendererWithPage();
+        const plan = this.renderer.planJump(position - 1);
+        if (plan.mode === 'scroll') return;
+
+        this.renderer.showRange(container, plan.start, plan.end, {
+            showRank: this._showRank(),
+            viewMode: this.viewMode
+        });
+        this._updatePaging();
     }
 
     /**
@@ -409,7 +441,12 @@ function albumUrlParams() {
 function scrollToAlbumPosition(position) {
     const container = document.getElementById('album-list-container');
     const isGrid = container && container.classList.contains('view-grid');
-    const index = position - 1;
+    // After a jump the first rendered row is at windowStart, not the top.
+    const csf = getAlbumClientSideFiltering();
+    const offset = csf.isReady() && csf.renderer.currentItems.length
+        ? csf.renderer.windowStart
+        : 0;
+    const index = position - 1 - offset;
 
     let target = null;
     const highlight = [];
@@ -437,11 +474,7 @@ function scrollToAlbumPosition(position) {
 
     if (!target) return;
 
-    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    highlight.forEach(el => el.classList.add('is-highlighted'));
-    setTimeout(() => {
-        highlight.forEach(el => el.classList.remove('is-highlighted'));
-    }, 3000);
+    flashHighlight(target, highlight);
 }
 
 /**
@@ -483,19 +516,7 @@ function scrollToAlbumById(albumId, viewMode) {
 
     if (!target) return false;
 
-    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    highlight.forEach(el => el.classList.add('is-highlighted'));
-
-    const fadeOut = () => highlight.forEach(el => el.classList.add('fade-out'));
-    const fadeTimeout = setTimeout(fadeOut, 2000);
-    const selector = isGrid ? '.media-card-grid' : '.media-row';
-    document.querySelectorAll(selector).forEach(item => {
-        if (highlight.includes(item)) return;
-        item.addEventListener('mouseenter', () => {
-            clearTimeout(fadeTimeout);
-            fadeOut();
-        }, { once: true });
-    });
+    flashHighlight(target, highlight);
     return true;
 }
 
@@ -571,7 +592,12 @@ function initAlbumJumpToRank(csf) {
             return;
         }
 
-        await loadAlbumsThrough(csf, target);
+        if (csf.isReady()) {
+            csf.jumpTo(target);
+        } else {
+            // Without the data, page down through the server's HTMX button
+            await loadAlbumsThrough(csf, target);
+        }
         scrollToAlbumPosition(target);
         input.value = '';
     };
@@ -715,6 +741,12 @@ function initAlbumFiltering() {
             event.preventDefault();
             csf.loadMore();
         });
+        // Load Previous is only ever drawn by the engine, after a jump.
+        document.addEventListener('click', event => {
+            if (!event.target.closest('.load-previous-button')) return;
+            event.preventDefault();
+            csf.loadPrevious();
+        });
 
         form.addEventListener('change', () => rerender());
         form.addEventListener('submit', event => {
@@ -762,7 +794,7 @@ function initAlbumFiltering() {
             ) + 1;
             // Not in this result set at all: nothing to land on.
             if (position > 0) {
-                await loadAlbumsThrough(csf, position);
+                csf.jumpTo(position);
                 scrollToAlbumById(highlightOnLoad, csf.viewMode);
             }
         }

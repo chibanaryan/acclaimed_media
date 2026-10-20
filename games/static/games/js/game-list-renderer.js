@@ -31,6 +31,9 @@ class GameListRenderer extends BaseMediaListRenderer {
         };
         // HLTB completion mode ('main' or 'completionist'), set by ClientSideFiltering
         this.hltbMode = 'main';
+        // Rendering and paging are the base class's; only the grid's
+        // class name differs, because styles.css keys on it.
+        this.GRID_CLASS = 'game-grid';
     }
 
     /**
@@ -1159,159 +1162,6 @@ class GameListRenderer extends BaseMediaListRenderer {
     }
 
     /**
-     * Render game list to container
-     *
-     * @param {Array} games - Games to render
-     * @param {HTMLElement} container - Container element
-     * @param {Object} options - Render options
-     * @param {string} [options.showRank='alltime'] - 'alltime', 'filtered', or 'none'
-     * @param {number} [options.highlightId] - Game ID to highlight
-     * @param {boolean} [options.append=false] - Append to existing content
-     * @param {string} [options.viewMode='list'] - 'list' or 'grid'
-     */
-    render(games, container, options = {}) {
-        const {
-            showRank = 'filtered',
-            highlightId = null,
-            append = false,
-            viewMode = 'list'
-        } = options;
-
-        this.currentItems = games;
-        this.highlightId = highlightId;
-        this.currentPage = 1;
-        this._currentViewMode = viewMode;
-        this._currentShowRank = showRank;
-
-        if (!append) {
-            container.innerHTML = '';
-        }
-
-        // Render first page
-        const pageGames = games.slice(0, this.PAGE_SIZE);
-        const fragment = this._renderGames(pageGames, showRank, 1, viewMode);
-
-        container.appendChild(fragment);
-
-        // Reinitialize HTMX for dynamically rendered content
-        if (typeof htmx !== 'undefined') {
-            htmx.process(container);
-        }
-
-        // Handle highlighting
-        if (highlightId) {
-            this._scrollToHighlight(highlightId, viewMode);
-        }
-    }
-
-    /**
-     * Render games as DOM fragment
-     * @private
-     * @param {string} viewMode - 'list' or 'grid'
-     * @returns {DocumentFragment}
-     */
-    _renderGames(games, showRank, startIndex, viewMode = 'list') {
-        const fragment = document.createDocumentFragment();
-
-        if (viewMode === 'grid') {
-            // Grid view: render cards inside a grid container
-            const gridContainer = document.createElement('div');
-            gridContainer.className = 'game-grid';
-
-            games.forEach((game, i) => {
-                const index = startIndex + i;
-                const card = this._renderGridCard(game, index, showRank);
-                if (card) gridContainer.appendChild(card);
-            });
-
-            fragment.appendChild(gridContainer);
-        } else {
-            // List view: render desktop + mobile rows
-            games.forEach((game, i) => {
-                const index = startIndex + i;
-                const desktopRow = this._renderDesktopRow(game, index, showRank);
-                const mobileRow = this._renderMobileRow(game, index, showRank);
-                if (desktopRow) fragment.appendChild(desktopRow);
-                if (mobileRow) fragment.appendChild(mobileRow);
-            });
-        }
-
-        return fragment;
-    }
-
-    /**
-     * Load more games (for Load More button)
-     *
-     * @param {HTMLElement} container - Container element
-     * @param {Object} options - Options
-     * @returns {Object} { loaded, total, hasMore }
-     */
-    loadMore(container, options = {}) {
-        const { showRank = 'filtered' } = options;
-        const viewMode = this._currentViewMode || 'list';
-
-        this.currentPage++;
-        const start = (this.currentPage - 1) * this.PAGE_SIZE;
-        const end = start + this.PAGE_SIZE;
-        const pageGames = this.currentItems.slice(start, end);
-
-        if (pageGames.length === 0) {
-            return {
-                loaded: Math.min((this.currentPage - 1) * this.PAGE_SIZE, this.currentItems.length),
-                total: this.currentItems.length,
-                hasMore: false
-            };
-        }
-
-        if (viewMode === 'grid') {
-            // For grid view, append cards to existing grid container
-            let gridContainer = container.querySelector('.game-grid');
-            let first = start;
-            if (!gridContainer) {
-                // The server renders no grid cards, so a grid begun after the
-                // server's rows has to start from the top, not from `start`.
-                gridContainer = document.createElement('div');
-                gridContainer.className = 'game-grid';
-                container.appendChild(gridContainer);
-                first = 0;
-            }
-
-            this.currentItems.slice(first, end).forEach((game, i) => {
-                const index = first + 1 + i;
-                const card = this._renderGridCard(game, index, showRank);
-                if (card) gridContainer.appendChild(card);
-            });
-        } else {
-            const fragment = this._renderGames(pageGames, showRank, start + 1, viewMode);
-            container.appendChild(fragment);
-        }
-
-        // Reinitialize HTMX for dynamically rendered content
-        if (typeof htmx !== 'undefined') {
-            htmx.process(container);
-        }
-
-        const loaded = Math.min(this.currentPage * this.PAGE_SIZE, this.currentItems.length);
-        const hasMore = loaded < this.currentItems.length;
-
-        return {
-            loaded,
-            total: this.currentItems.length,
-            hasMore,
-            remaining: this.currentItems.length - loaded
-        };
-    }
-
-    /**
-     * Reset pagination
-     */
-    reset() {
-        this.currentPage = 1;
-        this.currentItems = [];
-        this.highlightId = null;
-    }
-
-    /**
      * Scroll to and highlight a game
      * @private
      * @param {number} gameId - Game ID to highlight
@@ -1341,24 +1191,10 @@ class GameListRenderer extends BaseMediaListRenderer {
             }
 
             if (elementToScroll) {
-                elementToScroll.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-                // Fade out highlight after 4 seconds
-                const fadeTimeout = setTimeout(() => {
-                    elementsToHighlight.forEach(el => el.classList.add('fade-out'));
-                }, 4000);
-
-                // Fade out on hover of other rows/cards
-                const selector = viewMode === 'grid' ? '.game-card-grid' : '.game-row';
-                const gameItems = document.querySelectorAll(selector);
-                gameItems.forEach((item) => {
-                    if (!elementsToHighlight.includes(item)) {
-                        item.addEventListener('mouseenter', () => {
-                            clearTimeout(fadeTimeout);
-                            elementsToHighlight.forEach(el => el.classList.add('fade-out'));
-                        }, { once: true });
-                    }
-                });
+                flashHighlight(elementToScroll, elementsToHighlight);
+                // Marked once: rows rendered later (Load More, a jump)
+                // should not come back highlighted with no fade
+                this.highlightId = null;
             }
         }, 300);
     }

@@ -319,6 +319,14 @@ document.addEventListener('alpine:init', () => {
                 };
                 window.addEventListener('mobile-filter-opened', this._mobileFilterListener);
 
+                // utils-loadmore.js asks for the bundle when a jump box takes
+                // focus. Loading it is not enough: until this component inits
+                // the engine, every jump fell back to fetching each page
+                // down to the target from the server.
+                window.addEventListener('acclaimed:need-csf', () => {
+                    this.requestClientFilteringInit('jump-to-rank');
+                });
+
                 this.initialized = true;
                 this.dispatchInitialCounts();
                 if (this.hasActiveFilterParamsOnUrl()) {
@@ -1025,22 +1033,7 @@ document.addEventListener('alpine:init', () => {
                             const element = isDesktop ? desktopElement : mobileElement;
 
                             if (element) {
-                                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                const fadeTimeout = setTimeout(() => {
-                                    if (desktopElement) desktopElement.classList.add('fade-out');
-                                    if (mobileElement) mobileElement.classList.add('fade-out');
-                                }, 4000);
-
-                                const gameRows = document.querySelectorAll('.game-row');
-                                gameRows.forEach((row) => {
-                                    if (row !== desktopElement && row !== mobileElement) {
-                                        row.addEventListener('mouseenter', () => {
-                                            clearTimeout(fadeTimeout);
-                                            if (desktopElement) desktopElement.classList.add('fade-out');
-                                            if (mobileElement) mobileElement.classList.add('fade-out');
-                                        }, { once: true });
-                                    }
-                                });
+                                flashHighlight(element, [desktopElement, mobileElement]);
                             }
                         }, 300);
                     }
@@ -1145,9 +1138,8 @@ document.addEventListener('alpine:init', () => {
                 showRank: this.hasActiveFilters() ? 'filtered' : 'alltime'
             });
 
-            if (countContainer) {
-                countContainer.innerHTML = this._csf.renderer.getResultSummaryHtml(state.loaded, state.total);
-            }
+            // Also empties Load Previous: a new result set starts at the top
+            this._csf.renderWindowChrome();
 
             if (loadMoreContainer) {
                 loadMoreContainer.innerHTML = this._csf.renderer.getLoadMoreHtml(state);
@@ -1319,16 +1311,8 @@ document.addEventListener('alpine:init', () => {
                 const showRank = this.hasActiveFilters() ? 'filtered' : 'alltime';
                 const state = this._csf.loadMore(gameListContainer, { showRank });
 
-                if (countContainer) {
-                    countContainer.innerHTML = this._csf.renderer.getResultSummaryHtml(state.loaded, state.total);
-                }
-
-                loadMoreContainer.innerHTML = this._csf.renderer.getLoadMoreHtml({
-                    hasMore: state.hasMore,
-                    remaining: state.remaining,
-                    maxLoaded: state.loaded >= state.total,
-                    total: state.total
-                });
+                this._csf.renderWindowChrome();
+                loadMoreContainer.innerHTML = this._csf.renderer.getLoadMoreHtml(state);
 
                 if (state.hasMore) {
                     this._initClientLoadMore(loadMoreContainer, gameListContainer, countContainer);

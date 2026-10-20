@@ -1233,9 +1233,19 @@ block - without exempting it there.
   `:has(.game-grid)`, `home.html` fetches the bundle at once when
   `gameViewMode` is `grid`, and `filterComponent` renders the grid as soon
   as the bundle is ready (`_needsClientGrid`), without touching the URL.
-  Anything that pages a grid (`renderer.loadMore`, `jumpToRankClientSide`)
-  builds it from rank 1 when none exists yet, because the rows above are
-  not cards.
+  Anything that pages a grid (`renderer.loadMore`, `renderer.showRange`)
+  builds the whole window when no grid exists yet, because the rows above
+  are not cards.
+- **Jump to rank renders a window, not everything above the target.**
+  `BaseMediaListRenderer` tracks `windowStart`/`windowEnd`, and `planJump`
+  either scrolls (the target is already rendered), extends the window (the
+  target is within a page of it), or replaces it with `JUMP_RADIUS` (50) rows
+  either side of the target. `core/includes/_load_previous.html`, above each
+  rankings list, gets a Load Previous button whenever rows are left out
+  above. Positions are absolute, so anything that finds "the Nth row" on the
+  page has to subtract `windowStart`. Focusing the games jump box also starts
+  the engine: before, it only loaded the bundle, so every jump took the
+  server path, which fetches each page down to the target.
 - **Platform and genre spans carry `data-add-platforms` / `data-add-genre`,
   not inline onclicks** (~54 KB). One delegated listener in `base.html`
   re-announces the `add-platforms` / `add-genre` events every filter

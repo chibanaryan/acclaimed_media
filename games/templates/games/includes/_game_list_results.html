@@ -29,6 +29,7 @@
 {# (styles.css hides them only `:has(.game-grid)`), so first paint, a server #}
 {# partial and server Load More all stay coherent. Rendering the 100 hidden #}
 {# cards here as well was ~160 KB of every rankings page. #}
+{% include 'core/includes/_load_previous.html' %}
 <div id="game-list-container" class="isolate" :class="'view-' + viewMode">
     {# List view - game rows #}
     {% for game in games %}

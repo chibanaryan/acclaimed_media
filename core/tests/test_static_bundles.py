@@ -624,10 +624,11 @@ class MusicHighlightScrollsOnLoadTests(SimpleTestCase):
         self.assertIn("const highlightOnLoad = currentHighlight();", init)
         self.assertIn("scrollToAlbumById(highlightOnLoad, ", init)
 
-    def test_an_album_past_the_rendered_rows_is_paged_down_to(self):
+    def test_an_album_past_the_rendered_rows_is_jumped_to(self):
+        # A window around it, not every row above it.
         source = self._source(self.SOURCE)
         init = source.split("function initAlbumFiltering() {", 1)[1]
-        self.assertIn("await loadAlbumsThrough(csf, position);", init)
+        self.assertIn("csf.jumpTo(position);", init)
 
     def test_the_minified_copies_carry_it(self):
         for path in (
@@ -637,12 +638,225 @@ class MusicHighlightScrollsOnLoadTests(SimpleTestCase):
             with self.subTest(path=path):
                 minified = self._source(path)
                 self.assertIn("scrollToAlbumById", minified)
-                self.assertIn("loadAlbumsThrough", minified)
+                self.assertIn("jumpTo(", minified)
 
     def test_the_page_bumped_the_bundle_cache_buster(self):
         page = self._source("music/templates/music/home.html")
         match = re.search(
             r"music-client-side-filtering\.bundle\.min\.js[\"']? %\}\?v=(\d+)", page
+        )
+        self.assertIsNotNone(match)
+        self.assertGreater(int(match.group(1)), 4)
+
+
+class JumpToRankRendersAWindowTests(SimpleTestCase):
+    """Jump to rank renders the target's neighbourhood, not the list above it.
+
+    Both rankings pages used to render every row from #1 down to the
+    target - at game #4,000 that was 8,000 DOM rows before the page could
+    scroll. The renderer now keeps a window (`windowStart`/`windowEnd`), a
+    jump renders `JUMP_RADIUS` rows either side of the target, and a Load
+    Previous button above the list fills back in what a jump skipped. None
+    of it runs server-side, so the source is what can be pinned.
+    """
+
+    BASE = "core/static/core/js/base-renderer.js"
+
+    def _source(self, relative_path):
+        return (Path(settings.BASE_DIR) / relative_path).read_text()
+
+    def test_the_renderer_keeps_a_window_and_plans_jumps(self):
+        source = self._source(self.BASE)
+        self.assertIn("this.JUMP_RADIUS = 50;", source)
+        for method in (
+            "planJump(index)",
+            "showRange(container, start, end",
+            "loadPrevious(container",
+            "adopt(items, renderedCount)",
+            "windowState()",
+            "captureScrollAnchor(container)",
+            "getLoadPreviousHtml(state)",
+        ):
+            with self.subTest(method=method):
+                self.assertIn(method, source)
+        # The page counter assumed the rows start at #1.
+        self.assertNotIn("currentPage", source)
+
+    def test_the_games_renderer_pages_through_the_base_class(self):
+        # Its own copy of render/loadMore was what the window would have
+        # had to be added to twice.
+        source = self._source("games/static/games/js/game-list-renderer.js")
+        self.assertNotRegex(source, r"\n    loadMore\(")
+        self.assertNotRegex(source, r"\n    render\(")
+        self.assertIn("this.GRID_CLASS = 'game-grid';", source)
+
+    def test_both_pages_jump_through_the_plan(self):
+        games = self._source("games/static/games/js/utils-loadmore.js")
+        jump = games.split("function jumpToRankClientSide(", 1)[1]
+        self.assertIn("renderer.planJump(targetRank - 1)", jump)
+        self.assertIn("renderer.showRange(", jump)
+
+        music = self._source("music/static/music/js/album-client-filtering.js")
+        jump = music.split("    jumpTo(position) {", 1)[1]
+        self.assertIn("this.renderer.planJump(position - 1)", jump)
+        self.assertIn("this.renderer.showRange(", jump)
+
+    def test_focusing_the_games_jump_box_starts_the_engine(self):
+        # The box asked only for the bundle to load. Nothing initialised the
+        # engine unless a filter had already done so, so a jump on a fresh
+        # page always took the server path, which fetches every page down to
+        # the target.
+        for path in (
+            "games/static/games/js/filter-component.js",
+            "games/static/games/js/filter-component.min.js",
+        ):
+            with self.subTest(path=path):
+                self.assertRegex(
+                    self._source(path),
+                    r"addEventListener\(\s*[\"']acclaimed:need-csf[\"']",
+                )
+
+    def test_scrolling_to_a_position_allows_for_the_window(self):
+        # Positions are absolute, but the Nth row on the page is not rank N
+        # once the window starts part-way down.
+        games = self._source("games/static/games/js/utils-loadmore.js")
+        scroll = games.split("function scrollToAndHighlightRank(", 1)[1]
+        self.assertIn("position - 1 - renderedWindowStart()", scroll)
+
+        music = self._source("music/static/music/js/album-client-filtering.js")
+        scroll = music.split("function scrollToAlbumPosition(", 1)[1]
+        self.assertIn("position - 1 - offset", scroll)
+
+    def test_load_previous_is_answered_on_both_pages(self):
+        for path in (
+            "games/static/games/js/utils-loadmore.js",
+            "music/static/music/js/album-client-filtering.js",
+        ):
+            with self.subTest(path=path):
+                self.assertIn("'.load-previous-button'", self._source(path))
+
+    def test_the_minified_copies_carry_it(self):
+        for path in (
+            "core/static/core/js/base-renderer.min.js",
+            "games/static/games/js/client-side-filtering.bundle.min.js",
+            "music/static/music/js/music-client-side-filtering.bundle.min.js",
+            "games/static/games/js/utils-loadmore.min.js",
+        ):
+            with self.subTest(path=path):
+                minified = self._source(path)
+                self.assertIn("load-previous-", minified)
+        for path in (
+            "games/static/games/js/client-side-filtering.bundle.min.js",
+            "music/static/music/js/music-client-side-filtering.bundle.min.js",
+        ):
+            with self.subTest(path=path):
+                self.assertIn("planJump", self._source(path))
+
+    def test_both_results_partials_place_load_previous_above_the_list(self):
+        for path, container in (
+            (
+                "games/templates/games/includes/_game_list_results.html",
+                '<div id="game-list-container"',
+            ),
+            (
+                "music/templates/music/includes/_album_list_results.html",
+                '<div id="album-list-container"',
+            ),
+        ):
+            with self.subTest(path=path):
+                self.assertIn(
+                    "{% include 'core/includes/_load_previous.html' %}\n" + container,
+                    self._source(path),
+                )
+
+    def test_the_pages_bumped_their_cache_busters(self):
+        # One-way ratchet past the versions that loaded every row.
+        for page, script, shipped in (
+            ("games/templates/games/home.html", "utils-loadmore.min.js", 5),
+            (
+                "games/templates/games/home.html",
+                "client-side-filtering.bundle.min.js",
+                15,
+            ),
+            ("games/templates/games/home.html", "filter-component.min.js", 10),
+            (
+                "music/templates/music/home.html",
+                "music-client-side-filtering.bundle.min.js",
+                7,
+            ),
+            (
+                "books/templates/books/home.html",
+                "book-client-side-filtering.bundle.min.js",
+                2,
+            ),
+        ):
+            with self.subTest(script=script):
+                versions = re.findall(
+                    re.escape(script) + r"[\"']? %\}\?v=(\d+)", self._source(page)
+                )
+                self.assertTrue(versions, f"{script} is not loaded with a ?v=")
+                for version in versions:
+                    self.assertGreater(int(version), shipped)
+
+
+class HighlightSurvivesTheScrollTests(SimpleTestCase):
+    """A `?highlight=` link or a jump must still be lit when the row arrives.
+
+    Every highlight faded on `mouseenter` of any other row. The click that
+    sends a reader there leaves the cursor over the list, and rows sliding
+    under a still cursor during the smooth scroll fire `mouseenter`, so the
+    highlight was gone before the row came into view. It also went on
+    `#game-<id>` / `#music-<id>`, the row wrappers, which styles.css does not
+    colour. One helper in utils-base.js, loaded on every page, now does it.
+    """
+
+    HELPER = "games/static/games/js/utils-base.js"
+    CALLERS = (
+        "games/static/games/js/utils-loadmore.js",
+        "games/static/games/js/filter-component.js",
+        "games/static/games/js/game-list-renderer.js",
+        "core/static/core/js/base-renderer.js",
+        "music/static/music/js/album-list-renderer.js",
+        "music/static/music/js/album-client-filtering.js",
+        "games/templates/games/home.html",
+    )
+
+    def _source(self, relative_path):
+        return (Path(settings.BASE_DIR) / relative_path).read_text()
+
+    def test_the_helper_waits_for_the_scroll_and_a_real_pointer_move(self):
+        helper = self._source(self.HELPER).split("function flashHighlight(", 1)[1]
+        self.assertIn("whenScrollSettles(", helper)
+        self.assertIn("addEventListener('mousemove'", helper)
+        self.assertNotIn("mouseenter'", helper)
+        # The wrapper is resolved to the row the CSS colours
+        self.assertIn(".map(highlightableElement)", helper)
+
+    def test_every_highlight_goes_through_it(self):
+        for path in self.CALLERS:
+            with self.subTest(path=path):
+                source = self._source(path)
+                self.assertIn("flashHighlight(", source)
+                self.assertNotRegex(
+                    source, r"addEventListener\('mouseenter'[^\n]*\n[^\n]*fade"
+                )
+                self.assertNotIn("classList.remove('is-highlighted')", source)
+
+    def test_the_minified_copies_carry_it(self):
+        for path in (
+            "games/static/games/js/utils-base.min.js",
+            "games/static/games/js/utils-loadmore.min.js",
+            "games/static/games/js/filter-component.min.js",
+            "games/static/games/js/client-side-filtering.bundle.min.js",
+            "music/static/music/js/music-client-side-filtering.bundle.min.js",
+        ):
+            with self.subTest(path=path):
+                self.assertIn("flashHighlight", self._source(path))
+
+    def test_base_bumped_the_utils_base_cache_buster(self):
+        match = re.search(
+            r"utils-base\.min\.js[\"']? %\}\?v=(\d+)",
+            self._source("games/templates/base.html"),
         )
         self.assertIsNotNone(match)
         self.assertGreater(int(match.group(1)), 4)

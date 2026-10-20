@@ -33,6 +33,13 @@ function initLoadMore() {
     if (!loadMoreInitialized) {
         // Use event delegation on the container to handle clicks on load-more-button
         container.addEventListener('click', function(e) {
+            // Load Previous exists only after a client-side jump, so the
+            // bundle is always there to answer it
+            if (e.target.closest('.load-previous-button')) {
+                handleLoadPreviousCSF();
+                return;
+            }
+
             const button = e.target.closest('.load-more-button');
             if (button && !button.classList.contains('is-loading')) {
                 // Use CSF load more if available (instant, no network requests)
@@ -161,17 +168,20 @@ function getCurrentState() {
             if (result) {
                 total = result.total;
             }
-            // Get loaded count from renderer if it has state
+            // Once the renderer owns the list, how far down it reaches
             if (csf.renderer && csf.renderer.currentItems && csf.renderer.currentItems.length > 0) {
-                loaded = Math.min(
-                    csf.renderer.currentPage * csf.renderer.PAGE_SIZE,
-                    csf.renderer.currentItems.length
-                );
+                return {
+                    total,
+                    loaded: csf.renderer.windowEnd,
+                    filters,
+                    showRank: hasActiveFilters(filters, csf) ? 'filtered' : 'alltime',
+                    csf
+                };
             }
         }
     }
 
-    // Fallback to data attributes if CSF doesn't have state
+    // Still the server's rows, which always start at #1
     if (loaded === 0) {
         const input = document.querySelector('.jump-to-rank-input');
         if (input) {
@@ -231,6 +241,34 @@ function hasActiveFilters(filters, csf) {
 }
 
 /**
+ * Wait for the client-side filtering bundle to be ready, briefly.
+ *
+ * The bundle is requested as soon as a jump box takes focus, so by the time
+ * a number has been typed it has almost always arrived.
+ * @param {number} timeout - Milliseconds to wait at most
+ * @returns {Promise<Object|null>} The ready instance, or null
+ */
+function waitForClientSideFiltering(timeout) {
+    const ready = () => {
+        if (typeof getClientSideFiltering !== 'function') return null;
+        const csf = getClientSideFiltering();
+        return csf && csf.isReady() ? csf : null;
+    };
+    return new Promise(resolve => {
+        const started = Date.now();
+        const check = () => {
+            const csf = ready();
+            if (csf || Date.now() - started >= timeout) {
+                resolve(csf);
+                return;
+            }
+            setTimeout(check, 100);
+        };
+        check();
+    });
+}
+
+/**
  * Handles jumping to a specific rank
  * @param {HTMLInputElement} input - The rank input element
  */
@@ -242,7 +280,7 @@ async function handleJumpToRank(input) {
 
     // Get authoritative state
     const state = getCurrentState();
-    const { total, loaded, csf } = state;
+    const { total, loaded } = state;
 
     // Validate input
     if (!targetRank || targetRank < 1 || targetRank > total) {
@@ -251,17 +289,21 @@ async function handleJumpToRank(input) {
         return;
     }
 
-    // Check if target is already loaded
-    if (targetRank <= loaded) {
+    const csfReady = state.csf && state.csf.isReady();
+
+    // The server's rows start at #1, so anything up to `loaded` is on the
+    // page already: no need to wait for the bundle
+    if (!csfReady && targetRank <= loaded) {
         scrollToAndHighlightRank(targetRank);
         input.value = '';
         return;
     }
 
-    // Try to use client-side filtering (instant, no network requests)
-    if (csf && csf.isReady()) {
+    // Client-side, only the target's neighbourhood is rendered
+    const csf = csfReady ? state.csf : await waitForClientSideFiltering(3000);
+    if (csf) {
         try {
-            jumpToRankClientSide(csf, targetRank, loaded, perPage);
+            jumpToRankClientSide(csf, targetRank);
             input.value = '';
             return;
         } catch (err) {
@@ -270,27 +312,31 @@ async function handleJumpToRank(input) {
         }
     }
 
-    // Fallback: fetch from server (parallel loading)
+    // Fallback: fetch from server (parallel loading). This one still loads
+    // every page down to the target, since the server has no Load Previous.
     await jumpToRankServerSide(targetRank, loaded, perPage);
     input.value = '';
 }
 
 /**
- * Jump to rank using client-side rendering (instant, no network)
+ * Jump to rank using client-side rendering (instant, no network).
+ *
+ * Renders the target and JUMP_RADIUS rows either side of it, rather than
+ * everything above it, which at rank 4,000 was 8,000 DOM rows. A target
+ * already on the page is only scrolled to, and one near the rendered rows
+ * extends them; see BaseMediaListRenderer.planJump.
+ * @param {Object} csf - The ready ClientSideFiltering instance
+ * @param {number} targetRank - 1-based position in the current result set
  */
-function jumpToRankClientSide(csf, targetRank, loaded, perPage) {
+function jumpToRankClientSide(csf, targetRank) {
     const gameListContainer = document.getElementById('game-list-container');
-    const countContainer = document.querySelector('.result-count');
-    const loadMoreContainer = document.querySelector('.load-more-container');
 
     if (!gameListContainer) {
         console.error('[JumpToRank CSF] No game list container found');
         return;
     }
 
-    // Get authoritative state (filters, showRank already computed)
-    const currentState = getCurrentState();
-    const { filters, showRank } = currentState;
+    const { filters, showRank, loaded } = getCurrentState();
 
     // Determine view mode from CSF or container class
     const viewMode = csf.getViewMode ? csf.getViewMode() :
@@ -303,82 +349,62 @@ function jumpToRankClientSide(csf, targetRank, loaded, perPage) {
         return;
     }
 
-    // Round up to the next page boundary so "Load More" continues smoothly
-    // e.g., if targetRank=750 and perPage=100, load up to 800
-    const total = result.total;
-    const pageBoundary = Math.ceil(targetRank / perPage) * perPage;
-    const loadUpTo = Math.min(pageBoundary, total);
-    const newLoaded = loadUpTo;
-
-    // Render games directly to container
     const renderer = csf.renderer;
-
-    if (viewMode === 'grid') {
-        // For grid view, append cards to existing grid container
-        let gridContainer = gameListContainer.querySelector('.game-grid');
-        let first = loaded;
-        if (!gridContainer) {
-            // The server renders no grid cards: build the grid from rank 1
-            gridContainer = document.createElement('div');
-            gridContainer.className = 'game-grid';
-            gameListContainer.appendChild(gridContainer);
-            first = 0;
-        }
-        result.games.slice(first, loadUpTo).forEach((game, i) => {
-            const index = first + i + 1; // 1-based rank
-            const card = renderer._renderGridCard(game, index, showRank);
-            if (card) gridContainer.appendChild(card);
-        });
+    if (renderer.currentItems && renderer.currentItems.length) {
+        renderer.currentItems = result.games;
     } else {
-        // List view: render desktop + mobile rows
-        result.games.slice(loaded, loadUpTo).forEach((game, i) => {
-            const index = loaded + i + 1; // 1-based rank
-            const desktopRow = renderer._renderDesktopRow(game, index, showRank);
-            const mobileRow = renderer._renderMobileRow(game, index, showRank);
-            if (desktopRow) gameListContainer.appendChild(desktopRow);
-            if (mobileRow) gameListContainer.appendChild(mobileRow);
-        });
+        // Taking over the server's rows
+        renderer.adopt(result.games, loaded);
+    }
+    renderer._currentViewMode = viewMode;
+
+    const plan = renderer.planJump(targetRank - 1);
+    if (plan.mode !== 'scroll') {
+        renderer.showRange(gameListContainer, plan.start, plan.end, { showRank, viewMode });
+        csf._hasRenderedUI = true;
     }
 
-    // Reinitialize HTMX for dynamically rendered content
-    if (typeof htmx !== 'undefined') {
-        htmx.process(gameListContainer);
-    }
-
-    // Update the renderer's state to match
-    renderer.currentItems = result.games;
-    renderer.currentPage = Math.ceil(newLoaded / perPage);
-
-    // Update count display
-    if (countContainer) {
-        countContainer.innerHTML = renderer.getResultSummaryHtml(newLoaded, total);
-    }
-
-    // Update Load More button
-    const hasMore = newLoaded < total;
-    const remaining = total - newLoaded;
-    if (loadMoreContainer) {
-        loadMoreContainer.innerHTML = renderer.getLoadMoreHtml({
-            hasMore,
-            remaining,
-            maxLoaded: newLoaded >= total,
-            total
-        });
-        if (hasMore) {
-            csf._initLoadMoreButton(loadMoreContainer, gameListContainer, countContainer);
-        }
-    }
-
-    // Update jump-to-rank inputs
-    document.querySelectorAll('.jump-to-rank-input').forEach(inp => {
-        inp.dataset.loaded = newLoaded;
-    });
-
+    refreshClientLoadMore(csf);
 
     // Scroll to and highlight the target rank
     setTimeout(() => {
         scrollToAndHighlightRank(targetRank);
     }, 50);
+}
+
+/**
+ * Redraw the count, Load Previous and Load More from the renderer's window.
+ * @param {Object} csf - The ready ClientSideFiltering instance
+ */
+function refreshClientLoadMore(csf) {
+    const gameListContainer = document.getElementById('game-list-container');
+    const countContainer = document.querySelector('.result-count');
+    const loadMoreContainer = document.querySelector('.load-more-container');
+
+    const state = csf.renderWindowChrome();
+    if (loadMoreContainer) {
+        loadMoreContainer.innerHTML = csf.renderer.getLoadMoreHtml(state);
+        if (state.hasMore) {
+            csf._initLoadMoreButton(loadMoreContainer, gameListContainer, countContainer);
+        }
+    }
+}
+
+/**
+ * Prepend the page above a jumped-to window (Load Previous).
+ */
+function handleLoadPreviousCSF() {
+    if (typeof getClientSideFiltering !== 'function') return;
+    const csf = getClientSideFiltering();
+    const gameListContainer = document.getElementById('game-list-container');
+    if (!csf || !csf.isReady() || !gameListContainer) return;
+
+    const { showRank } = getCurrentState();
+    const restoreScroll = csf.renderer.captureScrollAnchor(gameListContainer);
+    csf.renderer.loadPrevious(gameListContainer, { showRank });
+    // The button can disappear as well, so keep the place after both
+    csf.renderWindowChrome();
+    restoreScroll();
 }
 
 /**
@@ -508,6 +534,18 @@ async function loadPage(page) {
 }
 
 /**
+ * Position of the first rendered row, 0-based: 0 until a jump has rendered
+ * a window part-way down the list.
+ */
+function renderedWindowStart() {
+    if (typeof getClientSideFiltering !== 'function') return 0;
+    const csf = getClientSideFiltering();
+    if (!csf || !csf.isReady() || !csf.renderer) return 0;
+    if (!csf.renderer.currentItems || !csf.renderer.currentItems.length) return 0;
+    return csf.renderer.windowStart || 0;
+}
+
+/**
  * Scrolls to and highlights a specific position in the list
  * @param {number} position - The 1-based position to scroll to (e.g., 50 = 50th game in list)
  */
@@ -519,8 +557,9 @@ function scrollToAndHighlightRank(position) {
         gameListContainer.classList.contains('view-grid') &&
         !!gameListContainer.querySelector('.game-grid');
 
-    // Position is 1-based, arrays are 0-based
-    const index = position - 1;
+    // Position is 1-based, arrays are 0-based, and after a jump the first
+    // rendered row is at windowStart rather than at the top
+    const index = position - 1 - renderedWindowStart();
 
     let elementToScroll = null;
     let elementsToHighlight = [];
@@ -557,14 +596,7 @@ function scrollToAndHighlightRank(position) {
         return;
     }
 
-    // Scroll to the element with smooth scrolling
-    elementToScroll.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-    // Add temporary highlight
-    elementsToHighlight.forEach(el => el.classList.add('is-highlighted'));
-    setTimeout(() => {
-        elementsToHighlight.forEach(el => el.classList.remove('is-highlighted'));
-    }, 3000); // Remove highlight after 3 seconds
+    flashHighlight(elementToScroll, elementsToHighlight);
 }
 
 /**
@@ -573,7 +605,6 @@ function scrollToAndHighlightRank(position) {
  */
 function handleLoadMoreCSF(csf) {
     const gameListContainer = document.getElementById('game-list-container');
-    const countContainer = document.querySelector('.result-count');
     const loadMoreContainer = document.querySelector('.load-more-container');
 
     if (!gameListContainer) return;
@@ -594,8 +625,7 @@ function handleLoadMoreCSF(csf) {
         if (!result || !result.games) return;
 
         // Set the renderer's state based on what's already loaded
-        renderer.currentItems = result.games;
-        renderer.currentPage = Math.ceil(loaded / renderer.PAGE_SIZE);
+        renderer.adopt(result.games, loaded);
     }
 
     // Ensure renderer knows the current view mode
@@ -613,25 +643,13 @@ function handleLoadMoreCSF(csf) {
         htmx.process(gameListContainer);
     }
 
-    // Update count display
-    if (countContainer) {
-        countContainer.innerHTML = csf.renderer.getResultSummaryHtml(state.loaded, state.total);
-    }
+    // Count, Load Previous and the jump boxes
+    csf.renderWindowChrome();
 
     // Update Load More button
     if (loadMoreContainer) {
-        loadMoreContainer.innerHTML = csf.renderer.getLoadMoreHtml({
-            hasMore: state.hasMore,
-            remaining: state.remaining,
-            maxLoaded: state.loaded >= state.total,
-            total: state.total
-        });
+        loadMoreContainer.innerHTML = csf.renderer.getLoadMoreHtml(state);
     }
-
-    // Update jump-to-rank inputs
-    document.querySelectorAll('.jump-to-rank-input').forEach(inp => {
-        inp.dataset.loaded = state.loaded;
-    });
 }
 
 /**
@@ -807,13 +825,8 @@ function jumpToHighlightedGame(gameId) {
             return;
         }
 
-        // Get current loaded count
-        var state = getCurrentState();
-        var loaded = state.loaded;
-        var perPage = 100;
-
         // Use jumpToRankClientSide directly (same as Jump to Rank)
-        jumpToRankClientSide(csf, position, loaded, perPage);
+        jumpToRankClientSide(csf, position);
 
         // After loading, scroll to the specific game by ID
         setTimeout(function() {
@@ -858,11 +871,7 @@ function scrollToAndHighlightGameById(gameId) {
     }
 
     if (elementToScroll) {
-        elementToScroll.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        elementsToHighlight.forEach(function(el) { el.classList.add('is-highlighted'); });
-        setTimeout(function() {
-            elementsToHighlight.forEach(function(el) { el.classList.remove('is-highlighted'); });
-        }, 3000);
+        flashHighlight(elementToScroll, elementsToHighlight);
     }
 }
 

@@ -792,6 +792,103 @@ function createScrollShowHandler(setShow, threshold) {
     });
 }
 
+// ============================================================
+// HIGHLIGHTING A ROW
+// ============================================================
+
+/**
+ * Call `callback` once the page has stopped scrolling, or after `maxWait`
+ * milliseconds at most. Polled rather than on `scrollend`, which older
+ * Safari lacks.
+ * @param {Function} callback
+ * @param {number} [maxWait=3000]
+ */
+function whenScrollSettles(callback, maxWait) {
+    maxWait = maxWait || 3000;
+    var started = Date.now();
+    var lastY = window.scrollY;
+    var still = 0;
+    var check = function() {
+        still = window.scrollY === lastY ? still + 1 : 0;
+        lastY = window.scrollY;
+        if (still >= 2 || Date.now() - started >= maxWait) {
+            callback();
+            return;
+        }
+        setTimeout(check, 100);
+    };
+    setTimeout(check, 100);
+}
+
+var HIGHLIGHT_ITEM_SELECTOR = '.game-row, .media-row, .game-card-grid, .media-card-grid';
+
+/**
+ * The element the highlight styles apply to. `#game-<id>` and `#music-<id>`
+ * are row wrappers, while styles.css colours `.game-row.is-highlighted` and
+ * `.media-row.is-highlighted`, so a class on the wrapper showed nothing.
+ */
+function highlightableElement(el) {
+    if (el.matches(HIGHLIGHT_ITEM_SELECTOR)) return el;
+    return el.querySelector(HIGHLIGHT_ITEM_SELECTOR) || el;
+}
+
+/**
+ * Highlight a row (or card) the reader has been sent to, scroll it into
+ * view, and fade the highlight once they have seen it.
+ *
+ * The fade waits for the smooth scroll to finish, so the highlight is still
+ * there when the row arrives. Moving the pointer onto another row also fades
+ * it, but only a pointer that really moves: rows sliding under a still
+ * cursor fire `mouseenter` too. The click that brought the reader here
+ * (a genre badge on a detail page, a jump box) leaves the cursor over the
+ * list, so the old `mouseenter` listeners faded the highlight before the
+ * row had even scrolled into view.
+ * @param {Element|null} scrollTarget - Element to scroll to, if any
+ * @param {Array<Element|null>} elements - Elements to mark `is-highlighted`
+ * @param {Object} [options]
+ * @param {number} [options.duration=2500] - How long it stays once arrived
+ */
+function flashHighlight(scrollTarget, elements, options) {
+    var duration = (options && options.duration) || 2500;
+    var marked = (elements || []).filter(Boolean).map(highlightableElement);
+    if (!marked.length) return;
+
+    marked.forEach(function(el) {
+        el.classList.remove('fade-out');
+        el.classList.add('is-highlighted');
+    });
+    if (scrollTarget) {
+        scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    var timer = null;
+    var origin = null;
+    var fade = function() {
+        clearTimeout(timer);
+        document.removeEventListener('mousemove', onMove);
+        marked.forEach(function(el) { el.classList.add('fade-out'); });
+    };
+    var onMove = function(event) {
+        // The first event only fixes where the cursor rests
+        if (!origin) {
+            origin = { x: event.clientX, y: event.clientY };
+            return;
+        }
+        if (Math.abs(event.clientX - origin.x) + Math.abs(event.clientY - origin.y) < 8) return;
+        var item = event.target.closest && event.target.closest(HIGHLIGHT_ITEM_SELECTOR);
+        if (!item) return;
+        if (marked.some(function(el) { return el === item || el.contains(item) || item.contains(el); })) return;
+        fade();
+    };
+
+    whenScrollSettles(function() {
+        timer = setTimeout(fade, duration);
+        document.addEventListener('mousemove', onMove);
+    });
+}
+
+window.flashHighlight = flashHighlight;
+
 // Signal that utils-base is ready for Alpine
 window.utilsBaseReady = true;
 // Dispatch event for listeners waiting on utils-base (avoids polling)

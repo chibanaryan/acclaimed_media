@@ -258,10 +258,9 @@ class ClientSideFiltering {
             showRank: this._computeShowRank()
         });
 
-        // Update count display
-        if (countContainer) {
-            countContainer.innerHTML = this.renderer.getResultSummaryHtml(state.loaded, state.total);
-        }
+        // A fresh render starts at the top: redraw the count, and empty Load
+        // Previous if a jump had filled it
+        this.renderWindowChrome();
 
         // Update Load More button
         if (loadMoreContainer) {
@@ -320,6 +319,34 @@ class ClientSideFiltering {
     }
 
     /**
+     * Redraw everything that describes the renderer's window: both result
+     * count lines, the Load Previous button and the jump boxes' bounds.
+     * Load More is left to its callers, which each bind it their own way.
+     * @returns {Object} The renderer's windowState()
+     */
+    renderWindowChrome() {
+        const state = this.renderer.windowState();
+
+        document.querySelectorAll('.result-count').forEach(line => {
+            line.innerHTML = this.renderer.getResultSummaryHtml(state.loaded, state.total, {
+                start: state.start,
+                compact: line.dataset.resultCount === 'mobile'
+            });
+        });
+
+        const previous = document.querySelector('.load-previous-container');
+        if (previous) {
+            previous.innerHTML = this.renderer.getLoadPreviousHtml(state);
+        }
+
+        document.querySelectorAll('.jump-to-rank-input').forEach(input => {
+            input.dataset.loaded = state.end;
+        });
+
+        return state;
+    }
+
+    /**
      * Initialize Load More button click handler
      * @private
      */
@@ -338,18 +365,10 @@ class ClientSideFiltering {
             const showRank = this._computeShowRank();
             const state = this.loadMore(gameListContainer, { showRank });
 
-            // Update count
-            if (countContainer) {
-                countContainer.innerHTML = this.renderer.getResultSummaryHtml(state.loaded, state.total);
-            }
+            this.renderWindowChrome();
 
             // Update or replace Load More button
-            loadMoreContainer.innerHTML = this.renderer.getLoadMoreHtml({
-                hasMore: state.hasMore,
-                remaining: state.remaining,
-                maxLoaded: state.loaded >= state.total,
-                total: state.total
-            });
+            loadMoreContainer.innerHTML = this.renderer.getLoadMoreHtml(state);
 
             if (state.hasMore) {
                 this._initLoadMoreButton(loadMoreContainer, gameListContainer, countContainer);
