@@ -277,15 +277,25 @@ class AlbumCoverAdmin(admin.ModelAdmin):
 
 @admin.register(models.ListenedAlbum)
 class ListenedAlbumAdmin(admin.ModelAdmin):
-    """Albums users have marked as listened to.
+    """Albums users have marked as heard, or as owned.
+
+    "Have" has no table of its own: it is a row here with ``owned=True``, and
+    "Heard" one with ``owned=False``. Filter on Owned for either list.
 
     `raw_id_fields` rather than the `autocomplete_fields` the metadata
     admins use: a tracking changelist can hold a row per user per album, and
     an autocomplete widget loads its options per row.
     """
 
-    list_display = ["user", "album_name", "wikidata_id", "created", "link_status"]
-    list_filter = ["created"]
+    list_display = [
+        "user",
+        "album_name",
+        "owned",
+        "wikidata_id",
+        "created",
+        "link_status",
+    ]
+    list_filter = ["owned", "created"]
     search_fields = ["user__username", "user__email", "album__name", "wikidata_id"]
     raw_id_fields = ["user", "album"]
     readonly_fields = ["created"]

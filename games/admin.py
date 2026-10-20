@@ -528,8 +528,11 @@ class EmailAddressInline(admin.TabularInline):
         return False
 
 
-def _tracking_count(model):
+def _tracking_count(model, **filters):
     """A scalar count of one user's rows in `model`, for annotating UserAdmin.
+
+    ``filters`` narrow the rows counted, as ``owned=True`` separates "Have"
+    from "Heard" within `ListenedAlbum`.
 
     A ``Count("relation")`` per tracking model would LEFT JOIN each one onto
     the same queryset, and multi-valued joins multiply: a user with 822
@@ -539,7 +542,7 @@ def _tracking_count(model):
     """
     return Coalesce(
         Subquery(
-            model.objects.filter(user=OuterRef("pk"))
+            model.objects.filter(user=OuterRef("pk"), **filters)
             .order_by()
             .values("user")
             .annotate(total=Count("pk"))
@@ -562,6 +565,7 @@ class UserAdmin(BaseUserAdmin):
         "email_verified_display",
         "played_games_count",
         "want_to_play_count",
+        "owned_albums_count",
         "listened_albums_count",
         "want_to_listen_count",
         "date_joined",
@@ -605,6 +609,7 @@ class UserAdmin(BaseUserAdmin):
             "Album Tracking",
             {
                 "fields": (
+                    "owned_albums_list",
                     "listened_albums_list",
                     "want_to_listen_list",
                 ),
@@ -617,6 +622,7 @@ class UserAdmin(BaseUserAdmin):
         "date_subscribed",
         "played_games_list",
         "want_to_play_list",
+        "owned_albums_list",
         "listened_albums_list",
         "want_to_listen_list",
     ]
@@ -626,7 +632,10 @@ class UserAdmin(BaseUserAdmin):
         return qs.annotate(
             _played_games_count=_tracking_count(models.PlayedGame),
             _want_to_play_count=_tracking_count(models.WantToPlayGame),
-            _listened_albums_count=_tracking_count(music_models.ListenedAlbum),
+            _owned_albums_count=_tracking_count(music_models.ListenedAlbum, owned=True),
+            _listened_albums_count=_tracking_count(
+                music_models.ListenedAlbum, owned=False
+            ),
             _want_to_listen_count=_tracking_count(music_models.WantToListenAlbum),
         )
 
@@ -645,9 +654,14 @@ class UserAdmin(BaseUserAdmin):
         """Show count of games marked as want to play."""
         return obj._want_to_play_count
 
-    @admin.display(description="Listened", ordering="_listened_albums_count")
+    @admin.display(description="Have", ordering="_owned_albums_count")
+    def owned_albums_count(self, obj):
+        """Show count of albums marked as owned ("Have")."""
+        return obj._owned_albums_count
+
+    @admin.display(description="Heard", ordering="_listened_albums_count")
     def listened_albums_count(self, obj):
-        """Show count of albums marked as listened."""
+        """Show count of albums marked as heard, owned ones excluded."""
         return obj._listened_albums_count
 
     @admin.display(description="Want to Listen", ordering="_want_to_listen_count")
@@ -716,11 +730,21 @@ class UserAdmin(BaseUserAdmin):
         """Read-only summary of games the user wants to play."""
         return self._tracking_summary(obj.want_to_play_games.all())
 
-    @admin.display(description="Listened albums")
-    def listened_albums_list(self, obj):
-        """Read-only summary of albums the user marked as listened."""
+    @admin.display(description="Have")
+    def owned_albums_list(self, obj):
+        """Read-only summary of albums the user marked as owned."""
         return self._tracking_summary(
-            obj.listenedalbum_set.all(), "album", "wikidata_id", "wikidata"
+            obj.listenedalbum_set.filter(owned=True), "album", "wikidata_id", "wikidata"
+        )
+
+    @admin.display(description="Heard albums")
+    def listened_albums_list(self, obj):
+        """Read-only summary of albums the user marked as heard, not owned."""
+        return self._tracking_summary(
+            obj.listenedalbum_set.filter(owned=False),
+            "album",
+            "wikidata_id",
+            "wikidata",
         )
 
     @admin.display(description="Want to listen")

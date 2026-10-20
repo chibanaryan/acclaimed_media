@@ -887,7 +887,39 @@ class UserAdminAlbumTrackingTests(TestCase):
 
         self.assertEqual(self.admin.listened_albums_count(self._annotated()), 0)
 
+    def test_have_and_heard_are_counted_apart(self):
+        # "Have" is a ListenedAlbum row with owned=True, so one table backs
+        # two states; each must count only its own.
+        music_models.ListenedAlbum.objects.create(
+            user=self.user, album=self.album, wikidata_id="Q212863", owned=True
+        )
+        music_models.ListenedAlbum.objects.create(
+            user=self.user, album=self.other, wikidata_id="Q19003"
+        )
+
+        annotated = self._annotated()
+
+        self.assertEqual(self.admin.owned_albums_count(annotated), 1)
+        self.assertEqual(self.admin.listened_albums_count(annotated), 1)
+
+    def test_have_and_heard_are_listed_apart(self):
+        music_models.ListenedAlbum.objects.create(
+            user=self.user, album=self.album, wikidata_id="Q212863", owned=True
+        )
+        music_models.ListenedAlbum.objects.create(
+            user=self.user, album=self.other, wikidata_id="Q19003"
+        )
+
+        owned = self.admin.owned_albums_list(self.user)
+        heard = self.admin.listened_albums_list(self.user)
+
+        self.assertIn("Pet Sounds", owned)
+        self.assertNotIn("London Calling", owned)
+        self.assertIn("London Calling", heard)
+        self.assertNotIn("Pet Sounds", heard)
+
     def test_summaries_are_empty_with_nothing_tracked(self):
+        self.assertEqual(self.admin.owned_albums_list(self.user), "None")
         self.assertEqual(self.admin.listened_albums_list(self.user), "None")
         self.assertEqual(self.admin.want_to_listen_list(self.user), "None")
 
@@ -939,7 +971,8 @@ class UserAdminAlbumTrackingTests(TestCase):
         response = client.get("/admin/core/user/")
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        self.assertIn("Listened", content)
+        self.assertIn("Have", content)
+        self.assertIn("Heard", content)
         self.assertIn("Want to Listen", content)
 
         # The columns are sortable because they name their annotation.

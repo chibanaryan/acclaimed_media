@@ -314,6 +314,35 @@ class TrackingAdminTests(TestCase):
                 url = reverse(f"admin:music_{model_class._meta.model_name}_changelist")
                 self.assertEqual(self.client.get(url).status_code, 200)
 
+    def test_the_listened_changelist_separates_have_from_heard(self):
+        # "Have" has no table of its own; filtering on owned is how an admin
+        # finds it.
+        User.objects.create_user(
+            username="admin", password="pw", is_staff=True, is_superuser=True
+        )
+        self.client.login(username="admin", password="pw")
+        other = models.Album.objects.create(
+            name="Surfer Rosa", rank=2, slug="surfer-rosa", wikidata_id="Q456"
+        )
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=self.album, wikidata_id="Q123", owned=True
+        )
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=other, wikidata_id="Q456"
+        )
+        admin_obj = site._registry[models.ListenedAlbum]
+        self.assertIn("owned", admin_obj.list_display)
+        self.assertIn("owned", admin_obj.list_filter)
+
+        url = reverse("admin:music_listenedalbum_changelist")
+        have = self.client.get(url, {"owned__exact": "1"}).content.decode()
+        heard = self.client.get(url, {"owned__exact": "0"}).content.decode()
+
+        self.assertIn("Doolittle", have)
+        self.assertNotIn("Surfer Rosa", have)
+        self.assertIn("Surfer Rosa", heard)
+        self.assertNotIn("Doolittle", heard)
+
     def test_the_admins_search_by_user_and_album(self):
         # So a support question about one person's collection is answerable.
         for model_class in (models.ListenedAlbum, models.WantToListenAlbum):

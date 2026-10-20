@@ -1,5 +1,14 @@
 # Developer Log
 
+## 2026-10-20
+
+- **The admin tells "Have" from "Heard".** Have is a `ListenedAlbum` row
+  with `owned=True`, not a table of its own, and the admin showed neither
+  the field nor the difference: the User admin's "Listened" count and list
+  lumped both together. The Listened albums changelist now has an Owned
+  column and filter, and the User admin has separate Have and Heard counts
+  and lists
+
 ## 2026-10-19
 
 - **Jump to rank renders 50 either side of the target**, not every row

@@ -506,8 +506,11 @@ dropped on commit. An id already marked is left alone, so a mark the user
 made themselves keeps its `created` timestamp, and ids are matched against
 every id an album carries rather than just the primary one.
 
-**The User admin shows all four tracking counts** (played, want to play,
-listened, want to listen) with a read-only capped list of each. The counts
+**The User admin shows all five tracking counts** (played, want to play,
+have, heard, want to listen) with a read-only capped list of each. Have and
+Heard are both `ListenedAlbum` counts, split on `owned`, and the
+`ListenedAlbum` changelist filters on it, since Have has no table to find
+in the admin sidebar. The counts
 are correlated subqueries, not `Count("relation", distinct=True)`: four
 multi-valued joins on one queryset multiply, and a user with 822 listened
 albums and 178 want-to-listen rows produced 146k intermediate rows before
