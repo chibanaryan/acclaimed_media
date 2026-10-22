@@ -1,5 +1,15 @@
 # Developer Log
 
+## 2026-10-22
+
+- **Tidy the subscriber email for news posts.** The "Read More" button
+  linked to `/#latest-news`, an anchor nothing on the site carries, so it
+  just opened the home page; it is gone, since the email is the whole post.
+  The subject is the post's title alone, the date replaces a "By Acclaimed
+  Video Games" byline that repeated the sender, and the plain-text part is
+  the post's markdown, which keeps paragraph breaks and link URLs that
+  stripping the HTML's tags lost
+
 ## 2026-10-20
 
 - **The admin tells "Have" from "Heard".** Have is a `ListenedAlbum` row

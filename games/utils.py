@@ -133,6 +133,9 @@ def send_post_notification_email(post, user) -> bool:
     """
     Send a notification email about a new post to a subscriber.
 
+    The email carries the whole post, so it links to nothing but the site
+    and the unsubscribe page: posts have no page of their own to link to.
+
     Args:
         post: Post model instance
         user: User model instance with subscription fields
@@ -142,62 +145,51 @@ def send_post_notification_email(post, user) -> bool:
     """
     from django.conf import settings
     from django.core.mail import EmailMultiAlternatives
-    from django.utils.html import strip_tags
+    from django.utils.dateformat import format as format_date
 
     site_url = getattr(settings, "SITE_URL", "https://www.acclaimedvideogames.com")
-    post_url = f"{site_url}/#latest-news"
     unsubscribe_url = f"{site_url}/unsubscribe/{user.unsubscribe_token}/"
 
-    subject = f"New post: {post.title or 'Latest Update'}"
-
-    # Get author name
-    if post.author:
-        author_name = post.author.get_full_name() or post.author.username
-    else:
-        author_name = "Acclaimed Video Games"
+    title = post.title or "Latest Update"
+    # Posts sign themselves and the sender is already the site, so the line
+    # under the title is the date rather than a byline
+    date_text = format_date(post.date, "F j, Y")
 
     # Get HTML version (full post with links intact)
     post_html = post.text_rendered
 
-    # Get plain text version (for email clients that don't support HTML)
-    post_text = strip_tags(post.text_rendered)
+    # The markdown source is the plain-text version: stripping the rendered
+    # HTML's tags ran the paragraphs together and dropped every link's URL
+    post_text = post.text.strip()
 
     # Plain text version
     text_body = f"""
-New post on Acclaimed Video Games!
-
-{post.title or 'Latest Update'}
-By {author_name}
+{title}
+{date_text}
 
 {post_text}
 
-Read more: {post_url}
-
 ---
-You're receiving this because you subscribed to Acclaimed Video Games
-post notifications. To unsubscribe, visit: {unsubscribe_url}
+You're receiving this because you subscribed to updates from
+Acclaimed Video Games. To unsubscribe, visit: {unsubscribe_url}
 
 Acclaimed Video Games
 {site_url}
 """
 
-    # HTML version with minimal styling - just accent color for button
+    # HTML version with minimal styling
     # fmt: off
     body_style = (
         "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, "
         "sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto; "
         "padding: 20px;"
     )
-    button_style = (
-        "display: inline-block; background-color: #004900; color: #fff; "
-        "padding: 12px 24px; border-radius: 6px; text-decoration: none; "
-        "font-weight: bold;"
-    )
     footer_style = (
         "font-size: 12px; margin-top: 30px; padding-top: 20px; "
         "border-top: 1px solid #ccc;"
     )
-    header_style = "font-size: 12px; color: #666; margin: 0 0 20px 0;"
+    header_style = "font-size: 12px; margin: 0 0 20px 0;"
+    header_link_style = "color: #666; text-decoration: none;"
     # fmt: on
     html_body = f"""<!DOCTYPE html>
 <html>
@@ -206,24 +198,22 @@ Acclaimed Video Games
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body style="{body_style}">
-    <p style="{header_style}">Acclaimed Video Games</p>
-    <h2 style="margin-top: 0;">{post.title or 'Latest Update'}</h2>
-    <p style="font-size: 14px; margin-top: 0; margin-bottom: 20px;">
-        By {author_name}
+    <p style="{header_style}">
+        <a href="{site_url}" style="{header_link_style}">Acclaimed Video Games</a>
+    </p>
+    <h2 style="margin-top: 0; margin-bottom: 4px;">{title}</h2>
+    <p style="font-size: 14px; color: #666; margin-top: 0; margin-bottom: 20px;">
+        {date_text}
     </p>
 
     <div style="margin: 20px 0;">
         {post_html}
     </div>
 
-    <p style="margin: 30px 0;">
-        <a href="{post_url}" style="{button_style}">Read More</a>
-    </p>
-
     <p style="{footer_style}">
-        You're receiving this because you subscribed to updates.<br>
-        <a href="{unsubscribe_url}">Unsubscribe</a> |
-        <a href="{site_url}">Acclaimed Video Games</a>
+        You're receiving this because you subscribed to updates from
+        Acclaimed Video Games.<br>
+        <a href="{unsubscribe_url}">Unsubscribe</a>
     </p>
 </body>
 </html>"""
@@ -231,7 +221,7 @@ Acclaimed Video Games
     try:
         # Create email with both plain text and HTML versions
         email = EmailMultiAlternatives(
-            subject=subject,
+            subject=title,
             body=text_body,
             from_email=settings.DEFAULT_FROM_EMAIL,
             to=[user.email],

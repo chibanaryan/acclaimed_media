@@ -1,6 +1,7 @@
 from io import BytesIO, StringIO
 from unittest import mock
 
+from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 
@@ -579,10 +580,13 @@ class SendPostNotificationEmailTests(TestCase):
         self.assertEqual(len(mail.outbox), 1)
 
         email = mail.outbox[0]
-        self.assertIn("Test Post", email.subject)
+        # The title alone, not "New post: <title>"
+        self.assertEqual(email.subject, "Test Post")
         self.assertIn("subscriber@example.com", email.to)
         self.assertIn("Test Post", email.body)
         self.assertIn(subscriber.unsubscribe_token, email.body)
+        # The plain-text part keeps the link's URL
+        self.assertIn("[Link](https://example.com)", email.body)
 
         # Check multipart (HTML alternative)
         self.assertEqual(len(email.alternatives), 1)
@@ -590,6 +594,14 @@ class SendPostNotificationEmailTests(TestCase):
         self.assertEqual(content_type, "text/html")
         self.assertIn("<h1>Test</h1>", html_content)
         self.assertIn('href="https://example.com"', html_content)
+        self.assertIn(f'<a href="{settings.SITE_URL}"', html_content)
+
+        # Posts have no page of their own, and the email is the whole post,
+        # so there is nothing to "read more" of
+        for body in (email.body, html_content):
+            self.assertNotIn("Read More", body)
+            self.assertNotIn("Read more", body)
+            self.assertNotIn("#latest-news", body)
 
     def test_handles_exception(self):
         """Test notification sending with exception."""
@@ -619,19 +631,8 @@ class SendPostNotificationEmailTests(TestCase):
             result = utils.send_post_notification_email(post, subscriber)
             self.assertFalse(result)
 
-    def test_post_without_author_uses_default_name(self):
-        """Test notification email for post without author."""
-        from django.core import mail
-
+    def _subscriber(self):
         from core.models import User
-        from games.models import Post
-
-        # Create post without author
-        post = Post.objects.create(
-            title="Test Post",
-            text="Test content",
-            author=None,  # No author
-        )
 
         subscriber = User.objects.create_user(
             username="subscriber",
@@ -640,13 +641,55 @@ class SendPostNotificationEmailTests(TestCase):
         )
         subscriber.generate_unsubscribe_token()
         subscriber.save()
+        return subscriber
 
-        result = utils.send_post_notification_email(post, subscriber)
+    def test_dates_the_post_instead_of_a_byline(self):
+        """The line under the title is the date; the post signs itself."""
+        import datetime
 
-        self.assertTrue(result)
-        self.assertEqual(len(mail.outbox), 1)
-        # Should use default author name
-        self.assertIn("Acclaimed Video Games", mail.outbox[0].body)
+        from django.core import mail
+
+        from core.models import User
+        from games.models import Post
+
+        author = User.objects.create_user(
+            username="james", email="author@example.com", first_name="James"
+        )
+        for post_author in (author, None):
+            post = Post.objects.create(
+                title="Test Post", text="Test content", author=post_author
+            )
+            Post.objects.filter(pk=post.pk).update(
+                date=datetime.datetime(2026, 10, 22, 12)
+            )
+            post.refresh_from_db()
+            mail.outbox = []
+
+            self.assertTrue(
+                utils.send_post_notification_email(post, self._subscriber())
+            )
+
+            email = mail.outbox[0]
+            html_content = email.alternatives[0][0]
+            for body in (email.body, html_content):
+                self.assertIn("October 22, 2026", body)
+                self.assertNotIn("By ", body)
+            User.objects.filter(username="subscriber").delete()
+
+    def test_untitled_post_falls_back_to_latest_update(self):
+        """A post without a title still gets a subject and heading."""
+        from django.core import mail
+
+        from games.models import Post
+
+        post = Post.objects.create(title=None, text="Test content")
+
+        self.assertTrue(utils.send_post_notification_email(post, self._subscriber()))
+
+        email = mail.outbox[0]
+        self.assertEqual(email.subject, "Latest Update")
+        self.assertIn("<h2", email.alternatives[0][0])
+        self.assertIn("Latest Update</h2>", email.alternatives[0][0])
 
 
 class NotifySubscribersOfNewPostTests(TestCase):
