@@ -14,11 +14,16 @@ that; the client paces itself from the response headers either way.
     python manage.py fetch_album_metadata --musicbrainz
     python manage.py fetch_album_metadata --slug pet-sounds --force
     python manage.py fetch_album_metadata --with-musicbrainz  # all four passes
+    python manage.py fetch_album_metadata --musicbrainz --refresh-stale 125
 
-Heroku Scheduler runs it daily as ``--weekly --with-musicbrainz``; ``--weekly``
-exits at once on any day but Sunday, as ``refresh_all_metadata``'s does.
-Without ``--force`` the cover, Discogs and MusicBrainz passes skip records that
-already landed, so a routine run only fills what an import left missing.
+Heroku Scheduler runs it daily as
+``--weekly --with-musicbrainz --refresh-stale 125``; ``--weekly`` exits at
+once on any day but Sunday, as ``refresh_all_metadata``'s does. Without
+``--force`` the cover, Discogs and MusicBrainz passes skip records that
+already landed, so a routine run only fills what an import left missing -
+plus, with ``--refresh-stale N``, a re-fetch of the N albums whose
+MusicBrainz data is oldest, which cycles the 1000-album corpus every eight
+weeks for about two minutes a run.
 
 Genres are rebuilt from the stored data at the end of any run that included
 the Wikidata, Discogs or MusicBrainz pass; ``rebuild_album_genres`` does the
@@ -92,6 +97,16 @@ class Command(BaseCommand):
             help="Add the MusicBrainz pass to the passes that would otherwise run",
         )
         parser.add_argument(
+            "--refresh-stale",
+            type=int,
+            default=0,
+            metavar="N",
+            help=(
+                "In the MusicBrainz pass, also re-fetch the N albums whose "
+                "MusicBrainz data is oldest (1 req/sec each)"
+            ),
+        )
+        parser.add_argument(
             "--weekly",
             action="store_true",
             help=(
@@ -122,7 +137,9 @@ class Command(BaseCommand):
             return
 
         service = AlbumMetadataService(
-            progress_callback=self._on_progress, force=options["force"]
+            progress_callback=self._on_progress,
+            force=options["force"],
+            refresh_stale=options["refresh_stale"],
         )
         runners = {
             "wikidata": service.run_wikidata,
@@ -217,6 +234,11 @@ class Command(BaseCommand):
         self.stdout.write(f"  Passes: {', '.join(passes)}")
         if options["force"]:
             self.stdout.write("  Force: re-fetching records that already have data")
+        elif options["refresh_stale"] and "musicbrainz" in passes:
+            self.stdout.write(
+                f"  Refreshing the {options['refresh_stale']} oldest MusicBrainz "
+                "records"
+            )
         if "discogs" in passes:
             if settings.DISCOGS_TOKEN:
                 self.stdout.write(

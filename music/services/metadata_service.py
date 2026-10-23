@@ -18,11 +18,12 @@ Pass            Requests  Notes
 ``musicbrainz`` ~500      Hard 1/sec cap, so about nine minutes; opt-in
 ==============  ========  ==============================================
 
-Each pass adopts orphaned metadata before fetching. An import replaces every
-Album row (``import_handler.import_albums`` deletes them all), and the
-metadata tables use ``on_delete=SET_NULL``, so the rows survive as orphans
-keyed by their external id. Re-running after an import therefore reconnects
-hundreds of covers without a single HTTP request.
+Each pass adopts orphaned metadata before fetching. An import keeps every
+album it can match by Wikidata id, metadata and all, but one it removes
+leaves its rows behind: the metadata tables use ``on_delete=SET_NULL``, so
+they survive as orphans keyed by their external id. When that album comes
+back in a later release - or a row was orphaned some other way - the passes
+reconnect it without a single HTTP request.
 """
 
 import logging
@@ -86,10 +87,13 @@ class PassResult:
     processed: int = 0
     skipped: int = 0
     adopted: int = 0
+    refreshed: int = 0
     errors: List[str] = field(default_factory=list)
 
     def summary(self) -> str:
         parts = [f"{self.processed} processed"]
+        if self.refreshed:
+            parts.append(f"{self.refreshed} refreshed")
         if self.adopted:
             parts.append(f"{self.adopted} reconnected")
         if self.skipped:
@@ -106,9 +110,13 @@ class AlbumMetadataService:
         self,
         progress_callback: Optional[Callable[[str, Dict], None]] = None,
         force: bool = False,
+        refresh_stale: int = 0,
     ) -> None:
         self.progress_callback = progress_callback
         self.force = force
+        # How many already-enriched albums the MusicBrainz pass re-fetches
+        # anyway, oldest first; see _stalest_musicbrainz.
+        self.refresh_stale = refresh_stale
         # Opened only if the cover pass needs the release-level fallback.
         self._musicbrainz_client = None
 
@@ -117,22 +125,6 @@ class AlbumMetadataService:
     def _notify(self, event_type: str, data: Dict) -> None:
         if self.progress_callback:
             self.progress_callback(event_type, data)
-
-    @staticmethod
-    def _album_qids(album: models.Album) -> List[str]:
-        """Every Wikidata ID for an album, primary first.
-
-        Two albums in the release carry two QIDs - the UK and US editions of
-        'Let It Bleed' and 'Aftermath' - so the extras matter: one of them is
-        where the MusicBrainz and Discogs ids actually live.
-        """
-        qids = []
-        if album.wikidata_id:
-            qids.append(album.wikidata_id)
-        for qid in album.all_wikidata_ids or []:
-            if qid and qid not in qids:
-                qids.append(qid)
-        return qids
 
     def _set_primary(self, album: models.Album, record, field_name: str) -> None:
         """Point the album at ``record`` and demote any other primary row."""
@@ -161,7 +153,7 @@ class AlbumMetadataService:
 
         qid_to_albums: Dict[str, List[models.Album]] = {}
         for album in albums:
-            for qid in self._album_qids(album):
+            for qid in album.wikidata_qids:
                 qid_to_albums.setdefault(qid, []).append(album)
 
         if not qid_to_albums:
@@ -223,7 +215,7 @@ class AlbumMetadataService:
     def _save_wikidata(self, album, metadata, labels) -> None:
         """Write one album's Wikidata results."""
         album_meta = None
-        for qid in self._album_qids(album):
+        for qid in album.wikidata_qids:
             candidate = metadata.get(qid)
             if candidate is None:
                 continue
@@ -323,17 +315,23 @@ class AlbumMetadataService:
 
         with CoverArtArchiveClient() as client:
             for index, album in enumerate(albums, start=1):
-                record = self._musicbrainz_record(album)
+                record, adopted = self._musicbrainz_record(album)
 
                 if not self.force and record.cover_art_image_id:
                     if record.cover_art_stored:
-                        result.skipped += 1
+                        if adopted:
+                            result.adopted += 1
+                        else:
+                            result.skipped += 1
                         continue
                     # The image is identified but its bytes are not stored
                     # yet, which is all a re-run after an upgrade needs. No
                     # listing request: the ids are already known.
                     if self._store_known_cover(album, record, client):
-                        result.processed += 1
+                        if adopted:
+                            result.adopted += 1
+                        else:
+                            result.processed += 1
                         continue
 
                 adopted = self._adopt_cover_orphan(album, record)
@@ -620,16 +618,53 @@ class AlbumMetadataService:
             album.save(update_fields=["cover_image_url"])
 
     def _musicbrainz_record(self, album):
-        """This album's MusicBrainz row, created if absent."""
+        """This album's MusicBrainz row, and whether it was just adopted.
+
+        An orphan for the same release group is adopted whole before a new
+        row is made - title, dates, genres and cover ids together. Making a
+        fresh row instead, and letting the cover pass copy only the cover ids
+        off the orphan, is what used to send the MusicBrainz pass back to the
+        network for every album after an import: the row it then found had
+        no title.
+        """
         record = models.MusicBrainzAlbumData.objects.filter(
             album=album, release_group_mbid=album.musicbrainz_release_group_id
         ).first()
         if record is not None:
-            return record
-        return models.MusicBrainzAlbumData.objects.create(
-            album=album,
-            release_group_mbid=album.musicbrainz_release_group_id,
+            return record, False
+
+        orphans = list(
+            models.MusicBrainzAlbumData.objects.filter(
+                release_group_mbid=album.musicbrainz_release_group_id,
+                album__isnull=True,
+            )
         )
+        if not orphans:
+            record = models.MusicBrainzAlbumData.objects.create(
+                album=album,
+                release_group_mbid=album.musicbrainz_release_group_id,
+            )
+            return record, False
+
+        # Usually one; if there are more, keep the one with the most in it.
+        orphan = max(
+            orphans,
+            key=lambda row: (bool(row.title), bool(row.cover_art_image_id), row.pk),
+        )
+        orphan.album = album
+        # Not primary until _set_primary has demoted any row the album
+        # already has, or the partial unique constraint rejects the save.
+        orphan.is_primary = False
+        orphan.save(update_fields=["album", "is_primary"])
+        if orphan.cover_art_image_id:
+            models.AlbumCover.objects.filter(
+                release_mbid=orphan.cover_art_release_mbid,
+                image_id=orphan.cover_art_image_id,
+            ).update(album=album)
+            self._apply_cover(album, orphan)
+        else:
+            self._set_primary(album, orphan, "primary_musicbrainz_album_data")
+        return orphan, True
 
     # ---------------------------------------------------------- discogs pass
 
@@ -729,13 +764,18 @@ class AlbumMetadataService:
             return result
 
         self._notify("start", {"pass": "musicbrainz", "total": len(albums)})
+        stale = self._stalest_musicbrainz(albums)
 
         with MusicBrainzClient() as client:
             for index, album in enumerate(albums, start=1):
-                record = self._musicbrainz_record(album)
+                record, adopted = self._musicbrainz_record(album)
+                refreshing = album.pk in stale
 
-                if not self.force and record.title:
-                    result.skipped += 1
+                if not self.force and record.title and not refreshing:
+                    if adopted:
+                        result.adopted += 1
+                    else:
+                        result.skipped += 1
                     continue
 
                 group = client.fetch_release_group(album.musicbrainz_release_group_id)
@@ -756,7 +796,10 @@ class AlbumMetadataService:
                 record.save()
 
                 self._set_primary(album, record, "primary_musicbrainz_album_data")
-                result.processed += 1
+                if refreshing:
+                    result.refreshed += 1
+                else:
+                    result.processed += 1
                 self._notify(
                     "progress",
                     {
@@ -769,3 +812,26 @@ class AlbumMetadataService:
 
         self._notify("complete", {"pass": "musicbrainz", "processed": result.processed})
         return result
+
+    def _stalest_musicbrainz(self, albums) -> set:
+        """The ``refresh_stale`` albums whose MusicBrainz data is oldest.
+
+        An import keeps every album it matches, so without this an album's
+        MusicBrainz row would be fetched once and never again: its genre
+        tags gather votes for years. Re-fetching a slice of the corpus per
+        run, oldest first, cycles through all of it without paying the full
+        ~17 minutes at 1 req/sec on any one run. ``updated_at`` stands in
+        for when the row was fetched; the cover pass also saves the row when
+        it finds a cover, which can only delay a refresh by one cycle.
+        """
+        if self.force or self.refresh_stale <= 0:
+            return set()
+        return set(
+            models.MusicBrainzAlbumData.objects.filter(
+                album__in=albums, is_primary=True
+            )
+            .exclude(title__isnull=True)
+            .exclude(title="")
+            .order_by("updated_at", "pk")
+            .values_list("album_id", flat=True)[: self.refresh_stale]
+        )

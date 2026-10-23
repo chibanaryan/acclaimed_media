@@ -15,8 +15,9 @@ DEFAULT_DIR = Path(settings.BASE_DIR) / "acclaimedgames" / "test_input_files" / 
 class Command(BaseCommand):
     help = (
         "Import album rankings from the artists, lists, albums and positions "
-        "TSV files. "
-        "Replaces all existing music ranking data in a single transaction."
+        "TSV files, in a single transaction. Albums are matched to the ones "
+        "already stored by Wikidata id and updated in place; lists and list "
+        "positions are replaced."
     )
 
     def add_arguments(self, parser):
@@ -43,7 +44,10 @@ class Command(BaseCommand):
         parser.add_argument(
             "--dry-run",
             action="store_true",
-            help="Report the inferred list types and parsed counts, then stop",
+            help=(
+                "Report the inferred list types and which albums would be "
+                "kept, added and removed, then stop"
+            ),
         )
 
     def handle(self, *args, **options):
@@ -104,12 +108,23 @@ class Command(BaseCommand):
             self.stdout.write(f"  {list_type} {label:<14} {row[0]} {row[1]} - {row[2]}")
 
         with paths["albums"].open(encoding="utf-8-sig", newline="") as f:
-            album_rows = sum(1 for line in f if line.strip())
+            albums = import_handler.parse_albums_file(f)
+        match = import_handler.match_albums(albums, list(models.Album.objects.all()))
+        self.stdout.write(
+            f"Albums file: {len(albums)} rows - {len(match.kept)} kept, "
+            f"{len(match.added)} added, {len(match.removed)} removed"
+        )
+        for row in match.added:
+            qids = ", ".join(row.wikidata_ids) or "no Wikidata id"
+            self.stdout.write(f"  + {row.rank:>5} {row.name} [{qids}]")
+        for album in match.removed:
+            qids = ", ".join(album.wikidata_qids) or "no Wikidata id"
+            self.stdout.write(f"  - {album.rank:>5} {album.name} [{qids}]")
+
         with paths["positions"].open(encoding="utf-8-sig") as f:
             position_rows = sum(1 for line in f if line.strip())
-        self.stdout.write(f"Albums file: {album_rows} rows")
         self.stdout.write(f"Positions file: {position_rows} rows")
-        if album_rows != position_rows:
+        if len(albums) != position_rows:
             self.stdout.write(
                 self.style.WARNING(
                     "Albums and positions row counts differ; the positions "

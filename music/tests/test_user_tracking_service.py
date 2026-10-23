@@ -1,9 +1,9 @@
 """Tests for re-adopting tracking rows after an album reimport.
 
-Every import deletes every album, which leaves the tracking rows pointing at
-nothing. These cover the pass that reconnects them, including the case where
-two rows end up aimed at one album and the unique constraint would reject the
-second.
+An import deletes the albums a release drops, which leaves their tracking
+rows pointing at nothing. These cover the pass that reconnects them when an
+album comes back, including the case where two rows end up aimed at one
+album and the unique constraint would reject the second.
 """
 
 from datetime import datetime
@@ -213,3 +213,35 @@ class ReconnectTrackingRecordsTests(TestCase):
         row.refresh_from_db()
         self.assertEqual(row.album, self.album)
         self.assertEqual(models.ListenedAlbum.objects.count(), 1)
+
+    def test_an_already_connected_row_is_not_counted_or_its_caches_dropped(self):
+        # Every row on a kept album is like this after an import; rewriting
+        # them all would drop every tracker's caches for nothing.
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=self.album, wikidata_id="Q123"
+        )
+        key = config.CACHE_KEY_LISTENED_ALBUMS.format(user_id=self.user.id)
+        cache.set(key, [self.album.id], 300)
+
+        stats = user_tracking_service.reconnect_tracking_records(
+            self._id_map(self.album)
+        )
+
+        self.assertEqual(stats["listened_reconnected"], 0)
+        self.assertEqual(stats["users_affected"], 0)
+        self.assertEqual(cache.get(key), [self.album.id])
+
+    def test_a_connected_row_under_a_secondary_id_is_still_normalized(self):
+        self.album.all_wikidata_ids = ["Q123", "Q456"]
+        self.album.save()
+        row = models.ListenedAlbum.objects.create(
+            user=self.user, album=self.album, wikidata_id="Q456"
+        )
+
+        stats = user_tracking_service.reconnect_tracking_records(
+            self._id_map(self.album)
+        )
+
+        row.refresh_from_db()
+        self.assertEqual(row.wikidata_id, "Q123")
+        self.assertEqual(stats["listened_reconnected"], 1)

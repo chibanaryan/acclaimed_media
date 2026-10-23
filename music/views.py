@@ -204,9 +204,9 @@ def _tracked_album_ids(user, cache_key, queryset):
     """A user's tracked album ids from ``queryset``, cached briefly.
 
     Album ids rather than Wikidata ids because these sets are joined against
-    the client-side payload, which carries the album pk. Rows orphaned by a
-    reimport are left out until the reconnection pass re-adopts them -
-    without the FK there is no id to join on.
+    the client-side payload, which carries the album pk. Rows orphaned when
+    a release dropped their album are left out until the reconnection pass
+    re-adopts them - without the FK there is no id to join on.
     """
     key = cache_key.format(user_id=user.id)
     ids = cache.get(key)
@@ -1708,12 +1708,12 @@ def _music_counts():
 def _metadata_gaps():
     """How many albums each metadata pass still has work for.
 
-    An import replaces every album row, so the external data - which
-    survives on ``on_delete=SET_NULL`` rows - is only re-attached when the
-    metadata pass next runs and adopts it by external id. Until then the
-    rankings render without cover art or genres, and nothing on the import
-    page said so. The games import page carries the same idea as its
-    "Metadata Operations" panel.
+    An import keeps every album it matches by Wikidata id, metadata and all,
+    but one it adds has no external data until the metadata pass next runs
+    (which is also when a returning album's old rows are re-adopted by
+    external id). Until then it renders without cover art or genres. The
+    games import page carries the same idea as its "Metadata Operations"
+    panel.
     """
     total = models.Album.objects.count()
     missing_wikidata = models.Album.objects.filter(

@@ -11,8 +11,11 @@
     {% if not MUSIC_ENABLED %}<span class="badge badge-warning badge-sm">Beta</span>{% endif %}
 </h1>
 <p class="text-base-content/70 text-sm mb-4">
-    Replaces all music ranking data in a single transaction &mdash; if any file
-    fails, nothing changes. Back to
+    Albums are matched to the ones already here by Wikidata id and updated in
+    place, so they keep their pages, cover art, genres and listening history;
+    albums new to the release are added and ones it drops are removed. Lists
+    and list positions are replaced. It all runs in a single transaction &mdash;
+    if any file fails, nothing changes. Back to
     <a href="{% url 'music:home' %}" class="link link-hover">the album rankings</a>.
 </p>
 
@@ -51,8 +54,8 @@
 </div>
 
 {# Metadata state, as the games import page carries its "Metadata #}
-{# Operations" panel: an import replaces every album row, and the cover art #}
-{# and genres only come back when the metadata pass re-adopts them. #}
+{# Operations" panel: albums new to a release have no cover art or genres #}
+{# until the metadata pass fetches them. #}
 <div class="card bg-base-200 p-4 mb-4">
     <h2 class="font-semibold mb-2 flex items-center gap-2">
         <span class="mdi mdi-database"></span>
@@ -65,9 +68,8 @@
     </p>
     {% else %}
     <p class="text-sm text-base-content/70 mb-2">
-        An import replaces every album row. Covers and genres are re-attached
-        by external id when the metadata pass next runs, so the rankings show
-        placeholders and no genre filter until it does.
+        Albums an import adds have no cover art or genres until the metadata
+        pass next runs, so they show placeholders until it does.
     </p>
     <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm mb-3">
         <span>Missing Wikidata: <span class="font-semibold tabular-nums">{{ metadata.missing_wikidata|intcomma }}</span></span>

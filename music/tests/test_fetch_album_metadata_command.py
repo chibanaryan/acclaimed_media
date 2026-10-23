@@ -68,3 +68,22 @@ class FetchAlbumMetadataCommandTests(TestCase):
         output = self._run(weekly=True, dry_run=True)
         self.assertNotIn("Skipping", output)
         self.assertIn("Fetching metadata for 1 album(s)", output)
+
+    def test_refresh_stale_is_announced_for_the_musicbrainz_pass(self):
+        output = self._run(dry_run=True, with_musicbrainz=True, refresh_stale=125)
+        self.assertIn("Refreshing the 125 oldest MusicBrainz records", output)
+
+    def test_refresh_stale_is_not_announced_without_the_musicbrainz_pass(self):
+        output = self._run(dry_run=True, refresh_stale=125)
+        self.assertNotIn("Refreshing", output)
+
+    @mock.patch(f"{COMMAND}.AlbumMetadataService")
+    def test_refresh_stale_reaches_the_service(self, service):
+        service.return_value.run_musicbrainz.return_value = mock.MagicMock(
+            errors=[], summary=lambda: "MusicBrainz: 0 processed"
+        )
+        with mock.patch(f"{COMMAND}.rebuild_album_genres"), mock.patch(
+            f"{COMMAND}.write_report"
+        ), mock.patch(f"{COMMAND}.refresh_release_dates", return_value=0):
+            self._run(musicbrainz=True, refresh_stale=125)
+        self.assertEqual(service.call_args.kwargs["refresh_stale"], 125)

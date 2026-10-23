@@ -437,6 +437,21 @@ class Album(MediaItemBase):
         return reverse("music:album-detail", kwargs={"slug": self.slug})
 
     @property
+    def wikidata_qids(self) -> List[str]:
+        """Every Wikidata ID for this album, primary first, each once.
+
+        Two albums in the release carry two QIDs - the UK and US editions of
+        'Let It Bleed' and 'Aftermath' - so the extras matter: the importer
+        matches a release row on any of them, and one of them is where the
+        MusicBrainz and Discogs ids actually live.
+        """
+        qids = []
+        for qid in [self.wikidata_id, *(self.all_wikidata_ids or [])]:
+            if qid and qid not in qids:
+                qids.append(qid)
+        return qids
+
+    @property
     def discogs_master_url(self) -> Optional[str]:
         """The Discogs master page, which its API terms want credited."""
         if not self.discogs_master_id:
@@ -605,10 +620,11 @@ class ListenedAlbum(UserTrackingBase):
     """Tracks albums a user has marked as listened to.
 
     Hybrid FK + external id, as ``books.models.ReadBook`` is: the FK is what
-    queries join on, and ``wikidata_id`` is what survives an import. Every
-    import replaces every ``Album`` row, so without the external id a
-    reimport would silently empty everybody's collection; with it,
-    ``music.services.user_tracking_service`` re-adopts the rows afterwards.
+    queries join on, and ``wikidata_id`` is what survives an import. An
+    import keeps the albums it can match, rows and all, but deletes one the
+    release drops; the row then waits on its external id, and
+    ``music.services.user_tracking_service`` re-adopts it if the album comes
+    back.
 
     ``owned`` is the "Have" state: an album the user owns a copy of. It is a
     flag on this row rather than a table of its own because owning implies
@@ -707,10 +723,11 @@ class WikipediaAlbumData(ExternalDataBase):
     even though Wikidata supplies most of it: the enwiki sitelink is what ties
     an album to an article, and everything else rides on the same request.
 
-    Metadata persists when albums are deleted (SET_NULL). That matters here
-    more than it does for games: ``music.services.import_handler.import_albums``
-    deletes every Album row before reloading, so without SET_NULL a re-import
-    would discard every fetched cover and genre.
+    Metadata persists when albums are deleted (SET_NULL).
+    ``music.services.import_handler.import_albums`` keeps every album it can
+    match by Wikidata id, but deletes one the release drops, and without
+    SET_NULL its fetched data would go with it rather than wait to be
+    re-adopted if it comes back.
     """
 
     album = models.ForeignKey(
@@ -995,8 +1012,8 @@ class AlbumCover(models.Model):
 
     So the bytes are fetched once and served from here. Rows are keyed by the
     archive's own release MBID, image id and size rather than by album, which
-    means they survive the ``Album.objects.all().delete()`` that every import
-    performs and are re-adopted afterwards without re-downloading.
+    means they survive an album's deletion and are re-adopted without
+    re-downloading if it comes back.
     """
 
     #: The sizes stored: one for rows, one for the detail page.

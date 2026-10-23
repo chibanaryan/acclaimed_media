@@ -34,6 +34,7 @@ python manage.py fetch_album_metadata
 | `--discogs-only` | Run only the Discogs pass |
 | `--musicbrainz` | Run only the MusicBrainz enrichment pass |
 | `--with-musicbrainz` | Add the MusicBrainz pass to whatever else would run |
+| `--refresh-stale N` | In the MusicBrainz pass, also re-fetch the N albums whose MusicBrainz data is oldest |
 | `--weekly` | Exit at once unless today is Sunday (for the daily Scheduler job) |
 
 ## Examples
@@ -51,8 +52,8 @@ python manage.py fetch_album_metadata --covers-only
 # Opt into the slow enrichment pass
 python manage.py fetch_album_metadata --musicbrainz
 
-# All four passes - what the scheduled job runs
-python manage.py fetch_album_metadata --with-musicbrainz
+# All four passes, plus the rolling MusicBrainz refresh - what the scheduled job runs
+python manage.py fetch_album_metadata --with-musicbrainz --refresh-stale 125
 ```
 
 ## Heroku Scheduler
@@ -61,13 +62,17 @@ The refresh runs weekly on the `scheduler` add-on. Heroku Scheduler has no
 weekly frequency, so the job is daily and `--weekly` makes it a no-op on
 every day but Sunday (UTC), as games' `refresh_all_metadata --weekly` does:
 
-- **Command:** `python manage.py fetch_album_metadata --weekly --with-musicbrainz`
+- **Command:** `python manage.py fetch_album_metadata --weekly --with-musicbrainz --refresh-stale 125`
 - **Frequency:** daily, 04:00 UTC
 - **Dyno:** Basic
 
 Without `--force` every pass but Wikidata skips records that already landed,
 so a routine Sunday run is Wikidata's ~25 requests plus whatever an import
-left missing, then the genre rebuild and the cache invalidation. It is what
+left missing, then the genre rebuild and the cache invalidation. The one
+exception is `--refresh-stale 125`: it re-fetches the 125 albums whose
+MusicBrainz rows are oldest (~2 minutes at 1 req/sec), so the whole corpus is
+re-read every eight weeks and the genre tags pick up new votes. An import
+keeps albums in place, so nothing else would ever re-read them. It is what
 picks up a new release if nobody runs the fetch by hand. A forced re-fetch of
 everything stays a manual job:
 
@@ -198,13 +203,16 @@ records after it.
 
 ## Re-running After an Import
 
-`import_music_data` deletes every `Album` row, but the metadata tables use
-`on_delete=SET_NULL`, so their rows survive as orphans keyed by external ID.
-Re-running the fetch re-adopts them:
+`import_music_data` updates albums in place, matched by Wikidata ID, so an
+album the new release shares with the last keeps its metadata, covers and
+genres, and the fetch skips it. Only albums the release adds need fetching.
+One dropped by an earlier release and now back has its old rows waiting as
+orphans (the metadata tables use `on_delete=SET_NULL`), and every pass,
+MusicBrainz included, re-adopts them by external ID without a request:
 
 ```bash
-python manage.py import_music_data
-python manage.py fetch_album_metadata   # reconnects, downloads nothing
+python manage.py import_music_data      # reports kept / added / removed
+python manage.py fetch_album_metadata --with-musicbrainz   # mostly skips
 ```
 
 ## Result Format

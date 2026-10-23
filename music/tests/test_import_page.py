@@ -149,7 +149,10 @@ class MusicImportViewTests(TestCase):
         response = self.client.post(self.url, _all_files())
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context["error"])
-        self.assertIn("Albums: 1 created", response.context["summary"]["message"])
+        self.assertIn(
+            "Albums: 1 (0 kept, 1 added, 0 removed)",
+            response.context["summary"]["message"],
+        )
         self.assertEqual(models.Album.objects.count(), 1)
         self.assertEqual(models.Artist.objects.get().source_id, 3)
         self.assertEqual(models.MusicList.objects.count(), 1)
@@ -193,6 +196,21 @@ class MusicImportViewTests(TestCase):
                 )
             ),
         )
+
+    def test_posting_the_same_files_again_keeps_the_album(self):
+        self.client.post(self.url, _all_files())
+        album = models.Album.objects.get()
+        response = self.client.post(self.url, _all_files())
+        self.assertIn(
+            "Albums: 1 (1 kept, 0 added, 0 removed)",
+            response.context["summary"]["message"],
+        )
+        self.assertEqual(models.Album.objects.get().pk, album.pk)
+
+    def test_the_page_says_albums_are_updated_in_place(self):
+        response = self.client.get(self.url)
+        self.assertContains(response, "matched to the ones already here by Wikidata id")
+        self.assertNotContains(response, "Replaces all music ranking data")
 
     def test_the_summary_reports_the_new_counts(self):
         response = self.client.post(self.url, _all_files())

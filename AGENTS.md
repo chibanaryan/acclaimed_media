@@ -1,6 +1,6 @@
 # AGENTS.md (Canonical)
 
-Last synchronized: 2026-10-19
+Last synchronized: 2026-10-23
 
 This file is the canonical instruction source for Codex in this repository.
 
@@ -210,17 +210,19 @@ Music-specific models:
 - **MusicPublication/MusicList/AlbumListMembership** - Album rankings and positions within them
 - **WikipediaAlbumData/DiscogsAlbumData/MusicBrainzAlbumData** - fetched metadata on
   `ExternalDataBase`, each with the `primary_…` OneToOne fast-path and the
-  `unique_primary_…_per_album` partial constraint. All use `on_delete=SET_NULL`, so
-  they survive the `Album.objects.all().delete()` every import performs and are
-  re-adopted by external ID afterwards
+  `unique_primary_…_per_album` partial constraint. An import keeps every album it
+  matches, so its rows stay attached. All use `on_delete=SET_NULL`, so the rows of
+  an album a release drops survive it, and every metadata pass re-adopts them by
+  external ID if the album comes back
 - **AlbumCover** - the cover-art bytes at two sizes, keyed by the Cover Art Archive's
-  own release MBID, image id and size rather than by album, so they also outlive an
-  import
+  own release MBID, image id and size rather than by album, so they also outlive
+  their album's deletion
 - **ListenedAlbum / WantToListenAlbum** - per-user tracking on
   `core.models.UserTrackingBase`, as books' pair is and games' predates. Each
   keeps a nullable `album` FK **and** the album's `wikidata_id`, because an
-  import deletes every `Album`: the rows survive on `SET_NULL` and
-  `music.services.user_tracking_service` re-adopts them by that id afterwards.
+  import deletes the albums a release drops: the rows survive on `SET_NULL` and
+  `music.services.user_tracking_service` re-adopts them by that id if the
+  album comes back.
   Mutual exclusivity is enforced by the toggle view, not by a constraint -
   they are separate tables, so no one constraint spans them. "Have" (an album
   the user owns) is a `ListenedAlbum` row with `owned=True`, not a third
@@ -366,8 +368,9 @@ directions), then rank - `RELEASE_ORDER` in `music/views.py`,
 year leads because it is the published one every filter and row shows.
 `Album.release_date` is derived from Wikidata P577, else MusicBrainz's first
 release, by `music.services.release_dates.refresh_release_dates` at the end of
-any `fetch_album_metadata` run with a Wikidata or MusicBrainz pass. An import
-wipes it until that run, as it does genres.
+any `fetch_album_metadata` run with a Wikidata or MusicBrainz pass. An album
+an import adds has none until that run, as it has no genres; a kept album
+keeps both.
 
 `release_date_precision` ("day", "month", or blank) matters because a
 month-precise date is stored as the 1st: the artist page's rows show
@@ -412,8 +415,8 @@ here, because both sides can be self-consistently wrong.
   one delegated listener instead, and a page registers what its scope means.
 - **The toggle is atomic.** The delete and the write run in one transaction
   and the write is an `update_or_create` keyed on the `unique_together`, so a
-  double-click cannot race into an `IntegrityError` - and a row orphaned by a
-  reimport is re-adopted on the spot. The cache is dropped in
+  double-click cannot race into an `IntegrityError` - and a row orphaned when
+  a release dropped its album is re-adopted on the spot. The cache is dropped in
   `transaction.on_commit`, so a rolled-back write cannot clear it.
 - **Nothing per-user goes in `/api/music/all/`.** That payload is held in
   `sessionStorage` keyed only on its version, so two people sharing a browser
@@ -876,12 +879,13 @@ release):
 
 ```bash
 python manage.py import_music_data            # uses the checked-in release files
-python manage.py import_music_data --dry-run  # report inferred list types and tagged artists
+python manage.py import_music_data --dry-run  # list types, tagged artists, albums kept/added/removed
 python manage.py import_music_data --artists ... --lists ... --albums ... --positions ...
 ```
 
-The import replaces all music ranking data in one transaction, artists first.
-Three details differ from the games files:
+The import runs in one transaction, artists first. Lists, list positions and
+artist relations are replaced; artists and albums are updated in place. Four
+details differ from the games files:
 
 - **No list type column.** `infer_list_type()` derives A/D/E/M from each title.
   Decade and era wording is matched before all-time wording, and an unqualified
@@ -897,23 +901,43 @@ Three details differ from the games files:
   predates the ids is adopted by Wikidata id, exact name, then normalized name,
   so pks, slugs and `?artists=` links survive. A slug is never rewritten. An
   artist the file does not list is deleted.
+- **Albums are upserted, not replaced.** `match_albums` pairs each row with
+  the stored album carrying any of its Wikidata ids (`Album.wikidata_qids`,
+  the primary and every id in `all_wikidata_ids`), primary id first; an album
+  is claimed by one row at most, so a split row gets a new album. A matched
+  album has its rank, name, year, ids and credits rewritten and keeps its pk
+  and slug - and so its metadata pointers, genres, release date, covers and
+  tracking rows. Albums the file drops are deleted (before any are created,
+  so a new album can take a dropped one's slug), and a row with no QID is
+  always new. The message, `--dry-run` and the staff import page all report
+  "N kept, N added, N removed". Until 2026-10-23 every import deleted every
+  album, and the next metadata run spent ~22 minutes re-fetching MusicBrainz
+  for all of them.
 
 Unranked lists record every member at rank 1, matching the games convention.
 
-**An import re-adopts tracking rows.** It deletes every `Album`, which
-orphans every `ListenedAlbum` / `WantToListenAlbum`, so `import_albums` runs
-`music.services.user_tracking_service.reconnect_tracking_records` afterwards
-and reconnects them by Wikidata id - normalising a secondary id to the
-primary and merging two rows that now point at one album, earliest kept.
-Without it a reimport would look exactly like losing everyone's collection.
-The pass is behind a one-query existence check, so an untracked database
-pays nothing.
+**An import re-adopts tracking rows.** A kept album keeps its
+`ListenedAlbum` / `WantToListenAlbum` rows outright. An album the release
+drops is deleted and its rows wait on `SET_NULL`, so `import_albums` still
+runs `music.services.user_tracking_service.reconnect_tracking_records` as the
+safety net: when the album comes back it reconnects them by Wikidata id -
+normalising a secondary id to the primary and merging two rows that now
+point at one album, earliest kept. A row that is already right is skipped,
+so its user's caches are not dropped for nothing; the users whose rows a
+removal orphaned have theirs dropped instead, since their cached sets name
+the deleted pks. The pass is behind a one-query existence check, so an
+untracked database pays nothing.
 
-**An import does not fetch metadata.** It replaces every `Album` row, and the
-external data rows survive on `on_delete=SET_NULL` - they are re-attached by
-external id only when `fetch_album_metadata` next runs and adopts them. Until
-then the rankings render with placeholder artwork and no genre filter at all,
-because the sidebar hides a filter with nothing in it. The games import page
+**An import does not fetch metadata.** A kept album needs none - its rows,
+genres and covers never left it - so after a release that mostly repeats the
+last, `fetch_album_metadata --with-musicbrainz` skips nearly everything and
+finishes in seconds. An added album renders with placeholder artwork and no
+genres until that run. An album returning from an earlier release has its
+old rows waiting as orphans, and every pass adopts them by external id before
+fetching: Wikidata and Discogs by their ids, and covers and MusicBrainz by
+`release_group_mbid` through `_musicbrainz_record`, which adopts the *whole*
+row - title, dates, genres and cover ids - rather than making an empty one
+and letting the cover pass copy only the cover ids across. The games import page
 has the same split (its "Metadata Operations" panel, with its own buttons);
 music's import page shows what is missing and the command to run. The weekly
 scheduled fetch (below) closes the gap by the next Sunday if nobody does.
@@ -968,12 +992,23 @@ Discogs limit (production has one); the client paces itself from the response
 headers either way.
 
 **It runs weekly on Heroku Scheduler**, as games' `refresh_all_metadata` does:
-a daily job, `python manage.py fetch_album_metadata --weekly --with-musicbrainz`,
-where `--weekly` exits at once on any day but Sunday (UTC) - the add-on has no
-weekly frequency. It is deliberately not `--force`: every pass but Wikidata
-skips records that already landed, so a routine run costs Wikidata's ~25
-requests plus whatever an import left missing, then the genre rebuild and the
-cache invalidation. A full re-fetch stays a manual `heroku run:detached`.
+a daily job, `python manage.py fetch_album_metadata --weekly --with-musicbrainz
+--refresh-stale 125`, where `--weekly` exits at once on any day but Sunday
+(UTC) - the add-on has no weekly frequency. It is deliberately not `--force`:
+every pass but Wikidata skips records that already landed, so a routine run
+costs Wikidata's ~25 requests plus whatever an import left missing, then the
+genre rebuild and the cache invalidation - about a minute, nearly all of it
+Wikidata's network time. A full re-fetch stays a manual `heroku run:detached`.
+
+`--refresh-stale 125` is the one deliberate re-fetch: the MusicBrainz pass
+also re-reads the 125 albums whose rows have the oldest `updated_at`, ~2
+minutes at 1 req/sec, so the corpus cycles every eight weeks. Since imports
+keep albums in place a MusicBrainz row would otherwise be fetched once and
+never again, while its genre tags keep gathering votes; before 2026-10-23 the
+orphan bug re-fetched everything after every import, which hid that. Covers
+and Discogs are not refreshed: covers do not change, and the Discogs reading
+below rests on what we display, not on freshness. Wikidata already re-reads
+everything every run.
 
 Decisions worth knowing before changing any of it:
 

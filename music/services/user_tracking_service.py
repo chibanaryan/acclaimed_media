@@ -1,10 +1,12 @@
 """Re-adopting album tracking rows after a reimport.
 
-Every import replaces every ``Album`` row, so the tracking tables keep a
-Wikidata id alongside their nullable FK: the rows survive the delete, but
-their ``album`` is NULL until something points them at the new rows. Until
-then every ``with_listen_status`` annotation reads False, so a collection
-looks emptied rather than merely disconnected.
+An import keeps every album it can match by Wikidata id, and a kept album's
+tracking rows stay attached. An album the release drops is deleted, though,
+so the tracking tables keep a Wikidata id alongside their nullable FK: the
+rows survive the delete with ``album`` NULL, and when the album comes back
+in a later release this pass points them at the new row. A row stored under
+a secondary id is renamed to the primary here too. Until then every
+``with_listen_status`` annotation reads False for it.
 
 This is games' ``games.services.user_tracking_service`` in bulk. That one
 works an album at a time, which is right when it is called for one game
@@ -79,7 +81,14 @@ def _reconnect_model_records(*, model_class, id_to_album: Dict) -> Dict:
 
     survivors = []
     duplicates = []
-    for (_, album_pk), group in grouped.items():
+    for group in grouped.values():
+        album = id_to_album[group[0].wikidata_id]
+        if len(group) == 1 and (
+            group[0].album_id == album.pk and group[0].wikidata_id == album.wikidata_id
+        ):
+            # Already right, as every row on a kept album is: rewriting it
+            # would only drop its user's caches for nothing.
+            continue
         # The earliest record is the one the user actually made; a later
         # duplicate is an artefact of the id change.
         group.sort(key=lambda row: (row.created is None, row.created, row.pk))
@@ -89,13 +98,14 @@ def _reconnect_model_records(*, model_class, id_to_album: Dict) -> Dict:
         # plain "Heard".
         if hasattr(keeper, "owned"):
             keeper.owned = any(row.owned for row in group)
-        album = id_to_album[keeper.wikidata_id]
         keeper.album = album
         keeper.wikidata_id = album.wikidata_id
         survivors.append(keeper)
         duplicates.extend(group[1:])
 
-    users = {row.user_id for row in rows}
+    if not survivors:
+        return {"reconnected": 0, "merged": 0, "users": set()}
+    users = {row.user_id for row in survivors}
 
     with transaction.atomic():
         if duplicates:

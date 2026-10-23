@@ -4,7 +4,7 @@ Every client is mocked: these tests are about what gets written to the
 database and in what order, not about HTTP.
 """
 
-from datetime import date
+from datetime import date, datetime
 from unittest import mock
 
 from django.test import SimpleTestCase, TestCase
@@ -97,20 +97,20 @@ class ServiceTestCase(TestCase):
 class AlbumQidTests(ServiceTestCase):
     def test_the_primary_qid_comes_first(self):
         self.album.all_wikidata_ids = ["Q999", "Q173643"]
-        self.assertEqual(self.service._album_qids(self.album), ["Q173643", "Q999"])
+        self.assertEqual(self.album.wikidata_qids, ["Q173643", "Q999"])
 
     def test_duplicates_are_removed(self):
         self.album.all_wikidata_ids = ["Q173643", "Q173643"]
-        self.assertEqual(self.service._album_qids(self.album), ["Q173643"])
+        self.assertEqual(self.album.wikidata_qids, ["Q173643"])
 
     def test_blank_entries_are_ignored(self):
         self.album.all_wikidata_ids = ["", None, "Q2"]
-        self.assertEqual(self.service._album_qids(self.album), ["Q173643", "Q2"])
+        self.assertEqual(self.album.wikidata_qids, ["Q173643", "Q2"])
 
     def test_an_album_with_no_primary_id_still_offers_the_others(self):
         self.album.wikidata_id = None
         self.album.all_wikidata_ids = ["Q2"]
-        self.assertEqual(self.service._album_qids(self.album), ["Q2"])
+        self.assertEqual(self.album.wikidata_qids, ["Q2"])
 
 
 class WikidataPassTests(ServiceTestCase):
@@ -515,6 +515,67 @@ class CoverPassTests(ServiceTestCase):
         record = self.album.musicbrainz_album_data_set.get()
         self.assertTrue(record.cover_art_stored)
 
+    def test_an_orphan_is_adopted_whole_title_and_all(self):
+        """Copying only the cover ids lost the rest, and MusicBrainz refetched."""
+        for size in models.AlbumCover.SIZES:
+            models.AlbumCover.objects.create(
+                release_mbid=RELEASE_MBID, image_id="123", size=size, data=b"x"
+            )
+        orphan = models.MusicBrainzAlbumData.objects.create(
+            album=None,
+            release_group_mbid=RG_MBID,
+            title="Abbey Road",
+            all_genres="rock",
+            cover_art_release_mbid=RELEASE_MBID,
+            cover_art_image_id="123",
+            cover_art_stored=True,
+            is_primary=True,
+        )
+        client = self.build_client()
+
+        result = self.run_pass(client)
+
+        self.assertEqual(result.adopted, 1)
+        self.assertEqual(result.skipped, 0)
+        client.fetch_front_cover.assert_not_called()
+        record = self.album.musicbrainz_album_data_set.get()
+        self.assertEqual(record.pk, orphan.pk)
+        self.assertEqual(record.title, "Abbey Road")
+        self.assertEqual(record.all_genres, "rock")
+        self.assertTrue(record.is_primary)
+        self.album.refresh_from_db()
+        self.assertEqual(self.album.primary_musicbrainz_album_data, record)
+        self.assertIn(RELEASE_MBID, self.album.cover_image_url)
+        self.assertEqual(
+            models.AlbumCover.objects.filter(album=self.album).count(),
+            len(models.AlbumCover.SIZES),
+        )
+
+    def test_a_row_without_art_borrows_an_orphans_cover(self):
+        # The album's own row has no cover yet, but a stray row for the same
+        # release group does: its ids are copied rather than refetched.
+        models.MusicBrainzAlbumData.objects.create(
+            album=self.album, release_group_mbid=RG_MBID, title="Abbey Road"
+        )
+        models.MusicBrainzAlbumData.objects.create(
+            album=None,
+            release_group_mbid=RG_MBID,
+            cover_art_release_mbid=RELEASE_MBID,
+            cover_art_image_id="123",
+        )
+        client = self.build_client()
+
+        result = self.run_pass(client)
+
+        self.assertEqual(result.adopted, 1)
+        client.fetch_front_cover.assert_not_called()
+        record = self.album.musicbrainz_album_data_set.get()
+        self.assertEqual(record.title, "Abbey Road")
+        self.assertEqual(record.cover_art_image_id, "123")
+        self.assertFalse(
+            models.MusicBrainzAlbumData.objects.filter(album__isnull=True).exists()
+        )
+
     def test_an_orphan_with_no_art_is_not_adopted(self):
         models.MusicBrainzAlbumData.objects.create(
             album=None, release_group_mbid=RG_MBID, cover_art_image_id=""
@@ -717,6 +778,83 @@ class MusicBrainzPassTests(ServiceTestCase):
         self.run_pass(client)
         client.fetch_release_group.assert_called_once()
 
+    def test_an_orphan_with_a_title_is_adopted_without_a_request(self):
+        orphan = models.MusicBrainzAlbumData.objects.create(
+            album=None, release_group_mbid=RG_MBID, title="Abbey Road"
+        )
+        client = self.build_client()
+
+        result = self.run_pass(client)
+
+        self.assertEqual(result.adopted, 1)
+        self.assertEqual(result.skipped, 0)
+        client.fetch_release_group.assert_not_called()
+        orphan.refresh_from_db()
+        self.assertEqual(orphan.album, self.album)
+        self.assertTrue(orphan.is_primary)
+        self.album.refresh_from_db()
+        self.assertEqual(self.album.primary_musicbrainz_album_data, orphan)
+
+    def test_an_orphan_that_was_primary_displaces_the_albums_own(self):
+        # The orphan was its old album's primary; adopting it as-is would
+        # break the one-primary-per-album constraint against this one's.
+        own = models.MusicBrainzAlbumData.objects.create(
+            album=self.album, release_group_mbid="old-group", is_primary=True
+        )
+        orphan = models.MusicBrainzAlbumData.objects.create(
+            album=None, release_group_mbid=RG_MBID, title="X", is_primary=True
+        )
+
+        self.run_pass(self.build_client())
+
+        own.refresh_from_db()
+        orphan.refresh_from_db()
+        self.assertFalse(own.is_primary)
+        self.assertTrue(orphan.is_primary)
+        self.assertEqual(orphan.album, self.album)
+
+    def test_the_fullest_of_several_orphans_is_adopted(self):
+        models.MusicBrainzAlbumData.objects.create(
+            album=None, release_group_mbid=RG_MBID, cover_art_image_id="1"
+        )
+        titled = models.MusicBrainzAlbumData.objects.create(
+            album=None, release_group_mbid=RG_MBID, title="Abbey Road"
+        )
+        models.MusicBrainzAlbumData.objects.create(
+            album=None, release_group_mbid=RG_MBID
+        )
+
+        self.run_pass(self.build_client())
+
+        self.assertEqual(self.album.musicbrainz_album_data_set.get(), titled)
+
+    def test_an_untitled_orphan_is_adopted_and_filled_in(self):
+        orphan = models.MusicBrainzAlbumData.objects.create(
+            album=None, release_group_mbid=RG_MBID
+        )
+
+        result = self.run_pass(self.build_client())
+
+        self.assertEqual(result.processed, 1)
+        record = self.album.musicbrainz_album_data_set.get()
+        self.assertEqual(record.pk, orphan.pk)
+        self.assertEqual(record.title, "Abbey Road")
+
+    def test_force_refetches_into_the_adopted_row(self):
+        orphan = models.MusicBrainzAlbumData.objects.create(
+            album=None, release_group_mbid=RG_MBID, title="Old title"
+        )
+        self.service.force = True
+        client = self.build_client()
+
+        self.run_pass(client)
+
+        client.fetch_release_group.assert_called_once()
+        self.assertEqual(models.MusicBrainzAlbumData.objects.count(), 1)
+        orphan.refresh_from_db()
+        self.assertEqual(orphan.title, "Abbey Road")
+        self.assertEqual(orphan.album, self.album)
+
     def test_genres_with_no_votes_yield_no_string(self):
         group = ReleaseGroup(mbid=RG_MBID, title="X", genres=[])
         self.run_pass(self.build_client(group=group))
@@ -724,6 +862,88 @@ class MusicBrainzPassTests(ServiceTestCase):
 
     def test_no_albums_is_a_no_op(self):
         self.assertEqual(self.service.run_musicbrainz([]).processed, 0)
+
+
+class StaleMusicBrainzRefreshTests(ServiceTestCase):
+    """``refresh_stale`` re-fetches the oldest enriched rows, a slice a run."""
+
+    def setUp(self):
+        super().setUp()
+        self.albums = [self.album]
+        for rank in (3, 4):
+            self.albums.append(
+                models.Album.objects.create(name=f"Album {rank}", rank=rank)
+            )
+        self.records = []
+        for offset, album in enumerate(self.albums):
+            album.musicbrainz_release_group_id = f"rg-{album.pk}"
+            album.save()
+            record = models.MusicBrainzAlbumData.objects.create(
+                album=album,
+                release_group_mbid=album.musicbrainz_release_group_id,
+                title="Old title",
+                is_primary=True,
+            )
+            # Oldest first: the first album's row is the stalest.
+            models.MusicBrainzAlbumData.objects.filter(pk=record.pk).update(
+                updated_at=datetime(2026, 1, 1 + offset)
+            )
+            self.records.append(record)
+
+    def run_pass(self, **options):
+        service = AlbumMetadataService(**options)
+        client = mock.MagicMock()
+        client.__enter__.return_value = client
+        client.fetch_release_group.side_effect = lambda mbid: ReleaseGroup(
+            mbid=mbid, title="New title"
+        )
+        with mock.patch(
+            "music.services.metadata_service.MusicBrainzClient", return_value=client
+        ):
+            return service.run_musicbrainz(self.albums), client
+
+    def titles(self):
+        return [
+            models.MusicBrainzAlbumData.objects.get(pk=r.pk).title for r in self.records
+        ]
+
+    def test_the_oldest_rows_are_refetched(self):
+        result, client = self.run_pass(refresh_stale=2)
+        self.assertEqual(result.refreshed, 2)
+        self.assertEqual(result.skipped, 1)
+        self.assertEqual(result.processed, 0)
+        self.assertEqual(client.fetch_release_group.call_count, 2)
+        self.assertEqual(self.titles(), ["New title", "New title", "Old title"])
+        self.assertIn("2 refreshed", result.summary())
+
+    def test_a_refresh_moves_the_slice_on(self):
+        self.run_pass(refresh_stale=2)
+        result, client = self.run_pass(refresh_stale=1)
+        client.fetch_release_group.assert_called_once_with(
+            self.albums[2].musicbrainz_release_group_id
+        )
+        self.assertEqual(self.titles(), ["New title"] * 3)
+
+    def test_nothing_is_refreshed_by_default(self):
+        result, client = self.run_pass()
+        self.assertEqual(result.skipped, 3)
+        client.fetch_release_group.assert_not_called()
+
+    def test_force_counts_everything_as_processed(self):
+        result, _ = self.run_pass(force=True, refresh_stale=1)
+        self.assertEqual(result.processed, 3)
+        self.assertEqual(result.refreshed, 0)
+
+    def test_a_row_never_enriched_is_fetched_as_usual(self):
+        models.MusicBrainzAlbumData.objects.filter(pk=self.records[0].pk).update(
+            title=""
+        )
+        result, _ = self.run_pass(refresh_stale=1)
+        # The untitled row is fetched on its own account; the slice goes to
+        # the oldest of the enriched ones.
+        self.assertEqual(result.processed, 1)
+        self.assertEqual(result.refreshed, 1)
+        self.assertEqual(self.titles(), ["New title", "New title", "Old title"])
 
 
 class PrimaryRecordTests(ServiceTestCase):

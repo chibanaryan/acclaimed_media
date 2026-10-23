@@ -19,16 +19,18 @@ Ingests the four TSV files that make up an album ranking release:
   holding tab-separated ``listIndex:position`` pairs. ``listIndex`` is
   0-based against the lists file, matching ``MusicList.order - 1``.
 
-An import replaces everything: the files are the source of truth, exactly as
-in ``games/services/import_handler.py``. Artists are the one table updated in
-place rather than recreated, keyed on the provider's index, so their pks and
-slugs - and every link to an artist page - survive an import.
+The files are the source of truth, exactly as in
+``games/services/import_handler.py``: lists, memberships and artist relations
+are replaced outright. Artists and albums are updated in place instead -
+artists keyed on the provider's index, albums on their Wikidata ids - so their
+pks and slugs survive an import, and with an album's pk everything attached
+to it: metadata, genres, covers and tracking rows.
 """
 
 import csv
 import logging
 import re
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, NamedTuple, Optional, Tuple
 
 from django.db import transaction
 from django.utils.text import slugify
@@ -39,7 +41,7 @@ from games.models import SiteMetadata
 from music import config, models
 from music.services import user_tracking_service
 from music.services.artist_graph import credit_text
-from music.services.caching import invalidate_music_caches
+from music.services.caching import invalidate_listen_caches, invalidate_music_caches
 
 logger = logging.getLogger(__name__)
 
@@ -366,99 +368,210 @@ def _parse_artist_ids(cell: str, row_number: int) -> List[int]:
     return ids
 
 
+class AlbumRow(NamedTuple):
+    """One validated row of the albums file."""
+
+    rank: int
+    name: str
+    artist_ids: List[int]
+    year: Optional[int]
+    wikidata_ids: List[str]
+
+
+class AlbumMatch(NamedTuple):
+    """How an albums file lines up against the albums already stored."""
+
+    kept: List[Tuple[AlbumRow, models.Album]]
+    added: List[AlbumRow]
+    removed: List[models.Album]
+
+
+def parse_albums_file(file_obj) -> List[AlbumRow]:
+    """Validate the albums file into rows, before anything is written.
+
+    Columns: rank, name, artist_ids, year, wikidata_ids (comma-separated,
+    first is primary). Whether the artist ids exist is checked by
+    :func:`import_albums`, since that needs the database.
+    """
+    parsed = []
+    for index, row in enumerate(_rows(file_obj), start=1):
+        if len(row) < 4:
+            raise ValueError(
+                f"Albums row {index} has {len(row)} columns, expected at "
+                "least 4 (rank, name, artist_ids, year[, wikidata_ids])"
+            )
+        rank, name, artist_ids_raw, year = (cell.strip() for cell in row[:4])
+        wikidata_raw = row[4].strip() if len(row) > 4 else ""
+        parsed.append(
+            AlbumRow(
+                rank=int(rank),
+                name=name,
+                artist_ids=_parse_artist_ids(artist_ids_raw, index),
+                year=int(year) if year else None,
+                wikidata_ids=[x.strip() for x in wikidata_raw.split(",") if x.strip()],
+            )
+        )
+    return parsed
+
+
+def match_albums(rows: List[AlbumRow], existing) -> AlbumMatch:
+    """Pair each row with the stored album it describes, by Wikidata id.
+
+    A row claims the first album found under any of its ids, primary first,
+    and an album can be claimed once: a release that splits one album into
+    two rows keeps the album for the first and creates the second, rather
+    than having both write to one row. A row without an id cannot be
+    matched, so it is always new. Nothing is written.
+    """
+    by_qid: Dict[str, models.Album] = {}
+    for album in existing:
+        for qid in album.wikidata_qids:
+            by_qid.setdefault(qid, album)
+
+    claimed = set()
+    kept, added = [], []
+    for row in rows:
+        album = next(
+            (
+                by_qid[qid]
+                for qid in row.wikidata_ids
+                if qid in by_qid and by_qid[qid].pk not in claimed
+            ),
+            None,
+        )
+        if album is None:
+            added.append(row)
+        else:
+            claimed.add(album.pk)
+            kept.append((row, album))
+
+    removed = [album for album in existing if album.pk not in claimed]
+    return AlbumMatch(kept=kept, added=added, removed=removed)
+
+
 def import_albums(
     file_obj, progress_callback: Optional[Callable[[str, Dict], None]] = None
 ) -> Tuple[bool, str]:
-    """Replace every album from a TSV file, then recompute derived ranks.
+    """Upsert every album from a TSV file, then recompute derived ranks.
 
-    Columns: rank, name, artist_ids, year, wikidata_ids (comma-separated,
-    first is primary). The artist ids must already be imported by
-    :func:`import_artists`; ``artist_credit`` is derived from their names.
+    Albums are matched on Wikidata id (:func:`match_albums`). A matched album
+    is updated in place - rank, name, year, ids and credits - so it keeps
+    its pk and slug, and with them its metadata rows, genres, release date,
+    covers and tracking rows: a new release needs no metadata refresh for
+    the albums it shares with the last one. An album the file no longer
+    lists is deleted, and a new one created.
+
+    The artist ids must already be imported by :func:`import_artists`;
+    ``artist_credit`` is derived from their names.
     """
-    rows = _rows(file_obj)
+    rows = parse_albums_file(file_obj)
     total = len(rows)
 
     if progress_callback:
         progress_callback("start", {"total": total, "file": "Albums"})
 
-    deleted_count = models.Album.objects.count()
-    models.Album.objects.all().delete()
-
     artists_by_source = {
         a.source_id: a for a in models.Artist.objects.filter(source_id__isnull=False)
     }
+    row_artists: Dict[int, List[models.Artist]] = {}
+    for index, row in enumerate(rows, start=1):
+        artists = []
+        for artist_id in row.artist_ids:
+            artist = artists_by_source.get(artist_id)
+            if artist is None:
+                raise ValueError(
+                    f"Albums row {index} ({row.name}) credits artist "
+                    f"{artist_id}, which is not in the artists file"
+                )
+            artists.append(artist)
+        row_artists[index] = artists
+
+    match = match_albums(rows, list(models.Album.objects.all()))
+
+    # Deleted first, so a new album can take a removed one's slug. Their
+    # tracking rows survive on SET_NULL; the users' cached id sets would
+    # still name the deleted pks, so those are dropped below.
+    orphaned_users = set()
+    if match.removed:
+        removed_pks = [album.pk for album in match.removed]
+        for model_class in (models.ListenedAlbum, models.WantToListenAlbum):
+            orphaned_users.update(
+                model_class.objects.filter(album_id__in=removed_pks).values_list(
+                    "user_id", flat=True
+                )
+            )
+        models.Album.objects.filter(pk__in=removed_pks).delete()
+
+    # Keyed on identity: each parsed row is its own object, and two rows may
+    # be equal (a release listing one album twice).
+    kept_by_row = {id(row): album for row, album in match.kept}
+    models.AlbumCredit.objects.filter(
+        album__in=[album for _, album in match.kept]
+    ).delete()
+
     credits: List[models.AlbumCredit] = []
     # Every Wikidata id each album carries, for the tracking reconnection
     # pass below. Built here because the loop already has the ids parsed.
     id_to_album: Dict[str, models.Album] = {}
-    count = 0
-    for index, row in enumerate(rows):
-        if len(row) < 4:
-            raise ValueError(
-                f"Albums row {index + 1} has {len(row)} columns, expected at "
-                "least 4 (rank, name, artist_ids, year[, wikidata_ids])"
-            )
-        rank, name, artist_ids_raw, year = (cell.strip() for cell in row[:4])
-        wikidata_raw = row[4].strip() if len(row) > 4 else ""
+    for index, row in enumerate(rows, start=1):
+        artists = row_artists[index]
+        album = kept_by_row.get(id(row)) or models.Album()
+        album.rank = row.rank
+        album.name = row.name
+        # MediaItemBase.save sets this only for a name with non-ASCII in it,
+        # so a kept album renamed to plain ASCII would keep its old one.
+        album.name_normalized = None
+        album.artist_credit = credit_text([artist.name for artist in artists])
+        album.year_released = row.year
+        album.wikidata_id = row.wikidata_ids[0] if row.wikidata_ids else None
+        album.all_wikidata_ids = row.wikidata_ids
+        # The slug is built only when empty, so a kept album's URL never
+        # changes, renamed or not.
+        album.save()
 
-        artists = []
-        for artist_id in _parse_artist_ids(artist_ids_raw, index + 1):
-            artist = artists_by_source.get(artist_id)
-            if artist is None:
-                raise ValueError(
-                    f"Albums row {index + 1} ({name}) credits artist "
-                    f"{artist_id}, which is not in the artists file"
-                )
-            artists.append(artist)
-
-        all_wikidata_ids = [x.strip() for x in wikidata_raw.split(",") if x.strip()]
-        primary_wikidata_id = all_wikidata_ids[0] if all_wikidata_ids else None
-
-        album = models.Album.objects.create(
-            rank=int(rank),
-            name=name,
-            artist_credit=credit_text([artist.name for artist in artists]),
-            year_released=int(year) if year else None,
-            wikidata_id=primary_wikidata_id,
-            all_wikidata_ids=all_wikidata_ids,
-        )
-
-        for wikidata_id in all_wikidata_ids:
+        for wikidata_id in row.wikidata_ids:
             id_to_album[wikidata_id] = album
 
         credits.extend(
             models.AlbumCredit(album=album, artist=artist, position=position)
             for position, artist in enumerate(artists)
         )
-        count += 1
 
         if progress_callback:
             progress_callback(
                 "progress",
-                {"current": index + 1, "total": total, "album_name": name},
+                {"current": index, "total": total, "album_name": row.name},
             )
 
     models.AlbumCredit.objects.bulk_create(credits, batch_size=config.IMPORT_BATCH_SIZE)
 
-    # The delete above orphaned every tracking row; re-adopt them by the
-    # external id they kept. Guarded by one cheap query, because the common
-    # case is a database where nobody has tracked anything yet.
+    # Kept albums keep their tracking rows outright. This pass is the safety
+    # net for the rest: a row orphaned when its album left an earlier
+    # release and has now come back, or one stored under a secondary id.
+    # Guarded by one cheap query, because the common case is a database
+    # where nobody has tracked anything yet.
     if (
         models.ListenedAlbum.objects.exists()
         or models.WantToListenAlbum.objects.exists()
     ):
         user_tracking_service.reconnect_tracking_records(id_to_album)
 
+    for user_id in orphaned_users:
+        invalidate_listen_caches(user_id)
+
     albums_ranked, years_processed = update_year_decade_ranks(
         models.Album, "music_album", "year_released"
     )
 
+    kept, added, removed = len(match.kept), len(match.added), len(match.removed)
     if progress_callback:
         progress_callback(
             "complete",
             {
-                "count": count,
-                "deleted": deleted_count,
+                "count": total,
+                "kept": kept,
+                "added": added,
+                "removed": removed,
                 "ranked": albums_ranked,
                 "years": years_processed,
             },
@@ -466,7 +579,7 @@ def import_albums(
 
     return (
         True,
-        f"Albums: {count} created (deleted {deleted_count} old), "
+        f"Albums: {total} ({kept} kept, {added} added, {removed} removed), "
         f"{albums_ranked} ranks calculated",
     )
 

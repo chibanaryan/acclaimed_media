@@ -20,6 +20,18 @@
   `?artists=` expands the same way on the server and in the browser
 - **Artist search finds acts that only appear on others' records**
   (Crazy Horse), after the owners, labelled "appears on N albums"
+- **Music imports keep albums instead of recreating them.** Albums are
+  matched on any of their Wikidata ids and updated in place, so pages,
+  covers, genres and listening history survive a new release; only added
+  albums wait for metadata. The import, `--dry-run` and the staff page
+  report albums kept, added and removed
+- **The MusicBrainz pass adopts orphaned rows whole** rather than
+  re-fetching them. After the last release it re-requested all 1000 albums
+  (~22 minutes); a re-import now leaves a metadata run with almost
+  everything skipped
+- **Weekly refresh of the stalest MusicBrainz data.** `--refresh-stale 125`
+  re-reads the 125 oldest rows per run (~2 minutes), so genre tags and
+  release dates are re-read every eight weeks
 
 ## 2026-10-22
 
