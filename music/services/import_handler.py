@@ -1,19 +1,28 @@
 """
 Import handler for the music rankings.
 
-Ingests the three TSV files that make up an album ranking release:
+Ingests the four TSV files that make up an album ranking release:
 
+- **artists**: ``id<TAB>name<TAB>tags<TAB>wikidata_id`` - every artist under
+  the data provider's own permanent index. ``tags`` is comma-separated
+  ``KIND:id`` pairs naming how the artist is made up (``P:8``, a project of
+  artist 8), with the kinds in ``ArtistRelation.KIND_CHOICES``; the Wikidata
+  id may be blank, since not every act has one.
 - **lists**: ``publisher<TAB>year<TAB>name<TAB>url`` - one published list per
   row. Unlike the games equivalent there is no type column, so
   :func:`infer_list_type` derives it from the title.
-- **albums**: ``rank<TAB>name<TAB>artist_credit<TAB>year<TAB>wikidata_ids`` -
-  one album per row, already in aggregate rank order.
+- **albums**: ``rank<TAB>name<TAB>artist_ids<TAB>year<TAB>wikidata_ids`` -
+  one album per row, already in aggregate rank order. ``artist_ids`` are
+  comma-separated indexes into the artists file, in credit order; blank for
+  a various-artists compilation.
 - **positions**: one row per album, in the same order as the albums file,
   holding tab-separated ``listIndex:position`` pairs. ``listIndex`` is
   0-based against the lists file, matching ``MusicList.order - 1``.
 
 An import replaces everything: the files are the source of truth, exactly as
-in ``games/services/import_handler.py``.
+in ``games/services/import_handler.py``. Artists are the one table updated in
+place rather than recreated, keyed on the provider's index, so their pks and
+slugs - and every link to an artist page - survive an import.
 """
 
 import csv
@@ -29,26 +38,15 @@ from core.services.ranking import update_year_decade_ranks
 from games.models import SiteMetadata
 from music import config, models
 from music.services import user_tracking_service
+from music.services.artist_graph import credit_text
 from music.services.caching import invalidate_music_caches
 
 logger = logging.getLogger(__name__)
 
-# Acts whose own name contains a comma, so the comma must not be read as a
-# credit separator. Checked against the whole credit string before splitting.
-ARTISTS_WITH_COMMAS = frozenset(
-    {
-        "Blood, Sweat & Tears",
-        "Crosby, Stills & Nash",
-        "Crosby, Stills, Nash & Young",
-        "Earth, Wind & Fire",
-        "Emerson, Lake & Palmer",
-        "Peter, Paul and Mary",
-        # The 2026 release's new entry: without this the credit splits into
-        # an artist called "Tyler" and another called "the Creator", and the
-        # albums hang off both.
-        "Tyler, the Creator",
-    }
-)
+#: Tokens that carry no distinguishing information in a band name.
+_ARTIST_NOISE_TOKENS = frozenset({"the"})
+
+_RELATION_KINDS = frozenset(kind for kind, _ in models.ArtistRelation.KIND_CHOICES)
 
 # Title patterns that pin a list to a type. Order matters: the first match
 # wins, so the narrow decade and era patterns are tried before "all time".
@@ -110,26 +108,19 @@ def infer_list_type(name: str) -> str:
     return core_constants.LIST_ALLTIME
 
 
-def split_artist_credit(credit: str) -> List[str]:
-    """Split a published credit into individual artist names.
+def normalize_artist_name(name: str) -> str:
+    """A comparison key for an artist name.
 
-    Commas usually separate collaborators (``Neil Young, Crazy Horse``) but
-    sometimes belong to a single act (``Crosby, Stills & Nash``), so the whole
-    string is checked against :data:`ARTISTS_WITH_COMMAS` first. The later
-    Wikidata pass (P175) can correct anything this misses.
+    Collapses the three ways the same act gets spelled across sources:
+    ampersand against 'and', a leading or internal 'the', and punctuation.
+    'Bob Marley & The Wailers' and 'Bob Marley and the Wailers' both become
+    'bobmarleyandwailers'.
     """
-    credit = (credit or "").strip()
-    if not credit:
-        return []
-    if credit in ARTISTS_WITH_COMMAS:
-        return [credit]
-
-    names = []
-    for part in credit.split(","):
-        name = part.strip()
-        if name and name not in names:
-            names.append(name)
-    return names
+    lowered = name.casefold().replace("&", " and ")
+    tokens = re.split(r"[^a-z0-9]+", lowered)
+    return "".join(
+        token for token in tokens if token and token not in _ARTIST_NOISE_TOKENS
+    )
 
 
 def _rows(file_obj) -> list:
@@ -213,13 +204,176 @@ def import_lists(
     )
 
 
+def parse_artists_file(file_obj) -> List[Tuple[int, str, list, str]]:
+    """Validate the artists file into ``(id, name, tags, wikidata_id)``.
+
+    ``tags`` is a list of ``(kind, related_id)``. Everything is checked
+    before anything is written, so a bad file names its first bad row
+    instead of half-applying.
+    """
+    parsed = []
+    seen = set()
+    for index, row in enumerate(_rows(file_obj), start=1):
+        if len(row) < 2:
+            raise ValueError(
+                f"Artists row {index} has {len(row)} columns, expected at "
+                "least 2 (id, name[, tags, wikidata_id])"
+            )
+        raw_id, name = row[0].strip(), row[1].strip()
+        tags_raw = row[2].strip() if len(row) > 2 else ""
+        wikidata_id = row[3].strip() if len(row) > 3 else ""
+        if not raw_id.isdigit():
+            raise ValueError(f"Artists row {index}: id {raw_id!r} is not a number")
+        source_id = int(raw_id)
+        if source_id in seen:
+            raise ValueError(f"Artists row {index}: id {source_id} appears twice")
+        if not name:
+            raise ValueError(f"Artists row {index}: artist {source_id} has no name")
+        seen.add(source_id)
+
+        tags = []
+        for tag in filter(None, (t.strip() for t in tags_raw.split(","))):
+            kind, _, target = tag.partition(":")
+            kind, target = kind.strip().upper(), target.strip()
+            if kind not in _RELATION_KINDS or not target.isdigit():
+                raise ValueError(
+                    f"Artists row {index}: tag {tag!r} on {name!r} is not "
+                    f"KIND:id with KIND one of {', '.join(sorted(_RELATION_KINDS))}"
+                )
+            if int(target) == source_id:
+                raise ValueError(
+                    f"Artists row {index}: {name!r} is tagged as related to itself"
+                )
+            tags.append((kind, int(target)))
+        parsed.append((source_id, name, tags, wikidata_id))
+
+    for source_id, name, tags, _ in parsed:
+        for kind, target in tags:
+            if target not in seen:
+                raise ValueError(
+                    f"Artist {source_id} ({name}) is tagged {kind}:{target}, "
+                    "but there is no artist with that id"
+                )
+    return parsed
+
+
+def import_artists(
+    file_obj, progress_callback: Optional[Callable[[str, Dict], None]] = None
+) -> Tuple[bool, str]:
+    """Upsert every artist and rebuild their relations from the artists file.
+
+    Artists are matched on ``source_id``. A row that predates the provider's
+    ids (the earlier releases named artists only in the credit text) is
+    adopted on first sight by Wikidata id, then exact name, then a
+    normalized name, so it keeps its pk and slug. An artist the file no
+    longer lists is deleted, which also clears the leftovers of guessing
+    artists from a credit string.
+
+    A slug is assigned once and never rewritten, so a renamed act keeps its
+    URL; staff can change it in the admin.
+    """
+    parsed = parse_artists_file(file_obj)
+    total = len(parsed)
+
+    if progress_callback:
+        progress_callback("start", {"total": total, "file": "Artists"})
+
+    existing = list(models.Artist.objects.all())
+    by_source = {a.source_id: a for a in existing if a.source_id is not None}
+    unclaimed = [a for a in existing if a.source_id is None]
+
+    def adopt(name: str, wikidata_id: str) -> Optional[models.Artist]:
+        key = normalize_artist_name(name)
+        for matches in (
+            lambda a: wikidata_id and a.wikidata_id == wikidata_id,
+            lambda a: a.name == name,
+            lambda a: key and normalize_artist_name(a.name) == key,
+        ):
+            for artist in unclaimed:
+                if matches(artist):
+                    unclaimed.remove(artist)
+                    return artist
+        return None
+
+    created = 0
+    artists_by_source: Dict[int, models.Artist] = {}
+    for index, (source_id, name, _, wikidata_id) in enumerate(parsed, start=1):
+        artist = by_source.get(source_id) or adopt(name, wikidata_id)
+        if artist is None:
+            artist = models.Artist(slug=_unique_artist_slug(name))
+            created += 1
+        if (artist.wikidata_id or "") != wikidata_id:
+            # A different entity's MusicBrainz id would be wrong, not stale;
+            # the next Wikidata pass reads the right one.
+            artist.musicbrainz_id = None
+        artist.source_id = source_id
+        artist.name = name
+        artist.wikidata_id = wikidata_id or None
+        if not artist.slug:
+            artist.slug = _unique_artist_slug(name)
+        artist.save()
+        artists_by_source[source_id] = artist
+
+        if progress_callback:
+            progress_callback(
+                "progress", {"current": index, "total": total, "artist_name": name}
+            )
+
+    # `exclude` keeps NULL in the result, so this also drops every row the
+    # file never claimed.
+    _, deleted_by_model = models.Artist.objects.exclude(
+        source_id__in=list(artists_by_source)
+    ).delete()
+    removed = deleted_by_model.get(models.Artist._meta.label, 0)
+
+    models.ArtistRelation.objects.all().delete()
+    relations = [
+        models.ArtistRelation(
+            artist=artists_by_source[source_id],
+            related=artists_by_source[target],
+            kind=kind,
+            position=position,
+        )
+        for source_id, _, tags, _ in parsed
+        for position, (kind, target) in enumerate(dict.fromkeys(tags))
+    ]
+    models.ArtistRelation.objects.bulk_create(relations)
+
+    if progress_callback:
+        progress_callback(
+            "complete",
+            {"count": total, "created": created, "relations": len(relations)},
+        )
+
+    return (
+        True,
+        f"Artists: {total} ({created} new, {removed} removed), "
+        f"{len(relations)} relations",
+    )
+
+
+def _parse_artist_ids(cell: str, row_number: int) -> List[int]:
+    """Column 3 of the albums file: comma-separated artist ids, or blank."""
+    ids = []
+    for part in filter(None, (p.strip() for p in cell.split(","))):
+        if not part.isdigit():
+            raise ValueError(
+                f"Albums row {row_number}: column 3 should be artist ids from "
+                f"ArtistInfo.txt, not {cell!r} (is this a pre-2026-10 release file?)"
+            )
+        if int(part) not in ids:
+            ids.append(int(part))
+    return ids
+
+
 def import_albums(
     file_obj, progress_callback: Optional[Callable[[str, Dict], None]] = None
 ) -> Tuple[bool, str]:
     """Replace every album from a TSV file, then recompute derived ranks.
 
-    Columns: rank, name, artist_credit, year, wikidata_ids (comma-separated,
-    first is primary). Artists are created as needed from the credit.
+    Columns: rank, name, artist_ids, year, wikidata_ids (comma-separated,
+    first is primary). The artist ids must already be imported by
+    :func:`import_artists`; ``artist_credit`` is derived from their names.
     """
     rows = _rows(file_obj)
     total = len(rows)
@@ -230,7 +384,10 @@ def import_albums(
     deleted_count = models.Album.objects.count()
     models.Album.objects.all().delete()
 
-    artist_cache: Dict[str, models.Artist] = {}
+    artists_by_source = {
+        a.source_id: a for a in models.Artist.objects.filter(source_id__isnull=False)
+    }
+    credits: List[models.AlbumCredit] = []
     # Every Wikidata id each album carries, for the tracking reconnection
     # pass below. Built here because the loop already has the ids parsed.
     id_to_album: Dict[str, models.Album] = {}
@@ -239,10 +396,20 @@ def import_albums(
         if len(row) < 4:
             raise ValueError(
                 f"Albums row {index + 1} has {len(row)} columns, expected at "
-                "least 4 (rank, name, artist, year[, wikidata_ids])"
+                "least 4 (rank, name, artist_ids, year[, wikidata_ids])"
             )
-        rank, name, artist_credit, year = (cell.strip() for cell in row[:4])
+        rank, name, artist_ids_raw, year = (cell.strip() for cell in row[:4])
         wikidata_raw = row[4].strip() if len(row) > 4 else ""
+
+        artists = []
+        for artist_id in _parse_artist_ids(artist_ids_raw, index + 1):
+            artist = artists_by_source.get(artist_id)
+            if artist is None:
+                raise ValueError(
+                    f"Albums row {index + 1} ({name}) credits artist "
+                    f"{artist_id}, which is not in the artists file"
+                )
+            artists.append(artist)
 
         all_wikidata_ids = [x.strip() for x in wikidata_raw.split(",") if x.strip()]
         primary_wikidata_id = all_wikidata_ids[0] if all_wikidata_ids else None
@@ -250,7 +417,7 @@ def import_albums(
         album = models.Album.objects.create(
             rank=int(rank),
             name=name,
-            artist_credit=artist_credit,
+            artist_credit=credit_text([artist.name for artist in artists]),
             year_released=int(year) if year else None,
             wikidata_id=primary_wikidata_id,
             all_wikidata_ids=all_wikidata_ids,
@@ -259,18 +426,10 @@ def import_albums(
         for wikidata_id in all_wikidata_ids:
             id_to_album[wikidata_id] = album
 
-        artist_objs = []
-        for artist_name in split_artist_credit(artist_credit):
-            artist = artist_cache.get(artist_name)
-            if artist is None:
-                artist, _ = models.Artist.objects.get_or_create(
-                    name=artist_name,
-                    parent=None,
-                    defaults={"slug": _unique_artist_slug(artist_name)},
-                )
-                artist_cache[artist_name] = artist
-            artist_objs.append(artist)
-        album.artists.set(artist_objs)
+        credits.extend(
+            models.AlbumCredit(album=album, artist=artist, position=position)
+            for position, artist in enumerate(artists)
+        )
         count += 1
 
         if progress_callback:
@@ -278,6 +437,8 @@ def import_albums(
                 "progress",
                 {"current": index + 1, "total": total, "album_name": name},
             )
+
+    models.AlbumCredit.objects.bulk_create(credits, batch_size=config.IMPORT_BATCH_SIZE)
 
     # The delete above orphaned every tracking row; re-adopt them by the
     # external id they kept. Guarded by one cheap query, because the common
@@ -404,17 +565,21 @@ def import_batch(
     lists_file,
     albums_file,
     positions_file,
+    artists_file,
     progress_callback: Optional[Callable[[str, Dict], None]] = None,
 ) -> Tuple[bool, str]:
-    """Run the three importers in dependency order, in one transaction.
+    """Run the four importers in dependency order, in one transaction.
 
-    Lists must exist before positions can join against them, and albums
-    before positions can find a row's album, so the order is fixed. Any
-    failure rolls the whole import back rather than leaving the rankings
-    half-replaced.
+    Artists must exist before an album can be credited to them, lists before
+    positions can join against them, and albums before positions can find a
+    row's album, so the order is fixed. Any failure rolls the whole import
+    back rather than leaving the rankings half-replaced.
     """
     messages = []
     with transaction.atomic():
+        _, message = import_artists(artists_file, progress_callback)
+        messages.append(message)
+
         _, message = import_lists(lists_file, progress_callback)
         messages.append(message)
 

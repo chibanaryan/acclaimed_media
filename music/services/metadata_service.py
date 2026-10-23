@@ -26,7 +26,6 @@ hundreds of covers without a single HTTP request.
 """
 
 import logging
-import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional
@@ -41,7 +40,6 @@ from music.musicbrainz import (
     CoverArtArchiveClient,
     MusicBrainzClient,
 )
-from music.services.import_handler import _unique_artist_slug, split_artist_credit
 from music.wikidata import WikidataClient
 
 logger = logging.getLogger(__name__)
@@ -78,24 +76,6 @@ def fit(model, field_name: str, value):
 #: have ninety, and the original pressings sort first, so there is nothing to
 #: gain from walking all of them.
 MAX_RELEASE_CANDIDATES = 12
-
-#: Tokens that carry no distinguishing information in a band name.
-_ARTIST_NOISE_TOKENS = frozenset({"the"})
-
-
-def normalize_artist_name(name: str) -> str:
-    """A comparison key for an artist name.
-
-    Collapses the three ways the same act gets spelled across sources:
-    ampersand against 'and', a leading or internal 'the', and punctuation.
-    'Bob Marley & The Wailers' and 'Bob Marley and the Wailers' both become
-    'bobmarleyandwailers'.
-    """
-    lowered = name.casefold().replace("&", " and ")
-    tokens = re.split(r"[^a-z0-9]+", lowered)
-    return "".join(
-        token for token in tokens if token and token not in _ARTIST_NOISE_TOKENS
-    )
 
 
 @dataclass
@@ -168,10 +148,11 @@ class AlbumMetadataService:
     # -------------------------------------------------------- wikidata pass
 
     def run_wikidata(self, albums: Iterable[models.Album]) -> PassResult:
-        """Fetch album properties, performers and identifiers from Wikidata.
+        """Fetch album properties and identifiers from Wikidata.
 
-        One batched pass for the albums, then two more to resolve the
-        performer, genre and record-label entities those albums referenced.
+        One batched pass for the albums, then two more: one resolving the
+        genre and record-label entities those albums referenced, and one
+        reading our artists' MusicBrainz ids (P434) off their own entities.
         """
         result = PassResult(name="Wikidata")
         albums = list(albums)
@@ -192,11 +173,15 @@ class AlbumMetadataService:
         with WikidataClient() as client:
             metadata = client.fetch_album_metadata(qid_to_albums)
 
-            # Resolve every entity the albums pointed at, in two batched
-            # requests rather than one per album.
-            performer_qids = {
-                qid for meta in metadata.values() for qid in meta.performer_qids
-            }
+            # Resolve every entity the albums pointed at, in batched requests
+            # rather than one per album. The artists are ours, from
+            # ArtistInfo.txt, not the albums' P175 performers: the release
+            # decides who made an album, and Wikidata only supplies ids.
+            artist_qids = set(
+                models.Artist.objects.exclude(wikidata_id__isnull=True)
+                .exclude(wikidata_id="")
+                .values_list("wikidata_id", flat=True)
+            )
             referenced_qids = {
                 qid for meta in metadata.values() for qid in meta.genre_qids
             } | {
@@ -205,13 +190,15 @@ class AlbumMetadataService:
                 if meta.record_label_qid
             }
 
-            artists = client.fetch_artists(performer_qids)
+            artists = client.fetch_artists(artist_qids)
             labels = client.fetch_labels(referenced_qids)
+
+        self._save_artist_ids(artists)
 
         for index, album in enumerate(albums, start=1):
             try:
                 with transaction.atomic():
-                    self._save_wikidata(album, metadata, artists, labels)
+                    self._save_wikidata(album, metadata, labels)
                 result.processed += 1
                 self._notify(
                     "progress",
@@ -233,7 +220,7 @@ class AlbumMetadataService:
         self._notify("complete", {"pass": "wikidata", "processed": result.processed})
         return result
 
-    def _save_wikidata(self, album, metadata, artists, labels) -> None:
+    def _save_wikidata(self, album, metadata, labels) -> None:
         """Write one album's Wikidata results."""
         album_meta = None
         for qid in self._album_qids(album):
@@ -283,8 +270,6 @@ class AlbumMetadataService:
         if update_fields:
             album.save(update_fields=update_fields)
 
-        self._save_artists(album, album_meta, artists)
-
     def _adopt_or_build_wikipedia_data(self, album, album_meta):
         """Reuse this album's row, adopt a matching orphan, or make a new one."""
         existing = models.WikipediaAlbumData.collapse_duplicates(
@@ -304,88 +289,18 @@ class AlbumMetadataService:
             album=album, wikidata_id=album_meta.wikidata_id
         )
 
-    def _save_artists(self, album, album_meta, artists) -> None:
-        """Set the artists M2M to the union of the published credit and P175.
-
-        Neither source is sufficient alone. The published credit is what a
-        reader recognizes and what the row templates show, but a comma in it
-        is only a guess at a separator. P175 names entities with ids, but it
-        names the *canonical* act, which is sometimes coarser than the credit:
-        'Band on the Run' is credited to 'Paul McCartney, Wings' and P175 says
-        only Wings, so trusting P175 alone loses McCartney the album.
-        'Clube da Esquina' loses both of its credited artists the same way.
-
-        So both are kept. Matching is on a normalized name, which collapses
-        the punctuation variants that would otherwise double up - P175's
-        'Bob Marley & The Wailers' is the credit's 'Bob Marley and the
-        Wailers' - and ids are written onto whichever row wins.
-
-        ``Album.artist_credit`` itself is never touched.
-        """
-        rows = []
-
-        for name in split_artist_credit(album.artist_credit or ""):
-            artist = self._resolve_artist(name)
-            if artist not in rows:
-                rows.append(artist)
-
-        for qid in album_meta.performer_qids:
-            meta = artists.get(qid)
-            if meta is None:
-                continue
-            artist = self._resolve_artist(
-                meta.name,
-                wikidata_id=meta.wikidata_id,
-                musicbrainz_id=meta.musicbrainz_id,
-            )
-            if artist not in rows:
-                rows.append(artist)
-
-        if rows:
-            album.artists.set(rows)
-
-    def _resolve_artist(
-        self,
-        name: str,
-        wikidata_id: Optional[str] = None,
-        musicbrainz_id: Optional[str] = None,
-    ):
-        """Find or create an artist, then fill in any ids we now know."""
-        artist = None
-        if wikidata_id:
-            artist = models.Artist.objects.filter(wikidata_id=wikidata_id).first()
-        if artist is None:
-            artist = models.Artist.objects.filter(name=name, parent=None).first()
-        if artist is None:
-            artist = self._find_artist_by_normalized_name(name)
-        if artist is None:
-            name = fit(models.Artist, "name", name)
-            artist = models.Artist.objects.create(
-                name=name, slug=fit(models.Artist, "slug", _unique_artist_slug(name))
-            )
-
-        changed = []
-        if wikidata_id and artist.wikidata_id != wikidata_id:
-            artist.wikidata_id = wikidata_id
-            changed.append("wikidata_id")
-        if musicbrainz_id and artist.musicbrainz_id != musicbrainz_id:
-            artist.musicbrainz_id = musicbrainz_id
-            changed.append("musicbrainz_id")
-        if changed:
-            artist.save(update_fields=changed)
-
-        return artist
-
     @staticmethod
-    def _find_artist_by_normalized_name(name: str):
-        """Match an existing artist ignoring punctuation, '&' and 'the'."""
-        key = normalize_artist_name(name)
-        if not key:
-            return None
-        for artist in models.Artist.objects.filter(parent=None):
-            if normalize_artist_name(artist.name) == key:
-                return artist
-        return None
+    def _save_artist_ids(artists) -> None:
+        """Store each artist's MusicBrainz id, read from its Wikidata entity.
+
+        Only the id: the name is the release's, and an album's artists are
+        whoever ``WebRankings.txt`` credits, never Wikidata's P175.
+        """
+        for artist in models.Artist.objects.filter(wikidata_id__in=list(artists)):
+            mbid = artists[artist.wikidata_id].musicbrainz_id
+            if mbid and artist.musicbrainz_id != mbid:
+                artist.musicbrainz_id = mbid
+                artist.save(update_fields=["musicbrainz_id"])
 
     # ----------------------------------------------------------- covers pass
 
@@ -466,8 +381,13 @@ class AlbumMetadataService:
 
     def _resolve_missing_mbid(self, album, result) -> None:
         """Search MusicBrainz for a release group this album has no ID for."""
+        # "Various Artists" is our wording for a compilation, not a credit
+        # MusicBrainz would match, so a compilation searches by title alone.
+        credit = album.artist_credit or ""
+        if credit == config.VARIOUS_ARTISTS:
+            credit = ""
         mbid = self._musicbrainz().search_release_group(
-            album.name, album.artist_credit or "", album.year_released
+            album.name, credit, album.year_released
         )
         if not mbid:
             result.errors.append(f"{album.name}: no MusicBrainz release group")

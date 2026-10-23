@@ -12,51 +12,66 @@ from music import models
 
 class ArtistTests(TestCase):
     def setUp(self):
-        self.parent = models.Artist.objects.create(name="Neil Young", slug="neil-young")
+        self.young = models.Artist.objects.create(name="Neil Young", slug="neil-young")
 
-    def test_str_is_name_for_root_artist(self):
-        self.assertEqual(str(self.parent), "Neil Young")
-
-    def test_str_includes_parent_for_subsidiary(self):
-        child = models.Artist.objects.create(name="Crazy Horse", parent=self.parent)
-        self.assertEqual(str(child), "Crazy Horse (Neil Young)")
-
-    def test_subsidiary_slug_is_cleared_on_save(self):
-        child = models.Artist.objects.create(
-            name="Crazy Horse", slug="crazy-horse", parent=self.parent
-        )
-        child.refresh_from_db()
-        self.assertEqual(child.slug, "")
-
-    def test_is_root_and_is_subsidiary(self):
-        child = models.Artist.objects.create(name="Crazy Horse", parent=self.parent)
-        self.assertTrue(self.parent.is_root)
-        self.assertFalse(self.parent.is_subsidiary)
-        self.assertFalse(child.is_root)
-        self.assertTrue(child.is_subsidiary)
-
-    def test_root_creator_walks_the_hierarchy(self):
-        child = models.Artist.objects.create(name="Crazy Horse", parent=self.parent)
-        grandchild = models.Artist.objects.create(name="Side Act", parent=child)
-        self.assertEqual(grandchild.root_creator, self.parent)
-
-    def test_get_all_subsidiary_ids(self):
-        child = models.Artist.objects.create(name="Crazy Horse", parent=self.parent)
-        self.assertEqual(self.parent.get_all_subsidiary_ids(), [child.id])
-        self.assertEqual(
-            sorted(self.parent.get_all_subsidiary_ids(include_self=True)),
-            sorted([self.parent.id, child.id]),
-        )
-
-    def test_get_all_subsidiaries(self):
-        child = models.Artist.objects.create(name="Crazy Horse", parent=self.parent)
-        self.assertEqual(self.parent.get_all_subsidiaries(), [child])
-        self.assertEqual(
-            self.parent.get_all_subsidiaries(include_self=True), [self.parent, child]
-        )
+    def test_str_is_the_name(self):
+        self.assertEqual(str(self.young), "Neil Young")
 
     def test_get_absolute_url(self):
-        self.assertEqual(self.parent.get_absolute_url(), "/music/artists/neil-young/")
+        self.assertEqual(self.young.get_absolute_url(), "/music/artists/neil-young/")
+
+    def test_a_derived_act_keeps_its_slug(self):
+        # Under the old parent tree a sub-act lost its slug, and its page.
+        act = models.Artist.objects.create(
+            name="Neil Young & Crazy Horse", slug="neil-young-crazy-horse"
+        )
+        models.ArtistRelation.objects.create(
+            artist=act, related=self.young, kind=models.ArtistRelation.PROJECT
+        )
+        act.refresh_from_db()
+        self.assertEqual(act.slug, "neil-young-crazy-horse")
+
+    def test_source_id_is_unique(self):
+        models.Artist.objects.create(name="A", source_id=7)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            models.Artist.objects.create(name="B", source_id=7)
+
+
+class ArtistRelationTests(TestCase):
+    def setUp(self):
+        self.prince = models.Artist.objects.create(name="Prince", slug="prince")
+        self.act = models.Artist.objects.create(
+            name="Prince and the Revolution", slug="prince-and-the-revolution"
+        )
+
+    def test_str_reads_as_the_tag(self):
+        relation = models.ArtistRelation.objects.create(
+            artist=self.act, related=self.prince, kind="P"
+        )
+        self.assertEqual(str(relation), f"{self.act.id} P:{self.prince.id}")
+
+    def test_principal_and_supporting_kinds(self):
+        for kind, principal in (
+            ("A", True),
+            ("P", True),
+            ("C", True),
+            ("F", False),
+            ("B", False),
+        ):
+            with self.subTest(kind=kind):
+                relation = models.ArtistRelation(
+                    artist=self.act, related=self.prince, kind=kind
+                )
+                self.assertIs(relation.is_principal, principal)
+
+    def test_a_tag_is_unique_per_pair_and_kind(self):
+        models.ArtistRelation.objects.create(
+            artist=self.act, related=self.prince, kind="P"
+        )
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            models.ArtistRelation.objects.create(
+                artist=self.act, related=self.prince, kind="P"
+            )
 
 
 class MusicGenreTests(TestCase):
@@ -250,28 +265,24 @@ class AlbumTests(TestCase):
     def test_str_is_the_name(self):
         self.assertEqual(str(self.album), "Pet Sounds")
 
-    def test_get_display_artists_drops_a_parent_of_another_credited_artist(self):
-        young = models.Artist.objects.create(name="Neil Young", slug="neil-young")
-        horse = models.Artist.objects.create(name="Crazy Horse", parent=young)
-        album = models.Album.objects.create(
-            name="Rust Never Sleeps", rank=10, artist_credit="Neil Young, Crazy Horse"
+    def test_credited_artists_follow_the_credit_order(self):
+        wings = models.Artist.objects.create(name="Wings", slug="wings")
+        paul = models.Artist.objects.create(name="Paul McCartney", slug="paul")
+        album = models.Album.objects.create(name="Band on the Run", rank=10)
+        # Alphabetically Wings would come last; the credit puts it second.
+        models.AlbumCredit.objects.create(album=album, artist=wings, position=1)
+        models.AlbumCredit.objects.create(album=album, artist=paul, position=0)
+        self.assertEqual(album.credited_artists, [paul, wings])
+
+    def test_a_compilation_has_no_credited_artists(self):
+        self.assertEqual(self.album.credited_artists, [])
+
+    def test_a_credit_reads_as_album_position_artist(self):
+        artist = models.Artist.objects.create(name="Wings", slug="wings")
+        credit = models.AlbumCredit.objects.create(
+            album=self.album, artist=artist, position=1
         )
-        album.artists.set([young, horse])
-        self.assertEqual(album.get_display_artists(), [horse])
-
-    def test_get_display_artists_keeps_unrelated_artists(self):
-        eno = models.Artist.objects.create(name="Brian Eno", slug="brian-eno")
-        byrne = models.Artist.objects.create(name="David Byrne", slug="david-byrne")
-        album = models.Album.objects.create(name="My Life", rank=11)
-        album.artists.set([eno, byrne])
-        self.assertCountEqual(album.get_display_artists(), [eno, byrne])
-
-    def test_get_display_artists_respects_max_count(self):
-        eno = models.Artist.objects.create(name="Brian Eno", slug="brian-eno")
-        byrne = models.Artist.objects.create(name="David Byrne", slug="david-byrne")
-        album = models.Album.objects.create(name="My Life", rank=12)
-        album.artists.set([eno, byrne])
-        self.assertEqual(len(album.get_display_artists(max_count=1)), 1)
+        self.assertEqual(str(credit), f"{self.album.id} #1: {artist.id}")
 
     def test_default_ordering_is_by_rank(self):
         models.Album.objects.create(name="Second", rank=20)
@@ -309,7 +320,7 @@ class AlbumQuerySetTests(TestCase):
     def test_with_relations_prefetches_artists_and_genres(self):
         with self.assertNumQueries(3):
             album = models.Album.objects.with_relations().get(pk=self.album.pk)
-            self.assertEqual([a.name for a in album.artists.all()], ["Radiohead"])
+            self.assertEqual([a.name for a in album.credited_artists], ["Radiohead"])
             self.assertEqual([g.name for g in album.genres.all()], ["Rock"])
 
 

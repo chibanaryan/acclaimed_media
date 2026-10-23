@@ -27,6 +27,7 @@ from core.services import genre_tree
 
 from .. import config, models
 from ..access import MusicAPIGateMixin
+from ..services.artist_graph import ArtistGraph, artist_summary
 from ..services.data_version import compute_album_data_version
 from . import serializers
 
@@ -94,13 +95,15 @@ class AlbumAllDataView(MusicReadAPIMixin, APIView):
 
     Artists and genres are sent as lookup tables rather than repeated inline,
     since the renderer has to reproduce the ``artist_links`` template tag and
-    the genre filter has to resolve a root genre to its styles.
+    the genre filter has to resolve a root genre to its styles - and the
+    artist filter an artist to the projects and aliases that roll up into
+    it, which each artist's ``"d"`` lists (see ``music.services.artist_graph``).
     """
 
     def get(self, request):
         albums = (
             models.Album.objects.select_related("primary_musicbrainz_album_data")
-            .prefetch_related("artists", "genres")
+            .prefetch_related(models.credits_prefetch(), "genres")
             .with_list_count()
             .order_by("rank")
         )
@@ -127,7 +130,8 @@ class AlbumAllDataView(MusicReadAPIMixin, APIView):
 
         for album in albums:
             artist_ids = []
-            for artist in album.artists.all():
+            # In credit order, which the renderer's credit line follows.
+            for artist in album.credited_artists:
                 artist_ids.append(artist.id)
                 if artist.id not in artists:
                     artists[artist.id] = {"n": artist.name, "s": artist.slug}
@@ -149,7 +153,7 @@ class AlbumAllDataView(MusicReadAPIMixin, APIView):
                     # The release date orders a year's albums. ISO, so the
                     # client compares it as a string; null when undated.
                     "rd": album.release_date and album.release_date.isoformat(),
-                    "c": album.artist_credit,  # published credit
+                    "c": album.artist_credit,  # credit line, names joined
                     "t": album.thumbnail,  # 250px cover, local copy preferred
                     "ar": artist_ids,
                     "g": [genre.id for genre in album.genres.all()],
@@ -179,6 +183,19 @@ class AlbumAllDataView(MusicReadAPIMixin, APIView):
             }
             for row in genre_rows
         ]
+
+        # An artist the filter can pick is one who owns albums, which
+        # includes one credited only through a project (Jason Molina, via
+        # Songs: Ohia), so those join the lookup too, with what rolls up
+        # into them under "d".
+        derived = ArtistGraph.load(with_credits=False).derived_map()
+        missing = [artist_id for artist_id in derived if artist_id not in artists]
+        for artist in models.Artist.objects.filter(id__in=missing).values(
+            "id", "name", "slug"
+        ):
+            artists[artist["id"]] = {"n": artist["name"], "s": artist["slug"]}
+        for artist_id, derived_ids in derived.items():
+            artists[artist_id]["d"] = derived_ids
 
         return Response(
             {
@@ -217,12 +234,9 @@ class MusicUnifiedSearchView(MusicReadAPIMixin, APIView):
             .order_by("rank")[:album_limit]
         )
 
-        artists = (
-            models.Artist.objects.filter(name__icontains=q)
-            .annotate(albums_count=Count("albums"))
-            .filter(albums_count__gt=0)
-            .order_by("-albums_count", Lower("name"))[:artist_limit]
-        )
+        artists = _artists_with_albums(
+            models.Artist.objects.filter(name__icontains=q), include_appearances=True
+        )[:artist_limit]
 
         return Response(
             {
@@ -244,6 +258,12 @@ class MusicUnifiedSearchView(MusicReadAPIMixin, APIView):
                         "name": artist.name,
                         "slug": artist.slug,
                         "albums_count": artist.albums_count,
+                        "appears_on_count": artist.appears_on_count,
+                        # "5 albums", or "appears on 3 albums" for an act
+                        # that owns none - what the dropdown shows.
+                        "summary": artist_summary(
+                            artist.albums_count, artist.appears_on_count
+                        ),
                     }
                     for artist in artists
                 ],
@@ -271,7 +291,12 @@ class AlbumListView(MusicReadAPIMixin, ListAPIView):
 
         artist = params.get("artist")
         if artist:
-            qs = qs.filter(artists__slug=artist)
+            # The artist's own albums, rolled-up projects and aliases included.
+            artist_ids = models.Artist.objects.filter(slug=artist).values_list(
+                "id", flat=True
+            )
+            graph = ArtistGraph.load(with_credits=False)
+            qs = qs.filter(artists__id__in=graph.expand(artist_ids))
 
         genres = params.get("genres")
         if genres:
@@ -315,40 +340,80 @@ class AlbumSearchAPIView(MusicReadAPIMixin, ListAPIView):
         )
 
 
+def _artists_with_albums(queryset, include_appearances=False):
+    """``queryset``'s artists that own an album, most albums first.
+
+    "Own" includes albums rolled up from projects and aliases, which no join
+    counts, so this is a list with ``albums_count`` set on each artist.
+
+    ``include_appearances`` adds the acts that only feature on or back other
+    records (Crazy Horse), after every owner, with ``appears_on_count`` set:
+    a search for one by name should find its page, though a browse of the
+    rankings' artists should not list it.
+    """
+    graph = ArtistGraph.load()
+    album_ids = graph.album_ids_by_artist()
+    appears_on = graph.appears_on_by_artist() if include_appearances else {}
+    artists = list(
+        queryset.filter(id__in=list(set(album_ids) | set(appears_on))).prefetch_related(
+            Prefetch(
+                "relations",
+                queryset=models.ArtistRelation.objects.select_related("related"),
+            )
+        )
+    )
+    for artist in artists:
+        artist.albums_count = len(album_ids.get(artist.id, ()))
+        artist.appears_on_count = len(appears_on.get(artist.id, ()))
+    artists.sort(
+        key=lambda artist: (
+            -artist.albums_count,
+            -artist.appears_on_count,
+            artist.name.lower(),
+        )
+    )
+    return artists
+
+
 class ArtistListView(MusicReadAPIMixin, ListAPIView):
-    """Artists with at least one ranked album."""
+    """Artists with at least one ranked album of their own."""
 
     serializer_class = serializers.ArtistSerializer
 
     def get_queryset(self):
-        qs = (
-            models.Artist.objects.annotate(albums_count=Count("albums"))
-            .filter(albums_count__gt=0)
-            .order_by("-albums_count", "name")
-        )
+        qs = models.Artist.objects.all()
         q = self.request.query_params.get("q")
         if q:
             qs = qs.filter(name__icontains=q)
-        return qs
+        return _artists_with_albums(qs)
 
 
 class ArtistDetailView(MusicReadAPIMixin, RetrieveAPIView):
-    """One artist with their ranked albums."""
+    """One artist with their ranked albums and the ones they appear on."""
 
     serializer_class = serializers.ArtistDetailSerializer
     lookup_field = "slug"
 
     def get_queryset(self):
-        return models.Artist.objects.annotate(
-            albums_count=Count("albums")
-        ).prefetch_related(
+        return models.Artist.objects.prefetch_related(
             Prefetch(
-                "albums",
-                queryset=models.Album.objects.with_relations()
-                .with_list_count()
-                .order_by("rank"),
+                "relations",
+                queryset=models.ArtistRelation.objects.select_related("related"),
             )
         )
+
+    def get_object(self):
+        artist = super().get_object()
+        graph = ArtistGraph.load()
+        albums = models.Album.objects.with_relations().with_list_count()
+        artist.own_albums = albums.filter(id__in=graph.album_ids(artist.id)).order_by(
+            "rank"
+        )
+        artist.appears_on_albums = albums.filter(
+            id__in=graph.appears_on_ids(artist.id)
+        ).order_by("rank")
+        artist.albums_count = len(artist.own_albums)
+        return artist
 
 
 class MusicListListView(MusicReadAPIMixin, ListAPIView):
@@ -409,9 +474,7 @@ class MusicMetaView(MusicReadAPIMixin, APIView):
                     ],
                 },
                 "artists": {
-                    "total_count": models.Artist.objects.annotate(n=Count("albums"))
-                    .filter(n__gt=0)
-                    .count()
+                    "total_count": len(ArtistGraph.load().album_ids_by_artist())
                 },
                 "lists": {
                     "total_count": music_lists.count(),

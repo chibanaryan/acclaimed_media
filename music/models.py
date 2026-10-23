@@ -16,7 +16,6 @@ from django.urls import reverse
 from django.utils.text import slugify
 
 from core.models import (
-    CreatorBase,
     ExternalDataBase,
     ListBase,
     ListMembershipBase,
@@ -28,17 +27,35 @@ from core.models import (
 from music import config
 
 
-class Artist(CreatorBase):
+class Artist(models.Model):
     """
-    A recording artist: a band, a solo performer, or a collaborating act.
+    A recording artist: a band, a solo performer, an alias or a joint act.
 
-    Inherits ``name``, ``slug`` and the self-referential ``parent`` hierarchy
-    from ``CreatorBase``. The hierarchy models membership and side projects -
-    Crazy Horse under Neil Young, Plastic Ono Band under John Lennon - the
-    same way subsidiary studios sit under their parent for games. Only root
-    artists carry slugs, which ``CreatorBase.save()`` enforces.
+    Every artist comes from the release's ``ArtistInfo.txt`` under the data
+    provider's own permanent index, ``source_id``, which is what an import
+    upserts on - so an artist keeps its pk and slug across imports, and
+    ``?artists=`` links keep working. How an artist is made up (Prince and
+    the Revolution is a project of Prince; CSNY a collaboration of CSN and
+    Neil Young) lives in ``ArtistRelation``, not in a parent FK: one act can
+    belong to several others, which a single-parent tree cannot say.
+
+    Unlike ``CreatorBase`` creators, every artist has a slug and a page.
     """
 
+    name = models.CharField(max_length=200, db_index=True)
+    slug = models.SlugField(
+        max_length=210,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="URL-friendly identifier, fixed once assigned",
+    )
+    source_id = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        unique=True,
+        help_text="The data provider's permanent artist index (ArtistInfo.txt)",
+    )
     musicbrainz_id = models.CharField(
         max_length=36,
         null=True,
@@ -64,8 +81,67 @@ class Artist(CreatorBase):
             models.Index(fields=["wikidata_id"]),
         ]
 
+    def __str__(self) -> str:
+        return self.name
+
     def get_absolute_url(self) -> str:
         return reverse("music:artist-detail", kwargs={"slug": self.slug})
+
+
+class ArtistRelation(models.Model):
+    """
+    One tag from ``ArtistInfo.txt``: ``artist`` is ``kind`` of ``related``.
+
+    "Prince and the Revolution" carries ``P:8``, so it is a project of
+    Prince: ``ArtistRelation(artist=<P&tR>, related=<Prince>, kind="P")``.
+    The principal kinds (alias, project, collaboration) make the artist's
+    albums count as ``related``'s too; the supporting kinds (featuring,
+    backed by) only credit ``related`` as appearing on them. See
+    ``music.services.artist_graph``.
+
+    Rebuilt from the file on every import, so the admin shows it read-only.
+    """
+
+    ALIAS = "A"
+    PROJECT = "P"
+    COLLABORATION = "C"
+    FEATURING = "F"
+    BACKED_BY = "B"
+    KIND_CHOICES = [
+        (ALIAS, "Alias of"),
+        (PROJECT, "Project of"),
+        (COLLABORATION, "Collaboration with"),
+        (FEATURING, "Featuring"),
+        (BACKED_BY, "Backed by"),
+    ]
+
+    artist = models.ForeignKey(
+        Artist, on_delete=models.CASCADE, related_name="relations"
+    )
+    related = models.ForeignKey(
+        Artist, on_delete=models.CASCADE, related_name="inbound_relations"
+    )
+    kind = models.CharField(max_length=1, choices=KIND_CHOICES)
+    position = models.PositiveSmallIntegerField(
+        default=0, help_text="Order of the tag in the file"
+    )
+
+    class Meta:
+        db_table = "music_artistrelation"
+        ordering = ["artist", "position"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["artist", "related", "kind"],
+                name="unique_artist_relation",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.artist_id} {self.kind}:{self.related_id}"
+
+    @property
+    def is_principal(self) -> bool:
+        return self.kind in config.PRINCIPAL_RELATION_KINDS
 
 
 class MusicGenre(models.Model):
@@ -158,6 +234,19 @@ class MusicGenre(models.Model):
         return ids
 
 
+def credits_prefetch() -> models.Prefetch:
+    """The credits in their file order, each with its artist joined.
+
+    What a row's credit line reads through ``Album.credited_artists``: one
+    query for every album's credits, where the string path
+    ``credits__artist`` would take two. A function so that ``AlbumCredit``,
+    defined below, is looked up when it is called.
+    """
+    return models.Prefetch(
+        "credits", queryset=AlbumCredit.objects.select_related("artist")
+    )
+
+
 class AlbumQuerySet(models.QuerySet):
     """Chainable query helpers that keep album list views off the N+1 path."""
 
@@ -169,7 +258,7 @@ class AlbumQuerySet(models.QuerySet):
         extra queries.
         """
         return self.select_related("primary_musicbrainz_album_data").prefetch_related(
-            "artists", "artists__parent", "genres"
+            credits_prefetch(), "genres"
         )
 
     def with_list_count(self) -> "AlbumQuerySet":
@@ -245,11 +334,14 @@ class Album(MediaItemBase):
         max_length=300,
         blank=True,
         help_text=(
-            "The credit exactly as published, e.g. 'Neil Young, Crazy Horse'. "
-            "Shown verbatim; the artists M2M holds the parsed performers."
+            "The credited artists' names as one line, e.g. 'Paul McCartney & "
+            "Wings', or 'Various Artists'. Derived on import from the artist "
+            "ids; kept as text for search, slugs, meta tags and the CSV export."
         ),
     )
-    artists = models.ManyToManyField(Artist, blank=True, related_name="albums")
+    artists = models.ManyToManyField(
+        Artist, blank=True, through="AlbumCredit", related_name="albums"
+    )
     genres = models.ManyToManyField(MusicGenre, blank=True, related_name="albums")
     musicbrainz_release_group_id = models.CharField(
         max_length=36,
@@ -400,19 +492,37 @@ class Album(MediaItemBase):
             return data.local_cover_art_url(size)
         return data.cover_art_url(size)
 
-    def get_display_artists(self, max_count: Optional[int] = None) -> list:
-        """Return the album's artists, dropping any that parent another.
+    @property
+    def credited_artists(self) -> List[Artist]:
+        """The credited artists in the order the release lists them.
 
-        When a record is credited to both Neil Young and Crazy Horse, showing
-        both is right; when it is credited to an act and its own parent, the
-        parent is redundant. Mirrors ``Book.get_display_authors``.
+        ``self.artists.all()`` cannot give that order - an M2M is ordered by
+        ``Artist.Meta.ordering`` - so this reads the through rows, which
+        ``with_relations()`` prefetches with their artists.
         """
-        artists = list(self.artists.all())
-        parent_ids = {a.parent_id for a in artists if a.parent_id is not None}
-        display = [a for a in artists if a.id not in parent_ids]
-        if max_count is not None:
-            display = display[:max_count]
-        return display
+        return [credit.artist for credit in self.credits.all()]
+
+
+class AlbumCredit(models.Model):
+    """An album's credited artist, in the order ``WebRankings.txt`` gives."""
+
+    album = models.ForeignKey(Album, on_delete=models.CASCADE, related_name="credits")
+    artist = models.ForeignKey(
+        Artist, on_delete=models.CASCADE, related_name="album_credits"
+    )
+    position = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = "music_albumcredit"
+        ordering = ["position", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["album", "artist"], name="unique_album_credit"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.album_id} #{self.position}: {self.artist_id}"
 
 
 class MusicPublication(PublicationBase):

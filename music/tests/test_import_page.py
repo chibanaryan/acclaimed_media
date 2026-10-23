@@ -18,8 +18,9 @@ FIXTURE_DIR = Path(settings.BASE_DIR) / "acclaimedgames" / "test_input_files" / 
 LISTS_TSV = (
     b"Rolling Stone\t2023\tThe 500 Greatest Albums of All Time\thttps://rs.example\n"
 )
-ALBUMS_TSV = b"1\tPet Sounds\tThe Beach Boys\t1966\tQ212863\n"
+ALBUMS_TSV = b"1\tPet Sounds\t3\t1966\tQ212863\n"
 POSITIONS_TSV = b"0:1\n"
+ARTISTS_TSV = b"3\tThe Beach Boys\t\tQ183048\n"
 
 
 def _upload(name, content):
@@ -28,6 +29,7 @@ def _upload(name, content):
 
 def _all_files():
     return {
+        "artists_file": _upload("ArtistInfo.txt", ARTISTS_TSV),
         "lists_file": _upload("ListData.txt", LISTS_TSV),
         "albums_file": _upload("WebRankings.txt", ALBUMS_TSV),
         "positions_file": _upload("ListPositions.txt", POSITIONS_TSV),
@@ -35,7 +37,7 @@ def _all_files():
 
 
 class MusicImportFormTests(TestCase):
-    def test_all_three_files_validate(self):
+    def test_all_four_files_validate(self):
         form = MusicImportForm(data={}, files=_all_files())
         self.assertTrue(form.is_valid(), form.errors)
 
@@ -46,15 +48,17 @@ class MusicImportFormTests(TestCase):
     def test_nothing_supplied_is_rejected(self):
         form = MusicImportForm(data={}, files={})
         self.assertFalse(form.is_valid())
-        self.assertIn("Upload all three release files", str(form.errors))
+        self.assertIn("Upload all four release files", str(form.errors))
 
     def test_a_partial_upload_is_rejected_and_names_what_is_missing(self):
         files = _all_files()
         del files["positions_file"]
+        del files["artists_file"]
         form = MusicImportForm(data={}, files=files)
         self.assertFalse(form.is_valid())
-        self.assertIn("All three files are imported together", str(form.errors))
+        self.assertIn("All four files are imported together", str(form.errors))
         self.assertIn("Album Positions", str(form.errors))
+        self.assertIn("Artists (ArtistInfo.txt)", str(form.errors))
 
     def test_the_bundled_checkbox_skips_the_all_or_nothing_rule(self):
         files = _all_files()
@@ -89,6 +93,13 @@ class MusicImportFormTests(TestCase):
         form = MusicImportForm(data={}, files=files)
         self.assertFalse(form.is_valid())
         self.assertIn("at least 4", str(form.errors["albums_file"]))
+
+    def test_an_artists_file_with_too_few_columns_is_rejected(self):
+        files = _all_files()
+        files["artists_file"] = _upload("ArtistInfo.txt", b"3\n")
+        form = MusicImportForm(data={}, files=files)
+        self.assertFalse(form.is_valid())
+        self.assertIn("at least 2", str(form.errors["artists_file"]))
 
     def test_a_non_utf8_file_is_rejected(self):
         files = _all_files()
@@ -134,12 +145,13 @@ class MusicImportViewTests(TestCase):
         self.client.login(username="plain", password="plainpass")
         self.assertEqual(self.client.get(self.url).status_code, 404)
 
-    def test_posting_the_three_files_imports_them(self):
+    def test_posting_the_four_files_imports_them(self):
         response = self.client.post(self.url, _all_files())
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context["error"])
         self.assertIn("Albums: 1 created", response.context["summary"]["message"])
         self.assertEqual(models.Album.objects.count(), 1)
+        self.assertEqual(models.Artist.objects.get().source_id, 3)
         self.assertEqual(models.MusicList.objects.count(), 1)
         self.assertEqual(models.AlbumListMembership.objects.count(), 1)
         self.assertContains(response, "Import complete")
@@ -172,6 +184,15 @@ class MusicImportViewTests(TestCase):
         # property of the release, not of the import page.
         self.assertGreater(models.AlbumListMembership.objects.count(), 0)
         self.assertEqual(models.Album.objects.filter(lists__isnull=True).count(), 0)
+        self.assertEqual(
+            models.Artist.objects.count(),
+            sum(
+                1
+                for _ in (BUNDLED_RELEASE_DIR / "ArtistInfo.txt").open(
+                    encoding="utf-8-sig"
+                )
+            ),
+        )
 
     def test_the_summary_reports_the_new_counts(self):
         response = self.client.post(self.url, _all_files())
@@ -182,7 +203,7 @@ class MusicImportViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context["summary"])
         self.assertEqual(models.Album.objects.count(), 0)
-        self.assertContains(response, "Upload all three release files")
+        self.assertContains(response, "Upload all four release files")
 
     def test_an_importer_failure_is_surfaced_and_rolls_back(self):
         models.Album.objects.create(name="Pre-existing", rank=1)
@@ -215,7 +236,8 @@ class MusicImportViewTests(TestCase):
         self.assertTrue(response.context["bundled_available"])
         names = [entry["name"] for entry in response.context["bundled_files"]]
         self.assertEqual(
-            names, ["ListData.txt", "WebRankings.txt", "ListPositions.txt"]
+            names,
+            ["ArtistInfo.txt", "ListData.txt", "WebRankings.txt", "ListPositions.txt"],
         )
         self.assertContains(response, "ListData.txt")
 

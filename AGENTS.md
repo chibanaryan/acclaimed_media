@@ -130,7 +130,8 @@ heroku run -- python manage.py shell
   - **views.py** - Album/artist/source-list views and the SEO landing pages, all behind `MusicVisibleMixin` (the import page behind `core.mixins.StaffOnlyMixin`)
   - **sitemaps.py** - The music sitemap sections, empty until `MUSIC_ENABLED` is on
   - **services/landing_pages.py** - Which genre and decade landing pages exist
-  - **services/import_handler.py** - Imports the three-TSV album ranking release
+  - **services/import_handler.py** - Imports the four-TSV album ranking release
+  - **services/artist_graph.py** - Which albums belong to which artist (the relation roll-up)
   - **templatetags/music_filters.py** - Music-specific template filters
   - **management/commands/import_music_data.py** - Loads the ranking release files
   - **templates/music/** - Music templates; album rows extend `core/includes/_base_media_row.html`
@@ -197,8 +198,14 @@ Books-specific models (behind `BOOKS_ENABLED` feature flag):
 
 Music-specific models:
 
-- **Album** - Albums with ranking, published artist credit, artists, genres, and Wikidata/MusicBrainz ids
-- **Artist** - Recording artists with hierarchical parent-child relationships (bands, side projects)
+- **Album** - Albums with ranking, a derived credit line, credited artists, genres, and Wikidata/MusicBrainz ids
+- **Artist** - Every act in `ArtistInfo.txt` - band, person, alias, joint act - keyed on
+  the provider's permanent `source_id`. Every artist has a slug and a page; there is
+  no parent FK (it was dropped in `0008`)
+- **ArtistRelation** - one tag from `ArtistInfo.txt`: `artist` is `kind` of `related`
+  (Prince and the Revolution is `P` of Prince). Rebuilt on every import
+- **AlbumCredit** - the through table of `Album.artists`, holding the credit order.
+  Read `album.credited_artists`, not `album.artists.all()`, which is alphabetical
 - **MusicGenre** - Hierarchical music genres with path denormalization
 - **MusicPublication/MusicList/AlbumListMembership** - Album rankings and positions within them
 - **WikipediaAlbumData/DiscogsAlbumData/MusicBrainzAlbumData** - fetched metadata on
@@ -856,31 +863,40 @@ metadata, now display-only.
 
 ## Music Data Import
 
-The album rankings come from three TSV files, the same shape the games importer
-takes (`acclaimedgames/test_input_files/music/` holds the current release):
+The album rankings come from four TSV files, three of them the same shape the
+games importer takes (`acclaimedgames/test_input_files/music/` holds the current
+release):
 
 | File | Columns |
 |---|---|
+| `ArtistInfo.txt` | id, name, tags, wikidata_id |
 | `ListData.txt` | publisher, year, name, url |
-| `WebRankings.txt` | rank, name, artist_credit, year, wikidata_ids |
+| `WebRankings.txt` | rank, name, artist_ids, year, wikidata_ids |
 | `ListPositions.txt` | tab-separated `listIndex:position` pairs, one row per album in rank order |
 
 ```bash
 python manage.py import_music_data            # uses the checked-in release files
-python manage.py import_music_data --dry-run  # report inferred list types, change nothing
-python manage.py import_music_data --lists ... --albums ... --positions ...
+python manage.py import_music_data --dry-run  # report inferred list types and tagged artists
+python manage.py import_music_data --artists ... --lists ... --albums ... --positions ...
 ```
 
-The import replaces all music ranking data in one transaction. Two details differ
-from the games files:
+The import replaces all music ranking data in one transaction, artists first.
+Three details differ from the games files:
 
 - **No list type column.** `infer_list_type()` derives A/D/E/M from each title.
   Decade and era wording is matched before all-time wording, and an unqualified
   title falls back to all-time, since every list in this corpus is retrospective.
   Check the printed classification and correct any list in the admin.
-- **Artist credits may contain commas that are not separators.**
-  `split_artist_credit()` splits on commas except for acts listed in
-  `ARTISTS_WITH_COMMAS` (`Crosby, Stills & Nash` and friends).
+- **Artists are the provider's, by id.** `ArtistInfo.txt` lists every act
+  under a permanent index (sparse; QID optional), and `WebRankings.txt` column 3
+  is comma-separated ids in credit order, blank for a compilation. The text
+  credit is no longer supplied: `Album.artist_credit` is derived as "A",
+  "A & B", "A, B & C" or "Various Artists" (`artist_graph.credit_text`). A
+  non-numeric column 3 fails with a message naming it as a pre-2026-10 file.
+- **Artists are upserted, not replaced.** Matched on `source_id`; a row that
+  predates the ids is adopted by Wikidata id, exact name, then normalized name,
+  so pks, slugs and `?artists=` links survive. A slug is never rewritten. An
+  artist the file does not list is deleted.
 
 Unranked lists record every member at rank 1, matching the games convention.
 
@@ -906,11 +922,36 @@ The import stamps `SiteMetadata` under the `music` key, which the rankings
 heading reads as "Updated: ...". `SiteMetadata` is keyed per section, so
 games and music carry their own dates.
 
-A new release can introduce an act whose own name contains a comma - the 2026
-release added "Tyler, the Creator" - which `split_artist_credit` would
-otherwise break into two artists. `ARTISTS_WITH_COMMAS` is the list, and
-`test_every_real_comma_credit_parses_as_expected` names the acts rather than
-counting them, so the next one fails loudly instead of quietly splitting.
+### Artist relations and the roll-up
+
+The tags in `ArtistInfo.txt` are `KIND:id`, comma-separated: **A** alias of,
+**P** project of, **C** collaboration with, **F** featuring, **B** backed by.
+The first three are *principal* (`config.PRINCIPAL_RELATION_KINDS`): the
+artist's albums are the related artist's too, followed transitively. The last
+two are *supporting*: the related artist only *appears on* them.
+
+So Purple Rain (credited to Prince and the Revolution, `P:Prince`) is on both
+pages; Déjà Vu (CSNY, `P:CSN,C:Neil Young`) is CSN's and Neil Young's; Crazy
+Horse, featured on Neil Young & Crazy Horse, owns nothing and has only an
+"Appears on" list. `music.services.artist_graph.ArtistGraph` answers all of
+it from two small queries, reusing `core.services.genre_tree.descendants_by_id`
+for the walk - nothing cached, as for genres.
+
+Where it shows: an artist page lists its own and rolled-up albums, "Also
+credited as" its derived acts, a "Project of Prince"-style line from its own
+tags (`{% artist_relations %}`), and "Appears on". The artist list, sitemap and
+hero count take only artists that own an album. Album detail spells out a
+derived credit in a "Credit:" row and its "More by" names the roots
+(`ArtistGraph.roots`) - Purple Rain's is Prince.
+
+**`?artists=` expands on both sides**, as genres do: `apply_album_filters`
+through `ArtistGraph.expand`, and `album-filter.js` `_expandArtists` from the
+`"d"` list each artist carries in `/api/music/all/`. The credit line is
+`artist_links` server-side and `_artistCreditHtml` client-side; keep their
+separators in step with `credit_separator`.
+
+The Wikidata pass no longer touches album credits. It reads each artist's
+MusicBrainz id (P434) off the artist's own QID and stores only that.
 
 ## Music Metadata Pipeline
 

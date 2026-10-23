@@ -146,10 +146,15 @@ class AdminChangelistTests(TestCase):
 
 
 class AdminInlineTests(TestCase):
-    def test_subsidiary_artist_inline_points_at_the_parent_fk(self):
-        inline = music_admin.SubsidiaryArtistInline
-        self.assertEqual(inline.model, models.Artist)
-        self.assertEqual(inline.fk_name, "parent")
+    def test_the_artist_relation_inline_is_read_only(self):
+        inline = music_admin.ArtistRelationInline(models.Artist, site)
+        self.assertEqual(inline.fk_name, "artist")
+        self.assertFalse(inline.has_add_permission(None))
+        self.assertFalse(inline.can_delete)
+        self.assertEqual(list(inline.readonly_fields), list(inline.fields))
+
+    def test_the_album_credit_inline_edits_the_through_rows(self):
+        self.assertEqual(music_admin.AlbumCreditInline.model, models.AlbumCredit)
 
     def test_genre_child_inline_points_at_the_parent_fk(self):
         inline = music_admin.MusicGenreChildInline

@@ -234,6 +234,25 @@ RANK_DISTRIBUTION_BIN_COUNT = 10
 SITE_METADATA_KEY = "music"
 
 # =============================================================================
+# Artist relations (ArtistInfo.txt tags)
+# =============================================================================
+
+# Tag kinds whose artist's albums also count as the related artist's: an
+# alias (Manitoba is Dan Snaith), a project (Prince and the Revolution is
+# Prince's) and a collaboration (CSNY is CSN's and Neil Young's). Followed
+# transitively by music.services.artist_graph.
+PRINCIPAL_RELATION_KINDS = frozenset({"A", "P", "C"})
+
+# Tag kinds that credit the related artist as appearing on the albums without
+# making them theirs: a featured guest (Nico on The Velvet Underground & Nico)
+# or a backing band (the Attractions).
+SUPPORTING_RELATION_KINDS = frozenset({"F", "B"})
+
+# The credit line of an album with no artist ids: the compilations and
+# soundtracks. Not linked, because there is no artist page behind it.
+VARIOUS_ARTISTS = "Various Artists"
+
+# =============================================================================
 # Ranking list controls
 # =============================================================================
 

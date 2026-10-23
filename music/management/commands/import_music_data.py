@@ -1,4 +1,4 @@
-"""Import the album rankings from the three TSV release files."""
+"""Import the album rankings from the four TSV release files."""
 
 from pathlib import Path
 
@@ -14,11 +14,17 @@ DEFAULT_DIR = Path(settings.BASE_DIR) / "acclaimedgames" / "test_input_files" / 
 
 class Command(BaseCommand):
     help = (
-        "Import album rankings from the lists, albums and positions TSV files. "
+        "Import album rankings from the artists, lists, albums and positions "
+        "TSV files. "
         "Replaces all existing music ranking data in a single transaction."
     )
 
     def add_arguments(self, parser):
+        parser.add_argument(
+            "--artists",
+            default=str(DEFAULT_DIR / "ArtistInfo.txt"),
+            help="TSV of id/name/tags/wikidata_id, one artist per row",
+        )
         parser.add_argument(
             "--lists",
             default=str(DEFAULT_DIR / "ListData.txt"),
@@ -27,7 +33,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--albums",
             default=str(DEFAULT_DIR / "WebRankings.txt"),
-            help="TSV of rank/name/artist/year/wikidata_ids, in rank order",
+            help="TSV of rank/name/artist_ids/year/wikidata_ids, in rank order",
         )
         parser.add_argument(
             "--positions",
@@ -42,7 +48,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         paths = {}
-        for key in ("lists", "albums", "positions"):
+        for key in ("artists", "lists", "albums", "positions"):
             path = Path(options[key])
             if not path.is_file():
                 raise CommandError(f"--{key} file not found: {path}")
@@ -53,20 +59,24 @@ class Command(BaseCommand):
             return
 
         with (
+            paths["artists"].open(encoding="utf-8-sig", newline="") as artists_file,
             paths["lists"].open(encoding="utf-8-sig", newline="") as lists_file,
             paths["albums"].open(encoding="utf-8-sig", newline="") as albums_file,
             paths["positions"].open(encoding="utf-8-sig") as positions_file,
         ):
             _, message = import_handler.import_batch(
-                lists_file, albums_file, positions_file
+                lists_file, albums_file, positions_file, artists_file
             )
 
         self._print_inferred_types()
         self.stdout.write(self.style.SUCCESS(message))
         self.stdout.write(
-            "Albums: {albums} | Lists: {lists} | Publications: {pubs} | "
+            "Albums: {albums} | Artists: {artists} ({relations} relations) | "
+            "Lists: {lists} | Publications: {pubs} | "
             "Memberships: {members}".format(
                 albums=models.Album.objects.count(),
+                artists=models.Artist.objects.count(),
+                relations=models.ArtistRelation.objects.count(),
                 lists=models.MusicList.objects.count(),
                 pubs=models.MusicPublication.objects.count(),
                 members=models.AlbumListMembership.objects.count(),
@@ -75,6 +85,16 @@ class Command(BaseCommand):
 
     def _report_dry_run(self, paths):
         """Show what would be imported without touching the database."""
+        with paths["artists"].open(encoding="utf-8-sig", newline="") as f:
+            artists = import_handler.parse_artists_file(f)
+        tagged = [row for row in artists if row[2]]
+        self.stdout.write(
+            f"Artists file: {len(artists)} artists, {len(tagged)} with relations"
+        )
+        for source_id, name, tags, _ in tagged:
+            described = ", ".join(f"{kind}:{target}" for kind, target in tags)
+            self.stdout.write(f"  {source_id:>5} {name} [{described}]")
+
         with paths["lists"].open(encoding="utf-8-sig", newline="") as f:
             rows = [line.rstrip("\r\n").split("\t") for line in f if line.strip()]
         self.stdout.write(f"Lists file: {len(rows)} rows")

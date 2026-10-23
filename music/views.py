@@ -19,12 +19,13 @@ like one site.
 from collections import defaultdict
 import csv
 import math
+from contextlib import ExitStack
 from io import TextIOWrapper
 from pathlib import Path
 
 from django.conf import settings
 from django.core.cache import cache
-from django.db.models import Count, F, Max, Min, Prefetch, Q
+from django.db.models import Count, F, Max, Prefetch, Q
 from django.db.models.expressions import OrderBy
 from django.db.models.functions import Lower
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -46,6 +47,7 @@ from music import config, models
 from music.access import MusicVisibleMixin
 from music.forms import MusicImportForm
 from music.services import caching, import_handler, landing_pages
+from music.services.artist_graph import ArtistGraph
 from core.services import ranking, titles
 from games.models import SiteMetadata
 from music.templatetags import music_filters
@@ -57,6 +59,7 @@ BUNDLED_RELEASE_DIR = (
     Path(settings.BASE_DIR) / "acclaimedgames" / "test_input_files" / "music"
 )
 BUNDLED_FILES = {
+    "artists_file": "ArtistInfo.txt",
     "lists_file": "ListData.txt",
     "albums_file": "WebRankings.txt",
     "positions_file": "ListPositions.txt",
@@ -93,14 +96,33 @@ def default_direction(sort):
     return "asc" if sort in ASCENDING_SORTS else "desc"
 
 
+# Sort keys for the artist list, which sorts in Python: its counts come from
+# the roll-up in music.services.artist_graph, not from a join. Each is the
+# primary key only; ties always fall back to the name, ascending.
 ARTIST_SORTS = {
-    "albums": ("albums_count", Lower("name")),
+    "albums": lambda artist: artist.albums_count,
     # An artist's best album, as the developer list's "Top Rank" sorts by a
     # developer's best game. A lower rank is better, so this one reads
     # "ascending" in the natural sense the other sorts are declared in.
-    "rank": ("best_rank", Lower("name")),
-    "name": (Lower("name"),),
+    "rank": lambda artist: artist.best_rank,
+    "name": lambda artist: artist.name.lower(),
 }
+
+
+def artist_relations_prefetch(path="relations"):
+    """An artist's relation tags with the artists they name.
+
+    What the ``artist_relations`` tag renders as "Project of Prince".
+    ``path`` reaches the relations from another model, as an album credit's
+    ``artist__relations``.
+    """
+    return Prefetch(
+        path,
+        queryset=models.ArtistRelation.objects.select_related("related").order_by(
+            "position"
+        ),
+    )
+
 
 # An artist page's albums. Both read ascending first - best first, oldest
 # first - so unlike default_direction() a year here starts at the debut.
@@ -359,7 +381,12 @@ def apply_album_filters(queryset, params, skip=(), user=None, descendants=None):
     if "artists" not in skip:
         artist_ids = _parse_id_list(params.get("artists"))
         if artist_ids:
-            queryset = queryset.filter(artists__id__in=artist_ids).distinct()
+            # Picking Prince includes Prince and the Revolution's records, as
+            # picking a genre includes its styles.
+            graph = ArtistGraph.load(with_credits=False)
+            queryset = queryset.filter(
+                artists__id__in=graph.expand(artist_ids)
+            ).distinct()
 
     if "genres" not in skip:
         genre_ids = _parse_id_list(params.get("genres"))
@@ -468,16 +495,21 @@ def _genre_counts(queryset, descendants=None):
 
 
 def _cached_artist_options():
-    """Return the artist filter options: every artist with at least one album."""
+    """Return the artist filter options: every artist with at least one album.
+
+    "Their" albums include those rolled up from projects and aliases, so the
+    counts are what ``?artists=`` finds.
+    """
     cache_key = config.CACHE_KEY_ARTIST_OPTIONS
     options = cache.get(cache_key)
     if options is None:
-        options = list(
-            models.Artist.objects.annotate(albums_count=Count("albums"))
-            .filter(albums_count__gt=0)
+        album_ids = ArtistGraph.load().album_ids_by_artist()
+        options = [
+            {**option, "albums_count": len(album_ids[option["id"]])}
+            for option in models.Artist.objects.filter(id__in=list(album_ids))
             .order_by(Lower("name"))
-            .values("id", "name", "slug", "albums_count")
-        )
+            .values("id", "name", "slug")
+        ]
         cache.set(cache_key, options, config.CACHE_TIMEOUT_24_HOURS)
     return options
 
@@ -565,10 +597,7 @@ def _cached_hero_stats():
     if stats is None:
         stats = {
             "album_count": models.Album.objects.count(),
-            "artist_count": models.Artist.objects.filter(parent__isnull=True)
-            .annotate(albums_count=Count("albums"))
-            .filter(albums_count__gt=0)
-            .count(),
+            "artist_count": len(ArtistGraph.load().album_ids_by_artist()),
             "list_count": models.MusicList.objects.count(),
             "publication_count": models.MusicPublication.objects.count(),
         }
@@ -1081,8 +1110,14 @@ class AlbumDetailView(MusicVisibleMixin, DetailView):
 
     def get_queryset(self):
         return models.Album.objects.prefetch_related(
-            "artists",
-            "artists__parent",
+            # The credit line, and the properties row that spells out how
+            # each credited act is made up.
+            Prefetch(
+                "credits",
+                queryset=models.AlbumCredit.objects.select_related(
+                    "artist"
+                ).prefetch_related(artist_relations_prefetch("artist__relations")),
+            ),
             "genres",
             Prefetch(
                 "lists",
@@ -1136,11 +1171,23 @@ class AlbumDetailView(MusicVisibleMixin, DetailView):
                 user=self.request.user, album=album
             ).exists()
 
-        if album.artists.exists():
+        credited = album.credited_artists
+        context["credits_have_relations"] = any(
+            artist.relations.all() for artist in credited
+        )
+        if credited:
+            # "More by" names the acts the credit rolls up into - Purple
+            # Rain's is Prince, not Prince and the Revolution - and lists
+            # everything that is theirs.
+            graph = ArtistGraph.load()
+            root_ids = graph.roots(artist.id for artist in credited)
+            roots = models.Artist.objects.in_bulk(root_ids)
+            context["more_by_artists"] = [roots[i] for i in root_ids if i in roots]
+            album_ids = set().union(*(graph.album_ids(i) for i in root_ids))
+            album_ids.discard(album.id)
             context["related_albums"] = (
-                models.Album.objects.filter(artists__in=album.artists.all())
-                .exclude(id=album.id)
-                .distinct()
+                models.Album.objects.filter(id__in=album_ids)
+                .with_relations()
                 .with_listen_status(self.request.user)
                 .order_by("rank")[:10]
             )
@@ -1166,42 +1213,68 @@ class ArtistListView(
         return super().get_template_names()
 
     def get_queryset(self):
-        qs = (
-            models.Artist.objects.annotate(
-                albums_count=Count("albums"),
-                # The artist's best album, for the "Top Rank" sort.
-                best_rank=Min("albums__rank"),
-            )
-            .filter(albums_count__gt=0)
-            .select_related("parent")
-            .prefetch_related(
-                "subsidiaries",
-                # Both row halves read `artist.albums.first` for the top
-                # album, and the desktop one then reads its `thumbnail`,
-                # which goes through `primary_musicbrainz_album_data`. Left
-                # unprefetched that is two album selects and one metadata
-                # select per artist - 300 queries for a 100-row page.
-                Prefetch(
-                    "albums",
-                    queryset=models.Album.objects.select_related(
-                        "primary_musicbrainz_album_data"
-                    ).order_by("rank"),
-                ),
-            )
-        )
+        """Every artist with an album of their own, sorted in Python.
 
+        The counts include albums rolled up from projects and aliases (see
+        ``music.services.artist_graph``), which no single join expresses, so
+        this returns a list. About six hundred artists; paging a list that
+        size costs less than the queries a SQL version would need.
+
+        A search also finds the acts that only feature on or back other
+        records (Crazy Horse): someone typing the name wants its page. They
+        follow every owner, whatever the sort, since they have no albums or
+        rank to sort by. Browsing without a search leaves them out.
+        """
+        graph = ArtistGraph.load()
+        album_ids = graph.album_ids_by_artist()
         q = self.request.GET.get("q")
+        appears_on = graph.appears_on_by_artist() if q else {}
+        album_ranks = dict(models.Album.objects.values_list("id", "rank"))
+
+        qs = models.Artist.objects.filter(
+            id__in=list(set(album_ids) | set(appears_on))
+        ).prefetch_related(artist_relations_prefetch())
         if q:
             qs = qs.filter(name__icontains=q)
 
+        artists, appearing = [], []
+        best_album_ids = {}
+        for artist in qs:
+            ids = album_ids.get(artist.id)
+            artist.appears_on_count = len(appears_on.get(artist.id, ()))
+            if not ids:
+                artist.albums_count = 0
+                artist.best_rank = None
+                artist.top_album = None
+                appearing.append(artist)
+                continue
+            artist.albums_count = len(ids)
+            best_album_ids[artist.id] = min(ids, key=album_ranks.__getitem__)
+            artist.best_rank = album_ranks[best_album_ids[artist.id]]
+            artists.append(artist)
+
+        # Both row halves show the top album and the desktop one its cover,
+        # which goes through `primary_musicbrainz_album_data`: one query for
+        # every artist's, rather than three per artist.
+        top_albums = models.Album.objects.select_related(
+            "primary_musicbrainz_album_data"
+        ).in_bulk(set(best_album_ids.values()))
+        for artist in artists:
+            artist.top_album = top_albums[best_album_ids[artist.id]]
+
         sort = self.request.GET.get("sort", "albums")
-        return _apply_sort(
-            qs,
-            ARTIST_SORTS,
-            sort,
-            self.request.GET.get("dir") or default_direction(sort),
-            default="albums",
+        if sort not in ARTIST_SORTS:
+            sort = "albums"
+        direction = self.request.GET.get("dir") or default_direction(sort)
+        # Two stable passes: the name tiebreaker first, then the primary key
+        # in the requested direction, which leaves ties in name order.
+        artists.sort(key=ARTIST_SORTS["name"])
+        if sort != "name" or direction == "desc":
+            artists.sort(key=ARTIST_SORTS[sort], reverse=direction == "desc")
+        appearing.sort(
+            key=lambda artist: (-artist.appears_on_count, artist.name.lower())
         )
+        return artists + appearing
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -1240,30 +1313,47 @@ class ArtistDetailView(MusicVisibleMixin, HTMXPartialMixin, DetailView):
         self.album_sort = sort if sort in ARTIST_ALBUM_SORTS else "rank"
         self.album_dir = "desc" if self.request.GET.get("dir") == "desc" else "asc"
         return models.Artist.objects.prefetch_related(
+            artist_relations_prefetch(),
             Prefetch(
-                "subsidiaries",
-                queryset=models.Artist.objects.order_by("name"),
+                "inbound_relations",
+                queryset=models.ArtistRelation.objects.filter(
+                    kind__in=config.PRINCIPAL_RELATION_KINDS
+                )
+                .select_related("artist")
+                .order_by(Lower("artist__name")),
+                to_attr="derived_relations",
             ),
-            Prefetch(
-                "albums",
-                queryset=_apply_sort(
-                    models.Album.objects.with_relations()
-                    .with_list_count()
-                    .with_listen_status(self.request.user),
-                    ARTIST_ALBUM_SORTS,
-                    self.album_sort,
-                    self.album_dir,
-                    default="rank",
-                ),
-            ),
+        )
+
+    def _albums(self, album_ids, sort="rank", direction="asc"):
+        return list(
+            _apply_sort(
+                models.Album.objects.filter(id__in=album_ids)
+                .with_relations()
+                .with_list_count()
+                .with_listen_status(self.request.user),
+                ARTIST_ALBUM_SORTS,
+                sort,
+                direction,
+                default="rank",
+            )
         )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         artist = context["artist"]
-        albums = list(artist.albums.all())
+        graph = ArtistGraph.load()
+        # Their own albums - credited, or rolled up from a project or alias -
+        # and, apart, the ones they only feature on or back.
+        albums = self._albums(
+            graph.album_ids(artist.id), self.album_sort, self.album_dir
+        )
         context["artist_albums"] = albums
         context["albums_count"] = len(albums)
+        context["appears_on_albums"] = self._albums(graph.appears_on_ids(artist.id))
+        context["also_credited_as"] = [
+            relation.artist for relation in artist.derived_relations
+        ]
         # The best album whatever order the rows are in.
         context["best_album"] = min(albums, key=lambda a: a.rank, default=None)
         context["current_sort"] = self.album_sort
@@ -1544,29 +1634,29 @@ class MusicImportView(StaffOnlyMixin, View):
                 raise FileNotFoundError(
                     "Bundled release files are missing: " + ", ".join(missing)
                 )
-            with (
-                (BUNDLED_RELEASE_DIR / BUNDLED_FILES["lists_file"]).open(
-                    encoding="utf-8-sig", newline=""
-                ) as lists_file,
-                (BUNDLED_RELEASE_DIR / BUNDLED_FILES["albums_file"]).open(
-                    encoding="utf-8-sig", newline=""
-                ) as albums_file,
-                (BUNDLED_RELEASE_DIR / BUNDLED_FILES["positions_file"]).open(
-                    encoding="utf-8-sig"
-                ) as positions_file,
-            ):
-                _, message = import_handler.import_batch(
-                    lists_file, albums_file, positions_file
-                )
+            with ExitStack() as stack:
+                # Keyed by field name, which is also import_batch's keyword.
+                # The positions file is read by line, not by csv, so it is
+                # opened without newline="".
+                files = {
+                    field: stack.enter_context(
+                        (BUNDLED_RELEASE_DIR / name).open(
+                            encoding="utf-8-sig",
+                            newline=None if field == "positions_file" else "",
+                        )
+                    )
+                    for field, name in BUNDLED_FILES.items()
+                }
+                _, message = import_handler.import_batch(**files)
         else:
-            wrappers = [
-                TextIOWrapper(data[field], encoding="utf-8-sig", newline="")
+            wrappers = {
+                field: TextIOWrapper(data[field], encoding="utf-8-sig", newline="")
                 for field in MusicImportForm.FILE_FIELDS
-            ]
+            }
             try:
-                _, message = import_handler.import_batch(*wrappers)
+                _, message = import_handler.import_batch(**wrappers)
             finally:
-                for wrapper in wrappers:
+                for wrapper in wrappers.values():
                     wrapper.detach()
 
         _invalidate_music_caches()
@@ -1608,6 +1698,7 @@ def _music_counts():
     return {
         "albums": models.Album.objects.count(),
         "artists": models.Artist.objects.count(),
+        "artist_relations": models.ArtistRelation.objects.count(),
         "lists": models.MusicList.objects.count(),
         "publications": models.MusicPublication.objects.count(),
         "memberships": models.AlbumListMembership.objects.count(),

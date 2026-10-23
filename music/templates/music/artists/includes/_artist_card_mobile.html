@@ -7,9 +7,12 @@
             {% if artist.slug %}
             <a href="{{ artist.get_absolute_url }}" class="link link-accent font-semibold truncate">{{ artist.name }}</a>
             {% else %}
-            <span class="font-semibold truncate">{{ artist|artist_display_name }}</span>
+            <span class="font-semibold truncate">{{ artist.name }}</span>
             {% endif %}
-            {% with best=artist.albums.first %}
+            {% if artist.relations.all %}
+            <div class="text-xs text-base-content/70 truncate">{% artist_relations artist %}</div>
+            {% endif %}
+            {% with best=artist.top_album %}
             {% if best %}
             <div class="text-xs text-base-content/70 truncate">
                 Best: {{ best.name }} (#{{ best.rank }})
@@ -18,7 +21,7 @@
             {% endwith %}
         </div>
         <span class="tabular-nums text-sm whitespace-nowrap shrink-0">
-            {{ artist.albums_count }} album{{ artist.albums_count|pluralize }}
+            {% artist_summary artist.albums_count artist.appears_on_count %}
         </span>
     </div>
 </div>

@@ -275,26 +275,38 @@ class AlbumListRenderer extends BaseMediaListRenderer {
     }
 
     /**
-     * The artists as links, falling back to the published credit.
+     * The credit line as links, in credit order: "A", "A & B", "A, B & C".
      *
-     * Mirrors the `artist_links` template tag: an album whose credit was
-     * never parsed into artists, or whose artists have no slug, shows the
-     * published text rather than nothing.
+     * Mirrors the `artist_links` template tag and
+     * `music.services.artist_graph.credit_separator`. An album with no
+     * credited artist (a compilation) shows its credit text - "Various
+     * Artists" - unlinked; an artist without a slug shows as plain text.
      * @private
      * @returns {string} HTML
      */
     _artistCreditHtml(album) {
-        const linkable = album.artists.filter(artist => artist.s);
-        if (!linkable.length) {
+        const artists = album.artists || [];
+        if (!artists.length) {
             return this._escapeHtml(album.artistCredit || '');
         }
-        const separator = '<span class="text-base-content/30">, </span>';
-        return linkable
-            .map(artist =>
-                `<a href="/music/artists/${encodeURIComponent(artist.s)}/" ` +
-                `class="link link-hover">${this._escapeHtml(artist.n)}</a>`
-            )
-            .join(separator);
+        return artists
+            .map((artist, index) => {
+                let separator = '';
+                if (index === artists.length - 1 && index > 0) {
+                    separator = ' & ';
+                } else if (index > 0) {
+                    separator = ', ';
+                }
+                const prefix = separator
+                    ? `<span class="text-base-content/30">${this._escapeHtml(separator)}</span>`
+                    : '';
+                const name = this._escapeHtml(artist.n);
+                if (!artist.s) return prefix + name;
+                return prefix +
+                    `<a href="/music/artists/${encodeURIComponent(artist.s)}/" ` +
+                    `class="link link-hover">${name}</a>`;
+            })
+            .join('');
     }
 
     /**

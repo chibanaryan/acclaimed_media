@@ -47,7 +47,20 @@ class MusicDataMixin(StaffUserTestMixin):
             name="The Beatles", slug="the-beatles"
         )
         self.young = models.Artist.objects.create(name="Neil Young", slug="neil-young")
-        self.horse = models.Artist.objects.create(name="Crazy Horse", parent=self.young)
+        self.horse = models.Artist.objects.create(
+            name="Crazy Horse", slug="crazy-horse"
+        )
+        # As ArtistInfo.txt has it: the joint act is a project of Neil Young,
+        # featuring Crazy Horse.
+        self.young_and_horse = models.Artist.objects.create(
+            name="Neil Young & Crazy Horse", slug="neil-young-crazy-horse"
+        )
+        models.ArtistRelation.objects.create(
+            artist=self.young_and_horse, related=self.young, kind="P"
+        )
+        models.ArtistRelation.objects.create(
+            artist=self.young_and_horse, related=self.horse, kind="F", position=1
+        )
         self.rock = models.MusicGenre.objects.create(name="Rock")
 
         self.revolver = models.Album.objects.create(
@@ -59,10 +72,10 @@ class MusicDataMixin(StaffUserTestMixin):
         self.rust = models.Album.objects.create(
             name="Rust Never Sleeps",
             rank=2,
-            artist_credit="Neil Young, Crazy Horse",
+            artist_credit="Neil Young & Crazy Horse",
             year_released=1979,
         )
-        self.rust.artists.set([self.young, self.horse])
+        self.rust.artists.set([self.young_and_horse])
 
         self.kid_a = models.Album.objects.create(
             name="Kid A", rank=3, artist_credit="Radiohead", year_released=2000
@@ -153,6 +166,23 @@ class AlbumHomePageViewTests(MusicDataMixin, TestCase):
             reverse("music:home"), {"artists": str(self.beatles.id)}
         )
         self.assertEqual([a.name for a in response.context["albums"]], ["Revolver"])
+
+    def test_the_artist_filter_includes_what_rolls_up_into_the_artist(self):
+        # Rust Never Sleeps is credited to Neil Young & Crazy Horse, a project
+        # of Neil Young's, so filtering by him finds it - as picking a genre
+        # finds its styles.
+        response = self.client.get(
+            reverse("music:home"), {"artists": str(self.young.id)}
+        )
+        self.assertEqual(
+            [a.name for a in response.context["albums"]], ["Rust Never Sleeps"]
+        )
+
+    def test_the_artist_filter_leaves_out_a_featured_act(self):
+        response = self.client.get(
+            reverse("music:home"), {"artists": str(self.horse.id)}
+        )
+        self.assertEqual(list(response.context["albums"]), [])
 
     def test_genre_filter(self):
         response = self.client.get(reverse("music:home"), {"genres": str(self.rock.id)})
@@ -476,6 +506,49 @@ class AlbumDetailViewTests(MusicDataMixin, TestCase):
         response = self.client.get(self.revolver.get_absolute_url())
         self.assertEqual(list(response.context["related_albums"]), [other])
 
+    def test_more_by_names_the_act_a_project_rolls_up_into(self):
+        # Rust is credited to Neil Young & Crazy Horse; "More by" is Neil
+        # Young's, and lists everything that is his.
+        harvest = models.Album.objects.create(name="Harvest", rank=9)
+        harvest.artists.set([self.young])
+        response = self.client.get(self.rust.get_absolute_url())
+        self.assertEqual(response.context["more_by_artists"], [self.young])
+        self.assertEqual(list(response.context["related_albums"]), [harvest])
+        self.assertContains(response, "More by Neil Young<")
+
+    def test_more_by_joins_several_acts(self):
+        self.revolver.artists.set([self.beatles, self.young])
+        response = self.client.get(self.revolver.get_absolute_url())
+        self.assertContains(response, "More by The Beatles &amp; Neil Young")
+        self.assertEqual(list(response.context["related_albums"]), [self.rust])
+
+    def test_a_derived_credit_is_spelled_out(self):
+        response = self.client.get(self.rust.get_absolute_url())
+        self.assertTrue(response.context["credits_have_relations"])
+        self.assertContains(response, "Credit:")
+        self.assertContains(response, 'href="/music/artists/crazy-horse/"')
+
+    def test_a_plain_credit_is_not_spelled_out(self):
+        response = self.client.get(self.revolver.get_absolute_url())
+        self.assertFalse(response.context["credits_have_relations"])
+        self.assertNotContains(response, "Credit:")
+
+    def test_structured_data_names_each_credited_artist(self):
+        self.revolver.artists.set([self.beatles, self.young])
+        response = self.client.get(self.revolver.get_absolute_url())
+        self.assertContains(response, '"byArtist": [')
+        self.assertContains(
+            response,
+            '"url": "https://www.acclaimedvideogames.com/music/artists/neil-young/"',
+        )
+
+    def test_a_compilation_has_no_by_artist(self):
+        self.kid_a.artist_credit = "Various Artists"
+        self.kid_a.save()
+        response = self.client.get(self.kid_a.get_absolute_url())
+        self.assertNotContains(response, "byArtist")
+        self.assertContains(response, "Various Artists")
+
     def test_no_related_albums_key_without_artists(self):
         response = self.client.get(self.kid_a.get_absolute_url())
         self.assertIsNone(response.context.get("related_albums"))
@@ -563,10 +636,59 @@ class ArtistListViewTests(MusicDataMixin, TestCase):
         response = self.client.get(
             reverse("music:artist-list"), {"sort": "name", "dir": "asc"}
         )
+        # Crazy Horse only features on Neil Young & Crazy Horse's record, so
+        # it has no album of its own and is not listed.
         self.assertEqual(
             [a.name for a in response.context["artists"]],
-            ["Crazy Horse", "Neil Young", "The Beatles"],
+            ["Neil Young", "Neil Young & Crazy Horse", "The Beatles"],
         )
+
+    def test_counts_include_albums_rolled_up_from_a_project(self):
+        response = self.client.get(reverse("music:artist-list"))
+        artists = {a.name: a for a in response.context["artists"]}
+        self.assertEqual(artists["Neil Young"].albums_count, 1)
+        self.assertEqual(artists["Neil Young"].best_rank, 2)
+        self.assertEqual(artists["Neil Young"].top_album, self.rust)
+
+    def test_a_derived_act_shows_how_it_is_made_up(self):
+        response = self.client.get(reverse("music:artist-list"))
+        self.assertContains(response, "Project of")
+        self.assertContains(response, 'href="/music/artists/crazy-horse/"')
+
+    def test_sort_by_top_rank_and_by_name_descending(self):
+        response = self.client.get(reverse("music:artist-list"), {"sort": "rank"})
+        self.assertEqual(response.context["artists"][0].name, "The Beatles")
+        response = self.client.get(
+            reverse("music:artist-list"), {"sort": "name", "dir": "desc"}
+        )
+        self.assertEqual(response.context["artists"][0].name, "The Beatles")
+
+    def test_a_search_finds_an_act_that_only_appears(self):
+        # Browsing leaves Crazy Horse out (it owns no album); searching for it
+        # by name finds its page, after every act that owns albums.
+        response = self.client.get(reverse("music:artist-list"), {"q": "crazy"})
+        artists = response.context["artists"]
+        self.assertEqual(
+            [a.name for a in artists], ["Neil Young & Crazy Horse", "Crazy Horse"]
+        )
+        self.assertEqual(artists[1].albums_count, 0)
+        self.assertEqual(artists[1].appears_on_count, 1)
+        # The desktop count column, then the mobile card's summary.
+        self.assertContains(response, "appears on 1<")
+        self.assertContains(response, "appears on 1 album")
+
+    def test_an_appearing_act_follows_the_owners_whatever_the_sort(self):
+        for sort, direction in (("rank", "asc"), ("name", "desc"), ("albums", "asc")):
+            with self.subTest(sort=sort, direction=direction):
+                response = self.client.get(
+                    reverse("music:artist-list"),
+                    {"q": "crazy", "sort": sort, "dir": direction},
+                )
+                self.assertEqual(response.context["artists"][-1].name, "Crazy Horse")
+
+    def test_an_unknown_sort_falls_back_to_album_count(self):
+        response = self.client.get(reverse("music:artist-list"), {"sort": "nope"})
+        self.assertEqual(response.status_code, 200)
 
     def test_album_count_sort_keeps_the_name_tiebreak_ascending(self):
         # Two acts with one album each must come back A-Z, even though the
@@ -580,8 +702,8 @@ class ArtistListViewTests(MusicDataMixin, TestCase):
         self.assertEqual(response.context["current_q"], "neil")
         self.assertEqual(response.context["current_sort"], "albums")
         self.assertEqual(response.context["current_dir"], "desc")
-        self.assertEqual(response.context["total_count"], 1)
-        self.assertEqual(response.context["loaded_count"], 1)
+        self.assertEqual(response.context["total_count"], 2)
+        self.assertEqual(response.context["loaded_count"], 2)
         self.assertFalse(response.context["has_more"])
 
     def test_htmx_request_serves_the_results_partial(self):
@@ -690,10 +812,36 @@ class ArtistDetailViewTests(MusicDataMixin, TestCase):
         self.assertIsNone(response.context["best_album"])
         self.assertContains(response, "No ranked albums")
 
-    def test_subsidiary_acts_are_listed(self):
+    def test_a_projects_albums_are_the_artists_too(self):
         response = self.client.get(self.young.get_absolute_url())
-        self.assertContains(response, "Crazy Horse")
-        self.assertContains(response, "Related acts")
+        self.assertEqual(response.context["artist_albums"], [self.rust])
+        self.assertEqual(response.context["albums_count"], 1)
+        self.assertContains(response, "Also credited as")
+        self.assertContains(response, 'href="/music/artists/neil-young-crazy-horse/"')
+
+    def test_a_derived_act_says_how_it_is_made_up(self):
+        response = self.client.get(self.young_and_horse.get_absolute_url())
+        self.assertContains(response, "Project of")
+        self.assertContains(response, "featuring")
+        self.assertEqual(response.context["artist_albums"], [self.rust])
+        self.assertEqual(response.context["also_credited_as"], [])
+
+    def test_a_featured_act_lists_the_album_under_appears_on(self):
+        response = self.client.get(self.horse.get_absolute_url())
+        self.assertEqual(response.context["artist_albums"], [])
+        self.assertEqual(response.context["appears_on_albums"], [self.rust])
+        self.assertContains(response, "Appears on 1 ranked album")
+        # Its own album list and chart would only say it has none.
+        self.assertNotContains(response, "No ranked albums")
+        self.assertNotContains(response, "0 ranked albums")
+        self.assertNotContains(response, "Rank Distribution")
+
+    def test_an_artist_with_albums_mentions_its_appearances_too(self):
+        models.ArtistRelation.objects.create(
+            artist=self.beatles, related=self.young, kind="F"
+        )
+        response = self.client.get(self.young.get_absolute_url())
+        self.assertContains(response, "appears on 1 more")
 
     def test_external_links_render_when_ids_are_set(self):
         self.beatles.wikidata_id = "Q1299"
@@ -1603,7 +1751,7 @@ class ArtistDetailListenButtonTests(MusicDataMixin, TestCase):
         response = self.client.get(
             reverse("music:artist-detail", args=[self.beatles.slug])
         )
-        albums = list(response.context["artist"].albums.all())
+        albums = response.context["artist_albums"]
         self.assertTrue(albums)
         self.assertTrue(albums[0].is_listened_by_user)
 
@@ -1625,8 +1773,8 @@ class MusicQueryBudgetTests(MusicDataMixin, TestCase):
 
     # The `children.all()` lookup, which nothing else emits.
     GENRE_WALK = 'music_musicgenre"."parent_id" ='
-    # `artist.albums.first` against an unprefetched reverse M2M.
-    ALBUM_PER_ARTIST = 'music_album_artists"."artist_id" ='
+    # An artist's albums looked up one artist at a time.
+    ALBUM_PER_ARTIST = 'music_albumcredit"."artist_id" ='
     # A lazy load of the OneToOne `Album.thumbnail` reads: a lookup by pk.
     # Joined through `select_related` the row arrives with the album instead.
     # Matching the table alone would also catch the legitimate cover-art
@@ -1734,6 +1882,33 @@ class MusicQueryBudgetTests(MusicDataMixin, TestCase):
         sqls = self._capture(f"{reverse('music:artist-list')}?append=true&page=1")
         self.assertEqual(self._matching(sqls, self.ALBUM_PER_ARTIST, "LIMIT 1"), [])
         self.assertEqual(self._matching(sqls, self.METADATA_LAZY_LOAD), [])
+
+    def test_the_artist_page_cost_does_not_grow_with_its_album_count(self):
+        self._add_artists(1)
+        artist = models.Artist.objects.get(name__startswith="Budget Act")
+        self._capture(artist.get_absolute_url())
+        clear_all_caches()
+        before = self._capture(artist.get_absolute_url())
+        for index in range(10):
+            album = models.Album.objects.create(name=f"Extra {index}", rank=900 + index)
+            album.artists.set([artist])
+        clear_all_caches()
+        after = self._capture(artist.get_absolute_url())
+        self.assertEqual(len(after), len(before))
+
+    def test_the_album_page_cost_does_not_grow_with_more_by(self):
+        url = self.rust.get_absolute_url()
+        # One related album first: with none the "More by" query never runs.
+        models.Album.objects.create(name="Harvest", rank=899).artists.set([self.young])
+        self._capture(url)
+        clear_all_caches()
+        before = self._capture(url)
+        for index in range(10):
+            album = models.Album.objects.create(name=f"Young {index}", rank=900 + index)
+            album.artists.set([self.young])
+        clear_all_caches()
+        after = self._capture(url)
+        self.assertEqual(len(after), len(before))
 
     def test_the_bulk_payload_neither_walks_genres_nor_loads_covers_lazily(self):
         self._add_genres(5)

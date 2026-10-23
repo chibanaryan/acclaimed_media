@@ -1,0 +1,599 @@
+0	The Beatles		Q1299
+1	The Rolling Stones		Q11036
+2	Marvin Gaye		Q189758
+3	The Beach Boys		Q183048
+4	Joni Mitchell		Q205721
+5	Stevie Wonder		Q714
+6	Nirvana		Q11649
+7	Fleetwood Mac		Q106648
+8	Prince		Q7542
+9	Prince and the Revolution	P:8	Q519725
+10	Bob Dylan		Q392
+11	Lauryn Hill		Q214226
+12	Michael Jackson		Q2831
+13	Aretha Franklin		Q125121
+14	Public Enemy		Q209182
+15	The Clash		Q125603
+16	Kanye West		Q15935
+17	Kendrick Lamar		Q130798
+18	Radiohead		Q44190
+19	Bruce Springsteen		Q1225
+20	The Notorious B.I.G.		Q179157
+21	The Velvet Underground		Q103550
+22	Nico		Q44634
+23	Carole King		Q217787
+24	Patti Smith		Q557
+25	Wu-Tang Clan		Q52463
+26	D’Angelo		Q933598
+27	Jimi Hendrix		Q5928
+28	Miles Davis		Q93341
+29	Beyoncé		Q36153
+30	Amy Winehouse		Q15897
+31	Dr. Dre		Q6078
+32	Talking Heads		Q205001
+33	David Bowie		Q5383
+34	A Tribe Called Quest		Q300602
+35	Nas		Q194220
+36	Paul Simon		Q4028
+37	Ramones		Q483407
+38	Bob Marley and the Wailers		Q2525354
+39	OutKast		Q472595
+40	Jay-Z		Q62766
+41	Chuck Berry		Q5921
+42	James Brown		Q5950
+43	Pink Floyd		Q2306
+44	Liz Phair		Q258761
+45	The Band		Q600344
+46	Led Zeppelin		Q2331
+47	Van Morrison		Q272203
+48	Eric B. & Rakim		Q1351122
+49	Guns N' Roses		Q11895
+50	Steely Dan		Q852435
+51	The Famous Flames		Q304469
+52	John Coltrane		Q7346
+53	Kate Bush		Q636
+54	Alanis Morissette		Q130742
+55	N.W.A.		Q216856
+56	Neil Young		Q633
+57	My Bloody Valentine		Q841042
+58	Curtis Mayfield		Q310170
+59	The Who		Q93346
+60	Elvis Presley		Q303
+61	Frank Ocean		Q357645
+62	Sex Pistols		Q82545
+63	Sly and the Family Stone		Q1133807
+64	Dusty Springfield		Q219782
+65	AC/DC		Q27593
+66	John Lennon		Q1203
+67	Plastic Ono Band		Q731721
+68	The Doors		Q45354
+69	Erykah Badu		Q223875
+70	Missy Elliott		Q155079
+71	The Stooges		Q208767
+72	Drake		Q33240
+73	R.E.M.		Q134969
+74	Metallica		Q15920
+75	Lucinda Williams		Q256813
+76	Taylor Swift		Q26876
+77	De La Soul		Q685595
+78	The Allman Brothers Band		Q507327
+79	Hole		Q624790
+80	Television		Q1160206
+81	Fiona Apple		Q228968
+82	Lou Reed		Q189080
+83	Janet Jackson		Q131324
+84	Elton John		Q2808
+85	The Smiths		Q180598
+86	The Strokes		Q211583
+87	The Cure		Q484427
+88	Eagles		Q189635
+89	Elvis Costello		Q206939
+90	Nine Inch Nails		Q11647
+91	U2		Q396
+92	Beastie Boys		Q214039
+93	Mary J. Blige		Q228909
+94	Ray Charles		Q544387
+95	Queen		Q15862
+96	Portishead		Q191352
+97	Fugees		Q159329
+98	Funkadelic		Q523957
+99	Adele		Q23215
+100	Black Sabbath		Q47670
+101	Pixies		Q188464
+102	Eminem		Q5608
+103	Blondie		Q202741
+104	Jeff Buckley		Q215855
+105	John Prine		Q520296
+106	George Michael		Q130311
+107	The Pretenders		Q667389
+108	PJ Harvey		Q219772
+109	The Replacements		Q1066024
+110	Oasis		Q382890
+111	The Police		Q178095
+112	Pearl Jam		Q142701
+113	Crosby, Stills & Nash		Q733159
+114	Pulp		Q504464
+115	Johnny Cash		Q42775
+116	Depeche Mode		Q482964
+117	Billy Joel		Q194333
+118	Sonic Youth		Q188626
+119	Simon & Garfunkel		Q484918
+120	Rod Stewart		Q182655
+121	Otis Redding		Q217839
+122	Love		Q664248
+123	James Taylor		Q310300
+124	Cyndi Lauper		Q1545
+125	Red Hot Chili Peppers		Q10708
+126	Ice Cube		Q173637
+127	T. Rex		Q211770
+128	Sleater-Kinney		Q1891322
+129	Etta James		Q182725
+130	Creedence Clearwater Revival		Q192463
+131	Leonard Cohen		Q1276
+132	Robyn		Q229445
+133	The B-52s		Q950309
+134	Pavement		Q922445
+135	Sade		Q658182
+136	Björk		Q42455
+137	Nick Drake		Q211588
+138	Cat Stevens		Q154216
+139	Lil Wayne		Q15615
+140	Run-DMC		Q159351
+141	Joy Division		Q172763
+142	Nina Simone		Q174957
+143	Tom Petty		Q311655
+144	Grateful Dead		Q212533
+145	Elliott Smith		Q210428
+146	TLC		Q742804
+147	Raekwon		Q320167
+148	Rage Against the Machine		Q72092
+149	Madonna		Q1744
+150	Dixie Chicks		Q142636
+151	Wilco		Q637771
+152	Derek and the Dominos		Q724406
+153	Little Richard		Q82222
+154	Rihanna		Q36844
+155	Tom Petty and the Heartbreakers	P:143	Q2117272
+156	Tori Amos		Q193744
+157	Daft Punk		Q185828
+158	Willie Nelson		Q206112
+159	Kraftwerk		Q44892
+160	Boogie Down Productions		Q892968
+161	Sam Cooke		Q295919
+162	Massive Attack		Q357418
+163	The Zombies		Q1163207
+164	Cocteau Twins		Q588820
+165	LL Cool J		Q52440
+166	Green Day		Q47871
+167	Whitney Houston		Q34389
+168	Buzzcocks		Q939329
+169	Devo		Q908848
+170	Herbie Hancock		Q105875
+171	Tracy Chapman		Q187814
+172	Dolly Parton		Q180453
+173	Janis Joplin		Q1514
+174	The Slits		Q677115
+175	New Order		Q214990
+176	Minutemen		Q1364766
+177	Randy Newman		Q318475
+178	Kacey Musgraves		Q2783855
+179	Gang of Four		Q1130624
+180	The Byrds		Q211526
+182	50 Cent		Q6060
+183	Harry Nilsson		Q281034
+184	Frank Sinatra		Q40912
+185	Donna Summer		Q908933
+186	Big Star		Q72608
+187	The Modern Lovers		Q2294322
+188	Destiny's Child		Q153056
+189	Van Halen		Q190155
+190	The Breeders		Q1332134
+191	Weezer		Q209956
+192	Crazy Horse		Q951532
+193	Peter Gabriel		Q175195
+194	B. B. King		Q188969
+196	New York Dolls		Q830586
+198	Kiss		Q124179
+199	Al Green		Q313260
+200	Brian Eno		Q569003
+201	Wire		Q1135620
+202	Solange		Q231228
+203	Aaliyah		Q11617
+204	Rosalía		Q28843759
+205	Billie Holiday		Q104358
+206	The Stone Roses		Q29606
+207	X		Q1570087
+208	Lana Del Rey		Q37150
+209	Coldplay		Q45188
+210	Vampire Weekend		Q816452
+211	DJ Shadow		Q217716
+213	Santana		Q873384
+214	Roxy Music		Q334648
+215	Snoop Dogg		Q6096
+216	The Smashing Pumpkins		Q184217
+217	Toots and the Maytals		Q845465
+218	Arctic Monkeys		Q170599
+219	GZA		Q361657
+220	Gillian Welch		Q442207
+221	MC5		Q830316
+222	SZA		Q16210722
+223	The Cars		Q858388
+224	X-Ray Spex		Q1151661
+225	Dr. John		Q511074
+226	Tom Waits		Q184805
+230	Parliament		Q1892425
+231	Madvillain		Q370373
+232	Aerosmith		Q126826
+233	George Harrison		Q2643
+235	Big Brother and the Holding Company		Q858688
+236	Isaac Hayes		Q206439
+237	Neutral Milk Hotel		Q849875
+238	Yeah Yeah Yeahs		Q641858
+239	Rush		Q203871
+240	Charles Mingus		Q107432
+241	Lynyrd Skynyrd		Q158462
+242	Tame Impala		Q9619
+243	The Kinks		Q188713
+244	J Dilla		Q352218
+248	Todd Rundgren		Q364875
+249	Billie Eilish		Q29564107
+250	The Raincoats		Q2581513
+251	Brian Wilson		Q313013
+252	The Go-Go's		Q1533339
+253	Fela Kuti		Q313868
+254	Ghostface Killah		Q323463
+255	Anita Baker		Q255697
+256	The Magnetic Fields		Q32542
+257	Motörhead		Q19697
+258	Smokey Robinson & The Miracles		Q47169080
+259	Chic		Q516712
+260	The Meters		Q1887369
+261	The Roots		Q1052139
+262	Ornette Coleman		Q208797
+263	Dire Straits		Q50040
+265	Earth, Wind & Fire		Q28974
+266	M.I.A.		Q204019
+267	Yo La Tengo		Q221021
+268	Beck		Q11901
+269	Hüsker Dü		Q862223
+270	Four Tops		Q653480
+272	Los Lobos		Q370400
+274	LCD Soundsystem		Q45752
+275	Pet Shop Boys		Q485625
+276	2Pac		Q6107
+277	Gorillaz		Q189991
+278	Blur		Q485820
+282	Yes		Q184386
+283	Alice Coltrane		Q238243
+284	The White Stripes		Q268160
+285	Paul McCartney		Q2599
+286	Linda McCartney		Q228899
+287	Roberta Flack		Q231484
+288	Can		Q170132
+289	Bo Diddley		Q208881
+290	Sinéad O'Connor		Q193982
+291	Jason Isbell		Q6162757
+293	Lorde		Q13476175
+294	Bon Iver		Q357340
+295	The Flying Burrito Brothers		Q200769
+296	Laura Nyro		Q234861
+297	The Isley Brothers		Q178134
+299	Maxwell		Q1378643
+300	Manu Chao		Q207898
+302	Jefferson Airplane		Q488260
+305	Sparks		Q1344131
+306	Howlin' Wolf		Q44780
+309	Belle and Sebastian		Q691568
+310	The Pharcyde		Q1856396
+311	Lady Gaga		Q19848
+312	Richard Thompson		Q539955
+314	Black Flag		Q464476
+317	Bonnie Raitt		Q234693
+318	The Ronettes		Q530886
+321	Suicide		Q285108
+322	Arcade Fire		Q58608
+326	ABBA		Q18233
+330	Hank Williams		Q206181
+331	Buddy Holly		Q5977
+333	The Temptations		Q846373
+334	Robert Johnson		Q192133
+335	Muddy Waters		Q220707
+336	The Supremes		Q218837
+340	Duke Ellington		Q4030
+341	The Crickets		Q2143703
+349	Ella Fitzgerald		Q1768
+350	Marty Robbins		Q919565
+358	Stan Getz		Q30587
+361	João Gilberto		Q192359
+365	The Sonics		Q904921
+366	Bert Jansch		Q332953
+368	Monks		Q702634
+369	The Mamas & the Papas		Q211277
+371	The Mothers of Invention	P:413	Q530362
+372	The 13th Floor Elevators		Q861190
+373	John Mayall & the Bluesbreakers		Q886072
+374	Eric Clapton		Q48187
+375	The Yardbirds		Q192725
+378	Buffalo Springfield		Q48992
+379	Captain Beefheart		Q312264,Q820040
+380	Moby Grape		Q669759
+383	Tim Buckley		Q378727
+384	Cream		Q203736
+393	The Incredible String Band		Q1500510
+395	Os Mutantes		Q1325248
+397	The United States of America		Q166433
+403	Scott Walker		Q488603
+407	Quicksilver Messenger Service		Q1382357
+409	Fairport Convention		Q1145652
+411	King Crimson		Q189382
+413	Frank Zappa		Q127330
+415	The Carpenters		Q223495
+420	Syd Barrett		Q173061
+421	Jethro Tull		Q192353
+422	David Crosby		Q370560
+425	Serge Gainsbourg		Q1698
+426	Faces		Q1136388
+428	Gene Clark		Q471979
+431	Milton Nascimento		Q542847
+432	Lô Borges		Q6131372
+436	War		Q2295871
+438	Hawkwind		Q285966
+439	John Cale		Q45909
+440	Genesis		Q151012
+441	John Martyn		Q472578
+442	Faust		Q679697
+443	Mott the Hoople		Q1126287
+446	ZZ Top		Q136591
+447	Wings		Q622988
+450	Shuggie Otis		Q939121
+451	Tangerine Dream		Q153616
+456	Robert Wyatt		Q312693
+457	Gram Parsons		Q438124
+459	Neu!		Q181874
+467	Jorge Ben		Q119015
+475	The Stranglers		Q1532854
+477	Iggy Pop		Q182665
+478	Meat Loaf		Q152929
+479	Ian Dury		Q354002
+480	Pere Ubu		Q1500073
+482	The Only Ones		Q1789260
+483	The Jam		Q916461
+487	Public Image Ltd		Q845265
+489	Throbbing Gristle		Q1165655
+490	Thin Lizzy		Q202314
+494	Siouxsie and the Banshees		Q323834
+495	Sister Sledge		Q1070743
+497	Germs		Q1850698
+499	The Fall		Q909916
+502	Marianne Faithfull		Q48280
+503	Cheap Trick		Q1068713
+506	The Specials		Q19057
+508	Dexys Midnight Runners		Q247259
+509	The Cramps		Q1361146
+510	Dead Kennedys		Q208211
+511	The Soft Boys		Q2706252
+512	Echo & the Bunnymen		Q925641
+516	Iron Maiden		Q42482
+520	Einstürzende Neubauten		Q11898
+524	David Byrne		Q336640
+526	The Human League		Q730158
+531	ABC		Q287078
+535	Donald Fagen		Q506554
+537	Orange Juice		Q1781317
+540	The Associates		Q743137
+541	Duran Duran		Q58381
+542	Violent Femmes		Q1134615
+543	Malcolm McLaren		Q325377
+545	The The		Q1354463
+546	The Blue Nile		Q1970440
+548	Eurythmics		Q207706
+549	Meat Puppets		Q1132613
+552	Minor Threat		Q81509
+554	Tina Turner		Q131814
+555	Lloyd Cole and the Commotions		Q6662342
+556	Youssou N’Dour		Q210734
+559	Tears for Fears		Q269091
+560	Prefab Sprout		Q1506813
+562	Big Black		Q572821
+564	The Pogues		Q48304
+565	The Jesus and Mary Chain		Q1126301
+567	Scritti Politti		Q1632762
+572	Talk Talk		Q595705
+575	Slayer		Q131231
+577	XTC		Q1413926
+578	Steve Earle		Q781634
+579	Bad Brains		Q798671
+581	Dinosaur Jr.		Q622944
+589	Napalm Death		Q321762
+597	Happy Mondays		Q1141495
+598	The Go-Betweens		Q1891138
+602	American Music Club		Q2458127
+603	Morrissey		Q202246
+606	Jane's Addiction		Q622947
+610	Queen Latifah		Q1112005
+611	Spacemen 3		Q1191761
+621	Fugazi		Q277865
+622	Soul II Soul		Q977786
+625	The La's		Q1860769
+629	Ride		Q4371
+636	Ice-T		Q309941
+637	Saint Etienne		Q1430158
+639	Slint		Q578979
+640	The KLF		Q741316
+641	Primal Scream		Q666697
+642	Teenage Fanclub		Q1515611
+643	Aphex Twin		Q223161
+646	The Lemonheads		Q166006
+648	Spiritualized		Q1144015
+649	Sugar		Q1760399
+653	Alice in Chains		Q484255
+654	Nick Cave and the Bad Seeds		Q1051182
+656	Suede		Q826255
+658	The Auteurs		Q144942
+659	The Afghan Whigs		Q1417587
+663	Orbital		Q515942
+665	The Boo Radleys		Q1778436
+672	Soundgarden		Q174817
+678	Manic Street Preachers		Q217025
+679	The Prodigy		Q7256860
+683	Tricky		Q313627
+685	The Chemical Brothers		Q208507
+686	Elastica		Q1060797
+687	Supergrass		Q1120684
+688	Guided by Voices		Q1472033
+690	The Verve		Q488916
+692	Goldie		Q507845
+693	Screaming Trees		Q1411035
+694	Super Furry Animals		Q1135582
+697	Stereolab		Q334652
+698	Tortoise		Q1412030
+704	Underworld		Q849429
+711	Buena Vista Social Club		Q842415
+712	Cornershop		Q1134101
+714	Roni Size & Reprazent		Q7314192
+715	System of a Down		Q45165
+718	Mercury Rev		Q583344
+719	Queens of the Stone Age		Q1243718
+720	Air		Q318452
+724	Boards of Canada		Q722778
+733	Moby		Q14045
+734	The Flaming Lips		Q523184
+736	Le Tigre		Q1431678
+737	Bonnie "Prince" Billy		Q709464
+739	Basement Jaxx		Q544018
+740	Sigur Rós		Q483828
+742	Ryan Adams		Q437970
+744	Lambchop		Q374679
+748	The Avalanches		Q2000851
+750	Silver Jews		Q2044501
+755	Dizzee Rascal		Q366506
+760	Rufus Wainwright		Q192402
+761	The Streets		Q316029
+764	Sufjan Stevens		Q319502
+765	Joanna Newsom		Q233061
+766	Justice		Q329178
+768	Fleet Foxes		Q852335
+770	TV on the Radio		Q829138
+771	Wild Beasts		Q1513716
+772	Animal Collective		Q547272
+773	The xx		Q869367
+774	Beach House		Q812842
+775	The Black Keys		Q606226
+777	Janelle Monáe		Q234356
+778	Deerhunter		Q1182499
+781	Hot Chip		Q877512
+784	FKA Twigs		Q15291033
+789	Travis Scott		Q13605596
+790	Burial		Q552245
+791	Tyler, the Creator		Q167635
+794	The Killers		Q220730
+798	The National		Q1142566
+800	Kurt Vile		Q984331
+802	MGMT		Q391969
+803	The Shins		Q58391
+804	Kings of Leon		Q192486
+806	Bill Callahan		Q862005
+808	Battles		Q811021
+809	Tindersticks		Q1320323
+811	Nancy Sinatra		Q233937
+812	Lee Hazlewood		Q364781
+814	Interpol		Q331790
+819	Bloc Party		Q205838
+822	St. Vincent		Q238795
+823	Metronomy		Q151783
+826	Alt-J		Q47996
+827	Danger Mouse		Q322915
+829	Arthur Russell		Q670277
+831	Aztec Camera		Q794148
+838	Grimes		Q117970
+842	Grace Jones		Q450429
+843	Franz Ferdinand		Q173180
+846	Bright Eyes		Q915714
+847	At the Drive-In		Q690904
+848	The Libertines		Q214350
+849	Modest Mouse		Q431355
+850	Terry Riley		Q365243
+855	Townes Van Zandt		Q740729
+857	Jason Molina		Q921679
+863	The Shangri-Las		Q129050
+864	Four Tet		Q959655
+867	Danny Brown		Q2337999
+868	Carly Rae Jepsen		Q52583
+870	Built to Spill		Q1003115
+871	The War on Drugs		Q14159626
+872	Vince Staples		Q16235863
+873	The Microphones		Q7751265
+874	Angelo Badalamenti		Q357014
+876	Death Cab for Cutie		Q16414
+877	The Dismemberment Plan		Q1986472
+879	Slowdive		Q1502037
+881	Eric Dolphy		Q367508
+883	Godspeed You! Black Emperor		Q181341
+884	This Heat		Q1789046
+887	Sophie		Q18161827
+888	Pharoah Sanders		Q470617
+890	Julee Cruise		Q272496
+891	The Hold Steady		Q1535768
+895	The Postal Service		Q1239214
+897	Anohni and the Johnsons		Q608208
+899	Robert Plant		Q428223
+900	Alison Krauss		Q371782
+902	Spoon		Q1155915
+903	Justin Timberlake		Q43432
+904	My Morning Jacket		Q684097
+905	Cat Power		Q232348
+909	Kamasi Washington		Q16221677
+922	Sun Kil Moon		Q4050372
+928	M83		Q615471
+931	Dirty Projectors		Q1154614
+932	Grizzly Bear		Q568617
+934	Oneohtrix Point Never		Q286346
+941	Destroyer		Q608248
+942	Chance the Rapper		Q12470060
+943	Run the Jewels		Q15052731
+945	Galaxie 500		Q176240
+950	Disclosure		Q1228440
+956	Broken Social Scene		Q616642
+959	The Knife		Q741471
+961	Panda Bear		Q2096837
+962	Clipse		Q744772
+963	Japandroids		Q720884
+964	Flying Lotus		Q139121
+971	Earl Sweatshirt		Q1033188
+975	James Blake		Q350362
+983	Shabazz Palaces		Q3481131
+991	Julia Holter		Q4499486
+1024	Steve Reich		Q262791
+1025	The Congos		Q1725152
+1026	The Pop Group		Q2166634
+1029	Manuel Göttsching		Q427429
+1032	Coil		Q1107195
+1033	The Feelies		Q1544817
+1036	Young Marble Giants		Q2164036
+1089	Daniel Lanois		Q935369
+1090	Roger Eno		Q1351281
+1097	Laurie Anderson		Q235066
+1120	Mazzy Star		Q1132765
+1148	Low		Q941559
+1181	Jamie xx		Q263726
+1183	Mitski		Q23761694
+1186	Tierra Whack		Q56292576
+1196	Courtney Barnett		Q16390683
+1198	Father John Misty		Q6107266
+1199	Cardi B		Q29033668
+1228	Sturgill Simpson		Q16736403
+1237	Pusha T		Q2329709
+1265	Deafheaven		Q5245804
+1273	Weyes Blood		Q26924937
+1277	Purple Mountains		Q67918706
+1525	Grandaddy		Q786623
+1612	Sun Ra		Q354508
+1661	David Sylvian		Q519273
+1662	Mary Margaret O'Hara		Q3850488
+2139	The Velvet Underground & Nico	P:21,F:22	
+2140	Richard and Linda Thompson	P:312	Q9310340
+2143	Songs: Ohia	P:857	
+2145	Crosby, Stills, Nash & Young	P:113,C:56	Q10461933
+2146	The Attractions		Q107119755
+2147	Elvis Costello and the Attractions	P:89,F:2146	Q7714866
+2153	Neil Young & Crazy Horse	P:56,F:192	

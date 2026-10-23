@@ -4,6 +4,7 @@
 {% block title %}{{ artist.name }} | Acclaimed Video Games{% endblock %}
 {% block meta_description %}{{ artist.name }} has {{ albums_count }} album{{ albums_count|pluralize }} in the acclaimed album rankings.{% endblock %}
 {% block og_title %}{{ artist.name }} | Acclaimed Video Games{% endblock %}
+{% block og_description %}{{ artist.name }} has {{ albums_count }} album{{ albums_count|pluralize }} in the acclaimed album rankings{% if best_album %}, the most acclaimed being {{ best_album.name }} at #{{ best_album.rank }}{% endif %}.{% endblock %}
 {% block twitter_title %}{{ artist.name }} | Acclaimed Video Games{% endblock %}
 
 {% block pre_alpine %}
@@ -20,29 +21,38 @@
     <span>{{ artist.name }}</span>
     {% if not MUSIC_ENABLED %}<span class="badge badge-warning badge-sm">Beta</span>{% endif %}
 </h1>
+{# How the act is made up, from ArtistInfo.txt: "Project of Prince". #}
+{% if artist.relations.all %}
+<p class="text-lg mb-1">{% artist_relations artist 'link link-accent' %}</p>
+{% endif %}
 <p class="text-base-content/70 mb-4">
+    {% if albums_count or not appears_on_albums %}
     {{ albums_count }} ranked album{{ albums_count|pluralize }}
     {% if best_album %}&middot; best is
     <a href="{{ best_album.get_absolute_url }}" class="link link-hover">{{ best_album.name }}</a>
     at #{{ best_album.rank }}{% endif %}
-    {% if artist.parent %}&middot; part of
-    {% if artist.parent.slug %}<a href="{{ artist.parent.get_absolute_url }}" class="link link-hover">{{ artist.parent.name }}</a>
-    {% else %}{{ artist.parent.name }}{% endif %}{% endif %}
+    {% if appears_on_albums %}&middot; appears on {{ appears_on_albums|length }} more{% endif %}
+    {% else %}
+    Appears on {{ appears_on_albums|length }} ranked album{{ appears_on_albums|length|pluralize }}
+    {% endif %}
 </p>
 
 </div>
-{% if rank_distribution %}
+{# The chart is of the artist's own albums, so an artist with none has no chart. #}
+{% if rank_distribution and albums_count %}
 <div class="hidden desktop:block" style="width: 357px; flex-shrink: 0;">
     {% include 'core/includes/_rank_distribution.html' %}
 </div>
 {% endif %}
 </div>
 
-{% if artist.subsidiaries.all %}
-<div class="mb-4">
-    <h2 class="text-sm font-semibold text-base-content/70 mb-1">Related acts</h2>
-    {% for sub in artist.subsidiaries.all %}
-    <span class="badge badge-outline badge-sm">{{ sub.name }}</span>
+{# The projects, aliases and collaborations whose albums count as this #}
+{# artist's too, which is why they are listed below. #}
+{% if also_credited_as %}
+<div class="mb-4 flex flex-wrap items-center gap-1">
+    <h2 class="text-sm font-semibold text-base-content/70 mr-1">Also credited as</h2>
+    {% for other in also_credited_as %}
+    <a href="{{ other.get_absolute_url }}" class="badge badge-outline opacity-80 hover:opacity-100 hover:badge-primary transition-colors">{{ other.name }}</a>
     {% endfor %}
 </div>
 {% endif %}
@@ -73,9 +83,24 @@
          defaultDir: 'asc',
          ascendingSorts: ['rank', 'year']
      })">
+{# An act that only features on or backs other records (Crazy Horse) has #}
+{# no albums of its own, so its page is the "Appears on" list alone. #}
+{% if artist_albums or not appears_on_albums %}
 <h2 class="text-2xl font-bold mb-4">Albums</h2>
 <div id="artist-album-results">
     {% include 'music/artists/includes/_artist_album_results.html' %}
 </div>
+{% endif %}
 </div>
+
+{# Records credited to an act this artist features on or backs: "The #}
+{# Velvet Underground & Nico" for Nico. Not theirs, so not in the count. #}
+{% if appears_on_albums %}
+<h2 class="text-2xl font-bold mt-6 mb-4">Appears on</h2>
+<div>
+    {% for album in appears_on_albums %}
+        {% include 'music/includes/_album_row.html' with item=album show_rank='alltime' year_text=album|release_date_label %}
+    {% endfor %}
+</div>
+{% endif %}
 {% endblock %}

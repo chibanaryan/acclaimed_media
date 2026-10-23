@@ -1,5 +1,26 @@
 # Developer Log
 
+## 2026-10-23
+
+- **Music artists come from the provider's `ArtistInfo.txt`.** The release
+  is now four files: every artist under a permanent id, with tags for how
+  it is made up (alias, project, collaboration, featuring, backed by), and
+  `WebRankings.txt` credits albums by artist id. The importer no longer
+  guesses artists by splitting credit text on commas, and the Wikidata pass
+  no longer rewrites credits; credit lines are derived ("Paul McCartney &
+  Wings", "Various Artists"). Artists upsert by id, so pages and links
+  survive imports. Migration `0008` drops `Artist.parent` for an
+  `ArtistRelation` table and puts credit order in an `AlbumCredit` through
+  table
+- **Artist pages roll up projects and aliases.** Purple Rain is on Prince's
+  page as well as Prince and the Revolution's; Déjà Vu on CSN's and Neil
+  Young's. Featured and backing acts get an "Appears on" list instead. Pages
+  show "Project of …" lines and "Also credited as" links, album pages spell
+  out a joint act's make-up and "More by" names the main artist, and
+  `?artists=` expands the same way on the server and in the browser
+- **Artist search finds acts that only appear on others' records**
+  (Crazy Horse), after the owners, labelled "appears on N albums"
+
 ## 2026-10-22
 
 - **Tidy the subscriber email for news posts.** The "Read More" button

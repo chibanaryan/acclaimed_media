@@ -9,11 +9,11 @@ sitemap class per request, so ``items()`` reads the flag live and
 
 from django.conf import settings
 from django.contrib.sitemaps import Sitemap
-from django.db.models import Count
 from django.urls import reverse
 
 from music import models
 from music.services import landing_pages
+from music.services.artist_graph import ArtistGraph
 
 
 class MusicSitemap(Sitemap):
@@ -77,18 +77,21 @@ class AlbumSitemap(MusicSitemap):
 
 
 class ArtistSitemap(MusicSitemap):
-    """Root artists with at least one ranked album, as the artist list shows."""
+    """Artists with at least one ranked album of their own, as the list shows.
+
+    An act that only features on or backs other records (Crazy Horse) has a
+    page, but a page of other acts' albums is left for the crawl to find.
+    """
 
     priority = 0.6
     changefreq = "monthly"
 
     def music_items(self):
+        album_ids = ArtistGraph.load().album_ids_by_artist()
         return (
-            models.Artist.objects.filter(parent__isnull=True)
+            models.Artist.objects.filter(id__in=list(album_ids))
             .exclude(slug__isnull=True)
             .exclude(slug="")
-            .annotate(albums_count=Count("albums"))
-            .filter(albums_count__gt=0)
             .order_by("name")
         )
 

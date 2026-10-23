@@ -163,95 +163,119 @@ class MusicGenreIconTests(TestCase):
         self.assertEqual(mismatched, [])
 
 
-class ArtistDisplayTests(TestCase):
-    def setUp(self):
-        self.parent = models.Artist.objects.create(name="Neil Young", slug="neil-young")
-
-    def test_a_root_artist_shows_its_bare_name(self):
-        self.assertEqual(music_filters.artist_display_name(self.parent), "Neil Young")
-
-    def test_a_subsidiary_is_qualified_by_its_parent(self):
-        child = models.Artist.objects.create(name="Crazy Horse", parent=self.parent)
-        self.assertEqual(
-            music_filters.artist_display_name(child), "Crazy Horse (Neil Young)"
-        )
-
-
-class FormatArtistListTests(TestCase):
-    def _artists(self, *names):
-        return [models.Artist(name=name) for name in names]
-
-    def test_no_artists_gives_an_empty_string(self):
-        self.assertEqual(music_filters.format_artist_list([]), "")
-
-    def test_one_artist(self):
-        self.assertEqual(
-            music_filters.format_artist_list(self._artists("Nico")), "Nico"
-        )
-
-    def test_two_artists_are_joined_with_an_ampersand(self):
-        self.assertEqual(
-            music_filters.format_artist_list(self._artists("Brian Eno", "David Byrne")),
-            "Brian Eno & David Byrne",
-        )
-
-    def test_three_artists_list_in_full(self):
-        self.assertEqual(
-            music_filters.format_artist_list(self._artists("A", "B", "C")),
-            "A, B & C",
-        )
-
-    def test_more_than_the_maximum_summarizes_the_tail(self):
-        self.assertEqual(
-            music_filters.format_artist_list(self._artists("A", "B", "C", "D", "E")),
-            "A, B, C & 2 more",
-        )
-
-    def test_the_maximum_is_configurable(self):
-        self.assertEqual(
-            music_filters.format_artist_list(self._artists("A", "B", "C"), 1),
-            "A & 2 more",
-        )
-
-
 class ArtistLinksTests(TestCase):
     def setUp(self):
         self.album = models.Album.objects.create(
-            name="Rust Never Sleeps",
-            rank=1,
-            artist_credit="Neil Young, Crazy Horse",
+            name="Apollo", rank=1, artist_credit="Brian Eno, Daniel Lanois & Roger Eno"
         )
 
-    def test_links_every_artist_with_a_slug(self):
-        young = models.Artist.objects.create(name="Neil Young", slug="neil-young")
-        horse = models.Artist.objects.create(name="Crazy Horse", slug="crazy-horse")
-        self.album.artists.set([young, horse])
+    def _credit(self, *names):
+        for position, name in enumerate(names):
+            artist = models.Artist.objects.create(
+                name=name, slug=name.lower().replace(" ", "-")
+            )
+            models.AlbumCredit.objects.create(
+                album=self.album, artist=artist, position=position
+            )
+
+    def test_links_every_credited_artist(self):
+        self._credit("Neil Young", "Crazy Horse")
         rendered = music_filters.artist_links(self.album)
         self.assertIn('href="/music/artists/neil-young/"', rendered)
         self.assertIn('href="/music/artists/crazy-horse/"', rendered)
-        self.assertIn("Neil Young", rendered)
-        self.assertIn("Crazy Horse", rendered)
 
-    def test_falls_back_to_the_raw_credit_when_no_artist_has_a_slug(self):
-        # A subsidiary artist has its slug cleared, so it cannot be linked.
-        young = models.Artist.objects.create(name="Neil Young", slug="neil-young")
-        horse = models.Artist.objects.create(name="Crazy Horse", parent=young)
-        self.album.artists.set([horse])
-        self.assertEqual(
-            music_filters.artist_links(self.album), "Neil Young, Crazy Horse"
-        )
+    def test_the_credit_style_and_order(self):
+        # Credit order, not alphabetical, joined "A, B & C" with the
+        # separators dimmed - what the client's _artistCreditHtml writes too.
+        self._credit("Roger Eno", "Daniel Lanois", "Brian Eno")
+        rendered = str(music_filters.artist_links(self.album))
+        self.assertLess(rendered.index("Roger Eno"), rendered.index("Daniel Lanois"))
+        self.assertLess(rendered.index("Daniel Lanois"), rendered.index("Brian Eno"))
+        self.assertIn('<span class="text-base-content/30">, </span>', rendered)
+        self.assertIn('<span class="text-base-content/30"> &amp; </span>', rendered)
 
-    def test_falls_back_to_the_raw_credit_with_no_artists_at_all(self):
-        self.assertEqual(
-            music_filters.artist_links(self.album), "Neil Young, Crazy Horse"
-        )
+    def test_two_artists_take_only_the_ampersand(self):
+        self._credit("Paul McCartney", "Wings")
+        rendered = str(music_filters.artist_links(self.album))
+        self.assertNotIn(", </span>", rendered)
+        self.assertIn(" &amp; </span>", rendered)
+
+    def test_a_compilation_shows_its_credit_text_unlinked(self):
+        self.album.artist_credit = "Various Artists"
+        self.assertEqual(music_filters.artist_links(self.album), "Various Artists")
+
+    def test_an_artist_without_a_slug_is_plain_text(self):
+        artist = models.Artist.objects.create(name="Unslugged")
+        models.AlbumCredit.objects.create(album=self.album, artist=artist)
+        rendered = str(music_filters.artist_links(self.album))
+        self.assertEqual(rendered, "Unslugged")
 
     def test_a_name_with_markup_characters_is_escaped(self):
         artist = models.Artist.objects.create(name="A & B <x>", slug="a-b")
-        self.album.artists.set([artist])
+        models.AlbumCredit.objects.create(album=self.album, artist=artist)
         rendered = music_filters.artist_links(self.album)
         self.assertIn("A &amp; B &lt;x&gt;", rendered)
         self.assertNotIn("<x>", rendered)
+
+
+class ArtistRelationsTagTests(TestCase):
+    def setUp(self):
+        self.act = models.Artist.objects.create(name="The Act", slug="the-act")
+
+    def _relate(self, kind, *names):
+        for name in names:
+            related = models.Artist.objects.create(
+                name=name, slug=name.lower().replace(" ", "-")
+            )
+            models.ArtistRelation.objects.create(
+                artist=self.act,
+                related=related,
+                kind=kind,
+                position=self.act.relations.count(),
+            )
+
+    def _render(self):
+        return str(music_filters.artist_relations(self.act))
+
+    def test_an_artist_with_no_relations_renders_nothing(self):
+        self.assertEqual(self._render(), "")
+
+    def test_a_project_links_its_owner(self):
+        self._relate("P", "Prince")
+        rendered = self._render()
+        self.assertTrue(rendered.startswith("Project of <a "))
+        self.assertIn('href="/music/artists/prince/"', rendered)
+
+    def test_an_alias(self):
+        self._relate("A", "Dan Snaith")
+        self.assertTrue(self._render().startswith("Alias of "))
+
+    def test_a_project_featuring_a_guest(self):
+        self._relate("P", "The Velvet Underground")
+        self._relate("F", "Nico")
+        rendered = self._render()
+        self.assertTrue(rendered.startswith("Project of "))
+        self.assertIn(", featuring <a ", rendered)
+
+    def test_a_backing_band(self):
+        self._relate("B", "The Attractions")
+        self.assertTrue(self._render().startswith("Backed by "))
+
+    def test_a_collaboration_beside_a_project_reads_as_with(self):
+        # CSNY: CSN's project, with Neil Young.
+        self._relate("P", "CSN")
+        self._relate("C", "Neil Young")
+        self.assertIn(", with <a ", self._render())
+
+    def test_a_collaboration_of_two_reads_as_between(self):
+        self._relate("C", "Bob Dylan", "The Band")
+        rendered = self._render()
+        self.assertTrue(rendered.startswith("Collaboration between "))
+        self.assertIn(" &amp; </span>", rendered)
+
+    def test_a_collaboration_with_one(self):
+        self._relate("C", "Bob Dylan")
+        self.assertTrue(self._render().startswith("Collaboration with "))
 
 
 class AlbumUrlTagTests(TestCase):

@@ -1,5 +1,5 @@
 {# One artist row in the desktop table. Props: artist #}
-{% load humanize %}
+{% load humanize music_filters %}
 <tr class="entity-row">
     <td class="py-3">
         {% if artist.slug %}
@@ -7,11 +7,11 @@
         {% else %}
         <span class="text-lg font-semibold">{{ artist.name }}</span>
         {% endif %}
-        {% if artist.parent %}
-        <div class="text-xs text-base-content/70">part of {{ artist.parent.name }}</div>
+        {% if artist.relations.all %}
+        <div class="text-xs text-base-content/70">{% artist_relations artist %}</div>
         {% endif %}
     </td>
-    {% with best=artist.albums.first %}
+    {% with best=artist.top_album %}
     <td class="text-center align-middle">
         {% if best %}
         <span class="text-accent font-bold text-xl tabular-nums">#{{ best.rank }}</span>
@@ -48,6 +48,11 @@
     </td>
     {% endwith %}
     <td class="text-right align-middle">
+        {% if artist.albums_count or not artist.appears_on_count %}
         <span class="font-semibold tabular-nums">{{ artist.albums_count }}</span>
+        {% else %}
+        {# Only a search lists an act that owns no album; its count is someone else's albums. #}
+        <span class="text-sm text-base-content/70 whitespace-nowrap">appears on {{ artist.appears_on_count }}</span>
+        {% endif %}
     </td>
 </tr>

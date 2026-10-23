@@ -15,7 +15,8 @@ from .. import models
 
 # Bumped when the shape of the ``all/`` payload changes, so a client holding
 # a copy of it discards that copy rather than reading fields that moved.
-SCHEMA_VERSION = 3
+# 4: "ar" in credit order, and artists carry "d", their rolled-up acts.
+SCHEMA_VERSION = 4
 
 
 def compute_album_data_version():

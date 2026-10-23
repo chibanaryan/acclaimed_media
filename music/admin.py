@@ -7,14 +7,32 @@ from django.utils.html import format_html
 from music import models
 
 
-class SubsidiaryArtistInline(admin.TabularInline):
-    """Edit an act's side projects and member bands in place."""
+class ArtistRelationInline(admin.TabularInline):
+    """An artist's tags from ArtistInfo.txt, read-only.
 
-    model = models.Artist
-    fk_name = "parent"
+    Every import rebuilds them from the file, so an edit here would last only
+    until the next one; the fix belongs in the provider's file.
+    """
+
+    model = models.ArtistRelation
+    fk_name = "artist"
     extra = 0
-    fields = ["name", "slug", "musicbrainz_id", "wikidata_id"]
-    show_change_link = True
+    fields = ["kind", "related", "position"]
+    readonly_fields = fields
+    can_delete = False
+    verbose_name_plural = "Relations (from ArtistInfo.txt; rebuilt on import)"
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+class AlbumCreditInline(admin.TabularInline):
+    """An album's credited artists, in credit order."""
+
+    model = models.AlbumCredit
+    extra = 0
+    fields = ["position", "artist"]
+    raw_id_fields = ["artist"]
 
 
 class MusicGenreChildInline(admin.TabularInline):
@@ -28,24 +46,44 @@ class MusicGenreChildInline(admin.TabularInline):
 
 @admin.register(models.Artist)
 class ArtistAdmin(admin.ModelAdmin):
-    list_display = ["__str__", "slug", "musicbrainz_id", "wikidata_id", "album_count"]
-    list_filter = ["parent"]
-    search_fields = ["name", "slug", "musicbrainz_id", "wikidata_id"]
-    inlines = [SubsidiaryArtistInline]
-    raw_id_fields = ["parent"]
+    list_display = [
+        "name",
+        "source_id",
+        "slug",
+        "musicbrainz_id",
+        "wikidata_id",
+        "album_count",
+    ]
+    search_fields = ["name", "slug", "musicbrainz_id", "wikidata_id", "=source_id"]
+    inlines = [ArtistRelationInline]
+    readonly_fields = ["source_id"]
     prepopulated_fields = {"slug": ("name",)}
 
     def get_queryset(self, request):
-        return (
-            super()
-            .get_queryset(request)
-            .select_related("parent")
-            .annotate(_album_count=Count("albums"))
-        )
+        return super().get_queryset(request).annotate(_album_count=Count("albums"))
 
-    @admin.display(description="Albums", ordering="_album_count")
+    @admin.display(description="Credited albums", ordering="_album_count")
     def album_count(self, obj):
         return obj._album_count
+
+
+@admin.register(models.ArtistRelation)
+class ArtistRelationAdmin(admin.ModelAdmin):
+    """Every tag in ArtistInfo.txt, for browsing; the import owns the rows."""
+
+    list_display = ["artist", "kind", "related", "position"]
+    list_filter = ["kind"]
+    search_fields = ["artist__name", "related__name"]
+    list_select_related = ["artist", "related"]
+    raw_id_fields = ["artist", "related"]
+
+
+@admin.register(models.AlbumCredit)
+class AlbumCreditAdmin(admin.ModelAdmin):
+    list_display = ["album", "position", "artist"]
+    search_fields = ["album__name", "artist__name"]
+    list_select_related = ["album", "artist"]
+    raw_id_fields = ["album", "artist"]
 
 
 @admin.register(models.MusicGenre)
@@ -93,7 +131,8 @@ class AlbumAdmin(admin.ModelAdmin):
         "wikidata_id",
         "musicbrainz_release_group_id",
     ]
-    filter_horizontal = ["artists", "genres"]
+    filter_horizontal = ["genres"]
+    inlines = [AlbumCreditInline]
     prepopulated_fields = {"slug": ("name",)}
     readonly_fields = ["created", "modified", "name_normalized"]
     ordering = ["rank"]
@@ -102,7 +141,7 @@ class AlbumAdmin(admin.ModelAdmin):
         return (
             super()
             .get_queryset(request)
-            .prefetch_related("artists", "genres")
+            .prefetch_related("genres")
             .annotate(_list_count=Count("lists"))
         )
 

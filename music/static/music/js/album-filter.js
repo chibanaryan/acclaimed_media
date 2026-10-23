@@ -77,6 +77,28 @@ class AlbumFilterEngine {
     }
 
     /**
+     * Add every act that rolls up into the selected artists.
+     *
+     * The payload gives each artist the projects, aliases and collaborations
+     * whose albums are theirs too (`d`), so picking Prince finds Purple Rain,
+     * credited to Prince and the Revolution - the same expansion
+     * `music.services.artist_graph.ArtistGraph.expand` does server-side.
+     * @private
+     */
+    _expandArtists(artistIds) {
+        if (!artistIds.length) return artistIds;
+        const expanded = new Set();
+        artistIds.forEach(id => {
+            expanded.add(Number(id));
+            const artist = this.artists[id];
+            (artist && artist.d ? artist.d : []).forEach(derived =>
+                expanded.add(Number(derived))
+            );
+        });
+        return [...expanded];
+    }
+
+    /**
      * Facet counts for the sidebar, each dimension counted with its own
      * filter left out.
      *
@@ -205,7 +227,7 @@ class AlbumFilterEngine {
         const query = filters.q ? filters.q.trim().toLowerCase() : '';
         const start = Number.isFinite(filters.start) ? filters.start : null;
         const end = Number.isFinite(filters.end) ? filters.end : null;
-        const artistIds = filters.artists || [];
+        const artistIds = this._expandArtists(filters.artists || []);
         const genreIds = this._expandGenres(filters.genres || []);
 
         return this.albums.filter(album => {

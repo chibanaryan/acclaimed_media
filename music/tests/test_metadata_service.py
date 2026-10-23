@@ -12,11 +12,11 @@ from django.test import SimpleTestCase, TestCase
 from music import models
 from music.musicbrainz import CoverArt, ReleaseGroup
 from music.discogs import DiscogsMaster
+from music.services.import_handler import normalize_artist_name
 from music.services.metadata_service import (
     AlbumMetadataService,
     PassResult,
     fit,
-    normalize_artist_name,
 )
 from music.wikidata import AlbumMetadata, ArtistMetadata
 
@@ -162,69 +162,53 @@ class WikidataPassTests(ServiceTestCase):
         self.assertEqual(self.album.discogs_master_id, 24047)
         self.assertIsNotNone(self.album.primary_wikipedia_album_data)
 
-    def test_artists_come_from_both_the_credit_and_p175(self):
+    def test_artists_get_their_musicbrainz_id_from_their_own_entity(self):
+        beatles = models.Artist.objects.create(
+            name="The Beatles", slug="the-beatles", wikidata_id="Q1299"
+        )
         self.run_pass(
             artists={
                 "Q1299": ArtistMetadata(
-                    wikidata_id="Q1299", name="The Beatles", musicbrainz_id="b10"
+                    wikidata_id="Q1299", name="Beatles (label)", musicbrainz_id="b10"
                 )
             }
         )
-        names = sorted(a.name for a in self.album.artists.all())
-        self.assertEqual(names, ["The Beatles"])
-        artist = self.album.artists.get()
-        self.assertEqual(artist.wikidata_id, "Q1299")
-        self.assertEqual(artist.musicbrainz_id, "b10")
+        beatles.refresh_from_db()
+        self.assertEqual(beatles.musicbrainz_id, "b10")
+        # The name is the release's, never Wikidata's label.
+        self.assertEqual(beatles.name, "The Beatles")
 
-    def test_a_credit_p175_disagrees_with_keeps_both(self):
-        """Band on the Run is credited to McCartney and Wings; P175 says Wings."""
-        self.album.artist_credit = "Paul McCartney, Wings"
-        self.album.save()
-        self.run_pass(
-            metadata={"Q173643": self.album_meta(performer_qids=["Q622988"])},
-            artists={"Q622988": ArtistMetadata(wikidata_id="Q622988", name="Wings")},
-        )
-        self.assertEqual(
-            sorted(a.name for a in self.album.artists.all()),
-            ["Paul McCartney", "Wings"],
-        )
+    def test_the_artists_asked_for_are_ours_not_the_performers(self):
+        models.Artist.objects.create(name="Ours", slug="ours", wikidata_id="Q42")
+        models.Artist.objects.create(name="No QID", slug="no-qid")
+        client = mock.MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        client.fetch_album_metadata.return_value = {"Q173643": self.album_meta()}
+        client.fetch_artists.return_value = {}
+        client.fetch_labels.return_value = {}
+        with mock.patch(
+            "music.services.metadata_service.WikidataClient", return_value=client
+        ):
+            self.service.run_wikidata([self.album])
+        self.assertEqual(client.fetch_artists.call_args.args[0], {"Q42"})
 
-    def test_a_punctuation_variant_reuses_the_existing_artist(self):
-        self.album.artist_credit = "Bob Marley and the Wailers"
-        self.album.save()
-        self.run_pass(
-            metadata={"Q173643": self.album_meta(performer_qids=["Q2525354"])},
-            artists={
-                "Q2525354": ArtistMetadata(
-                    wikidata_id="Q2525354", name="Bob Marley & The Wailers"
-                )
-            },
+    def test_an_unchanged_or_missing_mbid_is_left_alone(self):
+        artist = models.Artist.objects.create(
+            name="The Beatles",
+            slug="the-beatles",
+            wikidata_id="Q1299",
+            musicbrainz_id="keep",
         )
-        self.assertEqual(self.album.artists.count(), 1)
-        artist = self.album.artists.get()
-        self.assertEqual(artist.name, "Bob Marley and the Wailers")
-        self.assertEqual(artist.wikidata_id, "Q2525354")
+        self.run_pass(artists={"Q1299": ArtistMetadata(wikidata_id="Q1299", name="x")})
+        artist.refresh_from_db()
+        self.assertEqual(artist.musicbrainz_id, "keep")
 
-    def test_an_artist_matched_by_qid_is_reused(self):
-        existing = models.Artist.objects.create(
-            name="Renamed", slug="renamed", wikidata_id="Q1299"
-        )
-        self.album.artist_credit = ""
-        self.album.save()
+    def test_the_pass_never_changes_an_albums_credits(self):
+        credited = models.Artist.objects.create(name="Credited", slug="credited")
+        self.album.artists.set([credited])
         self.run_pass()
-        self.assertEqual(list(self.album.artists.all()), [existing])
-
-    def test_unresolved_performers_are_skipped(self):
-        self.run_pass(artists={})
-        self.assertEqual([a.name for a in self.album.artists.all()], ["The Beatles"])
-
-    def test_an_album_with_no_credit_and_no_performers_keeps_its_artists(self):
-        self.album.artist_credit = ""
-        self.album.save()
-        self.run_pass(
-            metadata={"Q173643": self.album_meta(performer_qids=[])}, artists={}
-        )
-        self.assertEqual(self.album.artists.count(), 0)
+        self.assertEqual(self.album.credited_artists, [credited])
 
     def test_an_orphaned_record_is_adopted_instead_of_duplicated(self):
         orphan = models.WikipediaAlbumData.objects.create(
@@ -367,6 +351,16 @@ class CoverPassTests(ServiceTestCase):
             self.run_pass(self.build_client(front=self.art))
         self.album.refresh_from_db()
         self.assertEqual(self.album.musicbrainz_release_group_id, RG_MBID)
+
+    def test_a_compilation_is_searched_for_by_title_alone(self):
+        # "Various Artists" is our wording, not a credit MusicBrainz knows.
+        self.album.musicbrainz_release_group_id = None
+        self.album.artist_credit = "Various Artists"
+        self.album.save()
+        with mock.patch.object(self.service, "_musicbrainz") as mb:
+            mb.return_value.search_release_group.return_value = RG_MBID
+            self.run_pass(self.build_client(front=self.art))
+        mb.return_value.search_release_group.assert_called_with("Abbey Road", "", 1969)
 
     def test_a_group_with_no_art_falls_back_to_its_releases(self):
         client = self.build_client(front=None, release_front=self.art)
@@ -757,21 +751,6 @@ class PrimaryRecordTests(ServiceTestCase):
         self.assertTrue(record.is_primary)
 
 
-class ArtistNormalizedMatchTests(ServiceTestCase):
-    def test_a_blank_name_matches_nothing(self):
-        self.assertIsNone(self.service._find_artist_by_normalized_name(""))
-
-    def test_a_name_with_no_counterpart_matches_nothing(self):
-        models.Artist.objects.create(name="Someone Else", slug="someone-else")
-        self.assertIsNone(self.service._find_artist_by_normalized_name("Nobody Here"))
-
-    def test_a_subsidiary_is_not_matched(self):
-        """Only root creators carry the canonical name."""
-        parent = models.Artist.objects.create(name="Neil Young", slug="neil-young")
-        models.Artist.objects.create(name="Crazy Horse", parent=parent)
-        self.assertIsNone(self.service._find_artist_by_normalized_name("Crazy Horse"))
-
-
 class WikipediaDuplicateCollapseTests(ServiceTestCase):
     def test_duplicate_rows_are_collapsed_to_one(self):
         first = models.WikipediaAlbumData.objects.create(
@@ -1009,33 +988,6 @@ class ExternalTextLengthTests(ServiceTestCase):
                 self.assertLessEqual(
                     len(getattr(record, field)),
                     model._meta.get_field(field).max_length,
-                )
-
-    def test_a_long_artist_name_is_stored_truncated(self):
-        self.album.artist_credit = self.LONG
-        self.album.save()
-        client = mock.MagicMock()
-        client.__enter__.return_value = client
-        client.__exit__.return_value = False
-        client.fetch_album_metadata.return_value = {
-            "Q173643": self.album_meta(performer_qids=[])
-        }
-        client.fetch_artists.return_value = {}
-        client.fetch_labels.return_value = {}
-        with mock.patch(
-            "music.services.metadata_service.WikidataClient", return_value=client
-        ):
-            self.service.run_wikidata([self.album])
-
-        for artist in self.album.artists.all():
-            with self.subTest(artist=artist.pk):
-                self.assertLessEqual(
-                    len(artist.name),
-                    models.Artist._meta.get_field("name").max_length,
-                )
-                self.assertLessEqual(
-                    len(artist.slug or ""),
-                    models.Artist._meta.get_field("slug").max_length,
                 )
 
     def test_every_stored_value_fits_its_column_after_a_full_pass(self):

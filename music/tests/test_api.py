@@ -249,11 +249,72 @@ class ArtistAPITests(MusicAPITestMixin, TestCase):
             404,
         )
 
-    def test_albums_count_falls_back_to_a_count_without_the_annotation(self):
-        from music.api.serializers import ArtistSerializer
+    def _project(self):
+        """A project of Radiohead's, credited on an album of its own."""
+        project = models.Artist.objects.create(
+            name="Radiohead Project", slug="radiohead-project"
+        )
+        models.ArtistRelation.objects.create(
+            artist=project, related=self.artist, kind="P"
+        )
+        album = models.Album.objects.create(
+            name="Side Album", rank=50, artist_credit="Radiohead Project"
+        )
+        album.artists.set([project])
+        guest = models.Artist.objects.create(name="Guest", slug="guest")
+        models.ArtistRelation.objects.create(
+            artist=self.artist, related=guest, kind="F"
+        )
+        return project, album, guest
 
-        artist = models.Artist.objects.get(slug="radiohead")
-        self.assertEqual(ArtistSerializer(artist).data["albums_count"], 2)
+    def test_counts_include_albums_rolled_up_from_a_project(self):
+        self._project()
+        data = self.payload(reverse("music-api:artist-list"))
+        counts = {a["name"]: a["albums_count"] for a in data["results"]}
+        self.assertEqual(counts["Radiohead"], 3)
+        self.assertEqual(counts["Radiohead Project"], 1)
+
+    def test_relations_are_listed_with_their_artist(self):
+        project, _, _ = self._project()
+        data = self.payload(
+            reverse("music-api:artist-detail", kwargs={"slug": project.slug})
+        )
+        self.assertEqual(
+            data["relations"],
+            [
+                {
+                    "kind": "P",
+                    "artist": {
+                        "id": self.artist.id,
+                        "name": "Radiohead",
+                        "slug": "radiohead",
+                    },
+                }
+            ],
+        )
+
+    def test_detail_separates_own_albums_from_appearances(self):
+        _, side_album, guest = self._project()
+        data = self.payload(
+            reverse("music-api:artist-detail", kwargs={"slug": "radiohead"})
+        )
+        self.assertIn("Side Album", [a["name"] for a in data["albums"]])
+        self.assertEqual(data["appears_on"], [])
+
+        data = self.payload(
+            reverse("music-api:artist-detail", kwargs={"slug": "guest"})
+        )
+        self.assertEqual(data["albums"], [])
+        self.assertEqual(data["albums_count"], 0)
+        self.assertEqual(
+            [a["name"] for a in data["appears_on"]],
+            ["Kid A", "OK Computer", "Side Album"],
+        )
+
+    def test_the_album_list_artist_filter_includes_a_project(self):
+        self._project()
+        data = self.payload(reverse("music-api:album-list"), artist="radiohead")
+        self.assertIn("Side Album", [a["name"] for a in data["results"]])
 
 
 class MusicListAPITests(MusicAPITestMixin, TestCase):
@@ -564,7 +625,29 @@ class MusicUnifiedSearchViewTests(MusicAPITestMixin, TestCase):
         artists = self.client.get(self.url, {"q": "radiohead"}).json()["artists"]
         self.assertEqual(artists[0]["name"], "Radiohead")
         self.assertEqual(artists[0]["albums_count"], 2)
+        self.assertEqual(artists[0]["summary"], "2 albums")
         self.assertEqual(artists[0]["slug"], "radiohead")
+
+    def test_an_act_that_only_appears_is_found_by_name_after_the_owners(self):
+        # Crazy Horse owns no album, but someone searching for it wants its
+        # page - labelled so the count is not read as its own albums.
+        horse = models.Artist.objects.create(name="Radio Horse", slug="radio-horse")
+        models.ArtistRelation.objects.create(
+            artist=self.artist, related=horse, kind="F"
+        )
+        artists = self.client.get(self.url, {"q": "radio"}).json()["artists"]
+        self.assertEqual([a["name"] for a in artists], ["Radiohead", "Radio Horse"])
+        self.assertEqual(artists[1]["albums_count"], 0)
+        self.assertEqual(artists[1]["appears_on_count"], 2)
+        self.assertEqual(artists[1]["summary"], "appears on 2 albums")
+
+    def test_the_browse_list_still_leaves_an_appearing_act_out(self):
+        horse = models.Artist.objects.create(name="Radio Horse", slug="radio-horse")
+        models.ArtistRelation.objects.create(
+            artist=self.artist, related=horse, kind="F"
+        )
+        data = self.payload(reverse("music-api:artist-list"), q="radio")
+        self.assertEqual([a["name"] for a in data["results"]], ["Radiohead"])
 
     def test_an_artist_with_no_albums_is_not_offered(self):
         models.Artist.objects.create(name="Radio Ghost", slug="radio-ghost")

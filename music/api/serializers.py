@@ -42,7 +42,8 @@ album_fields = [
 class AlbumSummarySerializer(serializers.ModelSerializer):
     """Album fields needed by list and grid displays."""
 
-    artists = IdSlugNameSerializer(many=True)
+    # In credit order: "artists" is Paul McCartney then Wings.
+    artists = IdSlugNameSerializer(source="credited_artists", many=True)
     genres = IdSlugNameSerializer(many=True)
     list_count = serializers.SerializerMethodField()
     thumbnail_url = serializers.SerializerMethodField()
@@ -88,25 +89,16 @@ class AlbumDetailSerializer(AlbumSummarySerializer):
 
 
 class ArtistSerializer(serializers.ModelSerializer):
-    """Artist fields plus an album count, annotated or computed."""
+    """Artist fields, their relation tags and an album count.
 
-    albums_count = serializers.SerializerMethodField()
+    ``albums_count`` counts the albums that are the artist's own, including
+    those rolled up from projects and aliases; the views set it from
+    ``music.services.artist_graph``. ``relations`` reads "Prince and the
+    Revolution" as ``[{"kind": "P", "artist": <Prince>}]``.
+    """
 
-    class Meta:
-        model = models.Artist
-        fields = ["id", "name", "slug", "musicbrainz_id", "wikidata_id", "albums_count"]
-
-    def get_albums_count(self, obj):
-        annotated = getattr(obj, "albums_count", None)
-        if annotated is not None:
-            return annotated
-        return obj.albums.count()
-
-
-class ArtistDetailSerializer(ArtistSerializer):
-    """Artist fields plus their ranked albums."""
-
-    albums = AlbumSummarySerializer(many=True, read_only=True)
+    albums_count = serializers.IntegerField(read_only=True)
+    relations = serializers.SerializerMethodField()
 
     class Meta:
         model = models.Artist
@@ -117,8 +109,30 @@ class ArtistDetailSerializer(ArtistSerializer):
             "musicbrainz_id",
             "wikidata_id",
             "albums_count",
-            "albums",
+            "relations",
         ]
+
+    def get_relations(self, obj):
+        return [
+            {
+                "kind": relation.kind,
+                "artist": IdSlugNameSerializer(relation.related).data,
+            }
+            for relation in obj.relations.all()
+        ]
+
+
+class ArtistDetailSerializer(ArtistSerializer):
+    """Artist fields plus their ranked albums, and the ones they appear on."""
+
+    albums = AlbumSummarySerializer(many=True, read_only=True, source="own_albums")
+    appears_on = AlbumSummarySerializer(
+        many=True, read_only=True, source="appears_on_albums"
+    )
+
+    class Meta:
+        model = models.Artist
+        fields = ArtistSerializer.Meta.fields + ["albums", "appears_on"]
 
 
 class MusicGenreSerializer(serializers.ModelSerializer):

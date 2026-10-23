@@ -19,11 +19,14 @@
     "@type": "MusicAlbum",
     "name": "{{ album.name|escapejs }}",
     "datePublished": "{{ album.year_released }}",
-    "image": "{{ album.image|default:'' }}",
-    "byArtist": {
-        "@type": "MusicGroup",
-        "name": "{{ album.artist_credit|escapejs }}"
-    }
+    "image": "{{ album.image|default:'' }}"{% with credited=album.credited_artists %}{% if credited %},
+    "byArtist": [{% for artist in credited %}
+        {
+            "@type": "MusicGroup",
+            "name": "{{ artist.name|escapejs }}"{% if artist.slug %},
+            "url": "https://www.acclaimedvideogames.com{{ artist.get_absolute_url }}"{% endif %}
+        }{% if not forloop.last %},{% endif %}{% endfor %}
+    ]{% endif %}{% endwith %}
 }{% endblock %}
 
 {% block content %}
@@ -99,7 +102,7 @@ window.MediaTracking.register('album', {
 {% endif %}
 
 {% if related_albums %}
-<h2 class="text-xl font-bold mt-6 mb-4">More by {{ album.artist_credit }}</h2>
+<h2 class="text-xl font-bold mt-6 mb-4">More by {% for artist in more_by_artists %}{% if not forloop.first %}{% if forloop.last %} &amp; {% else %}, {% endif %}{% endif %}{{ artist.name }}{% endfor %}</h2>
 <div>
     {% for other in related_albums %}
         {% include 'music/includes/_album_row.html' with item=other show_rank='alltime' %}

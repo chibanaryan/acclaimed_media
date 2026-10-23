@@ -37,6 +37,17 @@
         </td>
     </tr>
     {% endif %}
+    {# Spelled out only when a credited act is itself made up of others: "The Velvet Underground & Nico" is a project of the band, featuring Nico. #}
+    {% if credits_have_relations %}
+    <tr>
+        <td class="text-base-content/70 font-semibold pr-4 pb-3 align-top whitespace-nowrap">Credit:</td>
+        <td class="pb-3">
+            {% for artist in album.credited_artists %}{% with relations=artist.relations.all %}{% if relations %}
+            <div><a href="{{ artist.get_absolute_url }}" class="link link-accent">{{ artist.name }}</a><span class="text-base-content/70"> &middot; {% artist_relations artist 'link link-accent' %}</span></div>
+            {% endif %}{% endwith %}{% endfor %}
+        </td>
+    </tr>
+    {% endif %}
     {% if list_appearance_count %}
     <tr>
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-middle whitespace-nowrap">List appearances:</td>

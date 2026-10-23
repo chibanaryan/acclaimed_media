@@ -43,6 +43,7 @@
     <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm">
         <span>Albums: <span class="font-semibold tabular-nums">{{ counts.albums|intcomma }}</span></span>
         <span>Artists: <span class="font-semibold tabular-nums">{{ counts.artists|intcomma }}</span></span>
+        <span>Artist relations: <span class="font-semibold tabular-nums">{{ counts.artist_relations|intcomma }}</span></span>
         <span>Lists: <span class="font-semibold tabular-nums">{{ counts.lists|intcomma }}</span></span>
         <span>Publications: <span class="font-semibold tabular-nums">{{ counts.publications|intcomma }}</span></span>
         <span>List appearances: <span class="font-semibold tabular-nums">{{ counts.memberships|intcomma }}</span></span>
@@ -127,8 +128,8 @@
 
     <h2 class="font-semibold mb-1">Or upload a release</h2>
     <p class="text-xs text-base-content/70 mb-3">
-        All three files are imported together &mdash; positions are meaningless
-        against a different set of lists or albums.
+        All four files are imported together &mdash; album credits are artist ids,
+        and positions are meaningless against a different set of lists or albums.
     </p>
 
     {% for field in form %}
@@ -157,7 +158,7 @@
             <span class="mdi mdi-database-import"></span> Run import
         </button>
         <span class="text-xs text-base-content/70">
-            Replaces every album, artist, list and position.
+            Replaces every album, list and position; updates artists in place by their id.
         </span>
     </div>
 </form>
