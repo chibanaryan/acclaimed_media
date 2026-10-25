@@ -1,6 +1,6 @@
 # AGENTS.md (Canonical)
 
-Last synchronized: 2026-10-23
+Last synchronized: 2026-10-25
 
 This file is the canonical instruction source for Codex in this repository.
 
@@ -15,8 +15,8 @@ Acclaimed Games is a video game ranking and aggregation website that combines da
 ## Available Skills
 
 Use these skills for common workflows:
-- `/commit` - Commit and push to git (builds CSS, minifies JS, collects static, pushes to main)
-- `/deploy` - Deploy to Heroku production (all commit steps + push to Heroku)
+- `/commit` - Commit and push to git (builds CSS, minifies JS, collects static, runs `/code-review`, pushes to main)
+- `/deploy` - Deploy to Heroku production (all commit steps, review included, + push to Heroku)
 - `/minify` - Minify JavaScript files and regenerate bundles
 - `/igdb` - Import IGDB game data
 - `/wikipedia` - Fetch Wikipedia metadata and genres
@@ -29,6 +29,17 @@ Use these skills for common workflows:
 Import the music ranking release with `python manage.py import_music_data`,
 then populate its metadata with `/music-metadata`
 (`python manage.py fetch_album_metadata`).
+
+### Review before merging
+
+Every ticket's changes get a `/code-review` pass (at `high`) before they
+reach `main`. Pushing to `main` is the merge here: there are no PRs and no
+branch protection, so the review is a workflow rule rather than a GitHub
+one. `/commit` and `/deploy` run it as their step 5. A hand-run
+`git push origin main` or merge is covered by the same rule. Fix every
+finding or say in chat why it is waived; skip the review only when the
+user says to, or the diff touches no code or templates. Codex has no
+`/code-review`: a Codex session asks the user before pushing to `main`.
 
 ## Development Commands
 

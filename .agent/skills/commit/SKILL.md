@@ -54,19 +54,41 @@ python3 manage.py tailwind build
 python3 manage.py collectstatic --noinput
 ```
 
-### 5. Stage all changes
+### 5. Review the change
+
+Every ticket's work gets a `/code-review` pass before it reaches `main`.
+Pushing to `main` is the merge in this repo, so this step is the review
+gate.
+
+Invoke the `code-review` skill at `high`, naming the level so it does not
+reuse whatever level was typed last. Review everything that will land on
+`main`: the working-tree changes **and** any commits on this branch not yet
+on `origin/main` (`git diff origin/main` covers both).
+
+- **Answer every finding.** Fix it, or say in chat why it is a false
+  positive or out of scope. Never drop one silently.
+- **Re-review after fixing.** Run it again on the new diff until no
+  confirmed findings remain, at most two rounds; then list what is left
+  for the user and let them decide.
+- **Skip only when** the user explicitly says so ("commit without
+  review"), or the diff touches no code or templates (DEVLOG or docs
+  only). Say in chat that the review was skipped and why.
+- **Report it.** The final message carries one line:
+  "Reviewed at high: N findings, N fixed, N waived (reasons)".
+
+### 6. Stage all changes
 
 ```bash
 git add -A
 ```
 
-### 6. Commit with descriptive message
+### 7. Commit with descriptive message
 
 ```bash
 git commit -m "Your commit message here"
 ```
 
-### 7. Push to main branch
+### 8. Push to main branch
 
 ```bash
 git push origin main
@@ -77,10 +99,11 @@ git push origin main
 ## Pre-commit Hook Handling
 
 Pre-commit hooks will run tests and enforce code quality before allowing the commit.
+They run after the review (step 5), so they test the reviewed and fixed code.
 
 **If pre-commit hooks fail**: Fix issues immediately, do NOT skip or work around them:
 - **Coverage failures**: Add tests or proper exclusions (not workarounds)
 - **Linting failures**: Fix the code to comply with standards
 - **Test failures**: Fix the failing tests or broken code
 
-Commits will be blocked if any tests fail, coverage drops below 95%, or linting fails.
+Commits will be blocked if any tests fail, coverage drops below 100%, or linting fails.
