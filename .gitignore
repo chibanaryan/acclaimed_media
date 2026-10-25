@@ -19,7 +19,7 @@ familyfiles
 htmlcov/*
 static/*
 staticfiles/*
-venv/*
+/venv
 .playwright-mcp/
 django_cache/
 media/
