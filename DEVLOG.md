@@ -1,5 +1,12 @@
 # Developer Log
 
+## 2026-10-25
+
+- **Remove the unused YouTube Data API helpers.** Nothing called
+  `is_youtube_video_embeddable` or `check_youtube_videos_embeddable`, so
+  `YOUTUBE_API_KEY` goes with them. Game pages embed trailers from IGDB's
+  `youtube_video_id`, which needs no key
+
 ## 2026-10-23
 
 - **Music artists come from the provider's `ArtistInfo.txt`.** The release
