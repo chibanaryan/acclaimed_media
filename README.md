@@ -30,7 +30,8 @@ heroku git:remote -a acclaimedgames
 ### Install Dependencies
 
 ```bash
-python3 -m venv venv
+# Homebrew's Python, on the 3.11 patch production runs (see AGENTS.md)
+"$(brew --prefix python@3.11)/bin/python3.11" -m venv venv
 
 # macOS/Linux:
 source venv/bin/activate
@@ -38,7 +39,7 @@ source venv/bin/activate
 # Windows:
 venv\Scripts\activate
 
-pip install -r requirements-dev.txt
+pip install -r requirements.txt -r requirements-dev.txt
 pre-commit install
 
 # Install Tailwind CSS dependencies

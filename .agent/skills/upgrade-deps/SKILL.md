@@ -40,7 +40,7 @@ gh pr checks <number>
 ```bash
 venv/bin/pip-compile --upgrade requirements.in
 venv/bin/pip-compile --upgrade requirements-dev.in   # always after the line above
-venv/bin/pip install -r requirements-dev.txt
+venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 (cd theme/static_src && npm update && npm outdated)
 venv/bin/pre-commit autoupdate
 ```
@@ -111,7 +111,11 @@ Flag anything within six months of its end of life:
 
 Dependabot is told to ignore Django majors, so a move to 6.2 starts here:
 widen the `.in` constraint, recompile, and fix what the deprecation list
-showed. Keep the local venv on the same Python minor version as production.
+showed. Keep the local venv on production's Python patch release:
+compare `venv/bin/python --version` with `heroku run -a acclaimedgames -- python --version` (a one-off dyno),
+and if it is behind, `brew upgrade python@3.11` - the venv follows
+Homebrew's symlink, so a patch needs no rebuild. A new minor version does:
+see the rebuild command under "Dependencies" in AGENTS.md.
 
 ## 7. Ship
 

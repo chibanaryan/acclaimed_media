@@ -118,8 +118,9 @@ if [ ! -f db.sqlite3 ] && [ -f "$ROOT/db.sqlite3" ]; then
     echo "  cloned   db.sqlite3"
 fi
 
-# Use the venv's interpreter, not bare python3: the venv is on Python 3.11
-# with Django 5.2.x, matching production, while the framework python3 is 3.14.
+# Use the venv's interpreter, not bare python3: the venv is on Homebrew's
+# python@3.11 with the locked packages, matching production, while the
+# framework python3 is 3.14.
 if [ "$MIGRATE" = 1 ] && [ -f db.sqlite3 ]; then
     if venv/bin/python manage.py migrate --noinput >/dev/null; then
         echo "  migrated db.sqlite3 onto this branch"
@@ -141,6 +142,6 @@ Ready. From $WORKTREE:
   test   DATABASE_URL=sqlite:///db.sqlite3 CACHE_URL=locmemcache:// CORS_ALLOWED_ORIGINS=http://localhost pytest
 
 The venv is shared. If this branch changes requirements*.txt, give it its own:
-  rm venv && /Library/Frameworks/Python.framework/Versions/3.11/bin/python3 -m venv venv \
-    && venv/bin/python -m pip install -r requirements-dev.txt
+  PY="\$(brew --prefix python@3.11)/bin/python3.11"; test -x "\$PY" \
+    && rm venv && "\$PY" -m venv venv && venv/bin/python -m pip install -r requirements.txt -r requirements-dev.txt
 EOF

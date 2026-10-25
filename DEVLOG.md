@@ -24,7 +24,9 @@
   "GAMES" where the check expects `TYPE_GAME`, so games without platforms
   (or positions without lists) were never refused up front; five tests
   that should have caught it patched stale `games.utils` names
-- `/upgrade-deps`: the monthly upkeep routine
+- `/upgrade-deps`: the monthly upkeep routine. The shared venv is rebuilt
+  on Homebrew's Python 3.11.17, production's patch, from the locks; its
+  `sitecustomize.py` certificate workaround is no longer needed
 
 ## 2026-10-23
 

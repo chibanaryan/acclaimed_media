@@ -1385,7 +1385,7 @@ Environment variables are managed via django-environ (`.env` file):
 
 ### Configuration Files
 
-- **`.python-version`** - Specifies Python 3.11 for Heroku deployment (can use different versions locally)
+- **`.python-version`** - Specifies Python 3.11 for Heroku deployment; the local venv tracks production's patch release (see "Dependencies")
 - **`.pre-commit-config.yaml`** - Pre-commit hook configuration for code quality enforcement (Black, Flake8, tests)
 - **`.coveragerc`** - Coverage configuration excluding migrations and database vendor-specific code
 - **`.flake8`** - Flake8 linter configuration (max line length 88, excludes venv)
@@ -1435,7 +1435,7 @@ Python packages are pinned with pip-tools. Edit the `.in` files and never the
 | `requirements-dev.txt` | Its lock, constrained to `requirements.txt`'s pins |
 
 ```bash
-pip install -r requirements-dev.txt          # local development and tests
+pip install -r requirements.txt -r requirements-dev.txt   # local development and tests
 pip-compile requirements.in && pip-compile requirements-dev.in   # after editing an .in
 pip-compile --upgrade-package django requirements.in && pip-compile requirements-dev.in
 ```
@@ -1455,6 +1455,33 @@ its `package-lock.json`. `node_modules` there and `venv` at the root are
 symlinks into the main checkout in every worktree (`scripts/setup_worktree.sh`),
 so `npm install` or `pip install` in a worktree changes every checkout's copy.
 Replace the symlink with a real install before changing either on a branch.
+
+The shared venv lives in the main checkout and is built on Homebrew's
+`python@3.11`, kept on the patch release production runs (check with
+`heroku run -a acclaimedgames -- python --version`, which starts a
+one-off dyno). Its interpreter is a symlink into
+Homebrew's `opt/` directory, so `brew upgrade python@3.11` moves every
+worktree's venv to the new patch with no rebuild; a patch release keeps the
+ABI, so the installed packages carry on working. Rebuild only for a new
+minor version, from the main checkout, with `V` set to it (and
+`.python-version` already bumped; the locks recompiled under it):
+
+```bash
+V=3.11; PY="$(brew --prefix python@$V)/bin/python$V"
+test -x "$PY" && rm -rf venv && "$PY" -m venv venv \
+  && venv/bin/python -m pip install -r requirements.txt -r requirements-dev.txt
+```
+
+`test -x` comes first because `brew --prefix` prints a path even for a
+formula that is not installed, and every worktree's `venv` symlink points
+at this one: deleting it before the new interpreter is known to exist
+leaves all of them without a venv.
+
+Use Homebrew's Python, not a python.org installer. python.org's macOS
+framework builds ship no CA bundle, and their "Install Certificates" step
+cannot write one without root, so aiohttp (the HLTB fetch) fails every
+certificate check unless a `sitecustomize.py` points `SSL_CERT_FILE` at
+certifi - which is what the venv carried until 2026-10-25.
 
 ### Keeping dependencies current
 
