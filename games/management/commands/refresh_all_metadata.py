@@ -924,8 +924,6 @@ class Command(BaseCommand):
 
         async def process_game(idx, game_data):
             """Process a single game with rate limiting."""
-            nonlocal self
-
             async with semaphore:
                 hltb_id = ""
                 hltb_name = ""

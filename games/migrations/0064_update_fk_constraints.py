@@ -48,15 +48,13 @@ def update_fk_constraints(apps, schema_editor):
                     f'ALTER TABLE "{table}" DROP CONSTRAINT "{constraint_name}"'
                 )
                 # Add new constraint pointing to games_user
-                cursor.execute(
-                    f"""
+                cursor.execute(f"""
                     ALTER TABLE "{table}"
                     ADD CONSTRAINT "{table}_{suffix}_games"
                     FOREIGN KEY ("{column}")
                     REFERENCES "games_user" ("id")
                     DEFERRABLE INITIALLY DEFERRED
-                """
-                )
+                """)
 
 
 def reverse_fk_constraints(apps, schema_editor):

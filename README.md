@@ -30,8 +30,8 @@ heroku git:remote -a acclaimedgames
 ### Install Dependencies
 
 ```bash
-# Homebrew's Python, on the 3.11 patch production runs (see AGENTS.md)
-"$(brew --prefix python@3.11)/bin/python3.11" -m venv venv
+# Homebrew's Python, at the release in .python-version (see AGENTS.md)
+V="$(cat .python-version)"; "$(brew --prefix python@$V)/bin/python$V" -m venv venv
 
 # macOS/Linux:
 source venv/bin/activate

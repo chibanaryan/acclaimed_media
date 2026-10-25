@@ -14,10 +14,9 @@ updates:
       python-minor-and-patch:
         applies-to: version-updates
         update-types: [minor, patch]
-    ignore:
-      # Stay on an LTS: 5.2 until 6.2 (due April 2027), moved by hand.
-      - dependency-name: django
-        update-types: ["version-update:semver-major"]
+        # A Django feature release (6.2, 7.1) is semver-minor but can remove
+        # deprecated APIs, so it gets a PR of its own.
+        exclude-patterns: [django]
 
   # Build-time only, but a version that changes the compiled CSS fails CI's
   # css job until someone rebuilds and looks at the result.

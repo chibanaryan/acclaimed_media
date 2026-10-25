@@ -31,7 +31,6 @@ from django.utils import timezone
 
 from music import models
 
-
 Dated = Tuple[Optional[date], str]
 UNDATED: Dated = (None, "")
 

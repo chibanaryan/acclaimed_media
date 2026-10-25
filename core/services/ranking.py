@@ -46,8 +46,7 @@ def _update_postgres(model, table: str, year_field: str) -> Tuple[int, int]:
     identifiers, never user input."""
     with transaction.atomic():
         with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
+            cursor.execute(f"""
                 UPDATE {table}
                 SET year_rank = subquery.row_num
                 FROM (
@@ -59,10 +58,8 @@ def _update_postgres(model, table: str, year_field: str) -> Tuple[int, int]:
                     FROM {table}
                 ) AS subquery
                 WHERE {table}.id = subquery.id
-                """
-            )
-            cursor.execute(
-                f"""
+                """)
+            cursor.execute(f"""
                 UPDATE {table}
                 SET decade_rank = subquery.row_num
                 FROM (
@@ -74,8 +71,7 @@ def _update_postgres(model, table: str, year_field: str) -> Tuple[int, int]:
                     FROM {table}
                 ) AS subquery
                 WHERE {table}.id = subquery.id
-                """
-            )
+                """)
 
     rows_updated = model.objects.count()
     years_count = model.objects.values(year_field).distinct().count()

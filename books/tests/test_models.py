@@ -11,7 +11,6 @@ from django.test import TestCase
 
 from books import models
 
-
 User = get_user_model()
 
 

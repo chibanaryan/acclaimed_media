@@ -73,8 +73,8 @@ venv/bin/pre-commit run django-tests --hook-stage manual
 venv/bin/python manage.py tailwind build && git diff --stat theme/static/css/dist/styles.css
 ```
 
-Once a quarter, list Django's deprecation warnings, which are what the next
-LTS removes:
+Once a quarter, list Django's deprecation warnings, which are what a later
+release removes:
 
 ```bash
 venv/bin/python -Wd manage.py test games.tests 2>&1 | grep -i "RemovedInDjango" | sort | uniq -c
@@ -104,16 +104,19 @@ Flag anything within six months of its end of life:
 
 | Runtime | Now | Ends | Next |
 |---|---|---|---|
-| Python | 3.11 (`.python-version`) | Oct 2027 | 3.13 |
-| Django | 5.2 LTS | Apr 2028 | 6.2 LTS, due Apr 2027 |
+| Python | 3.14 (`.python-version`) | Oct 2030 | 3.15 |
+| Django | 6.1 | Dec 2027 | 6.2 LTS, due Apr 2027 |
 | Heroku stack | `heroku stack -a acclaimedgames` | Heroku's stack page | |
 | Postgres | `heroku pg:info -a acclaimedgames` (18 on 2026-10-25) | | |
 
-Dependabot is told to ignore Django majors, so a move to 6.2 starts here:
-widen the `.in` constraint, recompile, and fix what the deprecation list
-showed. Keep the local venv on production's Python patch release:
+Django is uncapped in `requirements.in`, so Dependabot opens its majors
+like any other; fix what the deprecation list showed before merging one.
+A new Django can need a newer Python (6.0 dropped 3.11): bump
+`.python-version`, rebuild the venv and recompile the locks under it.
+
+Keep the local venv on production's Python patch release:
 compare `venv/bin/python --version` with `heroku run -a acclaimedgames -- python --version` (a one-off dyno),
-and if it is behind, `brew upgrade python@3.11` - the venv follows
+and if it is behind, `brew upgrade python@$(cat .python-version)` - the venv follows
 Homebrew's symlink, so a patch needs no rebuild. A new minor version does:
 see the rebuild command under "Dependencies" in AGENTS.md.
 

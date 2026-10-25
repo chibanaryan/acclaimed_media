@@ -103,6 +103,15 @@ copy_untracked() {
 link_shared venv
 link_shared theme/static_src/node_modules
 
+# The main checkout's venv lags a .python-version bump until it is rebuilt,
+# and a worktree linked to it would quietly test a stack production has left.
+want_py="$(cat .python-version 2>/dev/null)"
+have_py="$(venv/bin/python -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null)"
+if [ -n "$want_py" ] && [ -n "$have_py" ] && [ "$want_py" != "$have_py" ]; then
+    echo "  WARNING: venv is Python $have_py but .python-version says $want_py;" \
+        "rebuild it (AGENTS.md \"Dependencies\")" >&2
+fi
+
 copy_untracked .env
 copy_untracked .env.development.local
 copy_untracked .claude/settings.local.json
@@ -119,8 +128,8 @@ if [ ! -f db.sqlite3 ] && [ -f "$ROOT/db.sqlite3" ]; then
 fi
 
 # Use the venv's interpreter, not bare python3: the venv is on Homebrew's
-# python@3.11 with the locked packages, matching production, while the
-# framework python3 is 3.14.
+# Python at .python-version's release, with the locked packages, matching
+# production, while bare python3 can be any interpreter on PATH.
 if [ "$MIGRATE" = 1 ] && [ -f db.sqlite3 ]; then
     if venv/bin/python manage.py migrate --noinput >/dev/null; then
         echo "  migrated db.sqlite3 onto this branch"
@@ -142,6 +151,6 @@ Ready. From $WORKTREE:
   test   DATABASE_URL=sqlite:///db.sqlite3 CACHE_URL=locmemcache:// CORS_ALLOWED_ORIGINS=http://localhost pytest
 
 The venv is shared. If this branch changes requirements*.txt, give it its own:
-  PY="\$(brew --prefix python@3.11)/bin/python3.11"; test -x "\$PY" \
+  V=\$(cat .python-version); PY="\$(brew --prefix python@\$V)/bin/python\$V"; test -x "\$PY" \
     && rm venv && "\$PY" -m venv venv && venv/bin/python -m pip install -r requirements.txt -r requirements-dev.txt
 EOF

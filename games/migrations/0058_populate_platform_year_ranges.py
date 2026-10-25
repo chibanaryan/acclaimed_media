@@ -2,7 +2,6 @@
 
 from django.db import migrations
 
-
 PLATFORM_YEAR_RANGES = {
     # Nintendo
     "NES": (1983, 1995),

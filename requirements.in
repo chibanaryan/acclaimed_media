@@ -3,7 +3,7 @@
 # requirements.txt is the pinned lock Heroku installs. Dev and test tools
 # live in requirements-dev.in. See "Keeping dependencies current" in AGENTS.md.
 
-django>=5.2,<6.0
+django
 django-allauth[socialaccount]
 django-cors-headers
 django-environ

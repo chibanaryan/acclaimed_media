@@ -19,7 +19,6 @@ from books.services.goodreads_importer import (
     parse_goodreads_records,
 )
 
-
 User = get_user_model()
 
 

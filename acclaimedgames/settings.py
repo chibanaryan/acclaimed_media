@@ -9,7 +9,6 @@ from sentry_sdk.integrations.django import DjangoIntegration
 
 from core.cache_config import build_caches
 
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 env = environ.Env(DEBUG=(bool, False))
 env.read_env(BASE_DIR / ".env")
@@ -37,6 +36,9 @@ if SENTRY_DSN and not TEST_MODE:
         dsn=SENTRY_DSN,
         environment=SENTRY_ENVIRONMENT,
         integrations=[DjangoIntegration()],
+        # Deprecated in sentry-sdk 2.7x in favour of data_collection, but kept:
+        # passing data_collection turns off the EventScrubber, which is what
+        # filters passwords and tokens out of request bodies and frame locals.
         send_default_pii=True,
         # Sampled, not exhaustive: tracing and profiling every request cost
         # per-request CPU and latency on a dyno that has neither to spare,
@@ -343,15 +345,22 @@ DISCOGS_TOKEN = env("DISCOGS_TOKEN", default=None)
 # Email configuration (Brevo SMTP)
 # In dev: print to console. In prod: send via Brevo SMTP.
 # Brevo requires verified sender - contact@acclaimedvideogames.com is verified
+# MAILERS replaces the EMAIL_* settings, which Django 6.1 deprecates.
 if DEBUG:
-    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+    MAILERS = {"default": {"BACKEND": "django.core.mail.backends.console.EmailBackend"}}
 else:
-    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-EMAIL_HOST = "smtp-relay.brevo.com"
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = env("BREVO_SMTP_USER", default="")
-EMAIL_HOST_PASSWORD = env("BREVO_SMTP_KEY", default="")
+    MAILERS = {
+        "default": {
+            "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
+            "OPTIONS": {
+                "host": "smtp-relay.brevo.com",
+                "port": 587,
+                "use_tls": True,
+                "username": env("BREVO_SMTP_USER", default=""),
+                "password": env("BREVO_SMTP_KEY", default=""),
+            },
+        }
+    }
 
 DEFAULT_FROM_EMAIL = "Acclaimed Video Games <contact@acclaimedvideogames.com>"
 CONTACT_EMAIL = "contact@acclaimedvideogames.com"

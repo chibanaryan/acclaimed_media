@@ -12,7 +12,6 @@ from django.db import transaction
 
 from books.models import Book, ReadBook, WantToReadBook
 
-
 READ_SHELVES = {"read"}
 WANT_SHELVES = {"to-read", "want-to-read"}
 CURRENT_SHELVES = {"currently-reading"}

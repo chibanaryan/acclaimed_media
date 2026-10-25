@@ -11,7 +11,6 @@ This migration:
 from django.db import migrations
 from django.utils.text import slugify
 
-
 NEW_LEAF_GENRES = {
     "Simulation": ["Management Simulation", "Vehicle Simulation"],
 }

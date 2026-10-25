@@ -1273,7 +1273,8 @@ hundred of them against a 120/minute budget.
 ## Production memory budget
 
 The web dyno is a Basic one: **512 MB for every gunicorn worker together**.
-Measured on 2026-10-18, one worker boots at ~110 MB (79 MB of imports, ~30 MB
+Measured on 2026-10-18 (Python 3.11, Django 5.2; re-measure after the
+2026-10-25 move to 3.14 and 6.1 reaches the dyno), one worker boots at ~110 MB (79 MB of imports, ~30 MB
 of it `sentry_sdk`) and plateaus at **~200 MB** once it has rendered a page or
 two - flat from ~50 renders out to 1000, so there is no leak to hunt. The
 rankings page was 1.4 MB of HTML then, and the ~45 MB a worker never returns
@@ -1385,7 +1386,7 @@ Environment variables are managed via django-environ (`.env` file):
 
 ### Configuration Files
 
-- **`.python-version`** - Specifies Python 3.11 for Heroku deployment; the local venv tracks production's patch release (see "Dependencies")
+- **`.python-version`** - Specifies Python 3.14 for Heroku deployment; the local venv tracks production's patch release (see "Dependencies")
 - **`.pre-commit-config.yaml`** - Pre-commit hook configuration for code quality enforcement (Black, Flake8, tests)
 - **`.coveragerc`** - Coverage configuration excluding migrations and database vendor-specific code
 - **`.flake8`** - Flake8 linter configuration (max line length 88, excludes venv)
@@ -1457,17 +1458,17 @@ so `npm install` or `pip install` in a worktree changes every checkout's copy.
 Replace the symlink with a real install before changing either on a branch.
 
 The shared venv lives in the main checkout and is built on Homebrew's
-`python@3.11`, kept on the patch release production runs (check with
+`python@3.14`, kept on the patch release production runs (check with
 `heroku run -a acclaimedgames -- python --version`, which starts a
 one-off dyno). Its interpreter is a symlink into
-Homebrew's `opt/` directory, so `brew upgrade python@3.11` moves every
+Homebrew's `opt/` directory, so `brew upgrade python@3.14` moves every
 worktree's venv to the new patch with no rebuild; a patch release keeps the
 ABI, so the installed packages carry on working. Rebuild only for a new
-minor version, from the main checkout, with `V` set to it (and
-`.python-version` already bumped; the locks recompiled under it):
+minor version, from the main checkout, once `.python-version` is bumped
+and the locks are recompiled under it:
 
 ```bash
-V=3.11; PY="$(brew --prefix python@$V)/bin/python$V"
+V="$(cat .python-version)"; PY="$(brew --prefix python@$V)/bin/python$V"
 test -x "$PY" && rm -rf venv && "$PY" -m venv venv \
   && venv/bin/python -m pip install -r requirements.txt -r requirements-dev.txt
 ```
@@ -1493,9 +1494,10 @@ Four layers, from automatic to manual:
   recognised credential.
 - **Dependabot version updates** (`.github/dependabot.yml`): every Monday,
   one grouped PR of minor and patch bumps per ecosystem (pip, npm), and
-  majors one PR each. GitHub Actions monthly. Django majors are ignored on
-  purpose: the site stays on an LTS, and 5.2 -> 6.2 (due April 2027) is a
-  manual move.
+  majors one PR each. Django's feature releases get their own PR too, since
+  they can remove deprecated APIs. GitHub Actions monthly. Nothing
+  is held back: until 2026-10-25 `requirements.in` capped Django below 6.0,
+  and the site ran 5.2 on Python 3.11, which no Django 6 release supports.
 - **CI** (`.github/workflows/ci.yml`) on every push to `main`, every PR, and
   every Monday:
 
@@ -1511,12 +1513,13 @@ Four layers, from automatic to manual:
   `css` exists because Heroku runs only the Python buildpack, so the
   committed `theme/static/css/dist/styles.css` is what ships. An npm bump
   that changes the build fails there until someone rebuilds and looks at it.
-  Tailwind 4.1 -> 4.3 is such a bump: it changes the default sans stack and
-  DaisyUI's scroll-lock rules, and grows the file from 208 KB to 253 KB.
+  Tailwind 4.1 -> 4.3 was such a bump: it grew the file from 208 KB to
+  253 KB (32 KB to 36 KB gzipped), and moved nothing on screen but the music
+  Filters header's buttons, by ~3px.
 - **`/upgrade-deps`**, monthly: merge the Dependabot queue, take the majors,
   audit, check page weight, memory and slow transactions, and check the
-  runtime end-of-life calendar (Python 3.11 ends October 2027; Django 5.2
-  April 2028).
+  runtime end-of-life calendar (Python 3.14 ends October 2030; Django 6.1,
+  not an LTS, gets security fixes until December 2027, so 6.2 by then).
 
 A Dependabot PR is a merge to `main` like any other. A dependency-only diff
 touches no code or templates, so the `/code-review` gate's skip applies, but

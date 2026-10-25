@@ -58,7 +58,6 @@ from games.services.query_filters import (  # noqa: F401
     Filter,
 )
 
-
 # =============================================================================
 # Email Utilities
 # =============================================================================
@@ -118,7 +117,6 @@ This message was sent via the contact form at {site_url}
             message=email_body,
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[recipient_email],
-            fail_silently=False,
         )
         return True
     except Exception as e:
@@ -227,7 +225,7 @@ Acclaimed Video Games
             to=[user.email],
         )
         email.attach_alternative(html_body, "text/html")
-        email.send(fail_silently=False)
+        email.send()
         return True
     except Exception as e:
         import logging

@@ -2,6 +2,15 @@
 
 ## 2026-10-25
 
+- **Python 3.14 and Django 6.1, every package at its latest.** The
+  `django<6.0` cap is gone (it was only there because Django 6 needs Python
+  3.12+), along with Dependabot's Django-major ignore. Email moves to
+  Django's `MAILERS` setting, unchanged in behaviour. A scheme-less URL
+  typed into an admin URL field now gets `https://`, not `http://`
+  (Django 6.0's new `assume_scheme` default). Tailwind 4.3, DaisyUI
+  5.7, postcss-cli 12, postcss-nested 9, Black 26, flake8 7.4 and Actions
+  v7 come with it; the CSS grows 32 → 36 KB gzipped, with no visible change
+  apart from a ~3px shift in the music Filters header
 - **Remove the unused YouTube Data API helpers.** Nothing called
   `is_youtube_video_embeddable` or `check_youtube_videos_embeddable`, so
   `YOUTUBE_API_KEY` goes with them. Game pages embed trailers from IGDB's

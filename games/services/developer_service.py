@@ -13,7 +13,6 @@ from django.core.cache import cache
 
 from games import config
 
-
 # Cache key for developer hierarchy data
 DEVELOPER_HIERARCHY_CACHE_KEY = f"{config.CACHE_VERSION}:developer_hierarchy"
 

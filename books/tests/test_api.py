@@ -21,7 +21,6 @@ from rest_framework.test import APIClient
 from core.tests.utils import clear_all_caches
 from books import models
 
-
 User = get_user_model()
 
 

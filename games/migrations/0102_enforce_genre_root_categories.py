@@ -10,7 +10,6 @@ canonical genres; any remaining root genre with games is reparented under
 from django.db import migrations
 from django.utils.text import slugify
 
-
 ALLOWED_ROOTS = [
     "Action",
     "Adventure",

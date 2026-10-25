@@ -8,7 +8,6 @@ Usage:
 from django.core.management.base import BaseCommand
 from games.models import Platform
 
-
 PLATFORM_YEAR_RANGES = {
     # Nintendo
     "NES": (1983, 1995),

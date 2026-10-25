@@ -1,6 +1,5 @@
 from django.db import migrations
 
-
 PLATFORM_YEAR_RANGES = {
     "D32": (1982, 1987),
     "GW": (1980, 1991),

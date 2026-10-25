@@ -30,13 +30,11 @@ def migrate_users_and_subscribers(apps, schema_editor):
         # not tried: on PostgreSQL a failed SELECT aborts the migration's
         # transaction, which is what a fresh database (CI's) hit.
         if "auth_user" in connection.introspection.table_names(cursor):
-            cursor.execute(
-                """
+            cursor.execute("""
                 SELECT id, password, last_login, is_superuser, username,
                        first_name, last_name, email, is_staff, is_active, date_joined
                 FROM auth_user
-            """
-            )
+            """)
             columns = [col[0] for col in cursor.description]
             old_users = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
@@ -97,12 +95,10 @@ def migrate_users_and_subscribers(apps, schema_editor):
     # This is needed because we inserted users with explicit IDs
     if old_users and connection.vendor == "postgresql":
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
+            cursor.execute("""
                 SELECT setval('games_user_id_seq',
                     (SELECT COALESCE(MAX(id), 1) FROM games_user), true)
-            """
-            )
+            """)
 
     # Step 2: Create User records for remaining subscribers (no account)
     for subscriber in Subscriber.objects.all():

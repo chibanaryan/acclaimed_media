@@ -20,7 +20,6 @@ from books import models
 from books.views import invalidate_read_books_cache, invalidate_want_to_read_cache
 from core import constants as core_constants
 
-
 User = get_user_model()
 
 

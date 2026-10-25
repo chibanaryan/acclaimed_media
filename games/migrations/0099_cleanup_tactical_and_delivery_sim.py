@@ -17,7 +17,6 @@ from django.db import migrations
 from django.db.models import Q
 from django.utils.text import slugify
 
-
 TACTICAL_KEYS = {
     "tactical",
     "tactical shooter",
