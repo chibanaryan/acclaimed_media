@@ -6,6 +6,25 @@
   `is_youtube_video_embeddable` or `check_youtube_videos_embeddable`, so
   `YOUTUBE_API_KEY` goes with them. Game pages embed trailers from IGDB's
   `youtube_video_id`, which needs no key
+- **Python dependencies are pinned.** `requirements.in` / `requirements-dev.in`
+  compile to locked `requirements.txt` / `requirements-dev.txt` with
+  pip-tools; Heroku builds are reproducible, and test and dev tools no
+  longer ship to production. Dropped `anthropic`, unused since the
+  GameQuote feature went
+- **Dependabot and CI.** Weekly grouped update PRs for pip and npm, security
+  updates, secret scanning and push protection on GitHub. A GitHub Actions
+  workflow runs lint, both test runners, the suites on Postgres 18, a
+  dependency audit, and a check that the committed CSS matches a fresh build
+- **Six high npm advisories fixed** in the CSS build tooling (postcss and
+  transitive glob/minimatch); the compiled CSS is byte-identical
+- **The test suite runs on Postgres** in CI. Migrations `0055` and `0061`
+  now apply to a fresh database; tests that reach an import thread run it
+  inline instead of committing past the test transaction
+- **The staff batch import validates prerequisites again.** It passed
+  "GAMES" where the check expects `TYPE_GAME`, so games without platforms
+  (or positions without lists) were never refused up front; five tests
+  that should have caught it patched stale `games.utils` names
+- `/upgrade-deps`: the monthly upkeep routine
 
 ## 2026-10-23
 

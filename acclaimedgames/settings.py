@@ -1,3 +1,4 @@
+import importlib.util
 import os
 from pathlib import Path
 import sys
@@ -145,8 +146,10 @@ MIDDLEWARE = [
 # cache instead: anonymous requests only, one key per URL, and only for the
 # pages worth it.
 
-# Enable debug toolbar only in development
-if DEBUG:
+# Enable debug toolbar only in development. It is in requirements-dev.txt, not
+# the production lock, so DEBUG on a production install must not need it.
+DEBUG_TOOLBAR = DEBUG and importlib.util.find_spec("debug_toolbar") is not None
+if DEBUG_TOOLBAR:
     INSTALLED_APPS.append("debug_toolbar")
     MIDDLEWARE.append("debug_toolbar.middleware.DebugToolbarMiddleware")
 
@@ -202,12 +205,11 @@ if DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3":
         "timeout": 20,  # Increase timeout from default 5 seconds to 20 seconds
     }
 
-# Use in-memory SQLite for faster tests (each parallel process gets its own DB)
+# Use in-memory SQLite for faster tests (each parallel process gets its own DB).
+# CI's postgres job sets TEST_DATABASE_URL, because SQLite enforces neither
+# varchar lengths nor some constraints that production's Postgres does.
 if TEST_MODE:
-    DATABASES["default"] = {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": ":memory:",
-    }
+    DATABASES["default"] = env.db("TEST_DATABASE_URL", default="sqlite://:memory:")
 
 AUTH_PASSWORD_VALIDATORS = [
     {

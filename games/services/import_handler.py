@@ -791,10 +791,15 @@ def import_batch_with_progress(data: Dict[str, Any]):
         _queue_event(json.dumps(data))
 
     import_sequence = [
-        ("platforms_file", "Platforms", import_platforms),
-        ("lists_file", "Source Lists", import_lists),
-        ("games_file", "Games", import_games),
-        ("memberships_file", "Game Positions", import_listmemberships),
+        ("platforms_file", constants.TYPE_PLATFORM, "Platforms", import_platforms),
+        ("lists_file", constants.TYPE_LIST, "Source Lists", import_lists),
+        ("games_file", constants.TYPE_GAME, "Games", import_games),
+        (
+            "memberships_file",
+            constants.TYPE_LIST_MEMBERSHIP,
+            "Game Positions",
+            import_listmemberships,
+        ),
     ]
 
     try:
@@ -802,7 +807,12 @@ def import_batch_with_progress(data: Dict[str, Any]):
         def run_import():
             try:
                 with transaction.atomic():
-                    for field_name, display_name, handler in import_sequence:
+                    for (
+                        field_name,
+                        import_type,
+                        display_name,
+                        handler,
+                    ) in import_sequence:
                         # Best-effort cancellation between files if client disconnects.
                         if stop_event.is_set():
                             raise RuntimeError("Import canceled: client disconnected")
@@ -811,9 +821,7 @@ def import_batch_with_progress(data: Dict[str, Any]):
                             continue
 
                         # Validate prerequisites
-                        validation_error = _validate_prerequisites(
-                            display_name.upper().replace(" ", "_")
-                        )
+                        validation_error = _validate_prerequisites(import_type)
                         if validation_error:
                             _queue_event(
                                 json.dumps(
@@ -826,10 +834,14 @@ def import_batch_with_progress(data: Dict[str, Any]):
                             )
                             continue
 
-                        # Import the file
+                        # Import the file, in a savepoint: a file that fails
+                        # rolls back alone instead of committing its first rows,
+                        # and on Postgres a database error would otherwise abort
+                        # the transaction under every later file's validation.
                         try:
                             f = TextIOWrapper(file_obj, encoding="utf-8")
-                            handler(f, progress_callback)
+                            with transaction.atomic():
+                                handler(f, progress_callback)
                         except Exception as e:
                             _queue_event(
                                 json.dumps(

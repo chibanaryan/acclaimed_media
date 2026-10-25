@@ -42,6 +42,21 @@ def rename_m2m_table_if_needed(apps, schema_editor):
                 cursor.execute(
                     "ALTER TABLE games_game_developers RENAME TO games_game_studios"
                 )
+    elif connection.vendor == "postgresql":
+        # 0044 renamed the table on PostgreSQL but not its indexes, whose names
+        # the new developers M2M's indexes need: a fresh database (CI's) failed
+        # here with DuplicateTable. Renaming a constraint's index renames the
+        # constraint with it.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT indexname FROM pg_indexes WHERE tablename = "
+                "'games_game_studios' AND indexname LIKE 'games\\_game\\_developers%'"
+            )
+            for (index_name,) in cursor.fetchall():
+                new_name = index_name.replace(
+                    "games_game_developers", "games_game_studios", 1
+                )
+                cursor.execute(f'ALTER INDEX "{index_name}" RENAME TO "{new_name}"')
 
 
 def migrate_game_studios_to_developers(apps, schema_editor):
@@ -109,7 +124,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # Step 0: Rename old M2M table if on SQLite (PostgreSQL handles this automatically)
+        # Step 0: Free the developers M2M's table and index names (per vendor)
         migrations.RunPython(rename_m2m_table_if_needed, migrations.RunPython.noop),
         # Step 1: Add Game.developers M2M field
         migrations.AddField(

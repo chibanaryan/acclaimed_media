@@ -1,0 +1,182 @@
+# Every push to main and every PR (Dependabot's included). The Monday run
+# only re-audits the locks against advisories published since the last push;
+# every other job skips it.
+# See "Keeping dependencies current" in AGENTS.md.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# timeout-minutes on every job: a test that deadlocks (a thread waiting on a
+# row the test's transaction holds) otherwise runs to GitHub's six hours.
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # Only a superseded PR run: on main every push is a merge and gets its result.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CACHE_URL: locmemcache://
+  CORS_ALLOWED_ORIGINS: http://localhost
+  DATABASE_URL: sqlite:///db.sqlite3
+
+jobs:
+  lint:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+      - run: pip install $(grep '^pre-commit==' requirements-dev.txt)
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+      # Only the lint hooks: the pytest hook expects a local venv/.
+      - run: pre-commit run black --all-files --show-diff-on-failure
+      - run: pre-commit run flake8 --all-files
+
+  pytest:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      # Both locks at once: pip refuses two different pins for one package,
+      # so a production lock recompiled without the dev lock fails here.
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      # pytest.ini carries the 100% coverage gate.
+      - run: pytest
+
+  # The same suites without conftest.py, which hides cache and process-state
+  # leaks between tests.
+  django-tests:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      # Both locks at once: pip refuses two different pins for one package,
+      # so a production lock recompiled without the dev lock fails here.
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: scripts/run_tests.sh
+
+  # Production's database. SQLite enforces neither varchar lengths nor some
+  # constraints, so a test can pass locally and the write still fail on Heroku.
+  # Coverage is the pytest job's gate; branches here differ by vendor.
+  postgres:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/acclaimed
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      # Both locks at once: pip refuses two different pins for one package,
+      # so a production lock recompiled without the dev lock fails here.
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: pytest --no-cov
+
+  # requirements.txt alone, as Heroku installs it. Every other job installs
+  # the dev lock too, so an import satisfied only by a dev package (or by one
+  # of their dependencies) would pass them and fail on the dyno.
+  production-install:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DEBUG: "False"
+      SECRET_KEY: ci-only-not-a-secret-ci-only-not-a-secret-ci-only-not-a-secret
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: pip install -r requirements.txt
+      - run: python manage.py check --deploy --fail-level WARNING
+      - name: Import every non-test module
+        run: |
+          python manage.py shell -c "
+          import importlib, pkgutil, django.urls
+          django.urls.get_resolver().url_patterns
+          for app in ('core', 'games', 'books', 'music'):
+              for m in pkgutil.walk_packages(importlib.import_module(app).__path__, app + '.'):
+                  if '.tests' not in m.name and '.migrations' not in m.name:
+                      importlib.import_module(m.name)
+          "
+
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+      - run: pip install $(grep '^pip-audit==' requirements-dev.txt)
+      # The locks are fully pinned: audit the pins, don't re-resolve them.
+      - run: pip-audit --no-deps --disable-pip -r requirements.txt -r requirements-dev.txt
+      - uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+      # High and above. The two moderate postcss-selector-parser advisories
+      # are pinned by @tailwindcss/typography and only parse our own CSS.
+      - run: npm audit --audit-level=high
+        working-directory: theme/static_src
+
+  # Heroku runs only the Python buildpack, so the committed CSS is what ships.
+  # An npm bump that changes the build fails here until the CSS is rebuilt
+  # and checked by eye.
+  css:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: theme/static_src/package-lock.json
+      - run: npm ci
+        working-directory: theme/static_src
+      - run: npm run build
+        working-directory: theme/static_src
+      - run: git diff --exit-code --stat theme/static/css/dist/styles.css

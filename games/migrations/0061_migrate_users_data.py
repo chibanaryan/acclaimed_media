@@ -26,8 +26,10 @@ def migrate_users_and_subscribers(apps, schema_editor):
     # so we query the database directly
     old_users = []
     with connection.cursor() as cursor:
-        # Check if auth_user table exists (may not on fresh database)
-        try:
+        # Check if auth_user table exists (may not on fresh database). Asked,
+        # not tried: on PostgreSQL a failed SELECT aborts the migration's
+        # transaction, which is what a fresh database (CI's) hit.
+        if "auth_user" in connection.introspection.table_names(cursor):
             cursor.execute(
                 """
                 SELECT id, password, last_login, is_superuser, username,
@@ -37,9 +39,6 @@ def migrate_users_and_subscribers(apps, schema_editor):
             )
             columns = [col[0] for col in cursor.description]
             old_users = [dict(zip(columns, row)) for row in cursor.fetchall()]
-        except Exception:
-            # Table doesn't exist - fresh database, no users to migrate
-            pass
 
     for old_user in old_users:
         # Check if user email matches a subscriber

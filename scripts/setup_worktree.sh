@@ -140,7 +140,7 @@ Ready. From $WORKTREE:
   serve  DEBUG=True venv/bin/python manage.py runserver $PORT   -> http://localhost:$PORT/
   test   DATABASE_URL=sqlite:///db.sqlite3 CACHE_URL=locmemcache:// CORS_ALLOWED_ORIGINS=http://localhost pytest
 
-The venv is shared. If this branch changes requirements.txt, give it its own:
+The venv is shared. If this branch changes requirements*.txt, give it its own:
   rm venv && /Library/Frameworks/Python.framework/Versions/3.11/bin/python3 -m venv venv \
-    && venv/bin/python -m pip install -r requirements.txt
+    && venv/bin/python -m pip install -r requirements-dev.txt
 EOF

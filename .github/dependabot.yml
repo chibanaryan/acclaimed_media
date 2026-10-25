@@ -1,0 +1,41 @@
+# Weekly update PRs, checked by .github/workflows/ci.yml. Security updates
+# are separate: GitHub opens those as soon as an advisory lands, ungrouped.
+# See "Keeping dependencies current" in AGENTS.md.
+version: 2
+updates:
+  # Dependabot edits requirements*.in and re-runs pip-compile on both locks.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      python-minor-and-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+    ignore:
+      # Stay on an LTS: 5.2 until 6.2 (due April 2027), moved by hand.
+      - dependency-name: django
+        update-types: ["version-update:semver-major"]
+
+  # Build-time only, but a version that changes the compiled CSS fails CI's
+  # css job until someone rebuilds and looks at the result.
+  - package-ecosystem: npm
+    directory: "/theme/static_src"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-and-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

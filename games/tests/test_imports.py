@@ -9,6 +9,30 @@ from core.models import User
 from .. import models, utils
 
 
+def _run_import_inline(target):
+    """Stand-in for `import_handler._start_import_thread`: run on this thread.
+
+    The real one runs the import on a thread with its own database connection.
+    Under in-memory SQLite Django hands every thread the test's connection, so
+    that was harmless. On Postgres the thread's writes sit outside the test's
+    transaction: they commit for real and leak into every later test, and one
+    that touches a row the test holds waits on it forever. Inline, the import
+    stays inside the test's transaction on both.
+    """
+    target()
+
+
+class InlineImportThreadMixin:
+    def setUp(self):
+        super().setUp()
+        patcher = mock.patch(
+            "games.services.import_handler._start_import_thread",
+            side_effect=_run_import_inline,
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+
 class ImportGamesTests(TestCase):
 
     def test_import_games_creates_and_updates(self):
@@ -1048,10 +1072,11 @@ class ValidatePrerequisitesTests(TestCase):
         self.assertIsNone(result)
 
 
-class ImportBatchWithProgressTests(TestCase):
+class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
     """Tests for import_batch_with_progress generator."""
 
     def setUp(self):
+        super().setUp()
         # Create a platform for games to depend on
         models.Platform.objects.create(code="PC", name="Personal Computer")
 
@@ -1126,7 +1151,7 @@ class ImportBatchWithProgressTests(TestCase):
         error_events = [e for e in events if "error" in e.lower()]
         self.assertGreater(len(error_events), 0)
 
-    @mock.patch("games.utils.import_platforms")
+    @mock.patch("games.services.import_handler.import_platforms")
     def test_import_batch_with_progress_exception_inner_try(
         self, mock_import_platforms
     ):
@@ -1147,7 +1172,7 @@ class ImportBatchWithProgressTests(TestCase):
         ]
         self.assertGreater(len(error_events), 0)
 
-    @mock.patch("games.utils.TextIOWrapper")
+    @mock.patch("games.services.import_handler.TextIOWrapper")
     def test_import_batch_with_progress_exception_inner_try_textio(self, mock_textio):
         """Test import_batch_with_progress exception in inner try (lines 282-283)."""
         # Make TextIOWrapper raise exception during file processing
@@ -1166,13 +1191,13 @@ class ImportBatchWithProgressTests(TestCase):
         ]
         self.assertGreater(len(error_events), 0)
 
-    @mock.patch("threading.Thread")
+    @mock.patch("games.services.import_handler._start_import_thread")
     def test_import_batch_with_progress_exception_outer_try_lines_311_313(
-        self, mock_thread_class
+        self, mock_start_thread
     ):
         """Test import_batch_with_progress exception in outer try (lines 311-313)."""
-        # Make Thread raise an exception to trigger outer exception handler
-        mock_thread_class.side_effect = Exception("Thread creation error")
+        # Make starting the thread raise to trigger the outer exception handler
+        mock_start_thread.side_effect = Exception("Thread creation error")
 
         platform_file = SimpleUploadedFile("PlatformDB.txt", b"PC\tPC\r\n")
         data = {"platforms_file": platform_file}
@@ -1238,7 +1263,7 @@ class ImportBatchWithProgressTests(TestCase):
             len(error_events), 0, f"Expected validation error, got events: {events[:3]}"
         )
 
-    @mock.patch("games.utils._validate_prerequisites")
+    @mock.patch("games.services.import_handler._validate_prerequisites")
     def test_import_batch_with_progress_validation_error_lines_256_265(
         self, mock_validate
     ):
@@ -1476,10 +1501,11 @@ class ImportDataTests(TestCase):
             self.assertGreaterEqual(metadata_after.last_full_update, last_update_before)
 
 
-class ImportIGDBWithProgressTests(TestCase):
+class ImportIGDBWithProgressTests(InlineImportThreadMixin, TestCase):
     """Tests for import_igdb_with_progress generator."""
 
     def setUp(self):
+        super().setUp()
         # Create a game without IGDB data
         platform = models.Platform.objects.create(code="PC", name="PC")
         self.game = models.Game.objects.create(

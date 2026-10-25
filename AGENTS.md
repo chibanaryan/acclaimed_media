@@ -25,6 +25,7 @@ Use these skills for common workflows:
 - `/icons` - Add Material Design Icons to the site (including subset font rebuilds)
 - `/openlibrary` - Fetch book metadata from Open Library API
 - `/music-metadata` - Fetch album metadata (Wikidata, Discogs, MusicBrainz, cover art)
+- `/upgrade-deps` - Monthly upkeep: Dependabot PRs, package bumps, audits, performance and end-of-life checks
 
 Import the music ranking release with `python manage.py import_music_data`,
 then populate its metadata with `/music-metadata`
@@ -33,13 +34,15 @@ then populate its metadata with `/music-metadata`
 ### Review before merging
 
 Every ticket's changes get a `/code-review` pass (at `high`) before they
-reach `main`. Pushing to `main` is the merge here: there are no PRs and no
-branch protection, so the review is a workflow rule rather than a GitHub
-one. `/commit` and `/deploy` run it as their step 5. A hand-run
-`git push origin main` or merge is covered by the same rule. Fix every
-finding or say in chat why it is waived; skip the review only when the
-user says to, or the diff touches no code or templates. Codex has no
-`/code-review`: a Codex session asks the user before pushing to `main`.
+reach `main`. Pushing to `main` is the merge here: there is no branch
+protection, and the only PRs are Dependabot's, so the review is a workflow
+rule rather than a GitHub one. `/commit` and `/deploy` run it as their step
+5. A hand-run `git push origin main` or merge is covered by the same rule,
+and so is merging a Dependabot PR with `gh pr merge`. Fix every finding or
+say in chat why it is waived; skip the review only when the user says to,
+or the diff touches no code or templates (a Dependabot PR that changes
+only lock files touches none). Codex has no `/code-review`: a Codex
+session asks the user before pushing to `main` or merging a PR.
 
 ## Development Commands
 
@@ -1407,7 +1410,7 @@ It used to run on every commit from a hand-placed
 `.git/hooks/pre-commit.legacy`, until a `pre-commit install` silently replaced
 it. Keep hooks in `.pre-commit-config.yaml`, never in `.git/hooks`, which
 `pre-commit install` owns and every worktree shares. `tblib` is in
-`requirements.txt` so that a failure under `--parallel` reports its traceback
+`requirements-dev.txt` so that a failure under `--parallel` reports its traceback
 instead of crashing the runner on an unpicklable one.
 
 ## Database
@@ -1421,20 +1424,111 @@ instead of crashing the runner on an unpicklable one.
 
 ## Dependencies
 
-The backend dependencies are listed in `requirements.txt` and include:
-- **coverage** - Test coverage reporting tool
-- **Django** and related packages - Web framework and extensions
-- **django-tailwind** - Tailwind CSS integration for Django
-- **djangorestframework** - REST API framework
-- **psycopg2** - PostgreSQL database adapter
-- And other supporting packages
+Python packages are pinned with pip-tools. Edit the `.in` files and never the
+`.txt` files, which are compiled from them:
 
-**Note:** Tailwind CSS and DaisyUI are managed via npm in `theme/static_src/` (not Python packages).
+| File | What it is |
+|---|---|
+| `requirements.in` | What production imports, loosely constrained |
+| `requirements.txt` | Its compiled, fully pinned lock - what Heroku installs |
+| `requirements-dev.in` | Tests, hooks, `pip-audit`, the debug toolbar, `runserver_plus` |
+| `requirements-dev.txt` | Its lock, constrained to `requirements.txt`'s pins |
 
-Install all backend dependencies with:
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-dev.txt          # local development and tests
+pip-compile requirements.in && pip-compile requirements-dev.in   # after editing an .in
+pip-compile --upgrade-package django requirements.in && pip-compile requirements-dev.in
 ```
+
+Always recompile the dev lock after the production one: it repeats every
+production pin, and CI installs both locks together so that a dev lock left
+on an old pin fails the install rather than testing a version Heroku never
+runs.
+
+Each lock's header records the exact `pip-compile` command, flags included;
+Dependabot reruns it. Until 2026-10-25 only `psycopg2-binary` was pinned, so
+every Heroku build installed whatever was newest that day, test tools
+included.
+
+Tailwind CSS and DaisyUI are npm packages in `theme/static_src/`, pinned by
+its `package-lock.json`. `node_modules` there and `venv` at the root are
+symlinks into the main checkout in every worktree (`scripts/setup_worktree.sh`),
+so `npm install` or `pip install` in a worktree changes every checkout's copy.
+Replace the symlink with a real install before changing either on a branch.
+
+### Keeping dependencies current
+
+Four layers, from automatic to manual:
+
+- **GitHub security features** (enabled 2026-10-25): Dependabot alerts,
+  Dependabot security updates (a PR as soon as an advisory lands), secret
+  scanning, and push protection, which refuses a push containing a
+  recognised credential.
+- **Dependabot version updates** (`.github/dependabot.yml`): every Monday,
+  one grouped PR of minor and patch bumps per ecosystem (pip, npm), and
+  majors one PR each. GitHub Actions monthly. Django majors are ignored on
+  purpose: the site stays on an LTS, and 5.2 -> 6.2 (due April 2027) is a
+  manual move.
+- **CI** (`.github/workflows/ci.yml`) on every push to `main`, every PR, and
+  every Monday:
+
+  | Job | Checks |
+  |---|---|
+  | `lint` | black, flake8 over every file |
+  | `pytest` | the suites with the 100% coverage gate |
+  | `django-tests` | `scripts/run_tests.sh`, the runner without conftest |
+  | `postgres` | pytest against Postgres 18, production's version |
+  | `audit` | `pip-audit` on both locks, `npm audit --audit-level=high` |
+  | `css` | rebuilds the CSS and fails if it differs from the committed file |
+
+  `css` exists because Heroku runs only the Python buildpack, so the
+  committed `theme/static/css/dist/styles.css` is what ships. An npm bump
+  that changes the build fails there until someone rebuilds and looks at it.
+  Tailwind 4.1 -> 4.3 is such a bump: it changes the default sans stack and
+  DaisyUI's scroll-lock rules, and grows the file from 208 KB to 253 KB.
+- **`/upgrade-deps`**, monthly: merge the Dependabot queue, take the majors,
+  audit, check page weight, memory and slow transactions, and check the
+  runtime end-of-life calendar (Python 3.11 ends October 2027; Django 5.2
+  April 2028).
+
+A Dependabot PR is a merge to `main` like any other. A dependency-only diff
+touches no code or templates, so the `/code-review` gate's skip applies, but
+it merges only with CI green, and a major only after reading its changelog.
+
+**Two npm advisories are waived**: `postcss-selector-parser` below 7.1.6,
+moderate, pinned at 6.0.10 by `@tailwindcss/typography`, whose only "fix" is
+a downgrade of the plugin. It is quadratic parsing of our own CSS at build
+time, with no outside input. CI's audit gates on high and above.
+
+**What the first Postgres run found** (2026-10-25), none of which SQLite
+could show:
+
+- **Two migrations had only ever run incrementally.** `0055` and `0061`
+  failed on a fresh database: `0044`'s rename left the old index names
+  behind, and `0061` probed for `auth_user` with a SELECT whose failure
+  aborts a Postgres transaction. Both now branch on the vendor; production
+  applied them long ago, so only new databases see the change.
+- **Import threads escape the test transaction.** `_start_import_thread`
+  runs an import on its own connection. Under in-memory SQLite Django hands
+  every thread the test's connection, so it never mattered; on Postgres the
+  thread's writes commit for real and leak into every later test on that
+  worker, and one touching a row the test holds deadlocks. Tests that reach
+  a thread run it inline (`InlineImportThreadMixin` in
+  `games/tests/test_imports.py`).
+- **Five import tests had been passing by accident.** Their mocks patched
+  `games.utils.*`, which the code stopped reading when it moved to
+  `games.services.import_handler`; they passed because the threaded import
+  failed with SQLite's "database table is locked", which they took for the
+  error they expected. Underneath was a real bug: the streaming batch import
+  (`import_batch_with_progress`, the staff import page) passed `"GAMES"`
+  where `_validate_prerequisites` compares `constants.TYPE_GAME`, so it
+  never validated prerequisites at all.
+- **A test assumed a primary key of 1.** Postgres sequences do not rewind
+  when a test's transaction rolls back; use the object's `id`.
+
+Set `TEST_DATABASE_URL` to run the suites on Postgres locally; tests
+otherwise always use in-memory SQLite. Patch the module that *reads* a name,
+not one that re-exports it.
 
 ## Static Files
 

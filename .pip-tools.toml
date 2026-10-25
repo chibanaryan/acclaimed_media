@@ -1,0 +1,5 @@
+# Defaults for every pip-compile run, so a bare `pip-compile requirements.in`
+# reproduces the committed locks. allow-unsafe pins pip and setuptools too.
+[tool.pip-tools]
+allow-unsafe = true
+strip-extras = true

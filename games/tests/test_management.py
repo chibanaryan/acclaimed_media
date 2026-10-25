@@ -168,7 +168,7 @@ class GetIgdbCommandTests(TestCase):
         from io import StringIO
 
         out = StringIO()
-        call_command("get_igdb", id=1, stdout=out)
+        call_command("get_igdb", id=game.id, stdout=out)
         output = out.getvalue()
 
         self.assertIn("already has IGDB data", output)

@@ -38,7 +38,7 @@ source venv/bin/activate
 # Windows:
 venv\Scripts\activate
 
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 pre-commit install
 
 # Install Tailwind CSS dependencies

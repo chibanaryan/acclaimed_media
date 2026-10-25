@@ -172,12 +172,14 @@ music_urlpatterns = [
 urlpatterns = music_urlpatterns + urlpatterns
 
 if settings.DEBUG:
-    import debug_toolbar
-
     from django.views.defaults import page_not_found
 
+    if settings.DEBUG_TOOLBAR:
+        import debug_toolbar
+
+        urlpatterns = [path("__debug__/", include(debug_toolbar.urls)), *urlpatterns]
+
     urlpatterns = [
-        path("__debug__/", include(debug_toolbar.urls)),
         # Test route to preview custom 404 page
         path(
             "test-404/",
