@@ -54,7 +54,7 @@ from core.services import ranking, titles
 from games import config, constants, models, utils
 from games.cache import invalidate_played_games_cache, invalidate_want_to_play_cache
 from games.forms import ImportForm, ContactForm
-from games.services import contact_spam_guard, landing_pages
+from games.services import contact_spam_guard, landing_pages, playtime
 from games.services.percentile_service import calculate_percentile
 
 logger = logging.getLogger(__name__)
@@ -719,14 +719,13 @@ def download_games_csv(request):
             pt_min, pt_max = preset_ranges[hltb_preset]
 
     # Determine field based on mode
-    if hltb_mode == "completionist":
-        field_prefix = "primary_hltb_game_data__completionist_hours"
-    else:
-        field_prefix = "primary_hltb_game_data__main_story_hours"
+    field_prefix = playtime.hours_field(hltb_mode)
 
     # Apply filters and exclude games without HLTB data when filter is active
-    # Filter on exact decimal values (no rounding in logic)
+    # Filter on exact decimal values (no rounding in logic). Open-ended games
+    # have no time to beat, so a playtime filter leaves them out.
     if pt_min is not None or pt_max is not None:
+        qs = qs.filter(playtime.shown_q())
         if pt_min is not None:
             try:
                 qs = qs.filter(**{f"{field_prefix}__gte": int(pt_min)})
@@ -874,7 +873,8 @@ def download_games_csv(request):
         hltb_main = ""
         hltb_main_extra = ""
         hltb_completionist = ""
-        if game.primary_hltb_game_data:
+        # An open-ended game's hours are not a time to beat
+        if playtime.shown_record(game.primary_hltb_game_data):
             if game.primary_hltb_game_data.main_story_hours:
                 hltb_main = f"{game.primary_hltb_game_data.main_story_hours:.1f}"
             if game.primary_hltb_game_data.main_extra_hours:
@@ -1185,14 +1185,13 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
                 pt_max = pt_min
 
         # Determine field based on mode
-        if hltb_mode == "completionist":
-            field_prefix = "primary_hltb_game_data__completionist_hours"
-        else:
-            field_prefix = "primary_hltb_game_data__main_story_hours"
+        field_prefix = playtime.hours_field(hltb_mode)
 
         # Apply filters and exclude games without HLTB data when filter is active
-        # Filter on exact decimal values (no rounding in logic)
+        # Filter on exact decimal values (no rounding in logic). Open-ended
+        # games have no time to beat, so a playtime filter leaves them out.
         if pt_min is not None or pt_max is not None:
+            qs = qs.filter(playtime.shown_q())
             if pt_min is not None:
                 try:
                     qs = qs.filter(**{f"{field_prefix}__gte": int(pt_min)})
@@ -1226,6 +1225,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         elif sort == "playtime":
             return (
                 qs.exclude(**{field_prefix: None})
+                .filter(playtime.shown_q())
                 .distinct()
                 .order_by(sort_field(field_prefix), "rank")
             )
@@ -1659,8 +1659,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         # HLTB preset counts for filter (short/medium/long buckets), for both
         # completion modes so the Main/100% toggle can switch without a refetch
         hltb_fields = {
-            "main": "primary_hltb_game_data__main_story_hours",
-            "completionist": "primary_hltb_game_data__completionist_hours",
+            mode: playtime.hours_field(mode) for mode in playtime.MODE_FIELDS
         }
         aggregates = {}
         for mode, field in hltb_fields.items():
@@ -1675,9 +1674,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
             aggregates[f"{mode}_long"] = Count(
                 "id", filter=Q(**{f"{field}__gte": 30}), distinct=True
             )
-        totals = models.Game.objects.filter(
-            primary_hltb_game_data__isnull=False
-        ).aggregate(**aggregates)
+        totals = models.Game.objects.filter(playtime.shown_q()).aggregate(**aggregates)
         context["hltb_counts_json"] = {
             mode: {
                 bucket: totals[f"{mode}_{bucket}"]
@@ -2656,11 +2653,7 @@ class DeveloperDetailView(DetailView):
         game_data_map = {}
         for game in all_games:
             game_data_map[game.id] = {
-                "pt": (
-                    game.primary_hltb_game_data.main_story_hours
-                    if game.primary_hltb_game_data
-                    else None
-                )
+                "pt": playtime.shown_hours(game.primary_hltb_game_data)
             }
         context["game_data_map_json"] = json.dumps(game_data_map, cls=DjangoJSONEncoder)
 
@@ -4048,24 +4041,7 @@ class AuthModalProfileView(View):
         total_games = models.Game.objects.count()
 
         # Calculate estimated playtime for want-to-play backlog
-        backlog_playtime = {"main": None, "completionist": None}
-        if want_to_play_count > 0:
-            from django.db.models import Sum
-
-            # Get games in user's want-to-play list that have HLTB data
-            want_to_play_game_ids = user.want_to_play_games.filter(
-                game__isnull=False
-            ).values_list("game_id", flat=True)
-
-            playtime_totals = models.HLTBGameData.objects.filter(
-                game_id__in=want_to_play_game_ids, is_primary=True
-            ).aggregate(
-                main_total=Sum("main_story_hours"),
-                completionist_total=Sum("completionist_hours"),
-            )
-
-            backlog_playtime["main"] = playtime_totals["main_total"]
-            backlog_playtime["completionist"] = playtime_totals["completionist_total"]
+        backlog_playtime = playtime.backlog_hours(user, want_to_play_count)
 
         # Calculate percentile ranking
         percentile_data = calculate_percentile(played_count)
@@ -4117,8 +4093,6 @@ class AuthModalProfileView(View):
 
             if username_error:
                 # Re-render with full context including stats
-                from django.db.models import Sum
-
                 played_count = user.played_games.filter(game__isnull=False).count()
                 want_to_play_count = user.want_to_play_games.filter(
                     game__isnull=False
@@ -4127,21 +4101,7 @@ class AuthModalProfileView(View):
                 percentile_data = calculate_percentile(played_count)
 
                 # Calculate backlog playtime for error re-render
-                backlog_playtime = {"main": None, "completionist": None}
-                if want_to_play_count > 0:
-                    want_to_play_game_ids = user.want_to_play_games.filter(
-                        game__isnull=False
-                    ).values_list("game_id", flat=True)
-                    playtime_totals = models.HLTBGameData.objects.filter(
-                        game_id__in=want_to_play_game_ids, is_primary=True
-                    ).aggregate(
-                        main_total=Sum("main_story_hours"),
-                        completionist_total=Sum("completionist_hours"),
-                    )
-                    backlog_playtime["main"] = playtime_totals["main_total"]
-                    backlog_playtime["completionist"] = playtime_totals[
-                        "completionist_total"
-                    ]
+                backlog_playtime = playtime.backlog_hours(user, want_to_play_count)
 
                 return render(
                     request,

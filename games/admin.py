@@ -252,6 +252,10 @@ class HLTBGameDataAdmin(admin.ModelAdmin):
     - name_search: HLTB ID was found by searching HLTB by game name (fallback)
 
     Typical distribution: ~87% wikidata, ~13% name_search
+
+    Open-ended games (no finish line: multiplayer, MMOs, endless) show no
+    playtime in rows, sorts or filters. HLTB's own flags decide; set "Open
+    ended override" to correct a game they misfile.
     """
 
     list_display = [
@@ -263,15 +267,24 @@ class HLTBGameDataAdmin(admin.ModelAdmin):
         "main_story_hours",
         "main_extra_hours",
         "completionist_hours",
+        "is_open_ended",
         "_hltb_link",
         "is_primary",
         "fetched_at",
         "updated_at",
     ]
-    list_filter = ["fetch_method", "is_primary", "fetched_at", "updated_at"]
+    list_filter = [
+        "is_open_ended",
+        "open_ended_override",
+        "game_type",
+        "fetch_method",
+        "is_primary",
+        "fetched_at",
+        "updated_at",
+    ]
     search_fields = ["game__name", "igdb_id", "hltb_id"]
     raw_id_fields = ["game"]
-    readonly_fields = ["fetched_at", "updated_at"]
+    readonly_fields = ["is_open_ended", "fetched_at", "updated_at"]
 
     def _hltb_link(self, obj: models.HLTBGameData) -> str:
         """Display clickable HowLongToBeat URL."""

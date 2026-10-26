@@ -3,7 +3,7 @@ from datetime import datetime
 
 from django.contrib.flatpages.models import FlatPage
 from django.db import connection
-from django.db.models import Count, F, Min, Prefetch, Q
+from django.db.models import Count, F, Min, Prefetch, Q, Sum
 from django.db.models.functions import Lower
 from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
@@ -546,7 +546,8 @@ def _compute_game_data_version():
     # v10: Removed game_modes - no longer supported
     # v11: Populated platform year_start/year_end data for all 74 platforms
     # v12: Added remaining prod platform year ranges and refreshed cached platform data
-    SCHEMA_VERSION = "12"
+    # v13: Open-ended games (HLTBGameData.is_open_ended) send no 'pt'/'ptc'
+    SCHEMA_VERSION = "13"
 
     # Get latest game modification time
     latest_game = models.Game.objects.order_by("-modified").first()
@@ -561,10 +562,20 @@ def _compute_game_data_version():
     # Count games with series assignments
     games_with_series = models.Game.objects.filter(series__isnull=False).count()
 
+    # The playtimes the payload serves. An HLTB save leaves Game.modified
+    # alone, and the weekly refresh saves every row whether or not anything
+    # changed, so fingerprint the values rather than updated_at
+    hltb = models.Game.objects.aggregate(
+        main=Sum("primary_hltb_game_data__main_story_hours"),
+        completionist=Sum("primary_hltb_game_data__completionist_hours"),
+        open_ended=Sum("id", filter=Q(primary_hltb_game_data__is_open_ended=True)),
+    )
+    hltb_fingerprint = f"{hltb['main']}:{hltb['completionist']}:{hltb['open_ended']}"
+
     # Combine into version string and hash it
     version_string = (
         f"{SCHEMA_VERSION}:{game_modified}:{genre_count}"
-        f":{series_count}:{games_with_series}"
+        f":{series_count}:{games_with_series}:{hltb_fingerprint}"
     )
     return hashlib.md5(version_string.encode()).hexdigest()[:12]
 
@@ -620,6 +631,7 @@ class GameAllDataView(APIView):
                 "primary_igdb_game_data__artwork_id",
                 "primary_hltb_game_data__main_story_hours",
                 "primary_hltb_game_data__completionist_hours",
+                "primary_hltb_game_data__is_open_ended",
             )
             .annotate(list_count=Count("lists", distinct=True))
             .order_by("rank")
@@ -779,6 +791,9 @@ class GameAllDataView(APIView):
         for row in game_rows:
             playtime = row["primary_hltb_game_data__main_story_hours"]
             completionist = row["primary_hltb_game_data__completionist_hours"]
+            if row["primary_hltb_game_data__is_open_ended"]:
+                # No finish line, so no time to beat (games.services.playtime)
+                playtime = completionist = None
             games_data.append(
                 {
                     "id": row["id"],

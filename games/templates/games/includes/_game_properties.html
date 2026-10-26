@@ -114,6 +114,9 @@
             </a>
             {% if game.primary_hltb_game_data.main_story_hours or game.primary_hltb_game_data.completionist_hours %}
             <div class="text-base-content/70 text-sm mt-1 space-y-0.5 tabular-nums">
+                {% if game.primary_hltb_game_data.is_open_ended %}
+                <div class="italic">No finish line: hours players put in, not a time to beat</div>
+                {% endif %}
                 {% if game.primary_hltb_game_data.main_story_hours %}
                 <div>
                     <span class="mdi mdi-gamepad-variant text-xs"></span>

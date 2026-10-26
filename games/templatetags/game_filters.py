@@ -13,6 +13,7 @@ Alternatively, use {% load core_filters %} for just the common filters.
 from django import template
 
 from games import config, constants
+from games.services import playtime
 
 # Import shared filters to make them available via {% load game_filters %}
 from core.templatetags.core_filters import (
@@ -350,23 +351,29 @@ def format_playtime(hours):
         return ""
 
 
+@register.filter
+def shown_hltb(data):
+    """
+    A game's HLTB record, or None if the game is open-ended, so the rows and
+    cards render no playtime for it. Usage:
+    ``{% with hltb=game.primary_hltb_game_data|shown_hltb %}``
+    """
+    return playtime.shown_record(data)
+
+
 @register.simple_tag(takes_context=True)
 def hltb_hours(context, game):
     """
     HLTB hours for the active completion mode (``filters.hltb_mode``).
     Returns completionist (100%) hours in completionist mode, otherwise
-    main story hours. None if the game has no HLTB data.
+    main story hours. None if the game has no HLTB data, or has no finish
+    line (``HLTBGameData.is_open_ended``).
 
     Usage: {% hltb_hours game as pt %}
     """
-    data = getattr(game, "primary_hltb_game_data", None)
-    if data is None:
-        return None
     filters = context.get("filters")
     mode = filters.get("hltb_mode") if isinstance(filters, dict) else None
-    if mode == "completionist":
-        return data.completionist_hours
-    return data.main_story_hours
+    return playtime.shown_hours(getattr(game, "primary_hltb_game_data", None), mode)
 
 
 @register.filter

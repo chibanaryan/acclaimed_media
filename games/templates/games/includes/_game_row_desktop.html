@@ -91,7 +91,7 @@
                     {% endif %}
 
                     {% hltb_hours game as pt %}
-                    {% with hltb=game.primary_hltb_game_data %}
+                    {% with hltb=game.primary_hltb_game_data|shown_hltb %}
                     {% if hltb.main_story_hours or hltb.completionist_hours %}
                     <span class="whitespace-nowrap{% if not pt %} hidden{% endif %}">
                         {% if game.wikipedia_genres.count > 0 or game.platforms.count > 0 or display_devs %}<span class="text-base-content/30">|</span> {% endif %}

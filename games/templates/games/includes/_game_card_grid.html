@@ -46,7 +46,7 @@
                     <div class="game-card-genres" data-slot="genres">{% for g in game.wikipedia_genres.all %}{{ g.name }}{% if not forloop.last %} / {% endif %}{% endfor %}</div>
                     {% endif %}
                     {% hltb_hours game as pt %}
-                    {% with hltb=game.primary_hltb_game_data %}
+                    {% with hltb=game.primary_hltb_game_data|shown_hltb %}
                     {% if hltb.main_story_hours or hltb.completionist_hours %}
                     <div class="game-card-playtime{% if not pt %} hidden{% endif %}" data-slot="playtime" data-playtime-main="{{ hltb.main_story_hours|format_playtime }}" data-playtime-completionist="{{ hltb.completionist_hours|format_playtime }}" data-playtime-title="HowLongToBeat playtime" title="HowLongToBeat playtime{% if filters.hltb_mode == 'completionist' %} (100%){% endif %}">{{ pt|format_playtime }}</div>
                     {% endif %}

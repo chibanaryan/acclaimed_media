@@ -880,6 +880,43 @@ IGDB provides cover art, descriptions, developer information, and genres.
 
 For detailed command usage, run `/igdb`.
 
+## HowLongToBeat playtimes
+
+Rows, cards, the playtime sort and filter show HLTB's **Main Story** average,
+or **100%** with the toggle; Main + Extras appears only on the detail page and
+in the CSV.
+
+**Open-ended games show no playtime.** For League of Legends, World of
+Warcraft or Rocket League, HLTB's averages are time invested, not time to
+beat. They put a 1162-hour MOBA at the top of "longest" and a five-hour
+car-football game under "short". `HLTBGameData.is_open_ended` is derived on
+save from HLTB's own flags (`game_type` of `multi`/`endless`/`sports`, or
+`comp_lvl_combine`, both read from the raw search row by
+`fetch_hltb_data.entry_profile`). Staff can correct a misfiled game with
+`open_ended_override` in the admin. `games/services/playtime.py` is the one
+place that applies it: the sort, the filters and their counts, `/api/games/all/`
+(null `pt`/`ptc`), the `hltb_hours` tag, the `shown_hltb` filter on the row
+`{% with %}`, the backlog total and the CSV. The detail page keeps the numbers
+under a "No finish line" line.
+
+HLTB files most sandbox, sports and arcade games as ordinary "game"s, so
+`games/open_ended.py` holds about 150 editorial calls by IGDB id, which
+`derive_open_ended` consults after a staff override and before HLTB's
+flags. Its docstring has the test (does the game have an ending that HLTB's
+Main time measures?) and the categories. They live in code, not as
+overrides, so a row created later gets its call too. `is_open_ended` is
+stored and derived in `save()`: after changing a list, add a migration
+that reruns `0117_derive_open_ended.derive_open_ended`, and never
+`.update()` the inputs without re-deriving.
+
+The weekly `refresh_all_metadata` refetches every game and so fills in the
+flags. HLTB answers a burst with 429s; a failed lookup leaves the row as it
+was. The `/api/games/all/` version hash fingerprints the playtimes it serves
+(summed hours, and the ids of open-ended games). An HLTB save leaves
+`Game.modified` alone, and the weekly refresh saves every row whether or not
+anything changed, so `updated_at` would make every visitor re-download the
+data each week.
+
 ## Forum (removed)
 
 The community forum (django-machina) was removed on 2026-10-17; a hosted

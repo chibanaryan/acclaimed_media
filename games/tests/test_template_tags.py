@@ -857,6 +857,7 @@ class HltbHoursFilterTest(TestCase):
         game = Mock()
         game.primary_hltb_game_data.main_story_hours = 20
         game.primary_hltb_game_data.completionist_hours = 40
+        game.primary_hltb_game_data.is_open_ended = False
         self.assertEqual(hltb_hours({"filters": {"hltb_mode": "main"}}, game), 20)
         self.assertEqual(hltb_hours({}, game), 20)
 
@@ -866,6 +867,7 @@ class HltbHoursFilterTest(TestCase):
         game = Mock()
         game.primary_hltb_game_data.main_story_hours = 20
         game.primary_hltb_game_data.completionist_hours = 40
+        game.primary_hltb_game_data.is_open_ended = False
         self.assertEqual(
             hltb_hours({"filters": {"hltb_mode": "completionist"}}, game), 40
         )
@@ -876,6 +878,33 @@ class HltbHoursFilterTest(TestCase):
         game = Mock(primary_hltb_game_data=None)
         self.assertIsNone(hltb_hours({"filters": {"hltb_mode": "main"}}, game))
         self.assertIsNone(hltb_hours({"filters": {"hltb_mode": "completionist"}}, game))
+
+    def test_open_ended_game_returns_none(self):
+        """A game with no finish line has no time to beat in either mode."""
+        from games.templatetags.game_filters import hltb_hours
+
+        game = Mock()
+        game.primary_hltb_game_data.main_story_hours = 1161
+        game.primary_hltb_game_data.completionist_hours = 3262
+        game.primary_hltb_game_data.is_open_ended = True
+        self.assertIsNone(hltb_hours({"filters": {"hltb_mode": "main"}}, game))
+        self.assertIsNone(hltb_hours({"filters": {"hltb_mode": "completionist"}}, game))
+
+
+class ShownHltbFilterTest(TestCase):
+    """Test the shown_hltb template filter."""
+
+    def test_passes_a_finishable_record_through(self):
+        from games.templatetags.game_filters import shown_hltb
+
+        data = Mock(is_open_ended=False)
+        self.assertIs(shown_hltb(data), data)
+
+    def test_hides_an_open_ended_record(self):
+        from games.templatetags.game_filters import shown_hltb
+
+        self.assertIsNone(shown_hltb(Mock(is_open_ended=True)))
+        self.assertIsNone(shown_hltb(None))
 
 
 class GetDeveloperIdsFilterTest(TestCase):

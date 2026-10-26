@@ -15,7 +15,7 @@ from core.models import (
     PublicationBase,
 )
 
-from . import constants, igdb
+from . import constants, igdb, open_ended
 
 logger = logging.getLogger(__name__)
 
@@ -826,6 +826,36 @@ class HLTBGameData(models.Model):
         blank=True,
         help_text="Hours for 100% completion",
     )
+    # HLTB's own description of the entry, and how many submissions each
+    # average rests on. None until a fetch has recorded them.
+    game_type = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        help_text="HLTB entry type (game, multi, dlc, ...)",
+    )
+    comp_lvl_combine = models.BooleanField(
+        null=True,
+        blank=True,
+        help_text="HLTB pools single-player, co-op and versus times for this game",
+    )
+    main_story_count = models.PositiveIntegerField(null=True, blank=True)
+    main_extra_count = models.PositiveIntegerField(null=True, blank=True)
+    completionist_count = models.PositiveIntegerField(null=True, blank=True)
+    open_ended_override = models.BooleanField(
+        null=True,
+        blank=True,
+        help_text="Staff decision on whether the game has a finish line. "
+        "Leave unknown to use the editorial calls in games/open_ended.py, "
+        "then HLTB's flags.",
+    )
+    is_open_ended = models.BooleanField(
+        default=False,
+        db_index=True,
+        editable=False,
+        help_text="No finish line (multiplayer, MMO, endless): its hours are "
+        "time invested, not time to beat. Derived on save.",
+    )
     is_primary = models.BooleanField(
         default=False,
         db_index=True,
@@ -854,6 +884,29 @@ class HLTBGameData(models.Model):
         if self.game:
             return f"HLTB data for {self.game.name} ({self.main_story_hours}h)"
         return f"Orphaned HLTB data (IGDB: {self.igdb_id})"
+
+    def derive_open_ended(self) -> bool:
+        """
+        Whether the game has no finish line, so its hours are time invested.
+        A staff override wins, then the editorial calls in
+        ``games/open_ended.py``, then HLTB's own flags.
+        """
+        if self.open_ended_override is not None:
+            return self.open_ended_override
+        if self.igdb_id in open_ended.FINISHABLE_IGDB_IDS:
+            return False
+        if self.igdb_id in open_ended.OPEN_ENDED_IGDB_IDS:
+            return True
+        return self.game_type in open_ended.OPEN_ENDED_GAME_TYPES or bool(
+            self.comp_lvl_combine
+        )
+
+    def save(self, *args, **kwargs):
+        self.is_open_ended = self.derive_open_ended()
+        update_fields = kwargs.get("update_fields")
+        if update_fields:  # an empty list still means "write nothing"
+            kwargs["update_fields"] = {*update_fields, "is_open_ended"}
+        super().save(*args, **kwargs)
 
     @property
     def hltb_url(self) -> Optional[str]:

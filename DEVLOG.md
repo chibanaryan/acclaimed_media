@@ -38,6 +38,15 @@
   preconnect; labelled selects, accessible names and raised text contrast,
   on the album pages too (Discogs credit and notice, media switcher tabs,
   empty filter rows); music's tracking script no longer blocks first paint
+- **Open-ended games show no playtime.** HLTB's "Main Story" for League of
+  Legends (~1162h), WoW or Rocket League is time invested, not time to
+  beat, so "Playtime: longest" opened on MMOs and "Short" listed Rocket
+  League. `HLTBGameData.is_open_ended` comes from HLTB's own `game_type`
+  and `comp_lvl_combine` flags, plus ~150 editorial calls in
+  `games/open_ended.py` (sandbox sims, team sports sims, looping arcade
+  games, endless puzzle games). Those games are left out of rows, sort,
+  filters, counts, the backlog total and the CSV; the detail page keeps
+  the hours under a "No finish line" note
 
 ## 2026-10-25
 

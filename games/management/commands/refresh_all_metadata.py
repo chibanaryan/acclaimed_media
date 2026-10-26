@@ -908,6 +908,7 @@ class Command(BaseCommand):
         # Import HLTB fetching logic from fetch_hltb_data
         from games.management.commands.fetch_hltb_data import (
             convert_numerals,
+            entry_profile,
             platform_matches,
         )
 
@@ -1050,6 +1051,7 @@ class Command(BaseCommand):
                             main_story,
                             main_extra,
                             completionist,
+                            profile=entry_profile(best_match),
                         )
                     else:
                         async with counter_lock:
@@ -1115,6 +1117,7 @@ class Command(BaseCommand):
         main_story,
         main_extra,
         completionist,
+        profile=None,
     ):
         """Save HLTB data to database (sync version for this command)."""
         game = Game.objects.get(id=game_id)
@@ -1148,6 +1151,8 @@ class Command(BaseCommand):
             orphaned_record.completionist_hours = (
                 Decimal(str(completionist)) if completionist else None
             )
+            for field, value in (profile or {}).items():
+                setattr(orphaned_record, field, value)
             orphaned_record.save()
             hltb_data = orphaned_record
         else:
@@ -1174,6 +1179,7 @@ class Command(BaseCommand):
                         Decimal(str(completionist)) if completionist else None
                     ),
                     "is_primary": True,
+                    **(profile or {}),
                 },
             )
 

@@ -145,6 +145,36 @@ def convert_numerals(name):
     return alternates
 
 
+def _submission_count(raw):
+    try:
+        count = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return count if count >= 0 else None
+
+
+def entry_profile(entry):
+    """
+    HLTB's description of an entry, as ``HLTBGameData`` field values: its
+    type, whether HLTB pools single-player and multiplayer times for it, and
+    how many submissions each average rests on. Read from the raw search
+    row: howlongtobeatpy maps neither submission count, and its
+    ``complexity_lvl_combine`` turns a missing flag into False, where we
+    keep None for "not reported".
+    """
+    raw = getattr(entry, "json_content", None)
+    if not isinstance(raw, dict):
+        return {}
+    combine = raw.get("comp_lvl_combine")
+    return {
+        "game_type": str(raw.get("game_type") or "")[:20],
+        "comp_lvl_combine": bool(combine) if combine is not None else None,
+        "main_story_count": _submission_count(raw.get("comp_main_count")),
+        "main_extra_count": _submission_count(raw.get("comp_plus_count")),
+        "completionist_count": _submission_count(raw.get("comp_100_count")),
+    }
+
+
 class Command(BaseCommand):
     help = "Fetch HowLongToBeat playtime data for games"
 
@@ -561,6 +591,7 @@ class Command(BaseCommand):
                                 main_story,
                                 main_extra,
                                 completionist,
+                                profile=entry_profile(best_match),
                             )
                     else:
                         async with counter_lock:
@@ -713,6 +744,7 @@ class Command(BaseCommand):
         main_story,
         main_extra,
         completionist,
+        profile=None,
     ):
         """Save HLTB data to database."""
         game = Game.objects.get(id=game_id)
@@ -746,6 +778,8 @@ class Command(BaseCommand):
             orphaned_record.completionist_hours = (
                 Decimal(str(completionist)) if completionist else None
             )
+            for field, value in (profile or {}).items():
+                setattr(orphaned_record, field, value)
             orphaned_record.save()
             hltb_data = orphaned_record
         else:
@@ -772,6 +806,7 @@ class Command(BaseCommand):
                         Decimal(str(completionist)) if completionist else None
                     ),
                     "is_primary": True,
+                    **(profile or {}),
                 },
             )
 
