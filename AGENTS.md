@@ -900,13 +900,13 @@ place that applies it: the sort, the filters and their counts, `/api/games/all/`
 under a "No finish line" line.
 
 HLTB files most sandbox, sports and arcade games as ordinary "game"s, so
-`games/open_ended.py` holds about 150 editorial calls by IGDB id, which
+`games/open_ended.py` holds about 170 editorial calls by IGDB id, which
 `derive_open_ended` consults after a staff override and before HLTB's
 flags. Its docstring has the test (does the game have an ending that HLTB's
 Main time measures?) and the categories. They live in code, not as
 overrides, so a row created later gets its call too. `is_open_ended` is
 stored and derived in `save()`: after changing a list, add a migration
-that reruns `0117_derive_open_ended.derive_open_ended`, and never
+that runs `open_ended.derive_all` (as 0118 does), and never
 `.update()` the inputs without re-deriving.
 
 The weekly `refresh_all_metadata` refetches every game and so fills in the

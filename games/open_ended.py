@@ -3,23 +3,26 @@ Editorial open-ended calls, by IGDB id, for the games HLTB's flags get wrong
 or have not been fetched for. ``HLTBGameData.derive_open_ended`` consults
 them after a staff override and before HLTB's own flags.
 
-The test: does the game have an ending that HLTB's "Main" time measures? If
-not - a sandbox with no win state, grand strategy with no victory, a
-multiplayer-first game, a team sports sim's endless seasons, an arcade game
-that loops until a kill screen, an endless puzzle game - its hours are time
-invested and it shows none (see games/services/playtime.py). Anything with a
-campaign, story, ladder or finite set of levels keeps its hours: fighting
-games, kart racers, 4X, RTS, racing, rhythm games, roguelikes, scenario-based
-tycoon games, Stardew Valley. Minecraft and Animal Crossing: New Horizons
-nominally end, but are not played toward it.
+The test: does the game have an ending that HLTB's "Main" time measures?
+If not - a sandbox with no win state, grand strategy with no victory, a
+multiplayer-first game, a sports league sim's endless seasons, an arcade
+game that loops until a kill screen, an endless puzzle or pinball game - its
+hours are time invested and it shows none (see games/services/playtime.py).
+Anything with a campaign, story, ladder or finite set of levels keeps its
+hours: fighting games, kart racers, 4X, RTS, racing, rhythm games,
+roguelikes, scenario-based tycoon games, arcade sports with a ladder,
+Stardew Valley. Minecraft and Animal Crossing: New Horizons nominally end,
+but are not played toward it.
 
 Kept in code rather than written as overrides, so a row created later - a
 listed game HLTB is first matched for - gets the call too. Keyed on IGDB id,
 as HLTBGameData is; a game IGDB re-keys falls back to HLTB's flags until its
 new id is listed here. Changing a list needs a migration that re-derives the
-stored flag (as 0117 does); a one-off correction belongs in the admin
-override.
+stored flag with ``derive_all`` (as 0118 does); a one-off correction belongs
+in the admin override.
 """
+
+from django.db.models import Q
 
 # HLTB entry types for games with no finish line. Measured against the
 # corpus on 2026-10-26: these, with ``comp_lvl_combine``, catch every MMO,
@@ -50,6 +53,8 @@ OPEN_ENDED_IGDB_IDS = frozenset(
         2955,  # Elite Dangerous
         119295,  # Microsoft Flight Simulator
         3353,  # Microsoft Flight Simulator 1.0
+        2953,  # Frontier: Elite II
+        2951,  # Elite
         2712,  # Brain Age / Dr. Kawashima's Brain Training
         # Grand strategy with no victory
         2918,  # Crusader Kings II
@@ -73,7 +78,13 @@ OPEN_ENDED_IGDB_IDS = frozenset(
         15091,  # SingStar
         17251,  # Warlords
         16759,  # Combat
-        # Team sports sims: seasons and careers with no end
+        15536,  # Escape from Tarkov
+        7479,  # Warhawk
+        7830,  # City of Heroes
+        2987,  # Wolfenstein: Enemy Territory
+        # Sports: league sims whose seasons repeat without end, and event
+        # collections with no end. Arcade sports with a finite ladder or career
+        # (NBA Jam, Virtua Tennis, Mario Golf, Tecmo Bowl) keep their hours
         705,  # FIFA: Road to World Cup 98
         699,  # FIFA 99
         3134,  # FIFA 09
@@ -96,21 +107,27 @@ OPEN_ENDED_IGDB_IDS = frozenset(
         777,  # Madden NFL 2004
         778,  # Madden NFL 2005
         7881,  # ESPN NFL 2K5
-        8168,  # Tecmo Bowl
         16595,  # Tecmo Super Bowl
-        8995,  # NBA Jam
         5056,  # NBA 2K11
         5057,  # NBA 2K12
         255788,  # NBA 2K24
         5405,  # NHL '94
         824,  # NHL 09
         9903,  # Baseball Stars
-        6291,  # Virtua Tennis / Power Smash
         2182,  # Wii Sports Resort
         1333,  # Pong
         11984,  # California Games
         6439,  # Track & Field / Hyper Olympic
         20406,  # International Track & Field
+        9861,  # International Superstar Soccer
+        15241,  # Kick Off 2
+        18532,  # Ice Hockey (NES: exhibition matches only)
+        43335,  # FIFA 2003
+        19459,  # FIFA 17
+        44932,  # International Superstar Soccer Pro 98
+        945,  # Football Manager 2007
+        45387,  # DecAthlete / Athlete Kings
+        176,  # Ballblazer
         # Arcade games that loop until a kill screen, and score attacks
         7452,  # Ms. Pac-Man
         20900,  # Pac-Man Championship Edition
@@ -149,12 +166,16 @@ OPEN_ENDED_IGDB_IDS = frozenset(
         16973,  # Lunar Lander
         18118,  # Blockade
         21817,  # Discs of Tron
+        2753,  # Zaxxon
         # Endless puzzle games
         130749,  # Tetris
         3476,  # Dr. Mario
         8318,  # Bejeweled
         9054,  # Threes!
         29044,  # Drop7
+        186090,  # Wordle
+        # Pinball, a score attack
+        3024,  # Pinball Dreams
         # HLTB flags these itself (2026-10-26). Listed so they hold from deploy,
         # before a refresh has fetched the flags, and if one ever fails to
         # re-match
@@ -192,10 +213,44 @@ OPEN_ENDED_IGDB_IDS = frozenset(
     }
 )
 
-# MMOs HLTB flags whose Main time measures a finite campaign
+# Games whose Main time measures a real ending, though HLTB flags them or
+# may: MMOs with a finite campaign, and arcade sports with a ladder or
+# career, which HLTB's "sports" type would otherwise hide
 FINISHABLE_IGDB_IDS = frozenset(
     {
         386,  # Final Fantasy XIV: A Realm Reborn (its main scenario)
         234,  # Guild Wars / Guild Wars Prophecies (its campaign)
+        8995,  # NBA Jam
+        4036,  # NBA Street Vol. 2
+        8168,  # Tecmo Bowl
+        6291,  # Virtua Tennis / Power Smash
+        7235,  # Virtua Tennis 3
+        81523,  # Super Tennis
+        135389,  # Mario Golf
+        2541,  # Rockstar Games Presents Table Tennis
+        7788,  # Blades of Steel
+        2195,  # Punch-Out!!
+        9151,  # Super Punch-Out!!
+        2194,  # Punch-Out!! (2009)
     }
 )
+
+
+def derive_all(HLTBGameData):
+    """
+    Re-derive ``is_open_ended`` for every row of ``HLTBGameData`` (a live or a
+    historical model) as queries, lowest precedence first: HLTB's flags, then
+    the calls above, then any staff override. Restates
+    ``HLTBGameData.derive_open_ended``, which a historical model lacks;
+    ``games/tests/test_playtime.py`` checks the two agree. Run it from a new
+    migration whenever a list here changes.
+    """
+    rows = HLTBGameData.objects.all()
+    rows.update(is_open_ended=False)
+    rows.filter(
+        Q(game_type__in=OPEN_ENDED_GAME_TYPES) | Q(comp_lvl_combine=True)
+    ).update(is_open_ended=True)
+    rows.filter(igdb_id__in=OPEN_ENDED_IGDB_IDS).update(is_open_ended=True)
+    rows.filter(igdb_id__in=FINISHABLE_IGDB_IDS).update(is_open_ended=False)
+    for override in (True, False):
+        rows.filter(open_ended_override=override).update(is_open_ended=override)

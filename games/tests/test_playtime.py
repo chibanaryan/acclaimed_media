@@ -313,14 +313,14 @@ class OpenEndedGamesInRankingsTests(TestCase):
 
 
 class DeriveOpenEndedMigrationTests(TestCase):
-    """0117 restates derive_open_ended as queries; the two must agree."""
+    """0117 and 0118 restate derive_open_ended as queries; all must agree."""
 
-    def test_migration_matches_the_model_for_every_combination(self):
+    def test_migrations_match_the_model_for_every_combination(self):
         from importlib import import_module
 
-        from django.apps import apps
+        from django.db import connection
+        from django.db.migrations.loader import MigrationLoader
 
-        migration = import_module("games.migrations.0117_derive_open_ended")
         listed_open = next(iter(open_ended.OPEN_ENDED_IGDB_IDS))
         listed_finishable = next(iter(open_ended.FINISHABLE_IGDB_IDS))
         # Orphans (game=None) via bulk_create, so no save() derives the flag
@@ -339,10 +339,16 @@ class DeriveOpenEndedMigrationTests(TestCase):
                 (True, False, None),
             )
         )
-
-        migration.derive_open_ended(apps, None)
-
-        rows = list(HLTBGameData.objects.all())
-        self.assertEqual(len(rows), 81)
-        for row in rows:
-            self.assertEqual(row.is_open_ended, row.derive_open_ended(), row.__dict__)
+        loader = MigrationLoader(connection)
+        for name in ("0117_derive_open_ended", "0118_derive_open_ended_again"):
+            migration = import_module(f"games.migrations.{name}")
+            historical = loader.project_state(("games", name)).apps
+            for start in (True, False):
+                HLTBGameData.objects.update(is_open_ended=start)
+                migration.derive_open_ended(historical, None)
+                rows = list(HLTBGameData.objects.all())
+                self.assertEqual(len(rows), 81)
+                for row in rows:
+                    self.assertEqual(
+                        row.is_open_ended, row.derive_open_ended(), (name, row.__dict__)
+                    )
