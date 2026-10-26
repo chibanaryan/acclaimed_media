@@ -7,6 +7,7 @@ left out of every playtime row, sort, filter, count and total.
 """
 
 import csv
+import inspect
 import io
 from itertools import product
 from types import SimpleNamespace
@@ -24,11 +25,14 @@ from games.models import Game, HLTBGameData, WantToPlayGame
 from games.services import playtime
 
 
-def make_game(name, rank, main, completionist, **hltb):
-    game = Game.objects.create(name=name, slug=slugify(name), rank=rank, igdb_id=rank)
+def make_game(name, rank, main, completionist, igdb_id=None, **hltb):
+    igdb_id = igdb_id or rank
+    game = Game.objects.create(
+        name=name, slug=slugify(name), rank=rank, igdb_id=igdb_id
+    )
     data = HLTBGameData.objects.create(
         game=game,
-        igdb_id=rank,
+        igdb_id=igdb_id,
         hltb_id=str(rank),
         main_story_hours=main,
         completionist_hours=completionist,
@@ -45,10 +49,10 @@ class DeriveOpenEndedTests(TestCase):
         for game_type in ("multi", "endless", "sports"):
             self.assertTrue(HLTBGameData(game_type=game_type).derive_open_ended())
 
-    def test_pooled_play_styles_are_open_ended(self):
-        """Rocket League is filed as a "game" but pools its modes."""
+    def test_pooled_play_styles_alone_are_not_open_ended(self):
+        """HLTB pools the modes of Sam & Max and Gunstar Heroes too."""
         data = HLTBGameData(game_type="game", comp_lvl_combine=True)
-        self.assertTrue(data.derive_open_ended())
+        self.assertFalse(data.derive_open_ended())
 
     def test_ordinary_and_unfetched_games_are_not(self):
         self.assertFalse(
@@ -204,7 +208,11 @@ class OpenEndedGamesInRankingsTests(TestCase):
         self.short = make_game("Portal", 1, 3, 10)
         self.long = make_game("Persona 5", 2, 100, 150)
         self.moba = make_game("League of Legends", 3, 1161, 3262, game_type="multi")
-        self.cars = make_game("Rocket League", 4, 4.7, 105, comp_lvl_combine=True)
+        self.pacman = make_game("Pac-Man", 4, 0.8, 4.6, game_type="endless")
+        # Open-ended only through the editorial list: HLTB types it "game"
+        self.cars = make_game(
+            "Rocket League", 5, 4.7, 105, igdb_id=11198, game_type="game"
+        )
 
     def _ids(self, **params):
         response = self.client.get(reverse("home"), params)
@@ -240,7 +248,9 @@ class OpenEndedGamesInRankingsTests(TestCase):
         self.assertIn('data-playtime-main="~100h"', content)
         self.assertNotIn("~1161h", content)
         self.assertNotIn("~3262h", content)
-        self.assertNotIn("~105h", content)
+        self.assertNotIn("~5h", content)  # Rocket League, Pac-Man's 100%
+        self.assertNotIn("~48m", content)  # Pac-Man
+        self.assertNotIn("~105h", content)  # Rocket League's 100%
 
     def test_all_data_payload_sends_no_playtime_for_them(self):
         games = {
@@ -253,6 +263,7 @@ class OpenEndedGamesInRankingsTests(TestCase):
         self.assertIsNone(games[self.moba.id]["pt"])
         self.assertIsNone(games[self.moba.id]["ptc"])
         self.assertIsNone(games[self.cars.id]["pt"])
+        self.assertIsNone(games[self.pacman.id]["pt"])
 
     def test_payload_version_moves_when_staff_mark_a_game(self):
         from games.api.views import _compute_game_data_version
@@ -313,7 +324,12 @@ class OpenEndedGamesInRankingsTests(TestCase):
 
 
 class DeriveOpenEndedMigrationTests(TestCase):
-    """0117 and 0118 restate derive_open_ended as queries; all must agree."""
+    """
+    Every migration that calls open_ended.derive_all (0118 on) runs today's
+    rule against its historical model, and must agree with derive_open_ended.
+    0117 predates derive_all and is superseded by them: it reads today's
+    lists but still counts comp_lvl_combine, and runs only before 0118.
+    """
 
     def test_migrations_match_the_model_for_every_combination(self):
         from importlib import import_module
@@ -340,7 +356,18 @@ class DeriveOpenEndedMigrationTests(TestCase):
             )
         )
         loader = MigrationLoader(connection)
-        for name in ("0117_derive_open_ended", "0118_derive_open_ended_again"):
+        names = []
+        for app, name in sorted(loader.disk_migrations):
+            module = (
+                import_module(f"games.migrations.{name}") if app == "games" else None
+            )
+            if module and "derive_all" in inspect.getsource(module):
+                names.append(name)
+        self.assertEqual(
+            names[:2],
+            ["0118_derive_open_ended_again", "0119_derive_open_ended_without_combine"],
+        )
+        for name in names:
             migration = import_module(f"games.migrations.{name}")
             historical = loader.project_state(("games", name)).apps
             for start in (True, False):

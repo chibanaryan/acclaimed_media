@@ -847,7 +847,7 @@ class HLTBGameData(models.Model):
         blank=True,
         help_text="Staff decision on whether the game has a finish line. "
         "Leave unknown to use the editorial calls in games/open_ended.py, "
-        "then HLTB's flags.",
+        "then HLTB's game type.",
     )
     is_open_ended = models.BooleanField(
         default=False,
@@ -889,7 +889,7 @@ class HLTBGameData(models.Model):
         """
         Whether the game has no finish line, so its hours are time invested.
         A staff override wins, then the editorial calls in
-        ``games/open_ended.py``, then HLTB's own flags.
+        ``games/open_ended.py``, then HLTB's own ``game_type``.
         """
         if self.open_ended_override is not None:
             return self.open_ended_override
@@ -897,9 +897,7 @@ class HLTBGameData(models.Model):
             return False
         if self.igdb_id in open_ended.OPEN_ENDED_IGDB_IDS:
             return True
-        return self.game_type in open_ended.OPEN_ENDED_GAME_TYPES or bool(
-            self.comp_lvl_combine
-        )
+        return self.game_type in open_ended.OPEN_ENDED_GAME_TYPES
 
     def save(self, *args, **kwargs):
         self.is_open_ended = self.derive_open_ended()

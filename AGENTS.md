@@ -890,9 +890,12 @@ in the CSV.
 Warcraft or Rocket League, HLTB's averages are time invested, not time to
 beat. They put a 1162-hour MOBA at the top of "longest" and a five-hour
 car-football game under "short". `HLTBGameData.is_open_ended` is derived on
-save from HLTB's own flags (`game_type` of `multi`/`endless`/`sports`, or
-`comp_lvl_combine`, both read from the raw search row by
-`fetch_hltb_data.entry_profile`). Staff can correct a misfiled game with
+save: a staff override, then the editorial calls below, then HLTB's own
+`game_type` (`multi`/`endless`/`sports`, read from the raw search row by
+`fetch_hltb_data.entry_profile`). `comp_lvl_combine` is stored but not
+used: production's first full refresh showed it marks any game with a
+co-op or versus mode (Sam & Max, Gunstar Heroes), and it was hiding story
+games. Staff can correct a misfiled game with
 `open_ended_override` in the admin. `games/services/playtime.py` is the one
 place that applies it: the sort, the filters and their counts, `/api/games/all/`
 (null `pt`/`ptc`), the `hltb_hours` tag, the `shown_hltb` filter on the row
@@ -900,13 +903,13 @@ place that applies it: the sort, the filters and their counts, `/api/games/all/`
 under a "No finish line" line.
 
 HLTB files most sandbox, sports and arcade games as ordinary "game"s, so
-`games/open_ended.py` holds about 170 editorial calls by IGDB id, which
-`derive_open_ended` consults after a staff override and before HLTB's
-flags. Its docstring has the test (does the game have an ending that HLTB's
-Main time measures?) and the categories. They live in code, not as
-overrides, so a row created later gets its call too. `is_open_ended` is
-stored and derived in `save()`: after changing a list, add a migration
-that runs `open_ended.derive_all` (as 0118 does), and never
+`games/open_ended.py` holds about 190 editorial calls by IGDB id (172
+open-ended, 19 finishable), which `derive_open_ended` consults after a staff
+override and before HLTB's type. Its docstring has the test (does the game
+have an ending that HLTB's Main time measures?) and the categories. They
+live in code, not as overrides, so a row created later gets its call too.
+`is_open_ended` is stored and derived in `save()`: after changing a list,
+add a migration that runs `open_ended.derive_all` (as 0119 does), and never
 `.update()` the inputs without re-deriving.
 
 The weekly `refresh_all_metadata` refetches every game and so fills in the

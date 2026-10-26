@@ -1,7 +1,7 @@
 """
-Editorial open-ended calls, by IGDB id, for the games HLTB's flags get wrong
-or have not been fetched for. ``HLTBGameData.derive_open_ended`` consults
-them after a staff override and before HLTB's own flags.
+Editorial open-ended calls, by IGDB id, for the games HLTB's type gets wrong
+or has not been fetched for. ``HLTBGameData.derive_open_ended`` consults
+them after a staff override and before HLTB's own ``game_type``.
 
 The test: does the game have an ending that HLTB's "Main" time measures?
 If not - a sandbox with no win state, grand strategy with no victory, a
@@ -16,18 +16,19 @@ but are not played toward it.
 
 Kept in code rather than written as overrides, so a row created later - a
 listed game HLTB is first matched for - gets the call too. Keyed on IGDB id,
-as HLTBGameData is; a game IGDB re-keys falls back to HLTB's flags until its
+as HLTBGameData is; a game IGDB re-keys falls back to HLTB's type until its
 new id is listed here. Changing a list needs a migration that re-derives the
-stored flag with ``derive_all`` (as 0118 does); a one-off correction belongs
+stored flag with ``derive_all`` (as 0119 does); a one-off correction belongs
 in the admin override.
 """
 
-from django.db.models import Q
-
-# HLTB entry types for games with no finish line. Measured against the
-# corpus on 2026-10-26: these, with ``comp_lvl_combine``, catch every MMO,
-# MOBA and arena shooter plus Minecraft, Pac-Man and Wii Sports, and no
-# story game. Everything else HLTB files as "game".
+# HLTB entry types for games with no finish line: they catch every MMO, MOBA
+# and arena shooter plus Minecraft, Pac-Man and Wii Sports. "multi" also
+# covers co-op-only story games and "sports" some arcade ladders, so those
+# are listed as finishable below. ``comp_lvl_combine`` is not used: the
+# production refresh of 2026-10-26 showed it marks any game with a co-op or
+# versus mode - Sam & Max, Gunstar Heroes, Dear Esther, The Dig - not
+# endlessness. Everything else HLTB files as "game".
 OPEN_ENDED_GAME_TYPES = frozenset({"multi", "endless", "sports"})
 
 OPEN_ENDED_IGDB_IDS = frozenset(
@@ -45,6 +46,7 @@ OPEN_ENDED_IGDB_IDS = frozenset(
         7236,  # Viva Piñata
         2655,  # Animal Crossing
         2645,  # Animal Crossing: Wild World
+        109462,  # Animal Crossing: New Horizons
         2687,  # Animal Crossing: New Leaf
         146112,  # Farming Simulator 22
         3102,  # Kerbal Space Program
@@ -78,6 +80,12 @@ OPEN_ENDED_IGDB_IDS = frozenset(
         15091,  # SingStar
         17251,  # Warlords
         16759,  # Combat
+        11198,  # Rocket League
+        240,  # Battlefield 1942 (no campaign)
+        277,  # Battlefield 2 (no campaign)
+        2115,  # Titanfall (multiplayer only)
+        881,  # Starsiege: Tribes
+        17456,  # Bomberman Live
         15536,  # Escape from Tarkov
         7479,  # Warhawk
         7830,  # City of Heroes
@@ -174,11 +182,11 @@ OPEN_ENDED_IGDB_IDS = frozenset(
         9054,  # Threes!
         29044,  # Drop7
         186090,  # Wordle
+        28395,  # Snake
         # Pinball, a score attack
         3024,  # Pinball Dreams
-        # HLTB flags these itself (2026-10-26). Listed so they hold from deploy,
-        # before a refresh has fetched the flags, and if one ever fails to
-        # re-match
+        # HLTB's game_type marks these itself. Listed so they hold before a
+        # refresh has fetched the type, and if one ever fails to re-match
         115,  # League of Legends
         121,  # Minecraft
         123,  # World of Warcraft
@@ -202,12 +210,10 @@ OPEN_ENDED_IGDB_IDS = frozenset(
         7574,  # FIFA 15
         8173,  # Overwatch
         8203,  # Mario Paint
-        11198,  # Rocket League
         12515,  # Pokémon Go
         15707,  # Clash Royale
         27062,  # NHL Hockey
         27789,  # PUBG: Battlegrounds
-        109462,  # Animal Crossing: New Horizons
         119277,  # Genshin Impact
         126294,  # FIFA 2000
     }
@@ -232,6 +238,11 @@ FINISHABLE_IGDB_IDS = frozenset(
         2195,  # Punch-Out!!
         9151,  # Super Punch-Out!!
         2194,  # Punch-Out!! (2009)
+        21968,  # Phantasy Star Online (its offline story)
+        325594,  # Split Fiction (co-op story)
+        135243,  # It Takes Two (co-op story)
+        36897,  # A Way Out (co-op story)
+        325591,  # Elden Ring Nightreign (a roguelike with final bosses)
     }
 )
 
@@ -239,7 +250,7 @@ FINISHABLE_IGDB_IDS = frozenset(
 def derive_all(HLTBGameData):
     """
     Re-derive ``is_open_ended`` for every row of ``HLTBGameData`` (a live or a
-    historical model) as queries, lowest precedence first: HLTB's flags, then
+    historical model) as queries, lowest precedence first: HLTB's type, then
     the calls above, then any staff override. Restates
     ``HLTBGameData.derive_open_ended``, which a historical model lacks;
     ``games/tests/test_playtime.py`` checks the two agree. Run it from a new
@@ -247,9 +258,7 @@ def derive_all(HLTBGameData):
     """
     rows = HLTBGameData.objects.all()
     rows.update(is_open_ended=False)
-    rows.filter(
-        Q(game_type__in=OPEN_ENDED_GAME_TYPES) | Q(comp_lvl_combine=True)
-    ).update(is_open_ended=True)
+    rows.filter(game_type__in=OPEN_ENDED_GAME_TYPES).update(is_open_ended=True)
     rows.filter(igdb_id__in=OPEN_ENDED_IGDB_IDS).update(is_open_ended=True)
     rows.filter(igdb_id__in=FINISHABLE_IGDB_IDS).update(is_open_ended=False)
     for override in (True, False):

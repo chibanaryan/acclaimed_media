@@ -42,7 +42,8 @@
   Legends (~1162h), WoW or Rocket League is time invested, not time to
   beat, so "Playtime: longest" opened on MMOs and "Short" listed Rocket
   League. `HLTBGameData.is_open_ended` comes from HLTB's own `game_type`
-  and `comp_lvl_combine` flags, plus ~170 editorial calls in
+  (not `comp_lvl_combine`, which marks any co-op or versus mode), plus
+  ~190 editorial calls in
   `games/open_ended.py` (sandbox sims, sports league sims, looping arcade
   games, endless puzzle games). Those games are left out of rows, sort,
   filters, counts, the backlog total and the CSV; the detail page keeps

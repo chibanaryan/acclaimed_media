@@ -254,8 +254,8 @@ class HLTBGameDataAdmin(admin.ModelAdmin):
     Typical distribution: ~87% wikidata, ~13% name_search
 
     Open-ended games (no finish line: multiplayer, MMOs, endless) show no
-    playtime in rows, sorts or filters. HLTB's own flags decide; set "Open
-    ended override" to correct a game they misfile.
+    playtime in rows, sorts or filters. The calls in games/open_ended.py and
+    HLTB's game type decide; set "Open ended override" to correct one.
     """
 
     list_display = [
