@@ -402,6 +402,12 @@ LOGGING = {
             "handlers": ["console"],
             "level": "ERROR" if TEST_MODE else "WARNING",
         },
+        # Temporary: SentryUptimeBot's trace headers, for Sentry Support
+        "games.middleware.uptime": {
+            "handlers": ["console"],
+            "level": "ERROR" if TEST_MODE else "INFO",
+            "propagate": False,
+        },
         "music.services.import_handler": {
             "handlers": ["console"],
             "level": "ERROR" if TEST_MODE else "INFO",

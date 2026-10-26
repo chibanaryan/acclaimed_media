@@ -181,11 +181,15 @@ heroku run -- python manage.py shell
 - `whitenoise.middleware.WhiteNoiseMiddleware` - Static file serving in production
 - `games.middleware.UncompressedUptimeCheckMiddleware` - Answers a `GET`/`HEAD`
   of `/` from `SentryUptimeBot` that refuses gzip with a 2-byte 200, before
-  rate limiting and sessions. One of the two Sentry uptime monitors sends no
-  `Accept-Encoding` and pulled the whole ~667 KB page every minute; it cannot
-  be reconfigured from Sentry's UI. It proves only that a dyno is up - the
-  gzip monitor, which still gets the real page, is the one that catches a
-  broken render, so do not delete that monitor
+  rate limiting and sessions. Two SentryUptimeBot checks hit `/` every
+  minute: ours (at :17, sending gzip) and one at :39 that sends no
+  `Accept-Encoding` and pulled the whole ~667 KB page. Sentry Support
+  confirmed on 2026-10-26 that the :39 check is not in our organization and
+  is tracing it, so each :39 check temporarily logs its `sentry-trace` to
+  `games.middleware.uptime`; remove that once they name the source. The
+  2-byte answer proves only that a dyno is up - our gzip monitor, which
+  still gets the real page, is the one that catches a broken render, so do
+  not delete it
 - `games.middleware.RateLimitMiddleware` - Per-IP rate limiting (see "Caching")
 - `games.middleware.EventStreamAwareGZipMiddleware` - gzip for any client that
   accepts it, except `text/event-stream`, which zlib would buffer

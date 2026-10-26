@@ -5,10 +5,13 @@
 - **Sentry's gzip-less uptime check gets a 2-byte 200.** Two Sentry uptime
   monitors poll `/` once a minute; one sends no `Accept-Encoding`, so it
   pulled the whole ~667 KB page every minute (~1 GB a day), and the router
-  logged 6 H13s in 12 hours on those transfers, each cut off ~80 KB in. It
-  could not be found or changed in Sentry's UI, so
+  logged 6 H13s in 12 hours on those transfers, each cut off ~80 KB in.
   `UncompressedUptimeCheckMiddleware` answers it before rate limiting and
   sessions. The gzip monitor still fetches the real page
+- **The gzip-less check is not ours.** Sentry Support says our organization
+  has one monitor, the gzip one at :17; the :39 check is being traced on
+  their side. It now logs its `sentry-trace` and `baggage` to
+  `games.middleware.uptime` for them - temporary, remove once they name it
 - **Lighthouse pass.** Mobile performance on `/` 92 → 98 and on the
   genre/decade landing pages 83 → 94; accessibility and best practices
   reach 100 on every page tested but one developer page (a tap-target

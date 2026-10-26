@@ -19,6 +19,9 @@ from games.config import (
 )
 
 logger = logging.getLogger(__name__)
+# Its own logger because this module's is held at WARNING; see
+# UncompressedUptimeCheckMiddleware.
+uptime_logger = logging.getLogger(f"{__name__}.uptime")
 
 # Paths exempt from rate limiting.
 #
@@ -43,13 +46,19 @@ class UncompressedUptimeCheckMiddleware:
     """
     Answer Sentry's uptime checks with a tiny 200 when they refuse gzip.
 
-    Two Sentry uptime monitors poll ``/`` once a minute each. One sends
-    ``Accept-Encoding: gzip`` and gets the ~63 KB compressed page; the other
-    sends none, so it pulled the whole ~667 KB of HTML every minute - about
-    1 GB a day - and the router logged an H13 ("Connection closed without
-    response") on some of those transfers, cut off ~80 KB in. That monitor
-    could not be reconfigured or found in Sentry's UI, so it is short-circuited
-    here.
+    Two SentryUptimeBot checks poll ``/`` once a minute each. Ours, at :17
+    past the minute, sends ``Accept-Encoding: gzip`` and gets the ~63 KB
+    compressed page. The other, at :39, sends none, so it pulled the whole
+    ~667 KB of HTML every minute - about 1 GB a day - and the router logged an
+    H13 ("Connection closed without response") on some of those transfers,
+    cut off ~80 KB in. It is not in our Sentry organization: on 2026-10-26
+    Sentry Support confirmed we have one monitor and began tracing the other
+    from its ``sentry-trace`` header. So it is short-circuited here.
+
+    Each check answered here is logged to ``games.middleware.uptime`` with
+    that header, so the values Sentry asked for can be read off
+    ``heroku logs``. That logging is temporary: remove it once Sentry has
+    named the source.
 
     The answer proves only that a dyno is up and Django is serving: it touches
     no database and renders no template. The gzip monitor still fetches the
@@ -61,6 +70,7 @@ class UncompressedUptimeCheckMiddleware:
 
     USER_AGENT_MARKER = "SentryUptimeBot"
     ACCEPTS_GZIP = re.compile(r"\bgzip\b")
+    LOGGED_HEADER_MAX = 300
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -75,11 +85,26 @@ class UncompressedUptimeCheckMiddleware:
             and not self.ACCEPTS_GZIP.search(accept_encoding)
         ):
             request.get_host()  # raises DisallowedHost -> 400, as usual
+            self._log_trace(request, accept_encoding)
             response = HttpResponse("OK", content_type="text/plain")
             response["Cache-Control"] = "no-store"
             patch_vary_headers(response, ("User-Agent", "Accept-Encoding"))
             return response
         return self.get_response(request)
+
+    def _log_trace(self, request, accept_encoding):
+        # Capped, because the User-Agent is all that admits a request here
+        # and it runs ahead of rate limiting. The client IP is already on
+        # the router's own line, as fwd=.
+        def capped(value):
+            return value[: self.LOGGED_HEADER_MAX]
+
+        uptime_logger.info(
+            "sentry uptime check: accept-encoding=%r sentry-trace=%r baggage=%r",
+            capped(accept_encoding),
+            capped(request.META.get("HTTP_SENTRY_TRACE", "")),
+            capped(request.META.get("HTTP_BAGGAGE", "")),
+        )
 
 
 class RateLimitMiddleware:

@@ -75,8 +75,59 @@ class UncompressedUptimeCheckMiddlewareTest(TestCase):
             "/", HTTP_USER_AGENT=SENTRY_UPTIME_UA, HTTP_HOST="evil.example"
         )
 
-        with self.assertRaises(DisallowedHost):
+        with self.assertNoLogs("games.middleware.uptime", "INFO"):
+            with self.assertRaises(DisallowedHost):
+                self.middleware(request)
+
+    def test_uptime_check_without_gzip_logs_its_trace_headers(self):
+        """Sentry Support traces the gzip-less check from its sentry-trace."""
+        request = self.factory.get(
+            "/",
+            HTTP_USER_AGENT=SENTRY_UPTIME_UA,
+            HTTP_SENTRY_TRACE="abc123-def456-0",
+            HTTP_BAGGAGE="sentry-trace_id=abc123",
+        )
+
+        with self.assertLogs("games.middleware.uptime", "INFO") as logs:
             self.middleware(request)
+
+        [line] = logs.output
+        self.assertIn("accept-encoding=''", line)
+        self.assertIn("sentry-trace='abc123-def456-0'", line)
+        self.assertIn("baggage='sentry-trace_id=abc123'", line)
+
+    def test_logged_headers_are_capped(self):
+        """The User-Agent alone admits a request, ahead of rate limiting."""
+        request = self.factory.get(
+            "/",
+            HTTP_USER_AGENT=SENTRY_UPTIME_UA,
+            HTTP_SENTRY_TRACE="t" * 5000,
+            HTTP_BAGGAGE="b" * 5000,
+            HTTP_ACCEPT_ENCODING="e" * 5000,
+        )
+
+        with self.assertLogs("games.middleware.uptime", "INFO") as logs:
+            self.middleware(request)
+
+        [line] = logs.output
+        self.assertIn("sentry-trace='" + "t" * 300 + "'", line)
+        self.assertIn("baggage='" + "b" * 300 + "'", line)
+        self.assertIn("accept-encoding='" + "e" * 300 + "'", line)
+
+    def test_other_requests_are_not_logged(self):
+        requests = [
+            self.factory.get("/", HTTP_USER_AGENT="curl/8.7.1"),
+            self.factory.get("/music/", HTTP_USER_AGENT=SENTRY_UPTIME_UA),
+            self.factory.post("/", HTTP_USER_AGENT=SENTRY_UPTIME_UA),
+            # Our own monitor: Sentry already knows it
+            self.factory.get(
+                "/", HTTP_USER_AGENT=SENTRY_UPTIME_UA, HTTP_ACCEPT_ENCODING="gzip"
+            ),
+        ]
+
+        with self.assertNoLogs("games.middleware.uptime", "INFO"):
+            for request in requests:
+                self.middleware(request)
 
     def test_installed_ahead_of_rate_limiting_and_sessions(self):
         """It must answer before anything that counts, or touches the database."""
