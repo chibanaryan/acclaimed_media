@@ -47,7 +47,7 @@
 {# to keep the tracking Sets current. This page loads no filtering bundle. #}
 {# Deferred: as a plain script it blocked the first paint (~300 ms in #}
 {# Lighthouse) for a listener nothing needs before someone clicks. #}
-<script defer src="{% static 'core/js/media-tracking.min.js' %}?v=2" nonce="{{ csp_nonce }}"></script>
+<script defer src="{% static 'core/js/media-tracking.min.js' %}" nonce="{{ csp_nonce }}"></script>
 <script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
     window.MediaTracking.register('album', {

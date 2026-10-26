@@ -91,6 +91,12 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
+    # Before staticfiles: `runserver` then leaves static files to WhiteNoise,
+    # which sends WHITENOISE_MAX_AGE (0 in development). Django's own static
+    # handler sends no Cache-Control at all, so a browser cached a script by
+    # heuristic - a tenth of its age since Last-Modified - and kept serving
+    # the old code after an edit. Only the runserver command is affected.
+    "whitenoise.runserver_nostatic",
     "django.contrib.staticfiles",
     "django.contrib.flatpages",
     "django.contrib.sites",
@@ -207,6 +213,12 @@ DATABASES = {
 if DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3":
     DATABASES["default"]["OPTIONS"] = {
         "timeout": 20,  # Increase timeout from default 5 seconds to 20 seconds
+        # Take the write lock when a transaction begins. Under the default
+        # (DEFERRED), two requests that each read and then write inside
+        # transaction.atomic - the tracking toggles do - both hold read
+        # locks, and SQLite fails one at once with "database is locked"
+        # rather than waiting out the timeout. Postgres needs no such thing.
+        "transaction_mode": "IMMEDIATE",
     }
 
 # Use in-memory SQLite for faster tests (each parallel process gets its own DB).
@@ -279,6 +291,7 @@ CACHES = build_caches(
     debug=DEBUG,
     test_mode=TEST_MODE,
     base_dir=BASE_DIR,
+    release=os.environ.get("HEROKU_RELEASE_VERSION"),
 )
 
 STATIC_URL = "/static/"
@@ -304,8 +317,12 @@ STORAGES = {
 
 # WhiteNoise caching optimizations
 # Note: CORS headers for font files are handled in CSP middleware
-# Cache static files for 1 year (safe because filenames include content hash)
-WHITENOISE_MAX_AGE = 31536000  # 1 year in seconds
+# Cache static files for 1 year in production, where every name carries a
+# content hash, so a changed file is a new URL and no `?v=` literal is needed.
+# In development names are unhashed: a year's cache there kept a browser on
+# the old JS after an edit, which is all the `?v=` literals were for. Zero is
+# WhiteNoise's own default under DEBUG.
+WHITENOISE_MAX_AGE = 0 if DEBUG else 31536000  # 1 year in seconds
 
 # Add 'immutable' to Cache-Control for hashed files (prevents revalidation checks)
 # Files with content hash in name never need revalidation
@@ -323,9 +340,9 @@ CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [],
     "DEFAULT_AUTHENTICATION_CLASSES": [],
-    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.LimitOffsetPagination",
+    "DEFAULT_PAGINATION_CLASS": "core.pagination.CappedLimitOffsetPagination",
     "PAGE_SIZE": 100,
-    "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.AnonRateThrottle"],
+    "DEFAULT_THROTTLE_CLASSES": ["core.throttling.ClientIPAnonRateThrottle"],
     "DEFAULT_THROTTLE_RATES": {"anon": "60/minute"},
 }
 
@@ -343,6 +360,14 @@ WIKIDATA_ACCESS_TOKEN = env("WIKIDATA_ACCESS_TOKEN", default=None)
 # from https://www.discogs.com/settings/developers is enough; the music
 # metadata client reads the limit off the response headers either way.
 DISCOGS_TOKEN = env("DISCOGS_TOKEN", default=None)
+
+# Tests run without outside credentials, as CI does. A developer's .env
+# holds real ones, and with them a test that did not patch its client got a
+# live IGDB token from Twitch: local and CI runs took different paths, and
+# conftest.py now refuses outside connections anyway.
+if TEST_MODE:
+    IGDB_CLIENT_ID = IGDB_CLIENT_SECRET = "XXX"
+    WIKIDATA_ACCESS_TOKEN = DISCOGS_TOKEN = None
 
 # Email configuration (Brevo SMTP)
 # In dev: print to console. In prod: send via Brevo SMTP.

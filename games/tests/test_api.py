@@ -8,6 +8,7 @@ from rest_framework.test import APIClient
 from core.tests.utils import clear_all_caches
 from .. import models
 from ..api import serializers
+from ..api.views import GameListView
 
 
 class GameListApiTests(TestCase):
@@ -66,6 +67,23 @@ class GameListApiTests(TestCase):
     def test_order_by_parameter_applies(self):
         names = self._get_game_names(order_by="-year_of_release")
         self.assertEqual(names, ["Beta Saga", "Alpha Quest"])
+
+    def test_order_by_ignores_fields_the_summary_does_not_expose(self):
+        """order_by() follows relations; only the listed columns are allowed."""
+        for order_by in ("played_by__user__email", "-igdb_id", "nope", "?", "--rank"):
+            with self.subTest(order_by=order_by):
+                names = self._get_game_names(order_by=order_by)
+                self.assertEqual(names, ["Alpha Quest", "Beta Saga"])
+
+    def test_limit_is_capped(self):
+        from django.test import RequestFactory
+        from rest_framework.request import Request
+
+        from core.pagination import CappedLimitOffsetPagination
+
+        request = Request(RequestFactory().get("/api/games/", {"limit": "100000"}))
+        self.assertEqual(CappedLimitOffsetPagination().get_limit(request), 500)
+        self.assertIsInstance(GameListView().paginator, CappedLimitOffsetPagination)
 
 
 class ApiSmokeTests(TestCase):

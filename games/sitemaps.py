@@ -4,10 +4,16 @@ Sitemap configuration for Acclaimed Games.
 Generates XML sitemaps for search engines to index the site efficiently.
 """
 
+import re
+
+from django.contrib.flatpages.models import FlatPage
 from django.contrib.sitemaps import Sitemap
+from django.contrib.sites.models import Site
 from django.urls import reverse
 
 from . import models
+
+SLUG = re.compile(r"[-a-zA-Z0-9_]+")
 
 
 class StaticViewSitemap(Sitemap):
@@ -25,6 +31,7 @@ class StaticViewSitemap(Sitemap):
             "home",
             "developers-list",
             "list-list",
+            "article-list",
         ]
 
     def location(self, item):
@@ -77,7 +84,10 @@ class GameSitemap(Sitemap):
         return reverse("game-detail", kwargs={"slug": obj.slug})
 
     def lastmod(self, obj):
-        return obj.updated_at if hasattr(obj, "updated_at") else None
+        # Game has `modified`, not `updated_at`; reading the latter gave no
+        # game a <lastmod> at all. An import recreates every game, so after
+        # one this is the import's date - which is when the page changed.
+        return obj.modified
 
 
 class DeveloperSitemap(Sitemap):
@@ -94,10 +104,59 @@ class DeveloperSitemap(Sitemap):
         return reverse("developer-detail", kwargs={"slug": obj.slug})
 
 
+class ArticleSitemap(Sitemap):
+    """Sitemap for published blog articles."""
+
+    changefreq = "monthly"
+    priority = 0.5
+
+    def items(self):
+        return models.Article.objects.filter(
+            status=models.Article.Status.PUBLISHED
+        ).order_by("-published_at")
+
+    def lastmod(self, obj):
+        return obj.updated_at
+
+
+class PageSitemap(Sitemap):
+    """Sitemap for the flat pages (about, donate, legal, privacy).
+
+    They are linked as ``/page/<slug>/`` whether the FlatPage's own url is
+    ``/about/`` or ``/page/about/`` (``PageDetailView`` accepts either), so
+    that is the address listed. A page behind a login is left out.
+    """
+
+    changefreq = "yearly"
+    priority = 0.3
+
+    def items(self):
+        pages = FlatPage.objects.filter(
+            registration_required=False, sites=Site.objects.get_current()
+        ).order_by("url")
+        # dict.fromkeys: /about/ and /page/about/ are both "about"
+        return list(dict.fromkeys(slug for slug in map(self._slug, pages) if slug))
+
+    @staticmethod
+    def _slug(page):
+        # Only what PageDetailView finds and <slug:slug> can reverse: a
+        # FlatPage url may hold "." or "~", and one NoReverseMatch here
+        # would take the whole sitemap down.
+        if not page.url.endswith("/"):
+            return None
+        slug = page.url.strip("/").removeprefix("page/")
+        return slug if SLUG.fullmatch(slug) else None
+
+    def location(self, item):
+        return reverse("page-detail", kwargs={"slug": item})
+
+
 # Dictionary of all sitemaps for URL configuration
 sitemaps = {
     "static": StaticViewSitemap,
     "landing": LandingPageSitemap,
     "games": GameSitemap,
     "developers": DeveloperSitemap,
+    "articles": ArticleSitemap,
+    "pages": PageSitemap,
 }

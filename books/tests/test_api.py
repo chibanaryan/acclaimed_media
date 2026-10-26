@@ -864,3 +864,20 @@ class SessionAuthenticatedAccessTests(TestCase):
         for path in self.READ_PATHS:
             with self.subTest(path=path):
                 self.assertEqual(self.client.get(path).status_code, 404)
+
+
+class BookAPIMalformedParamsTests(StaffAPITestMixin, TestCase):
+    """Malformed query strings answer like absent ones, as games' API does."""
+
+    def test_no_malformed_value_is_a_server_error(self):
+        for url in (
+            "/api/books/?genres=abc",
+            "/api/books/?genres=1,x",
+            "/api/books/?order_by=nope",
+            "/api/books/?order_by=--rank",
+            "/api/books/?order_by=authors__name",
+            "/api/books/search/?q=alpha&limit=x",
+            "/api/books/unified-search/?q=alpha&book_limit=x&author_limit=1.5",
+        ):
+            with self.subTest(url=url):
+                self.assertLess(self.client.get(url).status_code, 500)

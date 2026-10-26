@@ -1497,6 +1497,39 @@ class DeveloperListViewTest(TestCase):
         response = self.client.get(reverse("developers-list") + "?sort=name&dir=desc")
         self.assertEqual(response.status_code, 200)
 
+    def test_sort_by_name_lists_only_developers_with_games(self):
+        """The name sort used Django's paginator, which ran before the
+        no-games filter, so it listed and counted every developer."""
+        dev3 = Developer.objects.create(name="Atlus", slug="atlus", igdb_id=3)
+        Game.objects.create(name="Game 2", rank=2, year_of_release=2021)
+        Game.objects.get(name="Game 2").developers.add(dev3)
+
+        for direction, expected in (
+            ("asc", [dev3, self.dev1]),
+            ("desc", [self.dev1, dev3]),
+        ):
+            with self.subTest(direction=direction):
+                response = self.client.get(
+                    reverse("developers-list") + f"?sort=name&dir={direction}"
+                )
+                self.assertEqual(list(response.context["developers"]), expected)
+                self.assertEqual(response.context["total_count"], 2)
+
+    def test_a_page_past_the_end_is_the_last_page(self):
+        """As RobustPaginationMixin answers, which the name sort used to
+        go through; manual pagination returned an empty page."""
+        for sort in ("name", "games"):
+            with self.subTest(sort=sort):
+                response = self.client.get(
+                    reverse("developers-list") + f"?sort={sort}&page=999"
+                )
+                self.assertEqual(list(response.context["developers"]), [self.dev1])
+
+    def test_an_unknown_sort_falls_back_to_games(self):
+        response = self.client.get(reverse("developers-list") + "?sort=bogus&page=x")
+        self.assertEqual(response.context["sort"], "games")
+        self.assertEqual(list(response.context["developers"]), [self.dev1])
+
     def test_sort_by_games_descending(self):
         """Test sorting developers by game count descending."""
         response = self.client.get(reverse("developers-list") + "?sort=games&dir=desc")

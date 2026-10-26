@@ -17,15 +17,15 @@
 {% block pre_alpine %}
 {# The shared filter sidebar components and the page's own filter state, both #}
 {# loaded before Alpine core as the games rankings page loads its own. #}
-<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/filter-subcomponents.min.js" %}?v=4');</script>
-<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/media-list-controls.min.js" %}?v=8');</script>
-<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/quick-mark.min.js" %}?v=1');</script>
+<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/filter-subcomponents.min.js" %}');</script>
+<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/media-list-controls.min.js" %}');</script>
+<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/quick-mark.min.js" %}');</script>
 {# Keeps the tracking id Sets current after an HTMX button swap. Loaded here #}
 {# rather than in the filtering bundle because the album detail page swaps #}
 {# the same button and loads no bundle at all. #}
 {# Deferred: as a plain script it blocked the first paint (~300 ms in #}
 {# Lighthouse) for a listener nothing needs before someone clicks. #}
-<script defer src="{% static 'core/js/media-tracking.min.js' %}?v=2" nonce="{{ csp_nonce }}"></script>
+<script defer src="{% static 'core/js/media-tracking.min.js' %}" nonce="{{ csp_nonce }}"></script>
 <script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
     window.MediaTracking.register('album', {
@@ -75,7 +75,7 @@ window.wantToListenAlbumIds = new Set();
 window.isAuthenticated = false;
 {% endif %}
 </script>
-<script src="{% static 'music/js/music-client-side-filtering.bundle.min.js' %}?v=13"
+<script src="{% static 'music/js/music-client-side-filtering.bundle.min.js' %}"
         defer fetchpriority="low" nonce="{{ csp_nonce }}"></script>
 {% endif %}
 {% endblock %}

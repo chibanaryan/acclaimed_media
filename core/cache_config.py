@@ -24,6 +24,8 @@ page bodies and counters culled each other out of one 500-entry LocMem, which
 degraded rate limiting under exactly the crawler load it exists to stop.
 """
 
+import re
+
 import environ
 
 LOCMEM_BACKEND = "django.core.cache.backends.locmem.LocMemCache"
@@ -68,12 +70,32 @@ def build_default_cache(cache_url, *, debug, test_mode, base_dir):
     return {"BACKEND": FILE_BACKEND, "LOCATION": base_dir / "django_cache"}
 
 
-def build_caches(cache_url, *, debug, test_mode, base_dir):
-    """Return the whole ``CACHES`` setting: a shared alias and two local ones."""
+def build_caches(cache_url, *, debug, test_mode, base_dir, release=None):
+    """Return the whole ``CACHES`` setting: a shared alias and two local ones.
+
+    ``release`` - Heroku's ``HEROKU_RELEASE_VERSION``, from the app's
+    ``runtime-dyno-metadata`` feature - prefixes every shared key. The
+    shared cache is a Postgres table, so it outlives a deploy: without the
+    prefix, new code read what old code had cached, such as the games
+    payload's version for up to an hour after a ``SCHEMA_VERSION`` bump. A
+    release also covers a config var change, so flipping a flag starts
+    clean too. Old dynos still writing in the seconds before they stop write
+    under their own prefix, which the new ones never read. One-off and
+    scheduler dynos run the same release as the web dynos, so their
+    invalidations still reach them. The per-process aliases need no prefix:
+    a restart empties them.
+    """
+    default = build_default_cache(
+        cache_url, debug=debug, test_mode=test_mode, base_dir=base_dir
+    )
+    if release and not test_mode:
+        # Zero-padded because DatabaseCache culls the lowest keys first, in
+        # string order: unpadded, "v100:" sorts before "v99:", and the
+        # first cull after that deploy would evict the live release's keys
+        # while the dead ones stayed.
+        default["KEY_PREFIX"] = re.sub(r"\d+", lambda m: m[0].zfill(8), release)
     return {
-        "default": build_default_cache(
-            cache_url, debug=debug, test_mode=test_mode, base_dir=base_dir
-        ),
+        "default": default,
         "local": {
             "BACKEND": LOCMEM_BACKEND,
             "LOCATION": "local",

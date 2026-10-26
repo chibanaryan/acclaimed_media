@@ -122,10 +122,26 @@ function initJumpToRank() {
 }
 
 /**
- * Get current filters from URL parameters
+ * Get current filters from the URL, a landing page's path included
+ * (currentFilterParams). Reading only the query string, a jump on
+ * /games/2010s/ saw no filters: the total was the whole ranking, so rank
+ * 500 passed validation and the jump re-rendered the list unfiltered.
+ * Old ?year= and ?decade= links, which the server honours, are mapped
+ * onto start/end the same way.
  */
 function getFiltersFromURL() {
-    const params = new URLSearchParams(window.location.search);
+    const params = currentFilterParams();
+    if (!params.get('start') && !params.get('end')) {
+        const year = parseInt(params.get('year'));
+        const decade = (params.get('decade') || '').match(/^(\d{3}0)-\d{2}$/);
+        if (year) {
+            params.set('start', year);
+            params.set('end', year);
+        } else if (decade) {
+            params.set('start', decade[1]);
+            params.set('end', parseInt(decade[1]) + 9);
+        }
+    }
 
     // Parse HLTB parameters
     const hltb_min_str = params.get('hltb_min');

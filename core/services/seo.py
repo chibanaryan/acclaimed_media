@@ -12,6 +12,17 @@ import json
 SITE_BASE = "https://www.acclaimedvideogames.com"
 
 
+def json_ld(payload):
+    """Serialise ``payload`` for a ``<script type="application/ld+json">``.
+
+    Built with ``json.dumps`` rather than written into the template: there,
+    autoescaping turned "Assassin's Creed" into ``Assassin&#x27;s Creed``,
+    which a script body never decodes, and a missing value into ``"None"``.
+    "<" is escaped so the JSON can never close the ``<script>`` tag.
+    """
+    return json.dumps(payload).replace("<", "\\u003c")
+
+
 def itemlist_json(name, entries):
     """A schema.org ItemList for ``entries``, an iterable of ``(name, path)``.
 
@@ -34,4 +45,4 @@ def itemlist_json(name, entries):
         "numberOfItems": len(elements),
         "itemListElement": elements,
     }
-    return json.dumps(payload).replace("<", "\\u003c")
+    return json_ld(payload)

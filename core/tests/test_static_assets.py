@@ -60,3 +60,61 @@ class ReferencedScriptsExistTests(SimpleTestCase):
                 found = finders.find(path)
                 source = Path(found).with_suffix("").with_suffix(".js")
                 self.assertTrue(source.exists(), f"{path} has no source at {source}")
+
+
+# A quote or backtick, then a site-absolute static path: '/static/x.png'.
+LITERAL_STATIC_PATH = re.compile(r"""['"`]/static/""")
+
+
+class NoHardcodedStaticPathsTests(SimpleTestCase):
+    """Static URLs go through ``{% static %}``, never a literal path.
+
+    Production keeps only the content-hashed copies
+    (``WHITENOISE_KEEP_ONLY_HASHED_FILES``), so ``/static/css/dist/styles.css``
+    404s there while working in development and under test, which use plain
+    storage. The admin article preview loaded its stylesheet that way.
+
+    Books is left out: it is unlaunched, and its renderer's placeholder paths
+    name a file that does not exist in any storage.
+    """
+
+    def _sources(self):
+        for app in ("games", "core", "music"):
+            root = Path(settings.BASE_DIR) / app
+            for path in list(root.rglob("*.js")) + list(root.rglob("*.html")):
+                if path.name.endswith(".min.js") or "vendor" in path.parts:
+                    continue
+                yield path
+
+    def test_no_source_hardcodes_a_static_path(self):
+        offenders = [
+            str(path.relative_to(settings.BASE_DIR))
+            for path in self._sources()
+            if LITERAL_STATIC_PATH.search(path.read_text())
+        ]
+        self.assertEqual(offenders, [])
+
+    def test_the_sweep_covers_the_admin_preview(self):
+        # Guards the walk: the file that had the bug must be in it.
+        names = {path.name for path in self._sources()}
+        self.assertIn("markdown-preview.js", names)
+
+
+class NoHandMaintainedCacheBustersTests(SimpleTestCase):
+    """``{% static %}`` URLs carry no ``?v=N``.
+
+    Production's manifest storage puts a content hash in every static name,
+    so a changed file is already a new URL, and development serves static
+    files with no max-age. The 22 hand-bumped literals did nothing but
+    demand a bump, pinned by six tests, on every JavaScript change.
+    """
+
+    def test_no_template_appends_a_version(self):
+        busted = re.compile(r"""{%\s*static\s*['"][^'"]+['"]\s*%}\?v=""")
+        offenders = [
+            str(template.relative_to(settings.BASE_DIR))
+            for app in TEMPLATE_DIRS
+            for template in (Path(settings.BASE_DIR) / app).rglob("*.html")
+            if busted.search(template.read_text())
+        ]
+        self.assertEqual(offenders, [])

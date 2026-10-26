@@ -76,11 +76,11 @@
     <script defer src="{% static 'games/js/vendor/htmx.min.js' %}" nonce="{{ csp_nonce }}"></script>
 
     {# Base Utilities - Essential functions that must be available before Alpine.js initializes #}
-    <script defer src="{% static 'games/js/utils-base.min.js' %}?v=10" nonce="{{ csp_nonce }}"></script>
+    <script defer src="{% static 'games/js/utils-base.min.js' %}" nonce="{{ csp_nonce }}"></script>
     {% if media_type == 'music' %}
     {# The sidebar and mobile search boxes for sections whose search groups #}
     {# are not games/developers/series. Same place in the order as above. #}
-    <script defer src="{% static 'core/js/media-search.min.js' %}?v=1" nonce="{{ csp_nonce }}"></script>
+    <script defer src="{% static 'core/js/media-search.min.js' %}" nonce="{{ csp_nonce }}"></script>
     {% endif %}
 
     {# Alpine.js - deferred loading for better TBT scores #}
@@ -94,7 +94,7 @@
     {# Add core Alpine scripts after page-specific ones #}
     <script nonce="{{ csp_nonce }}">
     window.alpineScripts.push(
-        '{% static "games/js/rank-distribution.min.js" %}?v=6',
+        '{% static "games/js/rank-distribution.min.js" %}',
         '{% static "games/js/vendor/alpine-collapse.min.js" %}',
         '{% static "games/js/vendor/alpine.min.js" %}'
     );
@@ -497,7 +497,7 @@
     {% if user.is_authenticated %}
     {# The one game status menu every played button opens #}
     {% include 'games/includes/_played_menu.html' %}
-    <script defer src="{% static 'games/js/played-menu.min.js' %}?v=2" nonce="{{ csp_nonce }}"></script>
+    <script defer src="{% static 'games/js/played-menu.min.js' %}" nonce="{{ csp_nonce }}"></script>
     {% endif %}
 </body>
 </html>

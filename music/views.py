@@ -42,7 +42,9 @@ from django.views.generic import DetailView, ListView, TemplateView
 from core import constants as core_constants
 from core.cache_helpers import get_year_bounds
 from core.mixins import HTMXPartialMixin, RobustPaginationMixin, StaffOnlyMixin
+from core.models import User
 from core.services import genre_tree, seo
+from core.services.query_params import parse_id_list, parse_int
 from music import config, models
 from music.access import MusicVisibleMixin
 from music.forms import MusicImportForm
@@ -148,7 +150,7 @@ def _filter_title(params, min_year=None, max_year=None, genres=None, artists=Non
         return f"Albums matching \u201c{query}\u201d"
 
     genre_label = ""
-    selected_genres = _parse_id_list(params.get("genres"))
+    selected_genres = parse_id_list(params.get("genres"))
     if selected_genres and genres:
         names = {genre["id"]: genre["name"] for genre in genres}
         chosen = [names[genre_id] for genre_id in selected_genres if genre_id in names]
@@ -156,7 +158,7 @@ def _filter_title(params, min_year=None, max_year=None, genres=None, artists=Non
             genre_label = f" {titles.join_names(chosen)}"
 
     artist_label = ""
-    selected_artists = _parse_id_list(params.get("artists"))
+    selected_artists = parse_id_list(params.get("artists"))
     if selected_artists and artists:
         names = {artist["id"]: artist["name"] for artist in artists}
         chosen = [
@@ -165,8 +167,8 @@ def _filter_title(params, min_year=None, max_year=None, genres=None, artists=Non
         if chosen:
             artist_label = f" by {titles.join_names(chosen)}"
 
-    start = _parse_int(params.get("start"))
-    end = _parse_int(params.get("end"))
+    start = parse_int(params.get("start"))
+    end = parse_int(params.get("end"))
     if min_year is not None and max_year is not None:
         window = titles.build_time_window(
             start if start is not None else min_year,
@@ -256,26 +258,6 @@ def _get_year_bounds():
         cache_timeout=config.CACHE_TIMEOUT_24_HOURS,
         default_min=config.DEFAULT_MIN_YEAR,
     )
-
-
-def _parse_id_list(raw):
-    """Parse a comma-separated id parameter, ignoring anything non-numeric."""
-    if not raw:
-        return []
-    ids = []
-    for part in raw.split(","):
-        part = part.strip()
-        if part.isdigit():
-            ids.append(int(part))
-    return ids
-
-
-def _parse_int(raw):
-    """Parse an integer parameter, returning None rather than raising."""
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return None
 
 
 def _parse_status_list(raw, allowed):
@@ -371,15 +353,15 @@ def apply_album_filters(queryset, params, skip=(), user=None, descendants=None):
         )
 
     if "year" not in skip:
-        start = _parse_int(params.get("start"))
+        start = parse_int(params.get("start"))
         if start is not None:
             queryset = queryset.filter(year_released__gte=start)
-        end = _parse_int(params.get("end"))
+        end = parse_int(params.get("end"))
         if end is not None:
             queryset = queryset.filter(year_released__lte=end)
 
     if "artists" not in skip:
-        artist_ids = _parse_id_list(params.get("artists"))
+        artist_ids = parse_id_list(params.get("artists"))
         if artist_ids:
             # Picking Prince includes Prince and the Revolution's records, as
             # picking a genre includes its styles.
@@ -389,7 +371,7 @@ def apply_album_filters(queryset, params, skip=(), user=None, descendants=None):
             ).distinct()
 
     if "genres" not in skip:
-        genre_ids = _parse_id_list(params.get("genres"))
+        genre_ids = parse_id_list(params.get("genres"))
         if genre_ids:
             queryset = queryset.filter(
                 genres__id__in=expand_genre_ids(genre_ids, descendants)
@@ -804,11 +786,11 @@ class AlbumHomePageView(MusicVisibleMixin, RobustPaginationMixin, ListView):
         # filter"; the view spells it as absent parameters.
         context["filters"] = {
             "q": context["current_q"],
-            "start": _parse_int(self.request.GET.get("start")) or min_year,
-            "end": _parse_int(self.request.GET.get("end")) or max_year,
+            "start": parse_int(self.request.GET.get("start")) or min_year,
+            "end": parse_int(self.request.GET.get("end")) or max_year,
             "genres": [
                 str(genre_id)
-                for genre_id in _parse_id_list(self.request.GET.get("genres"))
+                for genre_id in parse_id_list(self.request.GET.get("genres"))
             ],
             "listened": _parse_status_list(
                 self.request.GET.get("listened"), config.LISTEN_FILTER_VALUES
@@ -817,7 +799,7 @@ class AlbumHomePageView(MusicVisibleMixin, RobustPaginationMixin, ListView):
             "sortDirection": context["current_dir"],
         }
         context["show_rank"] = "filtered" if context["is_filtered"] else "alltime"
-        context["highlight"] = _parse_int(self.request.GET.get("highlight"))
+        context["highlight"] = parse_int(self.request.GET.get("highlight"))
         context["query_string"] = self._filter_query_string()
 
         # Client-side filtering. The bundle and the <template> elements it
@@ -1063,6 +1045,10 @@ class ToggleListenedAlbumView(MusicVisibleMixin, LoginRequiredMixin, View):
 
         key = {"user": request.user, "wikidata_id": album.wikidata_id}
         with transaction.atomic():
+            # One user's toggles run one at a time, as games' do: otherwise
+            # a Heard and a Want sent together each delete the other table
+            # before the other's insert is visible, and both rows survive.
+            User.objects.select_for_update().filter(pk=request.user.pk).first()
             if target in ("listened", "own"):
                 models.WantToListenAlbum.objects.filter(**key).delete()
                 models.ListenedAlbum.objects.update_or_create(
@@ -1482,7 +1468,7 @@ class MusicListListView(MusicVisibleMixin, HTMXPartialMixin, ListView):
         if list_type in dict(core_constants.LIST_TYPES):
             qs = qs.filter(type=list_type)
 
-        year = _parse_int(self.request.GET.get("year"))
+        year = parse_int(self.request.GET.get("year"))
         if year is not None:
             qs = qs.filter(year=year)
 
@@ -1526,7 +1512,7 @@ class MusicListListView(MusicVisibleMixin, HTMXPartialMixin, ListView):
         # so an option never leads to an empty page.
         by_type = models.MusicList.objects.all()
         if context["current_year"]:
-            year = _parse_int(context["current_year"])
+            year = parse_int(context["current_year"])
             if year is not None:
                 by_type = by_type.filter(year=year)
         context["list_types"] = [

@@ -87,6 +87,11 @@ document.addEventListener("DOMContentLoaded", function() {
 
     const iframe = previewRow.querySelector(".article-preview-frame");
 
+    // The site stylesheet's URL, from {% static %} on the server
+    // (ArticleAdmin.formfield_for_dbfield). The literal unhashed path this
+    // used 404s in production, where only the content-hashed copy is kept.
+    const siteStylesheetHref = contentField.dataset.siteStylesheet || "";
+
     // Initialize iframe with site styles - matches article_detail.html structure
     function initIframe() {
         const doc = iframe.contentDocument;
@@ -95,7 +100,7 @@ document.addEventListener("DOMContentLoaded", function() {
             <!DOCTYPE html>
             <html data-theme="forest">
             <head>
-                <link rel="stylesheet" href="/static/css/dist/styles.css">
+                <link rel="stylesheet" href="${siteStylesheetHref}">
                 <style>
                     body { margin: 0; padding: 16px; }
                     .article-container {

@@ -24,21 +24,13 @@ from rest_framework.views import APIView, Response
 
 from core import constants as core_constants
 from core.services import genre_tree
+from core.services.query_params import parse_limit
 
 from .. import config, models
 from ..access import MusicAPIGateMixin
 from ..services.artist_graph import ArtistGraph, artist_summary
 from ..services.data_version import compute_album_data_version
 from . import serializers
-
-
-def _parse_limit(raw, default, maximum=20):
-    """A result limit from the query string, clamped and never raising."""
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return default
-    return max(1, min(value, maximum))
 
 
 class MusicReadAPIMixin(MusicAPIGateMixin):
@@ -218,8 +210,8 @@ class MusicUnifiedSearchView(MusicReadAPIMixin, APIView):
 
     def get(self, request):
         q = request.query_params.get("q", "").strip()
-        album_limit = _parse_limit(request.query_params.get("album_limit"), 5)
-        artist_limit = _parse_limit(request.query_params.get("artist_limit"), 3)
+        album_limit = parse_limit(request.query_params.get("album_limit"), 5)
+        artist_limit = parse_limit(request.query_params.get("artist_limit"), 3)
 
         if len(q) < 2:
             return Response({"albums": [], "artists": []})

@@ -3,10 +3,12 @@ import hashlib
 import json
 import logging
 import math
+import re
 from functools import cached_property
 from pathlib import Path
 from urllib.parse import urlencode, urlparse
 
+from allauth.core import ratelimit
 from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.flatpages.models import FlatPage
@@ -51,7 +53,9 @@ from core.mixins import (
     StaffOnlyMixin,
 )
 from core.models import User
-from core.services import ranking, titles
+from core.services import ranking, seo, titles
+from core.services.client_ip import get_client_ip
+from core.services.query_params import parse_id_list, parse_int
 from games import config, constants, models, utils
 from games.cache import invalidate_played_games_cache, invalidate_want_to_play_cache
 from games.forms import ImportForm, ContactForm
@@ -405,11 +409,8 @@ def _expand_platform_virtual_ids(platforms_param, platforms):
                 if code in code_to_id:
                     platform_ids.append(code_to_id[code])
         else:
-            # Regular ID - try to parse as int
-            try:
-                platform_ids.append(int(param))
-            except ValueError:
-                pass  # Skip invalid IDs
+            # Regular ID; anything else is skipped
+            platform_ids.extend(parse_id_list(param))
 
     return platform_ids
 
@@ -590,7 +591,7 @@ class ContactFormView(FormView):
     def form_invalid(self, form):
         """Handle invalid submissions, silently dropping honeypot spam."""
         if self._honeypot_only_error(form):
-            client_ip = contact_spam_guard.get_client_ip(self.request)
+            client_ip = get_client_ip(self.request)
             category = self.request.POST.get("category", "")
             logger.warning(
                 "Contact submission blocked (reason=honeypot ip=%s category=%s)",
@@ -676,7 +677,7 @@ def download_games_csv(request):
     qs = utils.apply_year_filters(qs, decade=decade, year=year, start=start, end=end)
 
     if genres_param:
-        genre_ids = [int(x) for x in genres_param.split(",") if x]
+        genre_ids = parse_id_list(genres_param)
         qs = utils.apply_genre_filter(
             qs, genre_ids, match_all=False, use_wikipedia=True
         )
@@ -700,7 +701,7 @@ def download_games_csv(request):
 
     # Apply series filter
     if series_param:
-        series_ids = [int(x) for x in series_param.split(",") if x.strip()]
+        series_ids = parse_id_list(series_param)
         qs = utils.apply_series_filter(qs, series_ids)
 
     # Apply played status filter (authenticated users only)
@@ -760,7 +761,7 @@ def download_games_csv(request):
     # Get series list for title building (if series filter is used)
     series_list = None
     if series_param:
-        series_ids_for_title = [int(x) for x in series_param.split(",") if x.strip()]
+        series_ids_for_title = parse_id_list(series_param)
         series_list = list(
             models.Series.objects.filter(id__in=series_ids_for_title).values(
                 "id", "name"
@@ -1025,6 +1026,7 @@ class GameDetailView(DetailView):
                 cache.set(cache_key, year_count, config.CACHE_TIMEOUT_24_HOURS)
             context["year_game_count"] = year_count
 
+        context["structured_data_json"] = _game_json_ld(game)
         return context
 
 
@@ -1104,7 +1106,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         # Genre filtering (single-select, so match_all doesn't matter)
         genres = self.request.GET.get("genres")
         if genres:
-            genre_ids = [int(x) for x in genres.split(",")]
+            genre_ids = parse_id_list(genres)
             qs = utils.apply_genre_filter(
                 qs,
                 genre_ids,
@@ -1129,7 +1131,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         # Series filtering
         series_param = self.request.GET.get("series")
         if series_param:
-            series_ids = [int(x) for x in series_param.split(",") if x.strip()]
+            series_ids = parse_id_list(series_param)
             qs = utils.apply_series_filter(qs, series_ids)
 
         # Played status filtering (authenticated users only)
@@ -1313,17 +1315,19 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         year_param = self.request.GET.get("year")
         decade_param = self.request.GET.get("decade")
 
+        year_val = parse_int(year_param)
+        # The rule apply_year_filters uses for the list, or the heading and
+        # the year grid would name a range the list was not filtered to
+        decade = re.match(r"(\d{2})(\d{2})-(\d{2})", decade_param or "")
         if start_param or end_param:
-            start_val = int(start_param) if start_param else min_year
-            end_val = int(end_param) if end_param else max_year
-        elif year_param:
-            start_val = int(year_param)
-            end_val = int(year_param)
-        elif decade_param:
-            # Parse decade format like "1990-99"
-            decade_start = int(decade_param.split("-")[0])
-            start_val = decade_start
-            end_val = decade_start + 9
+            start_val = parse_int(start_param, min_year)
+            end_val = parse_int(end_param, max_year)
+        elif year_val is not None:
+            start_val = end_val = year_val
+        elif decade:
+            # Decade format like "1990-99"
+            start_val = int(decade[1] + decade[2])
+            end_val = int(decade[1] + decade[3])
         else:
             start_val = min_year
             end_val = max_year
@@ -1513,7 +1517,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
             # Apply genre filter (single-select, so match_all doesn't matter)
             genres_param = self.request.GET.get("genres")
             if genres_param:
-                genre_ids = [int(x) for x in genres_param.split(",")]
+                genre_ids = parse_id_list(genres_param)
                 base_qs = utils.apply_genre_filter(
                     base_qs,
                     genre_ids,
@@ -1613,7 +1617,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
                 end=end_param,
             )
             if genres_param:
-                genre_ids = [int(x) for x in genres_param.split(",")]
+                genre_ids = parse_id_list(genres_param)
                 platform_facet_qs = utils.apply_genre_filter(
                     platform_facet_qs,
                     genre_ids,
@@ -1777,6 +1781,28 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
 LANDING_SITE_BASE = "https://www.acclaimedvideogames.com"
 
 
+def _game_json_ld(game):
+    """The VideoGame JSON-LD for a game's detail page.
+
+    No ``aggregateRating``: the template used to emit one from
+    ``game.score``, which does not exist, so every page published an empty
+    rating, and a count of list appearances is not a rating either.
+    """
+    payload = {
+        "@context": "https://schema.org",
+        "@type": "VideoGame",
+        "name": game.name,
+        "url": seo.SITE_BASE + reverse("game-detail", kwargs={"slug": game.slug}),
+        "description": game.description
+        or "One of the most critically acclaimed video games of all time.",
+    }
+    if game.year_of_release:
+        payload["datePublished"] = str(game.year_of_release)
+    if game.image_og:
+        payload["image"] = game.image_og
+    return seo.json_ld(payload)
+
+
 def _landing_itemlist_json(name, games):
     """Build ItemList JSON-LD for a landing page's ranked games."""
     payload = {
@@ -1795,8 +1821,7 @@ def _landing_itemlist_json(name, games):
             for position, game in enumerate(games, start=1)
         ],
     }
-    # Escape "<" so the JSON can never close the surrounding <script> tag
-    return json.dumps(payload).replace("<", "\\u003c")
+    return seo.json_ld(payload)
 
 
 class SeoRankingPageView(HomePageView):
@@ -1968,13 +1993,18 @@ class DeveloperListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
             return ["developers/includes/_developer_list_append.html"]
         return super().get_template_names()
 
+    SORTS = ("games", "studios", "rank", "name")
+
     def get_paginate_by(self, queryset):
-        # Disable Django's pagination when sorting by games, studios, or rank
-        # We'll handle pagination manually after sorting with cached counts
+        # Pagination is manual, in get_context_data, for every sort: it has
+        # to come after developers with no games are dropped, or a page is
+        # short of them and the total counts them. The name sort used
+        # Django's paginator and so listed every one of them.
+        return None
+
+    def _sort(self):
         sort = self.request.GET.get("sort", "games")
-        if sort in ("games", "studios", "rank"):
-            return None
-        return self.paginate_by
+        return sort if sort in self.SORTS else "games"
 
     def get_queryset(self):
         qs = (
@@ -1991,21 +2021,12 @@ class DeveloperListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
         if q:
             qs = qs.filter(name__icontains=q)
 
-        # Sort parameter - "games", "studios", "rank" sorts are handled in
-        # get_context_data using cached hierarchy data
-        sort = self.request.GET.get("sort", "games")
-        direction = self.request.GET.get("dir", "asc")
-        if sort == "name":
-            if direction == "desc":
-                qs = qs.order_by(Lower("name").desc())
-            else:
-                qs = qs.order_by(Lower("name"))
-
+        # Sorting is done in get_context_data, from cached hierarchy data
         return qs
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        sort = self.request.GET.get("sort", "games")
+        sort = self._sort()
         direction = self.request.GET.get("dir", "asc")
         context["sort"] = sort
 
@@ -2038,104 +2059,84 @@ class DeveloperListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
             root_id = hierarchy["root_developer_id"].get(dev.id, dev.id)
             dev._prefetched_root = root_devs.get(root_id, dev)
 
-        # Handle pagination and sorting
-        if sort in ("games", "studios", "rank"):
-            # For rank sorting, fetch top games using cached top_game_id
-            if sort == "rank":
-                top_game_ids = [
-                    hierarchy["top_game_id"].get(dev.id)
-                    for dev in developers
-                    if hierarchy["top_game_id"].get(dev.id) is not None
-                ]
-                if top_game_ids:
-                    top_games = {
-                        g.id: g
-                        for g in models.Game.objects.filter(id__in=top_game_ids)
-                        .select_related("primary_igdb_game_data")
-                        .only("id", "name", "slug", "rank", "primary_igdb_game_data")
-                    }
-                    for dev in developers:
-                        top_game_id = hierarchy["top_game_id"].get(dev.id)
-                        if top_game_id and top_game_id in top_games:
-                            dev.top_game = top_games[top_game_id]
+        # For rank sorting, fetch top games using cached top_game_id
+        if sort == "rank":
+            top_game_ids = [
+                hierarchy["top_game_id"].get(dev.id)
+                for dev in developers
+                if hierarchy["top_game_id"].get(dev.id) is not None
+            ]
+            if top_game_ids:
+                top_games = {
+                    g.id: g
+                    for g in models.Game.objects.filter(id__in=top_game_ids)
+                    .select_related("primary_igdb_game_data")
+                    .only("id", "name", "slug", "rank", "primary_igdb_game_data")
+                }
+                for dev in developers:
+                    top_game_id = hierarchy["top_game_id"].get(dev.id)
+                    if top_game_id and top_game_id in top_games:
+                        dev.top_game = top_games[top_game_id]
 
-            # Sort by cached counts (with direction support)
-            is_desc = direction == "desc"
-            if sort == "games":
-                developers.sort(
-                    key=lambda d: (
-                        (
-                            -d.recursive_games_count
-                            if not is_desc
-                            else d.recursive_games_count
-                        ),
-                        d.name.lower(),
-                    )
+        # Sort by cached counts (with direction support)
+        is_desc = direction == "desc"
+        if sort == "name":
+            developers.sort(key=lambda d: d.name.lower(), reverse=is_desc)
+        elif sort == "games":
+            developers.sort(
+                key=lambda d: (
+                    (
+                        -d.recursive_games_count
+                        if not is_desc
+                        else d.recursive_games_count
+                    ),
+                    d.name.lower(),
                 )
-            elif sort == "studios":
-                developers.sort(
-                    key=lambda d: (
-                        (
-                            -d.recursive_studios_count
-                            if not is_desc
-                            else d.recursive_studios_count
-                        ),
-                        d.name.lower(),
-                    )
+            )
+        elif sort == "studios":
+            developers.sort(
+                key=lambda d: (
+                    (
+                        -d.recursive_studios_count
+                        if not is_desc
+                        else d.recursive_studios_count
+                    ),
+                    d.name.lower(),
                 )
-            else:  # rank
-                developers.sort(
-                    key=lambda d: (
-                        getattr(d, "top_game", None) is None,  # No game = always last
-                        (
-                            (
-                                getattr(getattr(d, "top_game", None), "rank", 9999)
-                                or 9999
-                            )
-                            if not is_desc
-                            else -(
-                                getattr(getattr(d, "top_game", None), "rank", 9999)
-                                or 9999
-                            )
-                        ),
-                        d.name.lower(),
-                    )
+            )
+        else:  # rank
+            developers.sort(
+                key=lambda d: (
+                    getattr(d, "top_game", None) is None,  # No game = always last
+                    (
+                        (getattr(getattr(d, "top_game", None), "rank", 9999) or 9999)
+                        if not is_desc
+                        else -(
+                            getattr(getattr(d, "top_game", None), "rank", 9999) or 9999
+                        )
+                    ),
+                    d.name.lower(),
                 )
+            )
 
-            # Manual pagination
-            try:
-                page = int(self.request.GET.get("page", 1))
-                if page < 1:
-                    page = 1
-            except (ValueError, TypeError):
-                page = 1
-            per_page = self.paginate_by
-            total_count = len(developers)
-            start_idx = (page - 1) * per_page
-            end_idx = start_idx + per_page
+        # Manual pagination; past the end means the last page, as
+        # RobustPaginationMixin answers
+        per_page = self.paginate_by
+        total_count = len(developers)
+        last_page = max(1, math.ceil(total_count / per_page))
+        page = min(max(1, parse_int(self.request.GET.get("page"), 1)), last_page)
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
 
-            # Slice for current page
-            context["developers"] = developers[start_idx:end_idx]
+        # Slice for current page
+        context["developers"] = developers[start_idx:end_idx]
 
-            # Build pagination context
-            context["has_more"] = end_idx < total_count
-            context["next_page"] = page + 1 if end_idx < total_count else None
-            context["total_count"] = total_count
-            context["loaded_count"] = min(end_idx, total_count)
-            context["remaining_count"] = max(0, total_count - end_idx)
-        else:
-            # Use Django's built-in pagination
-            page_obj = context.get("page_obj")
-            if page_obj:
-                context["has_more"] = page_obj.has_next()
-                context["next_page"] = (
-                    page_obj.next_page_number() if page_obj.has_next() else None
-                )
-                context["total_count"] = page_obj.paginator.count
-                context["loaded_count"] = page_obj.end_index()
-                context["remaining_count"] = max(
-                    0, page_obj.paginator.count - page_obj.end_index()
-                )
+        # Build pagination context
+        context["has_more"] = end_idx < total_count
+        context["next_page"] = page + 1 if end_idx < total_count else None
+        context["total_count"] = total_count
+        context["loaded_count"] = min(end_idx, total_count)
+        context["remaining_count"] = max(0, total_count - end_idx)
 
         # Fetch top game for each developer on the current page (if not already set)
         page_developers = context.get("developers", [])
@@ -3784,6 +3785,36 @@ def _referer_redirect_url(request):
     return redirect_url
 
 
+def _rate_limited_form(request, template_name, form, **context):
+    """Re-render an auth form with allauth's rate-limit message.
+
+    A 429 would be the natural answer, but HTMX does not swap a 4xx, so the
+    modal would sit there looking as if nothing happened.
+    """
+    from allauth.account.adapter import get_adapter
+
+    form.is_valid()  # populate errors so add_error has somewhere to go
+    form.add_error(None, get_adapter().error_messages["rate_limited"])
+    response = TemplateResponse(request, template_name, {"form": form, **context})
+    response["HX-Push-Url"] = "false"
+    return response
+
+
+def _send_confirmation(request, email_address, *, signup):
+    """Send a verification email unless this address was sent one recently.
+
+    The modal views call ``send_confirmation`` themselves, which skips the
+    ``confirm_email`` cooldown allauth's own views apply (one email per
+    address per three minutes), so the resend button could mail an address
+    as fast as it was pressed. Skipping silently is allauth's own behaviour:
+    the link in the email already sent still works.
+    """
+    if ratelimit.consume(
+        request, action="confirm_email", key=email_address.email.lower()
+    ):
+        email_address.send_confirmation(request, signup=signup)
+
+
 class AuthModalLoginView(View):
     """Handle email login form in the auth modal (HTMX partial)."""
 
@@ -3860,6 +3891,14 @@ class AuthModalSignupView(View):
         from allauth.account.forms import SignupForm
         from allauth.account.models import EmailAddress
 
+        if not ratelimit.consume(request, action="signup"):
+            return _rate_limited_form(
+                request,
+                self.template_name,
+                SignupForm(request.POST),
+                username_value=request.POST.get("username", "").strip(),
+            )
+
         form = SignupForm(request.POST)
         username = request.POST.get("username", "").strip()
         email = request.POST.get("email", "").strip()
@@ -3900,7 +3939,7 @@ class AuthModalSignupView(View):
                 user=user, email__iexact=user.email
             ).first()
             if email_address and not email_address.verified:
-                email_address.send_confirmation(request, signup=True)
+                _send_confirmation(request, email_address, signup=True)
 
             # Don't log in - show verification screen instead
             response = TemplateResponse(
@@ -3957,6 +3996,12 @@ class AuthModalForgotPasswordView(View):
 
         form = ResetPasswordForm(request.POST)
         if form.is_valid():
+            if not ratelimit.consume(
+                request,
+                action="reset_password",
+                key=form.cleaned_data["email"].lower(),
+            ):
+                return _rate_limited_form(request, self.template_name, form)
             form.save(request)
             # Show success message
             response = TemplateResponse(
@@ -3983,7 +4028,7 @@ class AuthModalResendVerificationView(View):
             try:
                 email_address = EmailAddress.objects.get(email__iexact=email)
                 if not email_address.verified:
-                    email_address.send_confirmation(request, signup=False)
+                    _send_confirmation(request, email_address, signup=False)
             except EmailAddress.DoesNotExist:
                 pass  # Don't reveal if email exists
 
@@ -4010,9 +4055,11 @@ class EmailConfirmationView(TemplateView):
         try:
             # Validate the confirmation key
             email_confirmation = EmailConfirmationHMAC.from_key(key)
-            if email_confirmation:
-                # Confirm the email
-                email_confirmation.confirm(request)
+            # from_key() finds only unverified addresses, so a link works
+            # once. confirm() returns None when the address cannot be
+            # verified - another account has verified it, say - and then
+            # nobody is logged in.
+            if email_confirmation and email_confirmation.confirm(request):
                 email_address = email_confirmation.email_address
 
                 # Log the user in (matches ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION)
@@ -4028,7 +4075,7 @@ class EmailConfirmationView(TemplateView):
                     }
                 )
         except Exception:
-            pass
+            logger.exception("Email confirmation failed")
 
         # Invalid or expired key
         return self.render_to_response({"success": False})
@@ -4167,6 +4214,12 @@ class AuthLogoutView(View):
         return redirect(_referer_redirect_url(request))
 
 
+def _invalidate_tracking_caches(user_id):
+    cache.delete("user_played_games_distribution")
+    invalidate_played_games_cache(user_id)
+    invalidate_want_to_play_cache(user_id)
+
+
 class TogglePlayedGameView(LoginRequiredMixin, View):
     """
     Set or cycle a game's tracking status.
@@ -4180,72 +4233,48 @@ class TogglePlayedGameView(LoginRequiredMixin, View):
 
     def post(self, request, igdb_id):
         game = get_object_or_404(models.Game, igdb_id=igdb_id)
+        key = {"user": request.user, "igdb_id": igdb_id}
 
-        # Check current state
-        is_played = models.PlayedGame.objects.filter(
-            user=request.user, igdb_id=igdb_id
-        ).exists()
-        is_want_to_play = models.WantToPlayGame.objects.filter(
-            user=request.user, igdb_id=igdb_id
-        ).exists()
-
-        # Check for explicit status parameter
-        target_status = request.GET.get("status")
-
-        if target_status in ("none", "want", "played"):
-            # Direct status set - clear existing and set new
-            if is_played:
-                models.PlayedGame.objects.filter(
-                    user=request.user, igdb_id=igdb_id
-                ).delete()
-            if is_want_to_play:
-                models.WantToPlayGame.objects.filter(
-                    user=request.user, igdb_id=igdb_id
-                ).delete()
-
-            if target_status == "played":
-                models.PlayedGame.objects.create(
-                    user=request.user, igdb_id=igdb_id, game=game
-                )
-                new_is_played = True
-                new_is_want_to_play = False
-            elif target_status == "want":
-                models.WantToPlayGame.objects.create(
-                    user=request.user, igdb_id=igdb_id, game=game
-                )
-                new_is_played = False
-                new_is_want_to_play = True
-            else:  # none
-                new_is_played = False
-                new_is_want_to_play = False
-        else:
+        target = request.GET.get("status")
+        if target not in ("none", "want", "played"):
             # Legacy cycle behavior: none → want → played → none
-            if is_played:
-                models.PlayedGame.objects.filter(
-                    user=request.user, igdb_id=igdb_id
-                ).delete()
-                new_is_played = False
-                new_is_want_to_play = False
-            elif is_want_to_play:
-                models.WantToPlayGame.objects.filter(
-                    user=request.user, igdb_id=igdb_id
-                ).delete()
-                models.PlayedGame.objects.create(
-                    user=request.user, igdb_id=igdb_id, game=game
-                )
-                new_is_played = True
-                new_is_want_to_play = False
+            if models.PlayedGame.objects.filter(**key).exists():
+                target = "none"
+            elif models.WantToPlayGame.objects.filter(**key).exists():
+                target = "played"
             else:
-                models.WantToPlayGame.objects.create(
-                    user=request.user, igdb_id=igdb_id, game=game
-                )
-                new_is_played = False
-                new_is_want_to_play = True
+                target = "want"
 
-        # Invalidate caches
-        cache.delete("user_played_games_distribution")
-        invalidate_played_games_cache(request.user.id)
-        invalidate_want_to_play_cache(request.user.id)
+        # One transaction, and update_or_create on the unique_together, as
+        # music's toggle does: the delete-then-create this replaced let a
+        # double-click race into an IntegrityError, and a row orphaned by a
+        # re-import is re-adopted here rather than duplicated.
+        with transaction.atomic():
+            # One user's toggles run one at a time. Otherwise a Played and a
+            # Want sent together (a fast re-pick in the menu) each delete
+            # the other table before the other's insert is visible, and both
+            # rows survive.
+            User.objects.select_for_update().filter(pk=request.user.pk).first()
+            if target == "played":
+                models.WantToPlayGame.objects.filter(**key).delete()
+                models.PlayedGame.objects.update_or_create(
+                    **key, defaults={"game": game}
+                )
+            elif target == "want":
+                models.PlayedGame.objects.filter(**key).delete()
+                models.WantToPlayGame.objects.update_or_create(
+                    **key, defaults={"game": game}
+                )
+            else:
+                models.PlayedGame.objects.filter(**key).delete()
+                models.WantToPlayGame.objects.filter(**key).delete()
+        new_is_played = target == "played"
+        new_is_want_to_play = target == "want"
+
+        # After the commit, not inside it: a rolled-back transaction must not
+        # leave the cache reflecting a write that did not happen.
+        user_id = request.user.id
+        transaction.on_commit(lambda: _invalidate_tracking_caches(user_id))
 
         # Preserve button size (large on game detail page, default elsewhere)
         size = request.GET.get("size")

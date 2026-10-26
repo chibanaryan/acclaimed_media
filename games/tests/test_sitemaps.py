@@ -5,13 +5,18 @@ These tests directly test the sitemap classes to ensure coverage
 of their methods beyond the integration tests in test_main_views.py.
 """
 
+from django.contrib.flatpages.models import FlatPage
+from django.contrib.sites.models import Site
 from django.test import TestCase
 from django.urls import reverse
 
-from games.models import Developer, Game
+from core.tests.utils import clear_all_caches
+from games.models import Article, Developer, Game
 from games.sitemaps import (
+    ArticleSitemap,
     DeveloperSitemap,
     GameSitemap,
+    PageSitemap,
     StaticViewSitemap,
     sitemaps,
 )
@@ -26,7 +31,9 @@ class StaticViewSitemapTests(TestCase):
     def test_items_returns_expected_pages(self):
         """Test that items() returns the correct static page names."""
         items = self.sitemap.items()
-        self.assertEqual(items, ["home", "developers-list", "list-list"])
+        self.assertEqual(
+            items, ["home", "developers-list", "list-list", "article-list"]
+        )
 
     def test_location_returns_valid_urls(self):
         """Test that location() returns valid URLs for each item."""
@@ -73,23 +80,11 @@ class GameSitemapTests(TestCase):
         expected = reverse("game-detail", kwargs={"slug": self.game1.slug})
         self.assertEqual(location, expected)
 
-    def test_lastmod_returns_updated_at_when_present(self):
-        """Test that lastmod() returns updated_at when the object has it."""
-        from django.utils import timezone
-
-        # Create a mock object with updated_at
-        class MockGameWithUpdatedAt:
-            updated_at = timezone.now()
-
-        mock_game = MockGameWithUpdatedAt()
-        lastmod = self.sitemap.lastmod(mock_game)
-        self.assertEqual(lastmod, mock_game.updated_at)
-
-    def test_lastmod_returns_none_when_no_updated_at(self):
-        """Test that lastmod() returns None when object has no updated_at."""
-        # Game model doesn't have updated_at, so it returns None
-        lastmod = self.sitemap.lastmod(self.game1)
-        self.assertIsNone(lastmod)
+    def test_lastmod_is_the_games_modified_time(self):
+        """It read `updated_at`, which Game does not have, so no game URL
+        carried a <lastmod>; the test that covered it used a mock."""
+        self.assertIsNotNone(self.game1.modified)
+        self.assertEqual(self.sitemap.lastmod(self.game1), self.game1.modified)
 
     def test_priority_is_set(self):
         """Test that priority is correctly set."""
@@ -154,3 +149,57 @@ class SitemapsConfigurationTests(TestCase):
         self.assertEqual(sitemaps["static"], StaticViewSitemap)
         self.assertEqual(sitemaps["games"], GameSitemap)
         self.assertEqual(sitemaps["developers"], DeveloperSitemap)
+        self.assertEqual(sitemaps["articles"], ArticleSitemap)
+        self.assertEqual(sitemaps["pages"], PageSitemap)
+
+
+class ArticleSitemapTests(TestCase):
+    def test_lists_only_published_articles_with_their_update_time(self):
+        published = Article.objects.create(
+            title="Published", slug="published", status=Article.Status.PUBLISHED
+        )
+        Article.objects.create(title="Draft", slug="draft")
+
+        sitemap = ArticleSitemap()
+
+        self.assertEqual(list(sitemap.items()), [published])
+        self.assertEqual(sitemap.location(published), "/blog/published/")
+        self.assertEqual(sitemap.lastmod(published), published.updated_at)
+
+
+class PageSitemapTests(TestCase):
+    def _page(self, url, **kwargs):
+        page = FlatPage.objects.create(url=url, title=url, **kwargs)
+        page.sites.add(Site.objects.get_current())
+        return page
+
+    def test_lists_pages_at_the_address_the_site_links(self):
+        self._page("/about/")
+        self._page("/page/about/")  # the same page by the other address
+        self._page("/page/donate/")
+        self._page("/members/", registration_required=True)
+        self._page("/deep/nested/")
+        self._page("/terms.html/")  # <slug:slug> cannot reverse this
+        self._page("/no-slash")  # PageDetailView would not find this
+        other_site = Site.objects.create(domain="other.example", name="Other")
+        FlatPage.objects.create(url="/elsewhere/", title="x").sites.add(other_site)
+
+        sitemap = PageSitemap()
+
+        self.assertEqual(sitemap.items(), ["about", "donate"])
+        self.assertEqual(
+            [sitemap.location(item) for item in sitemap.items()],
+            ["/page/about/", "/page/donate/"],
+        )
+
+
+class SitemapXmlTests(TestCase):
+    def setUp(self):
+        clear_all_caches()
+
+    def test_game_urls_carry_a_lastmod(self):
+        Game.objects.create(name="Doom", slug="doom", rank=1, year_of_release=1993)
+
+        content = self.client.get("/sitemap.xml").content.decode()
+
+        self.assertIn("/game/doom/</loc><lastmod>", content)

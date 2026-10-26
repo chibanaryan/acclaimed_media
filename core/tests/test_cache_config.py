@@ -71,6 +71,46 @@ class BuildCachesTests(SimpleTestCase):
         self.assertEqual(sorted(caches), ["default", "local", "ratelimit"])
         self.assertEqual(caches["default"]["BACKEND"], cache_config.DATABASE_BACKEND)
 
+    def test_the_shared_alias_is_keyed_on_the_release(self):
+        """The Postgres cache outlives a deploy; the prefix starts each
+        release on keys the previous one never wrote."""
+        caches = cache_config.build_caches(
+            "dbcache://cache_table",
+            debug=False,
+            test_mode=False,
+            base_dir=Path("/tmp"),
+            release="v412",
+        )
+        self.assertEqual(caches["default"]["KEY_PREFIX"], "v00000412")
+        self.assertNotIn("KEY_PREFIX", caches["local"])
+        self.assertNotIn("KEY_PREFIX", caches["ratelimit"])
+
+    def test_a_later_release_sorts_after_an_earlier_one(self):
+        """DatabaseCache culls the lowest keys first, by string order."""
+
+        def prefix(release):
+            return cache_config.build_caches(
+                "dbcache://cache_table",
+                debug=False,
+                test_mode=False,
+                base_dir=Path("/tmp"),
+                release=release,
+            )["default"]["KEY_PREFIX"]
+
+        self.assertLess(prefix("v99"), prefix("v100"))
+
+    def test_no_release_and_tests_get_no_prefix(self):
+        for release, test_mode in ((None, False), ("", False), ("v412", True)):
+            with self.subTest(release=release, test_mode=test_mode):
+                caches = cache_config.build_caches(
+                    "locmemcache://",
+                    debug=False,
+                    test_mode=test_mode,
+                    base_dir=Path("/tmp"),
+                    release=release,
+                )
+                self.assertNotIn("KEY_PREFIX", caches["default"])
+
     def test_the_per_process_aliases_are_always_per_process(self):
         # Whole-page HTML and the rate-limit counters live here, so neither
         # may follow CACHE_URL onto a shared backend.

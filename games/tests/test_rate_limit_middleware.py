@@ -109,17 +109,41 @@ class RateLimitMiddlewareTest(TestCase):
         self.assertEqual(response.status_code, 429)
 
     def test_x_forwarded_for_ip_extraction(self):
-        """Should use X-Forwarded-For header for IP extraction."""
+        """Should key on the address Heroku's router appended: the last one."""
         bot_ip = "45.148.10.143"
         self._block_ip(bot_ip)
 
-        # Request from bot IP via X-Forwarded-For should be blocked
-        response = self.client.get("/", HTTP_X_FORWARDED_FOR=f"{bot_ip}, 10.0.0.1")
+        # The router appends the connecting address, so the bot is last
+        response = self.client.get("/", HTTP_X_FORWARDED_FOR=f"10.0.0.1, {bot_ip}")
         self.assertEqual(response.status_code, 429)
 
         # Request from different IP should NOT be blocked
         response = self.client.get("/", HTTP_X_FORWARDED_FOR="1.2.3.4")
         self.assertNotEqual(response.status_code, 429)
+
+    def test_a_forged_header_does_not_buy_a_fresh_bucket(self):
+        """Whatever a client writes into X-Forwarded-For comes before the
+        router's own entry, so varying it changes nothing."""
+        real_ip = "45.148.10.143"
+        self._seed_minute_count(ip=real_ip, count=RATE_LIMIT_PER_MINUTE)
+
+        response = self.client.get(
+            "/", HTTP_X_FORWARDED_FOR=f"203.0.113.{time.time_ns() % 250}, {real_ip}"
+        )
+        self.assertEqual(response.status_code, 429)
+
+    def test_a_forged_header_cannot_get_another_address_blocked(self):
+        victim_ip = "198.51.100.7"
+        attacker_ip = "45.148.10.143"
+        self._seed_minute_count(ip=attacker_ip, count=RATE_LIMIT_PER_MINUTE)
+
+        response = self.client.get(
+            "/", HTTP_X_FORWARDED_FOR=f"{victim_ip}, {attacker_ip}"
+        )
+        self.assertEqual(response.status_code, 429)
+        self.assertIsNone(
+            self.cache.get(f"{RATE_LIMIT_CACHE_PREFIX}:block:{victim_ip}")
+        )
 
     def test_different_ips_tracked_separately(self):
         """Rate limits should be per-IP, not global."""

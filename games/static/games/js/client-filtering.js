@@ -280,7 +280,8 @@ class ClientSideFiltering {
      * @returns {string} 'filtered' or 'alltime'
      */
     _computeShowRank() {
-        const params = new URLSearchParams(window.location.search);
+        // The path too: on /games/2010s/ the query string is empty
+        const params = currentFilterParams();
 
         // Check simple filters
         if (params.get('q')) return 'filtered';

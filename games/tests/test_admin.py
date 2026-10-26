@@ -979,3 +979,25 @@ class UserAdminAlbumTrackingTests(TestCase):
         listened_column = self.admin.list_display.index("listened_albums_count") + 1
         sorted_response = client.get(f"/admin/core/user/?o={listened_column}")
         self.assertEqual(sorted_response.status_code, 200)
+
+
+class ArticleAdminPreviewStylesheetTests(TestCase):
+    """The markdown preview gets the site stylesheet's URL from the server.
+
+    It used a literal unhashed path, which 404s in production, and the admin
+    page loads no site CSS whose link it could copy instead.
+    """
+
+    def test_the_content_field_carries_the_static_url(self):
+        from django.templatetags.static import static
+
+        admin_user = User.objects.create_superuser(
+            username="article-admin", email="aa@example.com", password="pw-12345678"
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.get("/admin/games/article/add/")
+
+        self.assertContains(
+            response, f'data-site-stylesheet="{static("css/dist/styles.css")}"'
+        )

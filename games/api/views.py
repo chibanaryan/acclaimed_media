@@ -17,6 +17,7 @@ from rest_framework.views import APIView, Response
 from unidecode import unidecode
 
 from core.services.genre_tree import descendants_by_id
+from core.services.query_params import parse_id_list, parse_limit
 
 from .. import config, models, utils
 from . import serializers
@@ -58,6 +59,8 @@ class GameListView(ListAPIView):
         utils.Filter(param="end", fields=["year_of_release__lte"], coerce=int),
     ]
 
+    ORDERING_FIELDS = {"rank", "name", "year_of_release", "year_rank", "decade_rank"}
+
     def get_queryset(self):
         qs = models.Game.objects.with_relations()
 
@@ -66,19 +69,20 @@ class GameListView(ListAPIView):
             qs = filter.filter_queryset(qs, param_val)
 
         # Genre filtering (single-select, so match_all doesn't matter)
-        genres = self.request.GET.get("genres")
-        if genres:
-            genre_ids = [int(x) for x in genres.split(",")]
+        genre_ids = parse_id_list(self.request.GET.get("genres"))
+        if genre_ids:
             qs = utils.apply_genre_filter(qs, genre_ids, match_all=False)
 
         # Platform filtering
-        platforms = self.request.GET.get("platforms")
-        if platforms:
-            platform_ids = [int(x) for x in platforms.split(",")]
+        platform_ids = parse_id_list(self.request.GET.get("platforms"))
+        if platform_ids:
             qs = utils.apply_platform_filter(qs, platform_ids)
 
-        order_by = self.request.GET.get("order_by")
-        if order_by:
+        # Only the summary's own sortable columns: order_by() follows
+        # relations, so passing the parameter through let a caller sort by
+        # fields the serializer never exposes, and an unknown one was a 500.
+        order_by = self.request.GET.get("order_by", "")
+        if order_by.removeprefix("-") in self.ORDERING_FIELDS:
             qs = qs.order_by(order_by)
 
         return qs.distinct()
@@ -374,7 +378,7 @@ class GameSearchAPIView(APIView):
 
         q = request.GET.get("q", "").strip()
         q_normalized = _normalize_search_text(q)
-        limit = int(request.GET.get("limit", 5))
+        limit = parse_limit(request.GET.get("limit"), default=5)
 
         if len(q) < 2:
             return JsonResponse({"results": [], "count": 0})
@@ -424,9 +428,9 @@ class UnifiedSearchView(APIView):
         from django.http import JsonResponse
 
         q = request.GET.get("q", "").strip()
-        game_limit = int(request.GET.get("game_limit", 5))
-        developer_limit = int(request.GET.get("developer_limit", 3))
-        series_limit = int(request.GET.get("series_limit", 3))
+        game_limit = parse_limit(request.GET.get("game_limit"), default=5)
+        developer_limit = parse_limit(request.GET.get("developer_limit"), default=3)
+        series_limit = parse_limit(request.GET.get("series_limit"), default=3)
         q_lower = q.lower()
         q_normalized = _normalize_search_text(q)
 

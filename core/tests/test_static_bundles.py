@@ -285,25 +285,6 @@ class SavedFilterPartialsAreSharedTests(SimpleTestCase):
             with self.subTest(partial=partial):
                 self.assertIn(partial, pages)
 
-    def test_both_pages_bumped_their_cache_busters(self):
-        """A one-way ratchet past the version that shipped without the fix.
-
-        The `?v=` literals are hand-maintained, and both saved-filter
-        changes live in files loaded that way: music gained the methods,
-        games gained the `sortDirection` restore. Without a bump a
-        returning reader keeps the cached copy, so the dropdown does
-        nothing and the direction still goes missing.
-        """
-        for template, stale in (
-            ("music/templates/music/home.html", "media-list-controls.min.js"),
-            ("games/templates/games/home.html", "filter-component.min.js"),
-        ):
-            with self.subTest(template=template):
-                page = (Path(settings.BASE_DIR) / template).read_text()
-                match = re.search(re.escape(stale) + r"[\"']? %\}\?v=(\d+)", page)
-                self.assertIsNotNone(match, f"{stale} is not loaded with a ?v=")
-                self.assertGreater(int(match.group(1)), 3 if "media" in stale else 8)
-
 
 class ApplyingASavedFilterMustNotAnnounceAResetTests(SimpleTestCase):
     """Applying a saved filter must not announce `year-reset`/`genres-reset`.
@@ -591,18 +572,6 @@ class LandingPagesPushOntoTheRankingsUrlTests(SimpleTestCase):
             with self.subTest(path=path):
                 self.assertIn(needle, self._source(path))
 
-    def test_the_pages_bumped_their_cache_busters(self):
-        # One-way ratchet past the versions that shipped the relative push.
-        page = self._source("music/templates/music/home.html")
-        for stale, shipped in (
-            ("media-list-controls.min.js", 4),
-            ("music-client-side-filtering.bundle.min.js", 3),
-        ):
-            with self.subTest(stale=stale):
-                match = re.search(re.escape(stale) + r"[\"']? %\}\?v=(\d+)", page)
-                self.assertIsNotNone(match, f"{stale} is not loaded with a ?v=")
-                self.assertGreater(int(match.group(1)), shipped)
-
 
 class MusicHighlightScrollsOnLoadTests(SimpleTestCase):
     """A `?highlight=` link from album detail must land on the album.
@@ -639,14 +608,6 @@ class MusicHighlightScrollsOnLoadTests(SimpleTestCase):
                 minified = self._source(path)
                 self.assertIn("scrollToAlbumById", minified)
                 self.assertIn("jumpTo(", minified)
-
-    def test_the_page_bumped_the_bundle_cache_buster(self):
-        page = self._source("music/templates/music/home.html")
-        match = re.search(
-            r"music-client-side-filtering\.bundle\.min\.js[\"']? %\}\?v=(\d+)", page
-        )
-        self.assertIsNotNone(match)
-        self.assertGreater(int(match.group(1)), 4)
 
 
 class JumpToRankRendersAWindowTests(SimpleTestCase):
@@ -769,35 +730,6 @@ class JumpToRankRendersAWindowTests(SimpleTestCase):
                     self._source(path),
                 )
 
-    def test_the_pages_bumped_their_cache_busters(self):
-        # One-way ratchet past the versions that loaded every row.
-        for page, script, shipped in (
-            ("games/templates/games/home.html", "utils-loadmore.min.js", 5),
-            (
-                "games/templates/games/home.html",
-                "client-side-filtering.bundle.min.js",
-                15,
-            ),
-            ("games/templates/games/home.html", "filter-component.min.js", 10),
-            (
-                "music/templates/music/home.html",
-                "music-client-side-filtering.bundle.min.js",
-                7,
-            ),
-            (
-                "books/templates/books/home.html",
-                "book-client-side-filtering.bundle.min.js",
-                2,
-            ),
-        ):
-            with self.subTest(script=script):
-                versions = re.findall(
-                    re.escape(script) + r"[\"']? %\}\?v=(\d+)", self._source(page)
-                )
-                self.assertTrue(versions, f"{script} is not loaded with a ?v=")
-                for version in versions:
-                    self.assertGreater(int(version), shipped)
-
 
 class HighlightSurvivesTheScrollTests(SimpleTestCase):
     """A `?highlight=` link or a jump must still be lit when the row arrives.
@@ -852,14 +784,6 @@ class HighlightSurvivesTheScrollTests(SimpleTestCase):
         ):
             with self.subTest(path=path):
                 self.assertIn("flashHighlight", self._source(path))
-
-    def test_base_bumped_the_utils_base_cache_buster(self):
-        match = re.search(
-            r"utils-base\.min\.js[\"']? %\}\?v=(\d+)",
-            self._source("games/templates/base.html"),
-        )
-        self.assertIsNotNone(match)
-        self.assertGreater(int(match.group(1)), 4)
 
 
 class RankDistributionMorphsInEveryBrowserTests(SimpleTestCase):
@@ -1062,3 +986,50 @@ class MobileFilterSheetIsSharedTests(SimpleTestCase):
                 source = (Path(settings.BASE_DIR) / template).read_text()
                 self.assertIn('x-data="mobileFilterSheet()"', source)
                 self.assertNotIn("hasOpenedBefore: false", source)
+
+
+class JumpToRankReadsLandingPagePathsTests(SimpleTestCase):
+    """Jump to rank must see the filters a clean SEO path carries.
+
+    A filter state with its own landing page is pushed as that path
+    (`/games/2010s/`) with no query string, and `getFiltersFromURL` read only
+    the query string. Filtered to the 2010s (348 games), a jump to 500 passed
+    validation against the whole ranking and re-rendered the list unfiltered
+    at "450-550 of 1,400". Checked in Chrome on 2026-10-26; this pins the
+    source and the minified copy the page loads.
+    """
+
+    def _source(self, relative_path):
+        path = Path(settings.BASE_DIR) / relative_path
+        self.assertTrue(path.exists(), f"missing {relative_path}")
+        return path.read_text()
+
+    def test_the_filters_are_read_from_a_landing_path(self):
+        for path in (
+            "games/static/games/js/utils-loadmore.js",
+            "games/static/games/js/utils-loadmore.min.js",
+        ):
+            with self.subTest(path=path):
+                source = self._source(path)
+                body = source[source.index("function getFiltersFromURL") :]
+                self.assertIn("currentFilterParams()", body[:400])
+
+    def test_client_rendered_ranks_read_the_path_too(self):
+        for path in (
+            "games/static/games/js/client-filtering.js",
+            "games/static/games/js/client-side-filtering.bundle.min.js",
+        ):
+            with self.subTest(path=path):
+                source = self._source(path)
+                start = re.search(r"_computeShowRank\(\)\s*\{", source).start()
+                self.assertIn("currentFilterParams()", source[start : start + 300])
+
+    def test_the_helper_merges_the_path_with_the_query_string(self):
+        for path in (
+            "games/static/games/js/utils-base.js",
+            "games/static/games/js/utils-base.min.js",
+        ):
+            with self.subTest(path=path):
+                source = self._source(path)
+                body = source[source.index("function currentFilterParams") :]
+                self.assertIn("seoPathSearch(window.location.pathname)", body[:400])

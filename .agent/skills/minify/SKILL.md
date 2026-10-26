@@ -17,7 +17,10 @@ Minify JavaScript source files and regenerate bundles for production.
 
 1. **Minifies source files**: every `.js` file in `games/static/games/js/`,
    `books/static/books/js/`, `music/static/music/js/` and
-   `core/static/core/js/` whose `.min.js` is missing or older than the source
+   `core/static/core/js/`, with terser pinned at 5.51.2, replacing any
+   `.min.js` whose content differs. Content, not timestamps: a checkout gives
+   every file the same mtime, so the old "older than the source" test missed
+   stale files in any fresh worktree
 
 2. **Regenerates the three bundles**, in dependency order:
 
@@ -28,6 +31,9 @@ Minify JavaScript source files and regenerate bundles for production.
    | `music/static/music/js/music-client-side-filtering.bundle.min.js` | `core/base-renderer`, `album-filter`, `album-list-renderer`, `album-client-filtering` |
 
 3. **Stages files for git**: Automatically runs `git add` on updated files
+
+`./scripts/minify_js.sh --check` changes nothing and exits 1 naming every
+stale file. CI's `js` job runs it, as the `css` job rebuilds the CSS.
 
 ## Rules that have bitten before
 

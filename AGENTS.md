@@ -1254,7 +1254,7 @@ content is ever shown as-is.
 ## The rankings heading and the tab title
 
 Both sections compose a heading from the filter state and reuse it as the
-document title. Three traps, all of which have bitten:
+document title. Two traps, both of which have bitten:
 
 - **A genre clicked in a row does not go through the filter component.**
   `album-client-filtering.js` answers `add-genre` by writing the hidden
@@ -1273,9 +1273,13 @@ document title. Three traps, all of which have bitten:
   set `document.title` during client-side filtering in either section;
   `base.html` publishes one `window.documentTitleSuffix` and both filter
   components rebuild `heading + suffix`.
-- **The script cache-busters are hand-maintained.** `filter-component.min.js`
-  and `media-list-controls.min.js` are loaded with `?v=N` literals. A JS fix
-  that does not bump them reaches nobody who has visited before.
+
+There are no `?v=N` cache-busters to bump. Production's manifest storage
+hashes every static name, so changed JS is a new URL, and development
+serves static files with `WHITENOISE_MAX_AGE = 0`. Until 2026-10-26, 22
+hand-maintained literals did nothing in production; in development the
+one-year max-age was what made them necessary.
+`core/tests/test_static_assets.py` keeps them from coming back.
 
 ## Caching
 
@@ -1289,6 +1293,11 @@ Three aliases, defined by `core/cache_config.py` (which `settings.py` calls):
   exactly one of them, so a metadata refresh left stale filter options behind
   for up to their 24-hour TTL. Local dev stays on LocMem; `createcachetable
   cache_table` runs in the Heroku release phase and is idempotent.
+  Its keys carry `HEROKU_RELEASE_VERSION` as `KEY_PREFIX`, from the app's
+  `runtime-dyno-metadata` lab (enabled 2026-10-26). The table outlives a
+  deploy, so new code used to read what old code had cached. Every deploy
+  and config-var change now starts on fresh keys. The same lab gives Sentry
+  `HEROKU_SLUG_COMMIT`, which it reads as the release.
 - **`local` is per-process, and must stay that way.** It holds the whole
   rendered pages of `core.mixins.AnonymousResponseCacheMixin`. They are large
   and need no cross-process agreement: on the shared backend a crawler would
@@ -1308,7 +1317,22 @@ Three aliases, defined by `core/cache_config.py` (which `settings.py` calls):
 - **`ratelimit` is per-process too**, and holds the per-IP counters in
   `games.middleware`. It was carved out of `local` on 2026-10-18: page bodies
   and counters were culling each other out of one 500-entry LocMem, so a crawl
-  wide enough to matter evicted the counters meant to stop it.
+  wide enough to matter evicted the counters meant to stop it. DRF's
+  anonymous throttle (`core.throttling.ClientIPAnonRateThrottle`) counts
+  there too; on DRF's default it wrote to Postgres on every API hit.
+
+**Every per-IP limit keys on `core.services.client_ip.get_client_ip`**: the
+middleware, the contact form guard, DRF's throttle and allauth's limits,
+through `ModalAccountAdapter.get_client_ip`. It takes the *last*
+`X-Forwarded-For` entry, the one Heroku's router appends. The client writes
+everything to its left, so the first entry, which the code read until
+2026-10-26, let anyone take a fresh bucket per request or get another
+address blocked. allauth's own default was `REMOTE_ADDR`, the router's, so
+every visitor shared one bucket. This assumes nothing proxies in front of
+the router; a CDN would move the client one entry left. The auth modal
+views call allauth's forms directly, so they apply the `signup`,
+`reset_password` and `confirm_email` limits themselves, as allauth's views
+would.
 
 `MAX_ENTRIES` is set explicitly for all three, since Django's default of 300
 culls a third of the cache on almost every write.
@@ -1536,6 +1560,16 @@ it. Keep hooks in `.pre-commit-config.yaml`, never in `.git/hooks`, which
 `requirements-dev.txt` so that a failure under `--parallel` reports its traceback
 instead of crashing the runner on an unpicklable one.
 
+**Tests cannot reach the network under pytest.** `conftest.py` refuses
+every DNS lookup and connection that leaves the machine (loopback stays
+open for the Postgres job), and fails the test even when the client code
+swallowed the error. The tests also run without outside credentials:
+settings blanks the IGDB, Wikidata and Discogs ones under test, as CI has
+none. When the guard was added on 2026-10-26 it caught four tests calling
+IGDB and HowLongToBeat for real. Locally they were also fetching a live
+Twitch token with the `.env` credentials. Patch the client where the code
+under test reads it. The Django runner has no conftest and so no guard.
+
 ## Database
 
 - **Development**: SQLite (`db.sqlite3`)
@@ -1631,6 +1665,7 @@ Four layers, from automatic to manual:
   | `postgres` | pytest against Postgres 18, production's version |
   | `audit` | `pip-audit` on both locks, `npm audit --audit-level=high` |
   | `css` | rebuilds the CSS and fails if it differs from the committed file |
+  | `js` | `scripts/minify_js.sh --check`: the same for the minified JS and bundles |
 
   `css` exists because Heroku runs only the Python buildpack, so the
   committed `theme/static/css/dist/styles.css` is what ships. An npm bump
@@ -1795,7 +1830,7 @@ Both of those failed silently in the books bundle until 2026-10-17.
 Run `/minify` or `./scripts/minify_js.sh`
 
 The minify skill/script:
-1. Minifies any source `.js` files that are newer than their `.min.js` counterparts
+1. Minifies every source `.js` file with terser pinned at 5.51.2, replacing any `.min.js` whose content differs (`--check` reports instead, and CI's `js` job runs it)
 2. Regenerates the bundle if any of its source files changed
 3. Stages updated files for git
 

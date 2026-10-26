@@ -21,6 +21,7 @@ from games import utils  # Shared utilities
 
 from core.permissions import IsStaffOrHide
 from core.services import genre_tree
+from core.services.query_params import parse_id_list, parse_limit
 
 from .. import models
 from . import serializers
@@ -84,6 +85,8 @@ class BookListView(StaffReadAPIMixin, ListAPIView):
         utils.Filter(param="end", fields=["year_published__lte"], coerce=int),
     ]
 
+    ORDERING_FIELDS = {"rank", "name", "year_published", "year_rank", "decade_rank"}
+
     def get_queryset(self):
         qs = models.Book.objects.with_relations()
 
@@ -92,13 +95,14 @@ class BookListView(StaffReadAPIMixin, ListAPIView):
             qs = filter.filter_queryset(qs, param_val)
 
         # Genre filtering
-        genres = self.request.GET.get("genres")
-        if genres:
-            genre_ids = [int(x) for x in genres.split(",")]
+        genre_ids = parse_id_list(self.request.GET.get("genres"))
+        if genre_ids:
             qs = qs.filter(genres__id__in=genre_ids)
 
-        order_by = self.request.GET.get("order_by")
-        if order_by:
+        # Only listed columns, as games' list does: order_by() follows
+        # relations, and an unknown field was a 500.
+        order_by = self.request.GET.get("order_by", "")
+        if order_by.removeprefix("-") in self.ORDERING_FIELDS:
             qs = qs.order_by(order_by)
 
         return qs.distinct()
@@ -302,7 +306,7 @@ class BookSearchAPIView(StaffReadAPIMixin, APIView):
         from django.http import JsonResponse
 
         q = request.GET.get("q", "").strip()
-        limit = int(request.GET.get("limit", 5))
+        limit = parse_limit(request.GET.get("limit"), default=5)
 
         if len(q) < 2:
             return JsonResponse({"results": [], "count": 0})
@@ -345,8 +349,8 @@ class UnifiedBookSearchView(StaffReadAPIMixin, APIView):
         from django.http import JsonResponse
 
         q = request.GET.get("q", "").strip()
-        book_limit = int(request.GET.get("book_limit", 5))
-        author_limit = int(request.GET.get("author_limit", 3))
+        book_limit = parse_limit(request.GET.get("book_limit"), default=5)
+        author_limit = parse_limit(request.GET.get("author_limit"), default=3)
 
         if len(q) < 2:
             return JsonResponse({"authors": [], "books": []})

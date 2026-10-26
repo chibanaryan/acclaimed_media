@@ -267,7 +267,12 @@ class GetIgdbCommandTests(TestCase):
             }
         }
 
-        with mock.patch.object(igdb, "get_api", return_value=mock_api):
+        # The importer holds its own reference (`from games.igdb import
+        # get_api`), so that is the name to patch; patching games.igdb alone
+        # let the command build a real client and call api.igdb.com.
+        with mock.patch.object(igdb, "get_api", return_value=mock_api), mock.patch(
+            "games.services.igdb_importer.get_api", return_value=mock_api
+        ):
             # Use batch mode (batch_games > 0)
             call_command("get_igdb", batch_games=10, concurrency=1)
 
@@ -437,6 +442,15 @@ class RefreshAllMetadataCommandTests(TestCase):
 
     def setUp(self):
         """Create test games for metadata refresh"""
+        # The HLTB step searches howlongtobeat.com for every game unless the
+        # client is replaced; a test that wants results patches it again.
+        hltb = mock.MagicMock()
+        hltb.async_search = mock.AsyncMock(return_value=[])
+        hltb.async_search_from_id = mock.AsyncMock(return_value=None)
+        patcher = mock.patch("howlongtobeatpy.HowLongToBeat", return_value=hltb)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
         self.game1 = models.Game.objects.create(
             name="Test Game 1",
             rank=1,

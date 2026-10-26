@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from django.db.models import Q, QuerySet
 
+from core.services.query_params import MAX_INT
 from games import config
 
 
@@ -350,7 +351,13 @@ class Filter:
         if not param_val:
             return qs
 
-        param_val = self.coerce(param_val.strip())
+        try:
+            param_val = self.coerce(param_val.strip())
+        except (TypeError, ValueError):
+            # A malformed value filters nothing rather than raising a 500.
+            return qs
+        if isinstance(param_val, int) and abs(param_val) > MAX_INT:
+            return qs
         if self.fields:
             query = Q()
             for field in self.fields:

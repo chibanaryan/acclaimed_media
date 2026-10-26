@@ -22,13 +22,11 @@ class GameListRenderer extends BaseMediaListRenderer {
      */
     constructor(filterEngine) {
         super(filterEngine);
-        // Cache static URLs (from Django template or fallback to hardcoded)
-        this._staticUrls = window.staticUrls || {
-            platformIcons: '/static/games/images/platform-icons.svg',
-            placeholder: '/static/games/images/placeholder.webp',
-            marioStar: '/static/games/images/mario-star.png',
-            marioStar2x: '/static/games/images/mario-star@2x.png'
-        };
+        // Static URLs come from home.html's {% static %} tags, which carry
+        // the content hash production serves them under. The literal
+        // unhashed fallbacks this had would 404 there, as only the hashed
+        // copies are kept.
+        this._staticUrls = window.staticUrls || {};
         // HLTB completion mode ('main' or 'completionist'), set by ClientSideFiltering
         this.hltbMode = 'main';
         // Rendering and paging are the base class's; only the grid's

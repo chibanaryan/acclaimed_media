@@ -13,6 +13,7 @@ from django.db.models import (
 from django.db.models.functions import Coalesce
 from django.forms import ModelForm
 from django.http import HttpRequest
+from django.templatetags.static import static
 from django.utils import timezone
 from django.utils.html import format_html, format_html_join
 
@@ -495,6 +496,16 @@ class ArticleAdmin(admin.ModelAdmin):
     class Media:
         js = ("games/js/admin/markdown-preview.js",)
         css = {"all": ("games/css/admin-article.css",)}
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        field = super().formfield_for_dbfield(db_field, request, **kwargs)
+        if db_field.name == "content":
+            # The preview iframe loads the site's stylesheet. Production
+            # keeps only the content-hashed copy, so the script cannot build
+            # the URL itself, and the admin page loads no site CSS to copy it
+            # from; {% static %}'s answer is handed over on the field.
+            field.widget.attrs["data-site-stylesheet"] = static("css/dist/styles.css")
+        return field
 
 
 @admin.register(models.SiteMetadata)

@@ -40,13 +40,26 @@
   empty filter rows); music's tracking script no longer blocks first paint;
   overflow fixed for long studio names in the developer filter tree, the
   studio and genre lines of mobile game cards, and long titles in the
-  sidebar search dropdown (DaisyUI menus size to their content)
+  sidebar search dropdown (DaisyUI menus size to their content). Jump to
+  rank on a landing path (`/games/2010s/`) jumped in the unfiltered list;
+  the played toggle is atomic; `/developers/?sort=name` drops studios
+  with no games; game JSON-LD is valid and every game URL has a sitemap
+  `<lastmod>`; the admin article preview is styled in production. The
+  shared cache is keyed per Heroku release; CI checks minified JS,
+  migrations and manifest-storage renders; tests cannot reach the network
+  (four were calling IGDB and HowLongToBeat); the `?v=N` busters are gone
 - **Six CodeQL alerts fixed.** The IGDB client secret rode in the Twitch
   token URL, so a failed auth logged it (and sent it to Sentry); it is in
   the POST body now. Login and logout followed any `Referer`, an open
   redirect; they now follow only this site's. The staff import streams
   sent raw exception text to the browser; they log it and say "see the
-  server logs". The filter cache key hashes with SHA-256, not MD5
+  server logs". The filter cache key hashes with SHA-256, not MD5.
+  Rate limits read the last `X-Forwarded-For` entry, the one Heroku's
+  router appends; the first was the client's to forge, and allauth's
+  limits keyed on the router, one bucket for every visitor. The auth
+  modal enforces signup, reset and verification-email limits. 76 of 210
+  malformed query strings (`/?genres=abc`, `/api/games/?order_by=x`)
+  returned 500s; they no longer do, and `order_by` and `limit` are bounded
 - **Open-ended games show no playtime.** HLTB's "Main Story" for League of
   Legends (~1162h), WoW or Rocket League is time invested, not time to
   beat, so "Playtime: longest" opened on MMOs and "Short" listed Rocket

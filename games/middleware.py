@@ -11,6 +11,7 @@ from django.http import HttpResponse
 from django.middleware.gzip import GZipMiddleware
 from django.utils.cache import patch_vary_headers
 
+from core.services.client_ip import get_client_ip
 from games.config import (
     RATE_LIMIT_BLOCK_DURATION,
     RATE_LIMIT_CACHE_PREFIX,
@@ -148,7 +149,7 @@ class RateLimitMiddleware:
         if any(path.startswith(prefix) for prefix in RATE_LIMIT_EXEMPT_PREFIXES):
             return self.get_response(request)
 
-        ip = self._get_client_ip(request)
+        ip = get_client_ip(request)
         block_key = f"{RATE_LIMIT_CACHE_PREFIX}:block:{ip}"
 
         try:
@@ -211,14 +212,6 @@ class RateLimitMiddleware:
         except ValueError:
             self.cache.set(key, 1, timeout=timeout)
             return 1
-
-    @staticmethod
-    def _get_client_ip(request):
-        """Extract client IP from X-Forwarded-For (Heroku) or REMOTE_ADDR."""
-        forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-        if forwarded_for:
-            return forwarded_for.split(",")[0].strip()
-        return request.META.get("REMOTE_ADDR", "unknown")
 
 
 class HTMXPushURLMiddleware:

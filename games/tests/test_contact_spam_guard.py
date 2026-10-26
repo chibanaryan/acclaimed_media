@@ -134,8 +134,21 @@ class ContactSpamGuardTests(TestCase):
         self.assertTrue(decision.allowed)
         self.assertEqual(decision.reason, "cache_unavailable")
 
-    def test_get_client_ip_uses_x_forwarded_for_first_ip(self):
+    def test_a_forged_header_does_not_reset_the_rate_limit(self):
+        """The client writes the left of X-Forwarded-For; the router the right."""
+        for n in range(config.CONTACT_RATE_LIMIT_PER_10_MIN):
+            request = self._request(ip="10.0.0.5")
+            request.META["HTTP_X_FORWARDED_FOR"] = f"203.0.113.{n}, 45.148.10.143"
+            decision = contact_spam_guard.evaluate(
+                request, self._cleaned_data(message=f"Hello {n}")
+            )
+            self.assertTrue(decision.allowed)
+
         request = self._request(ip="10.0.0.5")
-        request.META["HTTP_X_FORWARDED_FOR"] = "45.148.10.143, 10.0.0.1"
-        ip = contact_spam_guard.get_client_ip(request)
-        self.assertEqual(ip, "45.148.10.143")
+        request.META["HTTP_X_FORWARDED_FOR"] = "203.0.113.99, 45.148.10.143"
+        decision = contact_spam_guard.evaluate(
+            request, self._cleaned_data(message="Hello again")
+        )
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, "rate_limit")
+        self.assertEqual(decision.client_ip, "45.148.10.143")

@@ -1,12 +1,23 @@
 from allauth.account.adapter import DefaultAccountAdapter
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
 
+from core.services.client_ip import get_client_ip
+
 
 class ModalAccountAdapter(DefaultAccountAdapter):
     """Custom allauth adapter for modal-based authentication.
 
     Handles email-as-username and modal-friendly redirects.
     """
+
+    def get_client_ip(self, request):
+        """The address allauth's per-IP rate limits key on.
+
+        allauth's own default, with ``ALLAUTH_TRUSTED_PROXY_COUNT`` unset, is
+        ``REMOTE_ADDR`` - on Heroku the router's, so every visitor shared one
+        bucket, and ten failed logins a minute anywhere locked everyone out.
+        """
+        return get_client_ip(request)
 
     def populate_username(self, request, user):
         """Set username from form input, or default to email if not provided."""

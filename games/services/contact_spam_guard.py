@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from django.core.cache import cache
 
+from core.services.client_ip import get_client_ip
 from games import config
 
 
@@ -41,14 +42,6 @@ def evaluate(request, cleaned_data):
         return SpamDecision(True, "cache_unavailable", client_ip)
 
     return SpamDecision(True, "allowed", client_ip)
-
-
-def get_client_ip(request):
-    """Extract client IP from X-Forwarded-For (Heroku) or REMOTE_ADDR."""
-    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-    return request.META.get("REMOTE_ADDR", "unknown")
 
 
 def _is_placeholder_domain(email):

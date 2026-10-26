@@ -24,7 +24,7 @@
     production's manifest static storage a name that is not in the manifest
     raises while rendering rather than 404ing.
     {% endcomment %}
-    <script src="{% static 'books/js/book-client-side-filtering.bundle.min.js' %}?v=4" defer fetchpriority="low" nonce="{{ csp_nonce }}"></script>
+    <script src="{% static 'books/js/book-client-side-filtering.bundle.min.js' %}" defer fetchpriority="low" nonce="{{ csp_nonce }}"></script>
     {% endif %}
 {% endblock %}
 

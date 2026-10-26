@@ -7,7 +7,6 @@ are pinned here in source and minified form.
 """
 
 import csv
-import re
 from datetime import date
 from io import StringIO
 from pathlib import Path
@@ -251,13 +250,6 @@ class ClientComparatorSourceTests(SimpleTestCase):
             with self.subTest(path=path):
                 self.assertIn("_compareReleaseDates", self._source(path))
                 self.assertIn(".rd", self._source(path))
-
-    def test_the_page_bumped_the_bundle_cache_buster(self):
-        page = self._source("music/templates/music/home.html")
-        match = re.search(
-            r"music-client-side-filtering\.bundle\.min\.js' %\}\?v=(\d+)", page
-        )
-        self.assertGreater(int(match.group(1)), 5)  # past main's highlight fix
 
     def test_the_payload_schema_was_bumped(self):
         # A client holding a version-2 payload has no `rd` to sort by.

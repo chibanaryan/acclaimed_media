@@ -141,6 +141,22 @@ jobs:
                   if '.tests' not in m.name and '.migrations' not in m.name:
                       importlib.import_module(m.name)
           "
+      # Production's static storage. Tests use plain storage, so a template
+      # naming a file the manifest lacks raises only here - while rendering,
+      # taking the page down - and a literal unhashed /static/ path 404s,
+      # since only the hashed copies are kept.
+      - run: python manage.py collectstatic --noinput
+      - run: python manage.py migrate --noinput
+      - name: Render pages under manifest storage
+        run: |
+          python manage.py shell -c "
+          from django.test import Client
+          client = Client(raise_request_exception=True)
+          for path in ('/', '/developers/', '/lists/', '/blog/', '/sitemap.xml'):
+              status = client.get(path, secure=True).status_code
+              print(path, status)
+              assert status == 200, path
+          "
 
   audit:
     runs-on: ubuntu-latest
@@ -180,3 +196,16 @@ jobs:
       - run: npm run build
         working-directory: theme/static_src
       - run: git diff --exit-code --stat theme/static/css/dist/styles.css
+
+  # The minified JS and the bundles are committed and are what the pages
+  # load, so a source edited without re-running the minifier ships nothing.
+  js:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - run: scripts/minify_js.sh --check

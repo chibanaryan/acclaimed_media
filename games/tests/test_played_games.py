@@ -381,6 +381,55 @@ class TogglePlayedGameViewTests(TestCase):
         )
 
 
+class TogglePlayedGameAtomicityTests(TestCase):
+    """The toggle runs in one transaction and upserts, as music's does."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="toggler", email="t@example.com", password="testpass123"
+        )
+        cls.game = Game.objects.create(name="Toggle Game", rank=1, igdb_id=4242)
+
+    def setUp(self):
+        from django.urls import reverse
+
+        self.client.force_login(self.user)
+        self.url = reverse("toggle-played-game", kwargs={"igdb_id": 4242})
+
+    def test_marking_played_again_keeps_the_row_and_its_date(self):
+        """The old delete-then-create replaced the row, and two requests
+        racing it both reached create() and hit the unique constraint."""
+        self.client.post(f"{self.url}?status=played")
+        first = PlayedGame.objects.get(user=self.user, igdb_id=4242)
+
+        self.client.post(f"{self.url}?status=played")
+
+        again = PlayedGame.objects.get(user=self.user, igdb_id=4242)
+        self.assertEqual((again.pk, again.created), (first.pk, first.created))
+
+    def test_an_orphaned_row_is_re_adopted(self):
+        orphan = WantToPlayGame.objects.create(user=self.user, igdb_id=4242)
+
+        self.client.post(f"{self.url}?status=want")
+
+        orphan.refresh_from_db()
+        self.assertEqual(orphan.game, self.game)
+        self.assertEqual(WantToPlayGame.objects.filter(user=self.user).count(), 1)
+
+    def test_caches_are_dropped_only_once_the_write_commits(self):
+        from unittest import mock
+
+        with mock.patch("games.views.invalidate_played_games_cache") as invalidate:
+            with self.captureOnCommitCallbacks(execute=False) as callbacks:
+                self.client.post(f"{self.url}?status=played")
+            invalidate.assert_not_called()
+
+            for callback in callbacks:
+                callback()
+            invalidate.assert_called_once_with(self.user.id)
+
+
 class ProfilePlayedCountTests(TestCase):
     """Test cases for played game count in profile view."""
 

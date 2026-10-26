@@ -494,6 +494,24 @@ function seoPathSearch(pathname) {
 }
 
 /**
+ * The page's filter params: the query string, plus whatever filter a clean
+ * SEO path implies. A filter state with its own landing page is pushed as
+ * that path (/games/2010s/), with no query string, so anything reading the
+ * filters from location.search alone saw none there: jump to rank checked
+ * against the whole ranking, and client-rendered rows showed all-time
+ * ranks. Merged rather than used only as a fallback, because a landing URL
+ * can still carry ?utm_source= or ?highlight=.
+ * @returns {URLSearchParams}
+ */
+function currentFilterParams() {
+    const params = new URLSearchParams(window.location.search);
+    new URLSearchParams(seoPathSearch(window.location.pathname)).forEach((value, key) => {
+        if (!params.has(key)) params.set(key, value);
+    });
+    return params;
+}
+
+/**
  * Updates URL with filter parameter and navigates
  * @param {string} paramName - Parameter name
  * @param {string} value - Parameter value
