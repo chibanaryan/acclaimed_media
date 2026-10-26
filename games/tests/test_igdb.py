@@ -82,6 +82,18 @@ class IgbdApiTests(SimpleTestCase):
         with mock.patch("games.igdb.requests.post", return_value=response):
             self.assertFalse(self.api._get_auth_token())
 
+    def test_auth_token_keeps_the_secret_out_of_the_url(self):
+        """A failed request's message carries its URL, and gets logged."""
+        self.api.client_id = "cid"
+        self.api.client_secret = "secret"
+        response = mock.Mock()
+        response.json.return_value = {"access_token": "token"}
+        with mock.patch("games.igdb.requests.post", return_value=response) as post:
+            self.api._get_auth_token()
+        (url,), kwargs = post.call_args
+        self.assertNotIn("secret", url)
+        self.assertEqual(kwargs["data"]["client_secret"], "secret")
+
     def test_get_game_info_fetches_related_data(self):
         def fake_post(url, headers=None, data=None):
             if "games" in url:

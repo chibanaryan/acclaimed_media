@@ -260,13 +260,15 @@ class IGDBImportServiceTests(TestCase):
         # Make get_igdb_data() raise an exception to test error handling
         with mock.patch.object(
             self.game, "get_igdb_data", side_effect=Exception("Processing error")
-        ):
+        ), self.assertLogs("games.services.igdb_importer", "WARNING") as logs:
             results = service._process_game_batch([self.game])
 
-        # Should catch exception and mark as error
+        # Should catch exception and mark as error. The message reaches the
+        # staff progress stream, so the exception text goes to the log only.
         self.assertEqual(len(results), 1)
         self.assertFalse(results[0][0])  # success is False
-        self.assertIn("Processing error", results[0][2])
+        self.assertNotIn("Processing error", results[0][2])
+        self.assertIn("Processing error", "\n".join(logs.output))
 
     @mock.patch("games.services.igdb_importer.get_api")
     def test_estimate_remaining_with_zero_elapsed(self, mock_get_api):

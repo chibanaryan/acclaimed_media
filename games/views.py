@@ -5,7 +5,7 @@ import logging
 import math
 from functools import cached_property
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -36,6 +36,7 @@ from django.shortcuts import redirect, get_object_or_404, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.utils.decorators import method_decorator
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.text import slugify
 from django.views import View
 from django.views.decorators.cache import never_cache
@@ -107,7 +108,7 @@ def _build_filter_cache_key(prefix, filters, keys, user_id=None):
     if user_id is not None:
         payload["user"] = user_id
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    digest = hashlib.md5(raw.encode()).hexdigest()
+    digest = hashlib.sha256(raw.encode()).hexdigest()
     return f"{prefix}:{config.CACHE_VERSION}:{digest}"
 
 
@@ -3764,6 +3765,25 @@ class UnsubscribeView(TemplateView):
 # =============================================================================
 
 
+def _referer_redirect_url(request):
+    """Where to send someone after logging in or out: back where they were.
+
+    Only a page on this site counts - the Referer is the client's to set, so
+    redirecting to it unchecked is an open redirect - and never back to an
+    auth page.
+    """
+    redirect_url = request.META.get("HTTP_REFERER", "/")
+    if not url_has_allowed_host_and_scheme(
+        redirect_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return "/"
+    if urlparse(redirect_url).path.startswith(("/auth/", "/accounts/")):
+        return "/"
+    return redirect_url
+
+
 class AuthModalLoginView(View):
     """Handle email login form in the auth modal (HTMX partial)."""
 
@@ -3809,13 +3829,8 @@ class AuthModalLoginView(View):
                 user,
                 backend="allauth.account.auth_backends.AuthenticationBackend",
             )
-            # Redirect to home page (or referer if available)
-            redirect_url = request.META.get("HTTP_REFERER", "/")
-            # Don't redirect back to auth endpoints
-            if "/auth/" in redirect_url or "/accounts/" in redirect_url:
-                redirect_url = "/"
             response = HttpResponse()
-            response["HX-Redirect"] = redirect_url
+            response["HX-Redirect"] = _referer_redirect_url(request)
             return response
 
         # Re-render form with errors
@@ -4149,11 +4164,7 @@ class AuthLogoutView(View):
         from django.contrib.auth import logout
 
         logout(request)
-        # Redirect back to referer or home
-        redirect_url = request.META.get("HTTP_REFERER", "/")
-        if "/auth/" in redirect_url or "/accounts/" in redirect_url:
-            redirect_url = "/"
-        return redirect(redirect_url)
+        return redirect(_referer_redirect_url(request))
 
 
 class TogglePlayedGameView(LoginRequiredMixin, View):

@@ -33,7 +33,7 @@ class GetIgdbCommandTests(TestCase):
 
         with mock.patch.object(
             models.Game, "get_igdb_data", side_effect=ValueError("boom")
-        ):
+        ), self.assertLogs("games.services.igdb_importer", "WARNING") as logs:
             # Capture stdout to verify error output
             from io import StringIO
 
@@ -41,8 +41,9 @@ class GetIgdbCommandTests(TestCase):
             # Disable batch mode to use sequential processing
             call_command("get_igdb", batch_games=0, concurrency=1, stdout=out)
             output = out.getvalue()
-            # Verify error message is in output
-            self.assertIn("boom", output)
+            # The game is reported as failed; the exception itself is logged
+            self.assertIn("Broken: IGDB data could not be applied", output)
+            self.assertIn("boom", "\n".join(logs.output))
 
     def test_update_game_by_name(self):
         """Test updating a game by name using --game flag"""

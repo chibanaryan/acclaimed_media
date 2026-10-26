@@ -29,15 +29,21 @@
 - **Developer pages: 338 queries → ~7** on a cache hit (thumbnails and
   the studio parent chain were N+1s); `/developers/nintendo/` rendered in
   ~800 ms server time on production
-- **Overflow fixes:** long studio names in the developer filter tree, the
-  studio and genre lines of mobile game cards, and long titles in the
-  sidebar search dropdown (DaisyUI menus size to their content)
 - **Smaller fixes:** the contact form's Navi icon is self-hosted and lazy
   (35 KB hotlinked on every page → 1.4 KB on open); the game cover is no
   longer squashed and its preload is emitted once, early; an IGDB
   preconnect; labelled selects, accessible names and raised text contrast,
   on the album pages too (Discogs credit and notice, media switcher tabs,
-  empty filter rows); music's tracking script no longer blocks first paint
+  empty filter rows); music's tracking script no longer blocks first paint;
+  overflow fixed for long studio names in the developer filter tree, the
+  studio and genre lines of mobile game cards, and long titles in the
+  sidebar search dropdown (DaisyUI menus size to their content)
+- **Six CodeQL alerts fixed.** The IGDB client secret rode in the Twitch
+  token URL, so a failed auth logged it (and sent it to Sentry); it is in
+  the POST body now. Login and logout followed any `Referer`, an open
+  redirect; they now follow only this site's. The staff import streams
+  sent raw exception text to the browser; they log it and say "see the
+  server logs". The filter cache key hashes with SHA-256, not MD5
 - **Open-ended games show no playtime.** HLTB's "Main Story" for League of
   Legends (~1162h), WoW or Rocket League is time invested, not time to
   beat, so "Playtime: longest" opened on MMOs and "Short" listed Rocket

@@ -1172,6 +1172,23 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
         ]
         self.assertGreater(len(error_events), 0)
 
+    @mock.patch("games.services.import_handler.import_platforms")
+    def test_import_batch_with_progress_keeps_exception_text_out_of_the_stream(
+        self, mock_import_platforms
+    ):
+        """The exception goes to the log; the browser gets a fixed message."""
+        mock_import_platforms.side_effect = Exception("secret detail")
+        platform_file = SimpleUploadedFile("PlatformDB.txt", b"PC\tPC\r\n")
+
+        with self.assertLogs("games.services.import_handler", "ERROR") as logs:
+            events = list(
+                utils.import_batch_with_progress({"platforms_file": platform_file})
+            )
+
+        self.assertFalse(any("secret detail" in e for e in events))
+        self.assertTrue(any("Platforms" in e and "failed" in e for e in events))
+        self.assertIn("secret detail", "\n".join(logs.output))
+
     @mock.patch("games.services.import_handler.TextIOWrapper")
     def test_import_batch_with_progress_exception_inner_try_textio(self, mock_textio):
         """Test import_batch_with_progress exception in inner try (lines 282-283)."""

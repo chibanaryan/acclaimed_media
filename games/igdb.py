@@ -270,14 +270,18 @@ class IgbdApi:
             )
             return False  # pragma: no cover
 
-        token_url = (
-            "https://id.twitch.tv/oauth2/token?"
-            f"client_id={self.client_id}&client_secret={self.client_secret}"
-            "&grant_type=client_credentials"
-        )
+        # The credentials go in the form body, not the query string: a
+        # failed raise_for_status() puts the URL in its message, and that
+        # message is logged (and so sent to Sentry).
+        token_url = "https://id.twitch.tv/oauth2/token"
+        credentials = {
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "grant_type": "client_credentials",
+        }
 
         try:
-            response = requests.post(token_url)
+            response = requests.post(token_url, data=credentials, timeout=30)
             response.raise_for_status()
             data = response.json()
         except requests.RequestException as exc:  # pragma: no cover
@@ -298,8 +302,7 @@ class IgbdApi:
             }
             return True
         else:
-            error_msg = data.get("message", "Unknown error")
-            logger.warning("IGDB authentication failed: %s", error_msg)
+            logger.warning("IGDB authentication failed: no access token returned")
             return False
 
     def _get_themes(self) -> None:

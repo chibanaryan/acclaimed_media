@@ -3,6 +3,7 @@ Shared IGDB import service for both management commands and web views.
 Provides concurrent, batched IGDB data fetching with progress callbacks.
 """
 
+import logging
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -10,6 +11,15 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from games.igdb import get_api
 from games.models import Game
+
+logger = logging.getLogger(__name__)
+
+# A failed game's message reaches the staff import page's progress stream,
+# so it is fixed text; the exception, which can carry SQL and request URLs,
+# goes to the log - at WARNING, so a run where many games fail does not file
+# a Sentry issue for each.
+GAME_FAILED = "IGDB data could not be applied; see the server logs."
+BATCH_FAILED = "Batch fetch failed; see the server logs."
 
 
 class IGDBImportService:
@@ -288,10 +298,11 @@ class IGDBImportService:
             with self.lock:
                 self.processed_count += 1
             return (True, game, None)
-        except Exception as e:
+        except Exception:
+            logger.warning("IGDB import failed for '%s'", game.name, exc_info=True)
             with self.lock:
                 self.error_count += 1
-            return (False, game, str(e))
+            return (False, game, GAME_FAILED)
 
     def _process_game_batch(
         self, games_batch: List[Game]
@@ -351,18 +362,22 @@ class IGDBImportService:
 
                         local_processed += 1
                         results.append((True, game, None))
-                    except Exception as e:
+                    except Exception:
+                        logger.warning(
+                            "IGDB import failed for '%s'", game.name, exc_info=True
+                        )
                         local_errors += 1
-                        results.append((False, game, str(e)))
+                        results.append((False, game, GAME_FAILED))
                 else:
                     local_errors += 1
                     results.append((False, game, "Not found in IGDB response"))
 
-        except Exception as e:
+        except Exception:
             # Batch fetch failed, mark all as errors
+            logger.exception("IGDB batch fetch failed")
             for game in games_batch:
                 local_errors += 1
-                results.append((False, game, f"Batch fetch failed: {str(e)}"))
+                results.append((False, game, BATCH_FAILED))
 
         # Update instance counters once at the end (no lock needed - single threaded)
         self.processed_count += local_processed

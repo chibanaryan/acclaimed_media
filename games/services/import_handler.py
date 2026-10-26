@@ -12,6 +12,7 @@ Also provides IGDB data fetching with progress tracking.
 """
 
 import csv
+import logging
 from io import TextIOWrapper
 from typing import Any, Callable, Dict, Optional, Tuple
 
@@ -24,6 +25,15 @@ from games.services.genre_normalizer import (
     get_or_create_genre,
     normalize_genre,
 )
+
+logger = logging.getLogger(__name__)
+
+# What a progress stream says when an import raises. Staff see this; the
+# exception itself goes to the log (and Sentry), since its text can carry
+# file paths, SQL and other internals the browser has no business seeing.
+IGDB_FAILED = "IGDB import failed; see the server logs."
+WIKIPEDIA_FAILED = "Wikipedia lookup failed; see the server logs."
+IMPORT_FAILED = "Import failed; see the server logs."
 
 
 def _start_import_thread(target: Callable[[], None]):
@@ -244,7 +254,7 @@ def import_igdb_with_progress(
                                     success_count += 1
                                 except Exception as game_error:
                                     error_count += 1
-                                    logging.getLogger(__name__).error(
+                                    logger.error(
                                         "Error updating relationships for '%s': %s",
                                         game.name,
                                         game_error,
@@ -271,8 +281,11 @@ def import_igdb_with_progress(
                                 "failed": error_count,
                             },
                         )
-                    except Exception as e:
-                        _queue_event(json.dumps({"event": "error", "error": str(e)}))
+                    except Exception:
+                        logger.exception("IGDB relationship update failed")
+                        _queue_event(
+                            json.dumps({"event": "error", "error": IGDB_FAILED})
+                        )
                     finally:
                         _queue_event(None)
 
@@ -300,8 +313,9 @@ def import_igdb_with_progress(
             def run_import():
                 try:
                     service.import_games(games)
-                except Exception as e:
-                    _queue_event(json.dumps({"event": "error", "error": str(e)}))
+                except Exception:
+                    logger.exception("IGDB import failed")
+                    _queue_event(json.dumps({"event": "error", "error": IGDB_FAILED}))
                 finally:
                     # Signal that we're done
                     _queue_event(None)
@@ -336,17 +350,15 @@ def import_igdb_with_progress(
             # a daemon thread until it completes. This prevents wasted
             # API calls if the user navigates away.
             stop_event.set()
-            import logging
-
-            logging.getLogger(__name__).info(
+            logger.info(
                 "Client disconnected from IGDB import progress stream. "
                 "Import thread continues in background."
             )
             raise
 
-    except Exception as e:
-        # Yield error event
-        yield f"data: {json.dumps({'event': 'error', 'error': str(e)})}\n\n"
+    except Exception:
+        logger.exception("IGDB progress stream failed")
+        yield f"data: {json.dumps({'event': 'error', 'error': IGDB_FAILED})}\n\n"
 
 
 def import_wikipedia_pages_with_progress(force_refresh: bool = False):
@@ -558,9 +570,7 @@ def import_wikipedia_pages_with_progress(force_refresh: bool = False):
                                     game.wikipedia_genres.set(wikipedia_genres)
                             except Exception as genre_error:
                                 # Log genre errors but don't fail page lookup
-                                import logging
-
-                                logging.getLogger(__name__).warning(
+                                logger.warning(
                                     "Failed to scrape genres for '%s': %s",
                                     game_name,
                                     genre_error,
@@ -603,9 +613,7 @@ def import_wikipedia_pages_with_progress(force_refresh: bool = False):
                     except Exception as game_error:
                         # Log the error and continue to next game
                         failed_count += 1
-                        import logging
-
-                        logging.getLogger(__name__).error(
+                        logger.error(
                             "Unexpected error processing game '%s': %s",
                             game_name,
                             game_error,
@@ -635,8 +643,9 @@ def import_wikipedia_pages_with_progress(force_refresh: bool = False):
                     },
                 )
 
-            except Exception as e:
-                _queue_event(json.dumps({"event": "error", "error": str(e)}))
+            except Exception:
+                logger.exception("Wikipedia page lookup failed")
+                _queue_event(json.dumps({"event": "error", "error": WIKIPEDIA_FAILED}))
             finally:
                 # Clean up services to release HTTP sessions
                 if service:
@@ -687,17 +696,15 @@ def import_wikipedia_pages_with_progress(force_refresh: bool = False):
         except GeneratorExit:  # pragma: no cover
             # Client disconnected - signal the lookup thread to stop
             stop_event.set()
-            import logging
-
-            logging.getLogger(__name__).info(
+            logger.info(
                 "Client disconnected from Wikipedia page lookup progress stream. "
                 "Lookup thread continues in background."
             )
             raise
 
-    except Exception as e:
-        # Yield error event
-        yield f"data: {json.dumps({'event': 'error', 'error': str(e)})}\n\n"
+    except Exception:
+        logger.exception("Wikipedia page lookup stream failed")
+        yield f"data: {json.dumps({'event': 'error', 'error': WIKIPEDIA_FAILED})}\n\n"
 
 
 def _validate_prerequisites(import_type: str) -> Optional[Tuple[bool, str]]:
@@ -842,19 +849,23 @@ def import_batch_with_progress(data: Dict[str, Any]):
                             f = TextIOWrapper(file_obj, encoding="utf-8")
                             with transaction.atomic():
                                 handler(f, progress_callback)
-                        except Exception as e:
+                        except Exception:
+                            logger.exception("%s import failed", display_name)
                             _queue_event(
                                 json.dumps(
                                     {
                                         "event": "error",
                                         "file": display_name,
-                                        "message": str(e),
+                                        "message": IMPORT_FAILED,
                                     }
                                 )
                             )
 
-            except Exception as e:  # pragma: no cover
-                _queue_event(json.dumps({"event": "error", "message": str(e)}))
+            except Exception:  # pragma: no cover
+                # A disconnect raises to roll back; that is no error to report
+                if not stop_event.is_set():
+                    logger.exception("Batch import failed")
+                _queue_event(json.dumps({"event": "error", "message": IMPORT_FAILED}))
             finally:
                 # Signal that we're done
                 _queue_event(None)
@@ -902,9 +913,9 @@ def import_batch_with_progress(data: Dict[str, Any]):
             stop_event.set()
             raise
 
-    except Exception as e:
-        # Yield error event
-        yield f"data: {json.dumps({'event': 'error', 'message': str(e)})}\n\n"
+    except Exception:
+        logger.exception("Batch import progress stream failed")
+        yield f"data: {json.dumps({'event': 'error', 'message': IMPORT_FAILED})}\n\n"
 
 
 def import_batch(data: Dict[str, Any]) -> Tuple[bool, str]:
@@ -1194,9 +1205,9 @@ def import_lists(
             f"Publications: recreated (deleted {pubs_deleted} old)",
         )
 
-    except Exception as e:
+    except Exception:
         if progress_callback:
-            progress_callback("error", {"message": str(e)})
+            progress_callback("error", {"message": IMPORT_FAILED})
         raise
 
 
@@ -1282,9 +1293,9 @@ def import_listmemberships(
 
         return (True, f"List memberships: {total_created} created")
 
-    except Exception as e:
+    except Exception:
         if progress_callback:
-            progress_callback("error", {"message": str(e)})
+            progress_callback("error", {"message": IMPORT_FAILED})
         raise
 
 
@@ -1498,9 +1509,9 @@ def import_games(
             f"{games_ranked} ranks calculated",
         )
 
-    except Exception as e:
+    except Exception:
         if progress_callback:
-            progress_callback("error", {"message": str(e)})
+            progress_callback("error", {"message": IMPORT_FAILED})
         raise
 
 
@@ -1601,9 +1612,9 @@ def import_platforms(
             f"Platforms: {created_count} created, {updated_count} updated (deleted {deleted_count} old)",
         )
 
-    except Exception as e:
+    except Exception:
         if progress_callback:
-            progress_callback("error", {"message": str(e)})
+            progress_callback("error", {"message": IMPORT_FAILED})
         raise
 
 

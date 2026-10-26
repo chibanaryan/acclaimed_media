@@ -406,6 +406,10 @@ LOGGING = {
             "handlers": ["console"],
             "level": "ERROR" if TEST_MODE else "INFO",
         },
+        "games.services": {
+            "handlers": ["console"],
+            "level": "ERROR" if TEST_MODE else "INFO",
+        },
     },
 }
 

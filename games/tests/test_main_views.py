@@ -2884,6 +2884,27 @@ class AuthModalViewsTest(TestCase):
 
         self.assertEqual(response["HX-Redirect"], "/")
 
+    def test_auth_modal_login_ignores_an_off_site_referer(self):
+        from allauth.account.models import EmailAddress
+        from django.contrib.auth import get_user_model
+
+        user = get_user_model().objects.create_user(
+            username="offsitelogin",
+            email="offsitelogin@example.com",
+            password="testpass123",
+        )
+        EmailAddress.objects.create(
+            user=user, email="offsitelogin@example.com", verified=True, primary=True
+        )
+
+        response = self.client.post(
+            reverse("auth-modal-login"),
+            {"login": "offsitelogin@example.com", "password": "testpass123"},
+            HTTP_REFERER="https://evil.example/phish",
+        )
+
+        self.assertEqual(response["HX-Redirect"], "/")
+
     def test_auth_modal_signup_get_returns_200(self):
         """Test that signup form GET returns 200."""
         response = self.client.get(reverse("auth-modal-signup"))
@@ -3106,6 +3127,45 @@ class AuthModalViewsTest(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, "/")
+
+    def test_auth_logout_ignores_an_off_site_referer(self):
+        """The Referer is the client's to set; following it is an open redirect."""
+        from django.contrib.auth import get_user_model
+
+        get_user_model().objects.create_user(
+            username="offsite", email="offsite@example.com", password="testpass123"
+        )
+        self.client.login(username="offsite", password="testpass123")
+
+        response = self.client.post(
+            reverse("auth-logout"), HTTP_REFERER="https://evil.example/phish"
+        )
+        self.assertEqual(response.url, "/")
+
+    def test_auth_logout_returns_to_a_same_site_referer(self):
+        from django.contrib.auth import get_user_model
+
+        get_user_model().objects.create_user(
+            username="onsite", email="onsite@example.com", password="testpass123"
+        )
+        self.client.login(username="onsite", password="testpass123")
+
+        response = self.client.post(
+            reverse("auth-logout"), HTTP_REFERER="http://testserver/games/"
+        )
+        self.assertEqual(response.url, "http://testserver/games/")
+
+    def test_auth_logout_matches_auth_paths_not_query_strings(self):
+        from django.contrib.auth import get_user_model
+
+        get_user_model().objects.create_user(
+            username="querysite", email="querysite@example.com", password="testpass123"
+        )
+        self.client.login(username="querysite", password="testpass123")
+
+        referer = "http://testserver/games/?q=/accounts/"
+        response = self.client.post(reverse("auth-logout"), HTTP_REFERER=referer)
+        self.assertEqual(response.url, referer)
 
     def test_auth_modal_profile_unauthenticated_redirects_to_login(self):
         """Test that profile view redirects to login if not authenticated."""
