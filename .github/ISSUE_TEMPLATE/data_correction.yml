@@ -1,0 +1,39 @@
+name: Data correction
+description: A game, album or list has wrong or missing information
+body:
+  - type: input
+    id: url
+    attributes:
+      label: Page
+      description: The page on the site with the wrong information.
+      placeholder: https://www.acclaimedvideogames.com/games/...
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What is wrong
+      multiple: true
+      options:
+        - Release year or date
+        - Genre
+        - Cover art
+        - Developer or artist
+        - Platforms
+        - Playtime
+        - A published list is missing or misread
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: correction
+    attributes:
+      label: The correction
+      description: What the site shows now, and what it should show.
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Source
+      description: A link that supports the correction, such as the published list itself.

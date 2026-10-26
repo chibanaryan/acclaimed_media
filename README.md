@@ -21,8 +21,8 @@ For detailed documentation, see [CLAUDE.md](CLAUDE.md).
 ### Clone Repository
 
 ```bash
-git clone https://github.com/chibanaryan/acclaimedgames.git
-cd acclaimedgames
+git clone https://github.com/chibanaryan/acclaimed_video_games.git
+cd acclaimed_video_games
 heroku login
 heroku git:remote -a acclaimedgames
 ```
@@ -112,7 +112,7 @@ This repo uses [pre-commit](https://pre-commit.com/) to enforce code quality:
 - **Black** - Auto-formats Python code
 - **Flake8** - Lints for style violations
 - **Tests** - Runs full test suite
-- **Coverage** - Enforces 95% minimum coverage
+- **Coverage** - Enforces 100% coverage
 
 Commits are blocked if any check fails. Run tests manually:
 
@@ -145,3 +145,17 @@ Regular batch import replaces the existing ranking dataset in place. You do not 
 ```bash
 heroku run python3 manage.py get_igdb
 ```
+
+## Contributing
+
+Bug reports and data corrections are welcome as issues. Please open an issue
+before writing a pull request. See [CONTRIBUTING.md](.github/CONTRIBUTING.md)
+and the [Code of Conduct](.github/CODE_OF_CONDUCT.md). Report security problems
+privately, as [SECURITY.md](SECURITY.md) describes.
+
+## License
+
+The code is released under the [MIT License](LICENSE). The license does not
+cover the ranking data, such as the files in `acclaimedgames/test_input_files/`,
+or the metadata the site fetches from IGDB, Wikidata, Discogs, MusicBrainz, the
+Cover Art Archive and HowLongToBeat. Those stay under their owners' terms.

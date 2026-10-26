@@ -1,0 +1,38 @@
+name: Bug report
+description: Something on the site is broken or behaves wrongly
+labels: ["bug"]
+body:
+  - type: input
+    id: url
+    attributes:
+      label: Page
+      description: The URL where it happens, filters included.
+      placeholder: https://www.acclaimedvideogames.com/...
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, and what the site did.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Browser and device
+      placeholder: Safari 26 on iPhone, Chrome 141 on Windows, ...
+  - type: dropdown
+    id: signed-in
+    attributes:
+      label: Were you signed in?
+      options:
+        - "No"
+        - "Yes"
+        - Not sure
