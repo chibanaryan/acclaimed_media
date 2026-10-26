@@ -783,7 +783,13 @@ class Command(BaseCommand):
             orphaned_record.save()
             hltb_data = orphaned_record
         else:
-            # No orphaned record, create or update
+            # No orphaned record, create or update. A new row (IGDB re-keyed
+            # the game) inherits the staff open-ended call of the one it replaces
+            previous_call = (
+                HLTBGameData.objects.filter(game=game, is_primary=True)
+                .values_list("open_ended_override", flat=True)
+                .first()
+            )
             HLTBGameData.objects.filter(game=game, is_primary=True).update(
                 is_primary=False
             )
@@ -809,6 +815,9 @@ class Command(BaseCommand):
                     **(profile or {}),
                 },
             )
+            if created and previous_call is not None:
+                hltb_data.open_ended_override = previous_call
+                hltb_data.save(update_fields=["open_ended_override"])
 
         # Set primary relationship
         game.primary_hltb_game_data = hltb_data

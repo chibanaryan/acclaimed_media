@@ -7,9 +7,7 @@ left out of every playtime row, sort, filter, count and total.
 """
 
 import csv
-import inspect
 import io
-from itertools import product
 from types import SimpleNamespace
 from unittest import mock
 
@@ -20,7 +18,7 @@ from django.utils.text import slugify
 
 from core.tests.utils import clear_all_caches
 from games.management.commands import fetch_hltb_data, refresh_all_metadata
-from games import open_ended
+from core.models import User
 from games.models import Game, HLTBGameData, WantToPlayGame
 from games.services import playtime
 
@@ -59,28 +57,6 @@ class DeriveOpenEndedTests(TestCase):
             HLTBGameData(game_type="game", comp_lvl_combine=False).derive_open_ended()
         )
         self.assertFalse(HLTBGameData().derive_open_ended())
-
-    def test_editorial_calls_beat_hltb_flags(self):
-        """Galaga is filed as a "game"; FFXIV's main scenario ends."""
-        self.assertTrue(
-            HLTBGameData(igdb_id=2751, game_type="game").derive_open_ended()
-        )
-        self.assertFalse(
-            HLTBGameData(igdb_id=386, game_type="multi").derive_open_ended()
-        )
-
-    def test_staff_override_beats_editorial_calls(self):
-        self.assertFalse(
-            HLTBGameData(igdb_id=2751, open_ended_override=False).derive_open_ended()
-        )
-        self.assertTrue(
-            HLTBGameData(igdb_id=386, open_ended_override=True).derive_open_ended()
-        )
-
-    def test_editorial_lists_do_not_overlap(self):
-        self.assertFalse(
-            open_ended.OPEN_ENDED_IGDB_IDS & open_ended.FINISHABLE_IGDB_IDS
-        )
 
     def test_staff_override_wins_both_ways(self):
         self.assertTrue(HLTBGameData(open_ended_override=True).derive_open_ended())
@@ -180,6 +156,24 @@ class SaveProfileTests(TestCase):
             self.assertTrue(data.comp_lvl_combine)
             self.assertTrue(data.is_open_ended)
 
+    def test_a_rekeyed_game_keeps_its_staff_call(self):
+        """IGDB re-keys a game: the new HLTB row inherits the call."""
+        for rank, module in enumerate((fetch_hltb_data, refresh_all_metadata), 1):
+            game = make_game(
+                f"G{rank}", rank, 0.8, 2.5, game_type="game", open_ended_override=True
+            )
+            old = game.primary_hltb_game_data
+            game.igdb_id = 1000 + rank
+            game.save()
+            command = module.Command()
+            data = command._save_hltb_data(
+                game.id, game.igdb_id, "77", "Name", "wikidata", 1.0, 1, 2, 3,
+                profile={"game_type": "game"},
+            )  # fmt: skip
+            self.assertNotEqual(data.pk, old.pk)
+            self.assertIs(data.open_ended_override, True)
+            self.assertTrue(data.is_open_ended)
+
 
 class PlaytimeServiceTests(TestCase):
     def test_hours_field(self):
@@ -209,9 +203,9 @@ class OpenEndedGamesInRankingsTests(TestCase):
         self.long = make_game("Persona 5", 2, 100, 150)
         self.moba = make_game("League of Legends", 3, 1161, 3262, game_type="multi")
         self.pacman = make_game("Pac-Man", 4, 0.8, 4.6, game_type="endless")
-        # Open-ended only through the editorial list: HLTB types it "game"
+        # Open-ended only through the staff call: HLTB types it "game"
         self.cars = make_game(
-            "Rocket League", 5, 4.7, 105, igdb_id=11198, game_type="game"
+            "Rocket League", 5, 4.7, 105, game_type="game", open_ended_override=True
         )
 
     def _ids(self, **params):
@@ -323,129 +317,145 @@ class OpenEndedGamesInRankingsTests(TestCase):
         )
 
 
-class DeriveOpenEndedMigrationTests(TestCase):
-    """
-    Every migration that calls open_ended.derive_all (0118 on) runs today's
-    rule against its historical model, and must agree with derive_open_ended.
-    0117 predates derive_all and is superseded by them: it reads today's
-    lists but still counts comp_lvl_combine, and runs only before 0118.
-    """
+class OpenEndedCallsMigrationTests(TestCase):
+    """0120 moves the editorial calls from code onto the records."""
 
-    def test_migrations_match_the_model_for_every_combination(self):
+    def setUp(self):
         from importlib import import_module
 
         from django.db import connection
         from django.db.migrations.loader import MigrationLoader
 
-        listed_open = next(iter(open_ended.OPEN_ENDED_IGDB_IDS))
-        listed_finishable = next(iter(open_ended.FINISHABLE_IGDB_IDS))
+        self.migration = import_module(
+            "games.migrations.0120_open_ended_calls_to_admin"
+        )
+        self.historical = (
+            MigrationLoader(connection)
+            .project_state(("games", "0120_open_ended_calls_to_admin"))
+            .apps
+        )
+        self.galaga = make_game("Galaga", 1, 0.8, 2.5, igdb_id=2751)
+        self.ffxiv = make_game("FFXIV", 2, 97.5, 3465, igdb_id=386, game_type="multi")
+        self.zelda = make_game("Zelda", 3, 50, 194)
+        # A listed game staff have already ruled on keeps their call
+        self.tetris = make_game(
+            "Tetris", 4, 3.1, 12.8, igdb_id=130749, open_ended_override=False
+        )
+        HLTBGameData.objects.update(open_ended_override=None, is_open_ended=False)
+        HLTBGameData.objects.filter(game=self.tetris).update(open_ended_override=False)
+
+    def _state(self):
+        return [
+            (
+                HLTBGameData.objects.get(game=game).open_ended_override,
+                HLTBGameData.objects.get(game=game).is_open_ended,
+            )
+            for game in (self.galaga, self.ffxiv, self.zelda, self.tetris)
+        ]
+
+    def test_seeds_the_calls_and_derives_every_row(self):
+        self.migration.seed_overrides(self.historical, None)
+        self.assertEqual(
+            self._state(),
+            [(True, True), (False, False), (None, False), (False, False)],
+        )
+        for data in HLTBGameData.objects.all():
+            self.assertEqual(data.is_open_ended, data.derive_open_ended())
+
+    def test_reverse_clears_only_its_own_calls(self):
+        self.migration.seed_overrides(self.historical, None)
+        self.migration.clear_overrides(self.historical, None)
+        # FFXIV falls back to HLTB's "multi"; the staff call on Tetris stays
+        self.assertEqual(
+            self._state(),
+            [(None, False), (None, True), (None, False), (False, False)],
+        )
+
+    def test_its_derivation_matches_the_model_for_every_input(self):
+        HLTBGameData.objects.all().delete()
         # Orphans (game=None) via bulk_create, so no save() derives the flag
         HLTBGameData.objects.bulk_create(
             HLTBGameData(
-                igdb_id=igdb_id,
-                hltb_id="1",
-                game_type=game_type,
-                comp_lvl_combine=combine,
-                open_ended_override=override,
+                igdb_id=1, hltb_id="1", game_type=game_type, open_ended_override=call
             )
-            for igdb_id, game_type, combine, override in product(
-                (listed_open, listed_finishable, 1),
-                ("multi", "game", ""),
-                (True, False, None),
-                (True, False, None),
-            )
+            for game_type in ("multi", "endless", "sports", "game", "compil", "")
+            for call in (True, False, None)
         )
-        loader = MigrationLoader(connection)
-        names = []
-        for app, name in sorted(loader.disk_migrations):
-            module = (
-                import_module(f"games.migrations.{name}") if app == "games" else None
-            )
-            derive = getattr(module, "derive_open_ended", None)
-            if derive and "open_ended.derive_all(" in inspect.getsource(derive):
-                names.append(name)
-        self.assertEqual(
-            names[:2],
-            ["0118_derive_open_ended_again", "0119_derive_open_ended_without_combine"],
+        for start in (True, False):
+            HLTBGameData.objects.update(is_open_ended=start)
+            self.migration.derive(self.historical.get_model("games", "HLTBGameData"))
+            for data in HLTBGameData.objects.all():
+                self.assertEqual(data.is_open_ended, data.derive_open_ended())
+
+    def test_lists_do_not_overlap(self):
+        self.assertFalse(
+            set(self.migration.OPEN_ENDED_IGDB_IDS)
+            & set(self.migration.FINISHABLE_IGDB_IDS)
         )
-        for name in names:
-            migration = import_module(f"games.migrations.{name}")
-            historical = loader.project_state(("games", name)).apps
-            for start in (True, False):
-                HLTBGameData.objects.update(is_open_ended=start)
-                migration.derive_open_ended(historical, None)
-                rows = list(HLTBGameData.objects.all())
-                self.assertEqual(len(rows), 81)
-                for row in rows:
-                    self.assertEqual(
-                        row.is_open_ended, row.derive_open_ended(), (name, row.__dict__)
-                    )
 
 
-class RederiveOnMigrateTests(TestCase):
-    """post_migrate re-derives the flags, so a list edit needs no migration."""
+class OpenEndedAdminTests(TestCase):
+    """Staff make the calls in the admin, one record or many."""
 
     def setUp(self):
-        self.galaga = make_game("Galaga", 1, 0.8, 2.5, igdb_id=2751)
-        self.zelda = make_game("Zelda", 2, 50, 194)
-        # As if the lists had changed since the rows were saved
-        HLTBGameData.objects.filter(game=self.galaga).update(is_open_ended=False)
-        HLTBGameData.objects.filter(game=self.zelda).update(is_open_ended=True)
-
-    def _flags(self):
-        return [
-            HLTBGameData.objects.get(game=game).is_open_ended
-            for game in (self.galaga, self.zelda)
-        ]
-
-    def test_migrate_signal_fixes_stale_flags(self):
-        from django.apps import apps
-        from django.db.models.signals import post_migrate
-
-        config = apps.get_app_config("games")
-        post_migrate.send(
-            sender=config,
-            app_config=config,
-            verbosity=0,
-            interactive=False,
-            using="default",
-            apps=apps,
-            plan=[],
+        self.client.force_login(
+            User.objects.create_superuser("admin", "a@example.com", "pw")
         )
-        self.assertEqual(self._flags(), [True, False])
+        self.moba = make_game("League of Legends", 1, 1161, 3262, game_type="multi")
+        self.story = make_game("It Takes Two", 2, 12.8, 20, game_type="multi")
+        self.sim = make_game("SimCity", 3, 15, 31, game_type="game")
 
-    def test_flush_sends_it_without_apps_or_stdout(self):
-        from django.core.management.sql import emit_post_migrate_signal
+    def _act(self, action, *games):
+        return self.client.post(
+            reverse("admin:games_hltbgamedata_changelist"),
+            {
+                "action": action,
+                "_selected_action": [g.primary_hltb_game_data.pk for g in games],
+            },
+            follow=True,
+        )
 
-        with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
-            emit_post_migrate_signal(1, False, "default")
-        self.assertEqual(self._flags(), [True, False])
-        self.assertIn("Re-derived is_open_ended on 2 HLTB rows", out.getvalue())
+    def _open(self, game):
+        return HLTBGameData.objects.get(game=game).is_open_ended
 
-    def test_reports_only_what_it_changed(self):
-        from games.signals import rederive_open_ended
+    def test_bulk_actions_set_the_call_and_the_flag(self):
+        before = HLTBGameData.objects.get(game=self.sim).updated_at
+        response = self._act("mark_open_ended", self.sim)
+        self.assertContains(response, "Marked open-ended: 1 game. Visitors see it")
+        self.assertTrue(self._open(self.sim))
+        self.assertGreater(HLTBGameData.objects.get(game=self.sim).updated_at, before)
 
-        out = io.StringIO()
-        rederive_open_ended(verbosity=1, stdout=out)
-        rederive_open_ended(verbosity=1, stdout=out)
-        rederive_open_ended(verbosity=0, stdout=out)
-        self.assertEqual(out.getvalue(), "Re-derived is_open_ended on 2 HLTB rows\n")
+        self._act("mark_finishable", self.story)
+        self.assertFalse(self._open(self.story))
 
-    def test_skips_a_state_without_the_model_or_the_field(self):
-        from games.signals import rederive_open_ended
+        response = self._act("clear_open_ended_call", self.sim, self.story)
+        self.assertContains(response, "Cleared the call on 2 games.")
+        self.assertEqual([self._open(self.sim), self._open(self.story)], [False, True])
 
-        no_model = mock.Mock()
-        no_model.get_model.side_effect = LookupError
-        rederive_open_ended(apps=no_model)
+    def test_change_form_explains_the_rule(self):
+        response = self.client.get(
+            reverse(
+                "admin:games_hltbgamedata_change",
+                args=[self.sim.primary_hltb_game_data.pk],
+            )
+        )
+        self.assertContains(response, "does it have an ending that HLTB")
 
-        before_0116 = mock.Mock()
-        before_0116.get_model.return_value._meta.get_fields.return_value = []
-        rederive_open_ended(apps=before_0116)
-        self.assertEqual(self._flags(), [False, True])
+    def test_game_admin_shows_the_flag(self):
+        response = self.client.get(reverse("admin:games_game_changelist"))
+        self.assertContains(response, "Open-ended")
+        no_data = Game.objects.create(name="No HLTB", slug="no-hltb", rank=9)
+        from games.admin import GameAdmin
+        from django.contrib import admin as django_admin
 
-    def test_skips_a_database_the_router_keeps_games_off(self):
-        from games.signals import rederive_open_ended
+        # Games HLTB has not matched can be found, to mark once it does
+        response = self.client.get(
+            reverse("admin:games_game_changelist"),
+            {"primary_hltb_game_data__isempty": "1"},
+        )
+        self.assertEqual(list(response.context["cl"].result_list), [no_data])
 
-        with mock.patch("games.signals.router.allow_migrate_model", return_value=False):
-            rederive_open_ended(using="replica")
-        self.assertEqual(self._flags(), [False, True])
+        game_admin = GameAdmin(Game, django_admin.site)
+        self.assertTrue(game_admin._open_ended(self.moba))
+        self.assertFalse(game_admin._open_ended(self.sim))
+        self.assertIsNone(game_admin._open_ended(no_data))

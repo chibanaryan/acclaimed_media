@@ -1,9 +1,19 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from django.db.models import Count, IntegerField, OuterRef, Subquery
+from django.db.models import (
+    BooleanField,
+    Count,
+    ExpressionWrapper,
+    IntegerField,
+    OuterRef,
+    Q,
+    Subquery,
+    Value,
+)
 from django.db.models.functions import Coalesce
 from django.forms import ModelForm
 from django.http import HttpRequest
+from django.utils import timezone
 from django.utils.html import format_html, format_html_join
 
 from core.models import User
@@ -93,9 +103,16 @@ class GameAdmin(admin.ModelAdmin):
         "_igdb_data_link",
         "_wikipedia_data_link",
         "_hltb_data_link",
+        "_open_ended",
         "_wikipedia_genres",
     ]
-    list_filter = ["year_of_release"]
+    list_filter = [
+        "year_of_release",
+        "primary_hltb_game_data__is_open_ended",
+        # Games HLTB has not matched yet cannot carry a call
+        ("primary_hltb_game_data", admin.EmptyFieldListFilter),
+    ]
+    readonly_fields = ["_open_ended"]
     search_fields = ["name"]
     filter_horizontal = [
         "developers",
@@ -163,6 +180,15 @@ class GameAdmin(admin.ModelAdmin):
         return "-"
 
     _hltb_data_link.short_description = "HLTB Data"
+
+    @admin.display(description="Open-ended", boolean=True)
+    def _open_ended(self, obj: models.Game):
+        """
+        Whether the game shows no playtime. Set on its HLTB record (an import
+        recreates games, so the call cannot live here). None: no HLTB data.
+        """
+        data = obj.primary_hltb_game_data
+        return None if data is None else data.is_open_ended
 
 
 @admin.register(models.IGDBGameData)
@@ -254,8 +280,9 @@ class HLTBGameDataAdmin(admin.ModelAdmin):
     Typical distribution: ~87% wikidata, ~13% name_search
 
     Open-ended games (no finish line: multiplayer, MMOs, endless) show no
-    playtime in rows, sorts or filters. The calls in games/open_ended.py and
-    HLTB's game type decide; set "Open ended override" to correct one.
+    playtime in rows, sorts or filters. "Open ended override" is the staff
+    call, its help text the rule; unset, HLTB's game type decides. The bulk
+    actions set it on many rows at once.
     """
 
     list_display = [
@@ -267,6 +294,8 @@ class HLTBGameDataAdmin(admin.ModelAdmin):
         "main_story_hours",
         "main_extra_hours",
         "completionist_hours",
+        "game_type",
+        "open_ended_override",
         "is_open_ended",
         "_hltb_link",
         "is_primary",
@@ -285,6 +314,39 @@ class HLTBGameDataAdmin(admin.ModelAdmin):
     search_fields = ["game__name", "igdb_id", "hltb_id"]
     raw_id_fields = ["game"]
     readonly_fields = ["is_open_ended", "fetched_at", "updated_at"]
+    actions = ["mark_open_ended", "mark_finishable", "clear_open_ended_call"]
+
+    def _set_override(self, request, queryset, override, verb):
+        # One UPDATE, so it re-derives is_open_ended itself (as save() would):
+        # the call, or with none HLTB's type
+        is_open = (
+            Q(game_type__in=models.HLTBGameData.OPEN_ENDED_GAME_TYPES)
+            if override is None
+            else Value(override)
+        )
+        count = queryset.update(
+            open_ended_override=override,
+            is_open_ended=ExpressionWrapper(is_open, output_field=BooleanField()),
+            updated_at=timezone.now(),
+        )
+        games = "game" if count == 1 else "games"
+        self.message_user(
+            request,
+            f"{verb} {count} {games}. Visitors see it within the hour, as "
+            "cached pages and data expire.",
+        )
+
+    @admin.action(description="Mark open-ended (hide playtime)")
+    def mark_open_ended(self, request, queryset):
+        self._set_override(request, queryset, True, "Marked open-ended:")
+
+    @admin.action(description="Mark finishable (show playtime)")
+    def mark_finishable(self, request, queryset):
+        self._set_override(request, queryset, False, "Marked finishable:")
+
+    @admin.action(description="Clear the call (HLTB's type decides)")
+    def clear_open_ended_call(self, request, queryset):
+        self._set_override(request, queryset, None, "Cleared the call on")
 
     def _hltb_link(self, obj: models.HLTBGameData) -> str:
         """Display clickable HowLongToBeat URL."""

@@ -15,7 +15,7 @@ from core.models import (
     PublicationBase,
 )
 
-from . import constants, igdb, open_ended
+from . import constants, igdb
 
 logger = logging.getLogger(__name__)
 
@@ -756,14 +756,33 @@ class WikipediaGameData(models.Model):
         )
 
 
+# The open-ended rule, shown beside the field in the admin
+OPEN_ENDED_OVERRIDE_HELP = (
+    "Staff call on whether this game has a finish line, the test being: does "
+    "it have an ending that HLTB's Main time measures? Yes (a campaign, story, "
+    "ladder or finite set of levels) keeps its playtime; no (a sandbox, an MMO "
+    "or other multiplayer-first game, a sports league sim, a looping arcade or "
+    "endless puzzle game) hides it. Unknown falls back to HLTB's game type."
+)
+
+
 class HLTBGameData(models.Model):
     """
     Supplemental HowLongToBeat playtime data.
     Stores completion time estimates from howlongtobeat.com.
 
     Metadata persists when games are deleted (SET_NULL) to allow reconnection
-    when games are re-imported (using igdb_id for matching).
+    when games are re-imported (using igdb_id for matching). That is also why
+    the open-ended call lives here rather than on Game, which an import
+    recreates.
     """
+
+    # HLTB entry types for games with no finish line: every MMO, MOBA and arena
+    # shooter, plus Minecraft, Pac-Man and Wii Sports. "multi" also covers
+    # co-op-only story games, and "sports" some arcade ladders, which staff
+    # mark finishable. ``comp_lvl_combine`` is not used: it marks any game with
+    # a co-op or versus mode (Sam & Max, Gunstar Heroes), not endlessness.
+    OPEN_ENDED_GAME_TYPES = frozenset({"multi", "endless", "sports"})
 
     game = models.ForeignKey(
         "Game",
@@ -845,9 +864,7 @@ class HLTBGameData(models.Model):
     open_ended_override = models.BooleanField(
         null=True,
         blank=True,
-        help_text="Staff decision on whether the game has a finish line. "
-        "Leave unknown to use the editorial calls in games/open_ended.py, "
-        "then HLTB's game type.",
+        help_text=OPEN_ENDED_OVERRIDE_HELP,
     )
     is_open_ended = models.BooleanField(
         default=False,
@@ -888,16 +905,11 @@ class HLTBGameData(models.Model):
     def derive_open_ended(self) -> bool:
         """
         Whether the game has no finish line, so its hours are time invested.
-        A staff override wins, then the editorial calls in
-        ``games/open_ended.py``, then HLTB's own ``game_type``.
+        The staff call in ``open_ended_override`` wins, else HLTB's own type.
         """
         if self.open_ended_override is not None:
             return self.open_ended_override
-        if self.igdb_id in open_ended.FINISHABLE_IGDB_IDS:
-            return False
-        if self.igdb_id in open_ended.OPEN_ENDED_IGDB_IDS:
-            return True
-        return self.game_type in open_ended.OPEN_ENDED_GAME_TYPES
+        return self.game_type in self.OPEN_ENDED_GAME_TYPES
 
     def save(self, *args, **kwargs):
         self.is_open_ended = self.derive_open_ended()

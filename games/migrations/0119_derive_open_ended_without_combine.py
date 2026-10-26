@@ -1,4 +1,8 @@
 """
+Superseded by 0120 (which re-derives every row from the calls it moves onto
+the records); its re-derivation is now a no-op. It still carries its
+help-text change.
+
 Re-derive ``HLTBGameData.is_open_ended`` now that ``comp_lvl_combine`` no
 longer counts: production's first full HLTB refresh showed it marks any game
 with a co-op or versus mode (Sam & Max, Gunstar Heroes, Dear Esther), so it
@@ -8,12 +12,6 @@ HLTB types "multi" (It Takes Two, Split Fiction, A Way Out) as finishable.
 """
 
 from django.db import migrations, models
-
-from games import open_ended
-
-
-def derive_open_ended(apps, schema_editor):
-    open_ended.derive_all(apps.get_model("games", "HLTBGameData"))
 
 
 class Migration(migrations.Migration):
@@ -33,5 +31,5 @@ class Migration(migrations.Migration):
                 null=True,
             ),
         ),
-        migrations.RunPython(derive_open_ended, migrations.RunPython.noop),
+        migrations.RunPython(migrations.RunPython.noop, migrations.RunPython.noop),
     ]

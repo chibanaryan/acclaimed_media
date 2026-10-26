@@ -896,34 +896,34 @@ in the CSV.
 **Open-ended games show no playtime.** For League of Legends, World of
 Warcraft or Rocket League, HLTB's averages are time invested, not time to
 beat. They put a 1162-hour MOBA at the top of "longest" and a five-hour
-car-football game under "short". `HLTBGameData.is_open_ended` is derived on
-save: a staff override, then the editorial calls below, then HLTB's own
+car-football game under "short". `HLTBGameData.is_open_ended` is derived in
+`save()`: the staff call in `open_ended_override`, else HLTB's own
 `game_type` (`multi`/`endless`/`sports`, read from the raw search row by
-`fetch_hltb_data.entry_profile`). `comp_lvl_combine` is stored but not
-used: production's first full refresh showed it marks any game with a
-co-op or versus mode (Sam & Max, Gunstar Heroes), and it was hiding story
-games. Staff can correct a misfiled game with
-`open_ended_override` in the admin. `games/services/playtime.py` is the one
-place that applies it: the sort, the filters and their counts, `/api/games/all/`
-(null `pt`/`ptc`), the `hltb_hours` tag, the `shown_hltb` filter on the row
-`{% with %}`, the backlog total and the CSV. The detail page keeps the numbers
-under a "No finish line" line.
+`fetch_hltb_data.entry_profile`). `games/services/playtime.py` is the one
+place that applies it: the sort, the filters and their counts,
+`/api/games/all/` (null `pt`/`ptc`), the `hltb_hours` tag, the `shown_hltb`
+filter on the row `{% with %}`, the backlog total and the CSV. The detail
+page keeps the numbers under a "No finish line" line.
 
-HLTB files most sandbox, sports and arcade games as ordinary "game"s, so
-`games/open_ended.py` holds about 190 editorial calls by IGDB id (172
-open-ended, 19 finishable), which `derive_open_ended` consults after a staff
-override and before HLTB's type. Its docstring has the test (does the game
-have an ending that HLTB's Main time measures?) and the categories. They
-live in code, not as overrides, so a row created later gets its call too.
-`is_open_ended` is stored, derived in `save()`, and re-derived after every
-`migrate` by `games.signals.rederive_open_ended`, which writes only the rows
-whose flag changes. The release phase runs `migrate`, so editing a list and
-deploying is enough: no migration. Cached pages and facet counts catch up
-within 5 minutes, `/api/games/all/` within its hour. A refresh still running
-the old code during the deploy can re-save some rows under the old lists;
-run `migrate` again after it. `sync_from_prod` re-derives after loading.
-Never `.update()` the inputs elsewhere without calling
-`open_ended.derive_all`.
+**The calls are made in the admin**, on the HLTB record: the override's help
+text states the test (does the game have an ending that HLTB's Main time
+measures?), and the HLTB changelist has bulk "Mark open-ended / Mark
+finishable / Clear the call" actions; the Game changelist shows the result
+as a read-only "Open-ended" column, with a filter for games HLTB has not
+matched (which cannot carry a call yet). A call reaches visitors within the
+hour: cached pages expire in 5 minutes, `/api/games/all/` in an hour. If
+IGDB re-keys a game, the fetch gives its new HLTB row the old row's call.
+HLTB files most sandbox, sports and
+arcade games as ordinary "game"s and some co-op story games as "multi", so
+about 190 calls were made by hand; migration `0120` moved them there from a
+list in code (`games/open_ended.py`, deleted). The call lives on the HLTB
+record, not on `Game`, because a games import recreates every `Game` while
+HLTB rows survive it and every refresh. A game with no HLTB row yet cannot
+be marked until HLTB matches it. `comp_lvl_combine` is stored but not used:
+production's first full refresh showed it marks any game with a co-op or
+versus mode (Sam & Max, Gunstar Heroes), and it was hiding story games.
+Never `.update()` the override or `game_type` without re-saving, which
+re-derives the flag.
 
 The weekly `refresh_all_metadata` refetches every game and so fills in the
 flags. HLTB answers a burst with 429s; a failed lookup leaves the row as it

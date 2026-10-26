@@ -3,14 +3,10 @@ Signals for the games app.
 """
 
 import logging
-import sys
 
-from django.apps import apps as global_apps
-from django.db import DEFAULT_DB_ALIAS, router
 from django.db.models.signals import m2m_changed, post_delete, post_save, pre_save
 from django.dispatch import receiver
 
-from games import open_ended
 from games.models import (
     Developer,
     Game,
@@ -167,29 +163,3 @@ def invalidate_want_to_play_game_cache(sender, instance, **kwargs):
 
     invalidate_want_to_play_cache(instance.user_id)
     logger.debug(f"Want-to-play games cache invalidated (user {instance.user_id})")
-
-
-def rederive_open_ended(
-    verbosity=2, using=DEFAULT_DB_ALIAS, apps=global_apps, **kwargs
-):
-    """
-    After every ``migrate`` - and so on every deploy, whose release phase runs
-    it - bring ``HLTBGameData.is_open_ended`` in line with the editorial calls
-    in ``games/open_ended.py``, so editing a list needs no migration. Writes
-    only the rows whose flag changes, and says so when any did. Defaults match
-    Django's own receivers, since ``flush`` sends the signal without ``apps``
-    or ``stdout``. Connected in ``GamesConfig.ready``.
-    """
-    try:
-        HLTBGameData = apps.get_model("games", "HLTBGameData")
-    except LookupError:
-        return  # migrated back past the model
-    if "is_open_ended" not in {f.name for f in HLTBGameData._meta.get_fields()}:
-        return  # migrated back past 0116
-    if not router.allow_migrate_model(using, HLTBGameData):
-        return  # a database that does not hold the games tables
-    changed = open_ended.derive_all(HLTBGameData, using=using)
-    if changed and verbosity:
-        kwargs.get("stdout", sys.stdout).write(
-            f"Re-derived is_open_ended on {changed} HLTB rows\n"
-        )

@@ -8,7 +8,6 @@ from django.core.management.base import BaseCommand
 from django.apps import apps
 from django.db import connection, transaction
 
-from games import open_ended
 from games.models import (
     Article,
     Developer,
@@ -188,12 +187,6 @@ class Command(BaseCommand):
                 )
             )
             return False
-
-        # loaddata writes production's open-ended flags verbatim; apply this
-        # checkout's calls, as a migrate would
-        changed = open_ended.derive_all(HLTBGameData)
-        if changed:
-            self.stdout.write(f"   Re-derived is_open_ended on {changed} HLTB rows")
         return True
 
     def _dump(self, app_name, dumpdata):
