@@ -82,7 +82,14 @@ python3 manage.py createsuperuser
 ```bash
 python3 manage.py sync_from_prod
 ```
-Downloads all game data from production Heroku and loads it into local SQLite. Auth users are excluded - create a local superuser after syncing with `python3 manage.py createsuperuser`.
+Downloads the games and music data from production Heroku and loads it into
+local SQLite: two `dumpdata` runs, the music one with the cover art bytes
+(~100 MB, a few minutes). Per-user rows are not synced and local ones are
+deleted: played/want-to-play, heard/have/want-to-listen, saved filters. Auth
+users are excluded too, so local accounts survive; on a fresh database,
+create a superuser with `python3 manage.py createsuperuser`. Clearing and
+loading run in one transaction, so a failed load leaves the local data as it
+was.
 
 **Collect static files (before deployment):**
 ```bash

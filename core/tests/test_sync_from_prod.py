@@ -1,18 +1,31 @@
 """Tests for sync_from_prod management command"""
 
 import os
+import tempfile
 from unittest import mock
 
 from django.core.management import call_command
 from django.test import TestCase
 
 from games import models
+from music.models import Album, DiscogsAlbumData, MusicBrainzAlbumData
 
 
 class SyncFromProdCommandTests(TestCase):
     """Tests for sync_from_prod management command"""
 
     def setUp(self):
+        # Each test writes its fixtures to its own directory: pytest runs
+        # tests in parallel, and they would otherwise share core/fixtures
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.fixtures_dir = tmp.name
+        patcher = mock.patch(
+            "core.management.commands.sync_from_prod.FIXTURES_DIR", tmp.name
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
         # Create some local data that will be cleared
         self.platform = models.Platform.objects.create(name="PC", code="PC")
         self.genre = models.WikipediaGenre.objects.create(
@@ -22,17 +35,7 @@ class SyncFromProdCommandTests(TestCase):
         self.game = models.Game.objects.create(
             name="Local Game", rank=1, year_of_release=2020
         )
-
-    def tearDown(self):
-        # Clean up the fixture file if it was created
-        fixture_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "games",
-            "fixtures",
-            "prod_dump.json",
-        )
-        if os.path.exists(fixture_path):
-            os.remove(fixture_path)
+        Album.objects.create(name="Local Album", rank=1, wikidata_id="Q1")
 
     @mock.patch("core.management.commands.sync_from_prod.call_command")
     @mock.patch("subprocess.run")
@@ -63,6 +66,42 @@ class SyncFromProdCommandTests(TestCase):
         self.assertEqual(len(calls), 2)
         self.assertEqual(calls[0][0][0], "migrate")
         self.assertEqual(calls[1][0][0], "loaddata")
+        # Both fixtures load in the one loaddata, so in one transaction
+        self.assertEqual(
+            [os.path.basename(path) for path in calls[1][0][1:]],
+            ["prod_dump.json", "prod_music_dump.json"],
+        )
+
+        # One dump per section, neither copying per-user rows
+        games_dump, music_dump = (
+            call[0][0][-1] for call in mock_subprocess.call_args_list
+        )
+        # Heroku's flags end at "--", as AGENTS.md asks
+        for call in mock_subprocess.call_args_list:
+            self.assertEqual(call[0][0][-2], "--")
+        self.assertTrue(games_dump.startswith("python manage.py dumpdata games "))
+        self.assertTrue(music_dump.startswith("python manage.py dumpdata music "))
+        for excluded in (
+            "music.ListenedAlbum",
+            "music.WantToListenAlbum",
+            "music.SavedAlbumFilterSet",
+        ):
+            self.assertIn(f"--exclude {excluded}", music_dump)
+
+    @mock.patch("subprocess.run")
+    def test_music_dump_failure_stops_before_clearing(self, mock_subprocess):
+        """A failed second dump leaves local data untouched"""
+        from io import StringIO
+
+        mock_subprocess.side_effect = [
+            mock.Mock(stdout='[{"model": "games.game", "pk": 1}]', stderr=""),
+            mock.Mock(stdout="no json here", stderr=""),
+        ]
+        err = StringIO()
+        call_command("sync_from_prod", no_input=True, stdout=StringIO(), stderr=err)
+
+        self.assertIn("No JSON data found", err.getvalue())
+        self.assertEqual(models.Game.objects.count(), 1)
 
     @mock.patch("subprocess.run")
     def test_heroku_cli_not_found(self, mock_subprocess):
@@ -122,6 +161,54 @@ class SyncFromProdCommandTests(TestCase):
         error_output = err.getvalue()
 
         self.assertIn("Failed to load data", error_output)
+        # Clearing and loading share a transaction, so nothing was lost
+        self.assertIn("left as it was", error_output)
+        self.assertEqual(models.Game.objects.count(), 1)
+        self.assertEqual(models.Platform.objects.count(), 1)
+        self.assertTrue(Album.objects.filter(name="Local Album").exists())
+        # And the ~100 MB fixtures do not outlive the failure
+        self.assertFalse(
+            os.path.exists(os.path.join(self.fixtures_dir, "prod_dump.json"))
+        )
+        self.assertFalse(
+            os.path.exists(os.path.join(self.fixtures_dir, "prod_music_dump.json"))
+        )
+
+    @mock.patch("core.management.commands.sync_from_prod.call_command")
+    @mock.patch("subprocess.run")
+    def test_clearing_failure_names_the_clearing(
+        self, mock_subprocess, mock_call_command
+    ):
+        from io import StringIO
+
+        from core.management.commands.sync_from_prod import Command
+
+        mock_subprocess.return_value = mock.Mock(
+            stdout='[{"model": "games.game", "pk": 1}]', stderr=""
+        )
+        err = StringIO()
+        with mock.patch.object(
+            Command, "_clear_music_data", side_effect=Exception("protected")
+        ):
+            call_command("sync_from_prod", no_input=True, stdout=StringIO(), stderr=err)
+
+        self.assertIn("Failed to clear local data: protected", err.getvalue())
+        self.assertEqual(models.Game.objects.count(), 1)
+
+    @mock.patch("subprocess.run")
+    def test_incomplete_music_dump_stops_before_clearing(self, mock_subprocess):
+        from io import StringIO
+
+        mock_subprocess.side_effect = [
+            mock.Mock(stdout='[{"model": "games.game", "pk": 1}]', stderr=""),
+            mock.Mock(stdout='[{"model": "music.album", "pk": 1}, {"mod', stderr=""),
+        ]
+        err = StringIO()
+        call_command("sync_from_prod", no_input=True, stdout=StringIO(), stderr=err)
+
+        self.assertIn("Music dump is incomplete", err.getvalue())
+        self.assertEqual(models.Game.objects.count(), 1)
+        self.assertEqual(Album.objects.count(), 1)
 
     @mock.patch("builtins.input", return_value="n")
     def test_confirmation_abort(self, mock_input):
@@ -171,7 +258,7 @@ class SyncFromProdCommandTests(TestCase):
         call_command("sync_from_prod", no_input=True, keep_fixture=True, stdout=out)
         output = out.getvalue()
 
-        self.assertIn("Fixture kept at:", output)
+        self.assertIn("Fixtures kept in:", output)
         # tearDown handles fixture cleanup
 
     @mock.patch("core.management.commands.sync_from_prod.call_command")
@@ -186,12 +273,42 @@ class SyncFromProdCommandTests(TestCase):
             returncode=0,
         )
 
+        from core.models import User
+        from music.models import AlbumCover, Artist, ListenedAlbum
+
+        artist = Artist.objects.create(name="Local Artist", source_id=1)
+        album = Album.objects.get(name="Local Album")
+        album.artists.add(artist)
+        MusicBrainzAlbumData.objects.create(album=album, release_group_mbid="x")
+        DiscogsAlbumData.objects.create(album=album, master_id=1)
+        AlbumCover.objects.create(
+            album=album,
+            release_mbid="00000000-0000-0000-0000-000000000000",
+            image_id="1",
+            size=250,
+            data=b"jpeg",
+        )
+        user = User.objects.create_user(username="reader", password="pw")
+        ListenedAlbum.objects.create(user=user, album=album, wikidata_id="Q1")
+
         # Verify data exists before sync
         self.assertEqual(models.Game.objects.count(), 1)
         self.assertEqual(models.Platform.objects.count(), 1)
 
         out = StringIO()
         call_command("sync_from_prod", no_input=True, stdout=out)
+
+        for model in (
+            Album,
+            Artist,
+            AlbumCover,
+            ListenedAlbum,
+            MusicBrainzAlbumData,
+            DiscogsAlbumData,
+        ):
+            self.assertFalse(model.objects.exists(), model.__name__)
+        # Local accounts survive; only their tracking rows go
+        self.assertTrue(User.objects.filter(username="reader").exists())
 
         # Verify data was cleared (loaddata is mocked so no new data loaded)
         self.assertEqual(models.Game.objects.count(), 0)
@@ -262,26 +379,57 @@ class SyncFromProdCommandTests(TestCase):
 
     @mock.patch("core.management.commands.sync_from_prod.call_command")
     @mock.patch("subprocess.run")
-    def test_strips_post_author(self, mock_subprocess, mock_call_command):
-        """Test that author field is stripped from Post records"""
+    def test_strips_post_and_article_authors(self, mock_subprocess, mock_call_command):
+        """Author FKs point at users, which are never synced"""
         import json
         from io import StringIO
 
-        # Fixture with Post that has author_id (would fail without stripping)
         fixture = [
-            {"model": "games.post", "pk": 1, "fields": {"text": "Test", "author": 5}}
+            {"model": "games.post", "pk": 1, "fields": {"text": "Hi", "author": 5}},
+            {"model": "games.article", "pk": 1, "fields": {"title": "A", "author": 5}},
         ]
         mock_subprocess.return_value = mock.Mock(
-            stdout=json.dumps(fixture),
+            # A log line holding "[" ahead of the JSON is skipped
+            stdout="Running [sentry] init\n" + json.dumps(fixture),
             stderr="",
             returncode=0,
         )
 
         out = StringIO()
-        call_command("sync_from_prod", no_input=True, stdout=out)
+        call_command("sync_from_prod", no_input=True, keep_fixture=True, stdout=out)
 
-        # loaddata should be called with fixture that has author stripped
         self.assertIn("Sync complete!", out.getvalue())
+        with open(
+            os.path.join(self.fixtures_dir, "prod_dump.json"), encoding="utf-8"
+        ) as f:
+            written = json.load(f)
+        self.assertEqual(
+            [item["fields"].get("author") for item in written], [None, None]
+        )
+
+    @mock.patch("core.management.commands.sync_from_prod.call_command")
+    @mock.patch("subprocess.run")
+    def test_bad_foreign_key_is_named_and_rolled_back(
+        self, mock_subprocess, mock_call_command
+    ):
+        from io import StringIO
+
+        from django.db import IntegrityError
+
+        mock_subprocess.return_value = mock.Mock(
+            stdout='[{"model": "games.game", "pk": 1}]', stderr=""
+        )
+        err = StringIO()
+        with mock.patch(
+            "core.management.commands.sync_from_prod.connection.check_constraints",
+            side_effect=IntegrityError("games_article row 1 has author_id 5"),
+        ):
+            call_command("sync_from_prod", no_input=True, stdout=StringIO(), stderr=err)
+
+        self.assertIn(
+            "Failed to check loaded data: games_article row 1", err.getvalue()
+        )
+        self.assertEqual(models.Game.objects.count(), 1)
 
     @mock.patch("subprocess.run")
     def test_invalid_json_error(self, mock_subprocess):
@@ -300,6 +448,8 @@ class SyncFromProdCommandTests(TestCase):
         error_output = err.getvalue()
 
         self.assertIn("Invalid JSON from Heroku", error_output)
+        # Caught before the slow music dump starts
+        self.assertEqual(mock_subprocess.call_count, 1)
 
 
 class UserModelTests(TestCase):
