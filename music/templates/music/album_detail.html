@@ -45,15 +45,19 @@
 {% block pre_alpine %}
 {# The button here is HTMX-swapped like the rows', so the same listener has #}
 {# to keep the tracking Sets current. This page loads no filtering bundle. #}
-<script src="{% static 'core/js/media-tracking.min.js' %}?v=2" nonce="{{ csp_nonce }}"></script>
+{# Deferred: as a plain script it blocked the first paint (~300 ms in #}
+{# Lighthouse) for a listener nothing needs before someone clicks. #}
+<script defer src="{% static 'core/js/media-tracking.min.js' %}?v=2" nonce="{{ csp_nonce }}"></script>
 <script nonce="{{ csp_nonce }}">
-window.MediaTracking.register('album', {
-    sets: {
-        own: 'ownedAlbumIds',
-        listened: 'listenedAlbumIds',
-        want: 'wantToListenAlbumIds'
-    },
-    event: 'album-status-changed'
+document.addEventListener('DOMContentLoaded', function() {
+    window.MediaTracking.register('album', {
+        sets: {
+            own: 'ownedAlbumIds',
+            listened: 'listenedAlbumIds',
+            want: 'wantToListenAlbumIds'
+        },
+        event: 'album-status-changed'
+    });
 });
 </script>
 {% endblock %}

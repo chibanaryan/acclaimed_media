@@ -38,7 +38,13 @@
     <meta name="twitter:image" content="{% block twitter_image %}https://www.acclaimedvideogames.com{% static 'games/brand/og-image.png' %}{% endblock %}">
 
     {# Preconnect/dns-prefetch to external domains for faster resource loading #}
+    {# No crossorigin: the covers are plain no-cors image requests. Games #}
+    {# pages only: music and books serve no IGDB images, so the connection #}
+    {# would be opened for nothing. #}
+    {% if media_type != 'music' and media_type != 'books' %}
+    <link rel="preconnect" href="https://images.igdb.com">
     <link rel="dns-prefetch" href="https://images.igdb.com">
+    {% endif %}
 
     {# Favicon #}
     <link rel="icon" type="image/x-icon" href="{% static 'games/brand/favicon.ico' %}">
@@ -70,7 +76,7 @@
     <script defer src="{% static 'games/js/vendor/htmx.min.js' %}" nonce="{{ csp_nonce }}"></script>
 
     {# Base Utilities - Essential functions that must be available before Alpine.js initializes #}
-    <script defer src="{% static 'games/js/utils-base.min.js' %}?v=5" nonce="{{ csp_nonce }}"></script>
+    <script defer src="{% static 'games/js/utils-base.min.js' %}?v=10" nonce="{{ csp_nonce }}"></script>
     {% if media_type == 'music' %}
     {# The sidebar and mobile search boxes for sections whose search groups #}
     {# are not games/developers/series. Same place in the order as above. #}
@@ -88,7 +94,7 @@
     {# Add core Alpine scripts after page-specific ones #}
     <script nonce="{{ csp_nonce }}">
     window.alpineScripts.push(
-        '{% static "games/js/rank-distribution.min.js" %}',
+        '{% static "games/js/rank-distribution.min.js" %}?v=6',
         '{% static "games/js/vendor/alpine-collapse.min.js" %}',
         '{% static "games/js/vendor/alpine.min.js" %}'
     );
@@ -228,7 +234,9 @@
                 </button>
             </form>
             <p class="text-lg font-bold mb-4 flex items-center gap-2 flex-wrap">
-                <img src="https://static.wikia.nocookie.net/zelda_gamepedia_en/images/0/08/OoT3D_Navi_Artwork.png" alt="" role="presentation" width="404" height="295" class="w-7 h-auto drop-shadow-[0_0_4px_#00d4ff]">
+                {# Self-hosted and lazy: the modal is closed on almost every page view, #}
+                {# yet the 35 KB hotlinked original was fetched at high priority on all of them. #}
+                <img src="{% static 'games/images/navi.png' %}" srcset="{% static 'games/images/navi.png' %} 1x, {% static 'games/images/navi@2x.png' %} 2x" alt="" role="presentation" width="28" height="20" loading="lazy" decoding="async" class="w-7 h-auto drop-shadow-[0_0_4px_#00d4ff]">
                 <em>"Hey! Listen!"</em>
                 <span class="text-base-content/85 text-xs font-normal">~Navi, <a href="{% url 'game-detail' slug='the-legend-of-zelda-ocarina-of-time' %}" class="link link-accent link-hover">The Legend of Zelda: Ocarina of Time</a></span>
             </p>

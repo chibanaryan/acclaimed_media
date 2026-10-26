@@ -14,7 +14,7 @@
         <td class="pb-3 align-middle tabular-nums">
             <span class="rank-indicator">
                 <a href="{% album_rank_url album %}" class="link link-accent font-medium">{{ album.rank }}</a>
-                {% if total_album_count %}<span class="text-base-content/50 text-sm"> of {{ total_album_count|intcomma }}</span>{% endif %}
+                {% if total_album_count %}<span class="text-base-content/70 text-sm"> of {{ total_album_count|intcomma }}</span>{% endif %}
             </span>
         </td>
     </tr>
@@ -24,7 +24,7 @@
         <td class="pb-3 align-middle tabular-nums">
             <a href="{% url 'music:home' %}?start={{ album.decade }}&end={{ album.decade|add:9 }}&highlight={{ album.id }}"
                class="link link-accent font-medium">{{ album.decade_rank }}</a>
-            {% if decade_album_count %}<span class="text-base-content/50 text-sm"> of {{ decade_album_count|intcomma }}</span>{% endif %}
+            {% if decade_album_count %}<span class="text-base-content/70 text-sm"> of {{ decade_album_count|intcomma }}</span>{% endif %}
         </td>
     </tr>
     {% endif %}
@@ -33,7 +33,7 @@
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-middle whitespace-nowrap">{{ album.year_released }} rank:</td>
         <td class="pb-3 align-middle tabular-nums">
             <a href="{% album_year_url album %}" class="link link-accent font-medium">{{ album.year_rank }}</a>
-            {% if year_album_count %}<span class="text-base-content/50 text-sm"> of {{ year_album_count|intcomma }}</span>{% endif %}
+            {% if year_album_count %}<span class="text-base-content/70 text-sm"> of {{ year_album_count|intcomma }}</span>{% endif %}
         </td>
     </tr>
     {% endif %}
@@ -53,7 +53,7 @@
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-middle whitespace-nowrap">List appearances:</td>
         <td class="pb-3 align-middle tabular-nums">
             <span class="font-medium">{{ list_appearance_count }}</span>
-            <span class="text-base-content/50 text-sm">list{{ list_appearance_count|pluralize }}</span>
+            <span class="text-base-content/70 text-sm">list{{ list_appearance_count|pluralize }}</span>
         </td>
     </tr>
     {% endif %}

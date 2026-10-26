@@ -86,6 +86,7 @@ absolute, and without it the dropdown anchors to the page instead.
         class="btn btn-ghost btn-xs text-base-content/40 cursor-not-allowed"
         title="{{ signed_out_hint|default:'Sign in to save filters' }}"
         aria-label="Saved. {{ signed_out_hint|default:'Sign in to save filters' }}"
+        aria-disabled="true"
         onclick="return false;">
     <span class="mdi mdi-bookmark-outline text-sm"></span>
     <span>Saved</span>

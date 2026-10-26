@@ -25,6 +25,7 @@ from games.models import (
     Developer,
     Game,
     HLTBGameData,
+    IGDBGameData,
     List,
     ListMembership,
     Platform,
@@ -4497,3 +4498,175 @@ class GamesHomeGenreQueryBudgetTests(TestCase):
         # One for the view's own filters and facets, one for the landing
         # genres - both cold here, since every cache was just cleared.
         self.assertEqual(len(hierarchy_fetches), 2)
+
+
+class DeveloperDetailQueryBudgetTests(TestCase):
+    """A developer page costs a constant number of queries, not a few per game.
+
+    `/developers/nintendo/` cost 338 queries on a warm cache and 369 on a
+    cold one, about 800 ms server time in production: each row's thumbnail
+    lazy-loaded its IGDB row, and each credit line walked the developer
+    parent chain a query per level. A cache hit also prefetched every game
+    the developer has, and then fetched them all again to render.
+    """
+
+    def setUp(self):
+        clear_all_caches()
+        self.root = Developer.objects.create(name="Budget Co", slug="budget-co")
+        self.studio = Developer.objects.create(name="Budget Studio", parent=self.root)
+        self.team = Developer.objects.create(name="Budget Team", parent=self.studio)
+        self.games = 0
+
+    def tearDown(self):
+        clear_all_caches()
+
+    def _add_games(self, count):
+        for _ in range(count):
+            self.games += 1
+            game = Game.objects.create(
+                name=f"Budget Game {self.games:03d}",
+                rank=self.games,
+                year_of_release=2000,
+            )
+            igdb = IGDBGameData.objects.create(
+                game=game,
+                igdb_id=90000 + self.games,
+                artwork_id=f"co{self.games}",
+                url=f"https://igdb.com/game/{self.games}",
+                is_primary=True,
+            )
+            game.primary_igdb_game_data = igdb
+            game.save(update_fields=["primary_igdb_game_data"])
+            developer = (self.root, self.studio, self.team)[self.games % 3]
+            game.developers.add(developer)
+
+    def _count(self, warm):
+        url = reverse("developer-detail", kwargs={"slug": self.root.slug})
+        clear_all_caches()
+        if warm:
+            self.client.get(url)
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        return len(captured.captured_queries)
+
+    def test_cold_cache_cost_does_not_grow_with_the_games(self):
+        self._add_games(3)
+        before = self._count(warm=False)
+        self._add_games(9)
+        self.assertEqual(self._count(warm=False), before)
+
+    def test_warm_cache_cost_does_not_grow_with_the_games(self):
+        self._add_games(3)
+        before = self._count(warm=True)
+        self._add_games(9)
+        self.assertEqual(self._count(warm=True), before)
+
+    def test_rendered_games_are_the_fully_related_instances(self):
+        self._add_games(6)
+        response = self.client.get(
+            reverse("developer-detail", kwargs={"slug": self.root.slug})
+        )
+        rendered = list(response.context["root_games"])
+        stack = list(response.context["subsidiaries_with_games"])
+        while stack:
+            dev_data = stack.pop()
+            rendered.extend(dev_data["games"])
+            stack.extend(dev_data["sub_developers"])
+        self.assertEqual(len(rendered), 6)
+        for game in rendered:
+            # The id-and-rank instances the tree is built from defer name.
+            self.assertNotIn("name", game.get_deferred_fields())
+            self.assertIn("primary_igdb_game_data", game._state.fields_cache)
+
+
+class LighthouseFindingsTests(TestCase):
+    """Pins the fixes for what a Lighthouse run against production found."""
+
+    def setUp(self):
+        clear_all_caches()
+        SiteMetadata.objects.create()
+        self.developer = Developer.objects.create(name="Pinned Co", slug="pinned-co")
+        self.game = Game.objects.create(
+            name="Pinned Game", slug="pinned-game", rank=1, year_of_release=2001
+        )
+        self.game.developers.add(self.developer)
+        igdb = IGDBGameData.objects.create(
+            game=self.game,
+            igdb_id=777,
+            artwork_id="co777",
+            url="https://igdb.com/game/777",
+            is_primary=True,
+        )
+        self.game.primary_igdb_game_data = igdb
+        self.game.save(update_fields=["primary_igdb_game_data"])
+        publication = Publication.objects.create(name="Pinned Pub")
+        game_list = List.objects.create(
+            name="Pinned List", publisher=publication, year=2001, type="A"
+        )
+        ListMembership.objects.create(game=self.game, list=game_list, rank=1)
+
+    def tearDown(self):
+        clear_all_caches()
+
+    def _html(self, url):
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        return response.content.decode()
+
+    def test_closed_mobile_sheet_renders_its_filters_lazily(self):
+        # Alpine initialising the never-opened sheet was ~340 ms of TBT.
+        html = self._html(reverse("home"))
+        form = html.index('id="mobile-filter-form"')
+        lazy = html.index('<template x-if="hasOpenedBefore">', form)
+        self.assertLess(lazy - form, 200)
+
+    def test_hidden_desktop_sidebar_is_deferred_below_the_breakpoint(self):
+        # ...and the display:none sidebar was ~530 ms more.
+        html = self._html(reverse("home"))
+        sidebar = html.index('id="desktop-filter-sidebar"')
+        script = html[sidebar : html.index("<dialog", sidebar)]
+        self.assertIn("matchMedia('(min-width: 962px)')", script)
+        self.assertIn("sidebar.setAttribute('x-ignore', '')", script)
+        self.assertIn("window.Alpine.initTree(sidebar)", script)
+
+    def test_cover_preload_is_emitted_once_in_the_head(self):
+        html = self._html(reverse("game-detail", kwargs={"slug": self.game.slug}))
+        preloads = re.findall(
+            r'<link rel="preload"\s+href="([^"]+)"\s+as="image"', html
+        )
+        self.assertEqual(preloads, [self.game.image])
+        self.assertLess(html.index('as="image"'), html.index("</head>"))
+
+    def test_contact_modal_icon_is_self_hosted_and_lazy(self):
+        html = self._html(reverse("home"))
+        self.assertNotIn("nocookie.net", html)
+        self.assertRegex(html, r'<img src="[^"]*navi[^"]*\.png"[^>]*loading="lazy"')
+
+    def test_igdb_preconnect_is_on_games_pages_only(self):
+        self.assertIn(
+            '<link rel="preconnect" href="https://images.igdb.com">',
+            self._html(reverse("home")),
+        )
+        from django.template import Context, Template
+
+        music_head = Template(
+            "{% extends 'base.html' %}{% block content %}{% endblock %}"
+        ).render(Context({"media_type": "music"}))
+        self.assertNotIn("images.igdb.com", music_head)
+
+    def test_every_select_has_an_accessible_name(self):
+        for url in (
+            reverse("home"),
+            reverse("list-list"),
+            reverse("developers-list"),
+            reverse("developer-detail", kwargs={"slug": self.developer.slug}),
+        ):
+            with self.subTest(url=url):
+                html = self._html(url)
+                for tag in re.findall(r"<select\b[^>]*>", html):
+                    select_id = re.search(r'\bid="([^"]+)"', tag)
+                    labelled = "aria-label=" in tag or (
+                        select_id and f'for="{select_id.group(1)}"' in html
+                    )
+                    self.assertTrue(labelled, tag)

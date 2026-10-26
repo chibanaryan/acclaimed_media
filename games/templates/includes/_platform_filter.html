@@ -30,7 +30,7 @@
                          'bg-primary text-accent-content': isManufacturerSelected(mfrKey),
                          'bg-primary/10 text-accent': !isManufacturerSelected(mfrKey) && hasManufacturerOrChildrenSelected(mfrKey),
                          'hover:bg-base-content/10': !isManufacturerSelected(mfrKey),
-                         'opacity-40': !isManufacturerAvailable(mfrKey) && !hasManufacturerOrChildrenSelected(mfrKey)
+                         'opacity-70': !isManufacturerAvailable(mfrKey) && !hasManufacturerOrChildrenSelected(mfrKey)
                      }">
                     {# Expand/Collapse Arrow #}
                     <button type="button"
@@ -78,7 +78,7 @@
                                              'bg-primary text-accent-content': isFormFactorSelected(mfrKey, ffKey),
                                              'bg-primary/10 text-accent': !isFormFactorSelected(mfrKey, ffKey) && !isManufacturerSelected(mfrKey) && hasFormFactorSelection(mfrKey, ffKey),
                                              'hover:bg-base-content/10': !isFormFactorSelected(mfrKey, ffKey),
-                                             'opacity-40': !isFormFactorAvailable(mfrKey, ffKey) && !hasFormFactorSelection(mfrKey, ffKey)
+                                             'opacity-70': !isFormFactorAvailable(mfrKey, ffKey) && !hasFormFactorSelection(mfrKey, ffKey)
                                          }">
                                         {# Expand/Collapse Arrow #}
                                         <button type="button"
@@ -109,7 +109,7 @@
                                             <div class="platform-item"
                                                  :class="{
                                                      'is-selected': isPlatformSelected(platform.id),
-                                                     'opacity-40': !isPlatformAvailable(platform.id) && !isPlatformSelected(platform.id)
+                                                     'opacity-70': !isPlatformAvailable(platform.id) && !isPlatformSelected(platform.id)
                                                  }"
                                                  @click="togglePlatform(platform.id); debouncedFilterUpdate();"
                                                  :title="formatPlatformName(platform) + ' - ' + getEffectiveCount(platform) + ' games'">
@@ -136,7 +136,7 @@
                                 <div class="platform-item"
                                      :class="{
                                          'is-selected': isPlatformSelected(platform.id),
-                                         'opacity-40': !isPlatformAvailable(platform.id) && !isPlatformSelected(platform.id)
+                                         'opacity-70': !isPlatformAvailable(platform.id) && !isPlatformSelected(platform.id)
                                      }"
                                      @click="togglePlatform(platform.id); debouncedFilterUpdate();"
                                      :title="formatPlatformName(platform) + ' - ' + getEffectiveCount(platform) + ' games'">

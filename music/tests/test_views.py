@@ -1967,3 +1967,37 @@ class MusicQueryBudgetTests(MusicDataMixin, TestCase):
             ), mock.patch.object(landing_pages, "MIN_DECADE_ALBUMS", 1):
                 clear_all_caches()
                 self.assertLessEqual(len(self._capture(url)), ceiling)
+
+
+class HiddenFilterUIDeferralTests(MusicDataMixin, TestCase):
+    """The album rankings page skips the filter UI the visitor cannot see.
+
+    At a 4x CPU slowdown Alpine's init on /music/ cost ~360 ms, most of it
+    for the desktop sidebar (display:none on a phone) and the closed mobile
+    sheet. The same deferral as the games page: the sheet's filters render
+    on first open, and the sidebar is x-ignored on a narrow first load.
+    """
+
+    def _html(self):
+        response = self.client.get(reverse("music:home"))
+        self.assertEqual(response.status_code, 200)
+        return response.content.decode()
+
+    def test_closed_mobile_sheet_renders_its_filters_lazily(self):
+        html = self._html()
+        form = html.index('id="mobile-filter-form"')
+        self.assertLess(
+            html.index('<template x-if="hasOpenedBefore">', form) - form, 200
+        )
+
+    def test_hidden_sidebar_is_deferred_below_the_breakpoint(self):
+        html = self._html()
+        self.assertIn('id="album-filter-sidebar"', html)
+        script = html[html.index('id="album-filter-sidebar"') :]
+        self.assertIn("document.getElementById('album-filter-sidebar')", script)
+        self.assertIn("sidebar.setAttribute('x-ignore', '')", script)
+
+    def test_controls_know_the_client_engine(self):
+        # Without it the leading-edge commit could never fire, and the
+        # sheet could only re-send the counts the server rendered.
+        self.assertIn("clientEngine: () =>", self._html())

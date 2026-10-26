@@ -63,7 +63,7 @@
                              'bg-primary text-accent-content': isManufacturerSelected(mfrKey),
                              'bg-primary/10 text-accent': !isManufacturerSelected(mfrKey) && hasManufacturerOrChildrenSelected(mfrKey),
                              'hover:bg-base-content/10': !isManufacturerSelected(mfrKey),
-                             'opacity-40': getManufacturerTotalCount(mfrKey) === 0 && !hasManufacturerOrChildrenSelected(mfrKey)
+                             'opacity-70': getManufacturerTotalCount(mfrKey) === 0 && !hasManufacturerOrChildrenSelected(mfrKey)
                          }">
                         {# Expand/Collapse Arrow #}
                         <button type="button"
@@ -111,7 +111,7 @@
                                                  'bg-primary text-accent-content': isFormFactorSelected(mfrKey, ffKey),
                                                  'bg-primary/10 text-accent': !isFormFactorSelected(mfrKey, ffKey) && !isManufacturerSelected(mfrKey) && hasFormFactorSelection(mfrKey, ffKey),
                                                  'hover:bg-base-content/10': !isFormFactorSelected(mfrKey, ffKey),
-                                                 'opacity-40': getFormFactorTotalCount(mfrKey, ffKey) === 0 && !hasFormFactorSelection(mfrKey, ffKey)
+                                                 'opacity-70': getFormFactorTotalCount(mfrKey, ffKey) === 0 && !hasFormFactorSelection(mfrKey, ffKey)
                                              }"
                                              @click="toggleFormFactorSelection(mfrKey, ffKey); debouncedFilterUpdate();">
                                             {# Form Factor Name #}
@@ -128,7 +128,7 @@
                                                      :class="{
                                                          'bg-primary text-accent-content': isPlatformSelected(platform.id),
                                                          'hover:bg-base-content/10': !isPlatformSelected(platform.id),
-                                                         'opacity-40': !isPlatformAvailable(platform.id) && !isPlatformSelected(platform.id)
+                                                         'opacity-70': !isPlatformAvailable(platform.id) && !isPlatformSelected(platform.id)
                                                      }"
                                                      @click="togglePlatform(platform.id); debouncedFilterUpdate();">
                                                     <span class="text-sm flex-1 flex items-baseline gap-1 min-w-0">
@@ -152,7 +152,7 @@
                                          :class="{
                                              'bg-primary text-accent-content': isPlatformSelected(platform.id),
                                              'hover:bg-base-content/10': !isPlatformSelected(platform.id),
-                                             'opacity-40': !isPlatformAvailable(platform.id) && !isPlatformSelected(platform.id)
+                                             'opacity-70': !isPlatformAvailable(platform.id) && !isPlatformSelected(platform.id)
                                          }"
                                          @click="togglePlatform(platform.id); debouncedFilterUpdate();">
                                         <span class="text-sm flex-1 flex items-baseline gap-1 min-w-0">

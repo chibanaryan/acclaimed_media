@@ -278,7 +278,7 @@
   }
 
   .table-minimal th {
-    @apply text-base-content/60 font-medium text-left pb-2 pr-4 border-b border-base-content/10;
+    @apply text-base-content/70 font-medium text-left pb-2 pr-4 border-b border-base-content/10;
   }
 
   .table-minimal th:first-child {
@@ -1289,12 +1289,8 @@ input[type="number"] {
     color: var(--color-heatmap, oklch(0.65 0.15 145));
   }
 
-  .rank-distribution-fill {
-    transition: d 0.3s ease-out;
-  }
-
   .rank-distribution-axis {
-    @apply flex justify-between text-xs text-base-content/50 px-0.5 mt-1;
+    @apply flex justify-between text-xs text-base-content/70 px-0.5 mt-1;
   }
 
   .rank-distribution-tooltip {
@@ -1656,6 +1652,18 @@ html.quick-mark-game .played-button-wrapper:hover .played-button {
 #game-list-container.view-grid:has(.game-grid) .game-row-wrapper,
 #album-list-container.view-grid .media-row-wrapper {
   display: none !important;
+}
+
+/* Each meta group in a mobile card is whitespace-nowrap so its "|" stays
+   with it, but a game with several studios ("Square Enix Business Division
+   3, Square Enix Product Development Division 3") or genres ran up to
+   ~150px past the card at 390px, clipped by the viewport. Let those two
+   lists wrap inside themselves; the bullet before them stays attached.
+   Unlayered, because the whitespace-nowrap utility outranks any rule in
+   @layer components. The desktop half truncates its row on purpose. */
+.game-card-mobile [data-slot="primary-developer"],
+.game-card-mobile [data-slot="genres"] {
+  white-space: normal;
 }
 
 #game-list-container.view-grid:has(.game-grid) .game-card-mobile,

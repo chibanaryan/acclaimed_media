@@ -17,21 +17,25 @@
 {% block pre_alpine %}
 {# The shared filter sidebar components and the page's own filter state, both #}
 {# loaded before Alpine core as the games rankings page loads its own. #}
-<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/filter-subcomponents.min.js" %}?v=1');</script>
-<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/media-list-controls.min.js" %}?v=5');</script>
+<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/filter-subcomponents.min.js" %}?v=4');</script>
+<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/media-list-controls.min.js" %}?v=8');</script>
 <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/quick-mark.min.js" %}?v=1');</script>
 {# Keeps the tracking id Sets current after an HTMX button swap. Loaded here #}
 {# rather than in the filtering bundle because the album detail page swaps #}
 {# the same button and loads no bundle at all. #}
-<script src="{% static 'core/js/media-tracking.min.js' %}?v=2" nonce="{{ csp_nonce }}"></script>
+{# Deferred: as a plain script it blocked the first paint (~300 ms in #}
+{# Lighthouse) for a listener nothing needs before someone clicks. #}
+<script defer src="{% static 'core/js/media-tracking.min.js' %}?v=2" nonce="{{ csp_nonce }}"></script>
 <script nonce="{{ csp_nonce }}">
-window.MediaTracking.register('album', {
-    sets: {
-        own: 'ownedAlbumIds',
-        listened: 'listenedAlbumIds',
-        want: 'wantToListenAlbumIds'
-    },
-    event: 'album-status-changed'
+document.addEventListener('DOMContentLoaded', function() {
+    window.MediaTracking.register('album', {
+        sets: {
+            own: 'ownedAlbumIds',
+            listened: 'listenedAlbumIds',
+            want: 'wantToListenAlbumIds'
+        },
+        event: 'album-status-changed'
+    });
 });
 </script>
 {% endblock %}
@@ -71,7 +75,7 @@ window.wantToListenAlbumIds = new Set();
 window.isAuthenticated = false;
 {% endif %}
 </script>
-<script src="{% static 'music/js/music-client-side-filtering.bundle.min.js' %}?v=10"
+<script src="{% static 'music/js/music-client-side-filtering.bundle.min.js' %}?v=13"
         defer fetchpriority="low" nonce="{{ csp_nonce }}"></script>
 {% endif %}
 {% endblock %}
@@ -109,7 +113,8 @@ var listenStatusOptions = JSON.parse(
          savedFiltersUrl: '{% url 'music-api:saved-filter-list' %}',
          maxSavedFilters: {{ max_saved_filters }},
          landingPath: '{{ landing_path|default:''|escapejs }}',
-         landingSearch: '{{ landing_search|default:''|escapejs }}'
+         landingSearch: '{{ landing_search|default:''|escapejs }}',
+         clientEngine: () => typeof getAlbumClientSideFiltering === 'function' ? getAlbumClientSideFiltering() : null
      })">
 
 {# Page heading row - title on the left, matching the games layout widths #}
@@ -124,7 +129,7 @@ var listenStatusOptions = JSON.parse(
             {{ list_count|intcomma }} critic lists from
             {{ publication_count|intcomma }} publications.
             {% if last_update %}
-            <span class="text-base-content/50">&middot; Updated: {{ last_update|date:"F j, Y" }}</span>
+            <span class="text-base-content/70">&middot; Updated: {{ last_update|date:"F j, Y" }}</span>
             {% endif %}
         </p>
     </div>
@@ -135,8 +140,10 @@ var listenStatusOptions = JSON.parse(
 </div>
 
 {# Mobile sticky header and bottom sheet, as the games page has #}
+{# mobileFilterSheet (core filter-subcomponents.js): the sheet's filters #}
+{# render on first open and then ask for the counts they missed. #}
 <div class="desktop:hidden"
-     x-data="{ filterOpen: false }"
+     x-data="mobileFilterSheet()"
      x-effect="document.body.classList.toggle('filter-sheet-open', filterOpen)">
     <div class="relative z-10 bg-base-200 border-b border-base-content/10 py-4 mb-4 -mx-4 px-4 flex items-center justify-between gap-3">
         <h1 class="text-lg font-bold flex-1 min-w-0" id="search-title-mobile">
@@ -169,7 +176,10 @@ var listenStatusOptions = JSON.parse(
     {# Right sidebar - filters. One GET form; HTMX serializes it on change. #}
     {# Desktop only: below that breakpoint the bottom sheet above holds the #}
     {# same controls, which is what the games page does. #}
-    <div class="hidden desktop:block desktop:w-[357px] desktop:shrink-0">
+    {# No Alpine directives on this div: it may be x-ignored and initialised #}
+    {# later (see _defer_hidden_sidebar.html). The form's fields are written #}
+    {# by commit() directly, so the form works while it is ignored. #}
+    <div id="album-filter-sidebar" class="hidden desktop:block desktop:w-[357px] desktop:shrink-0">
         <form id="album-filters"
               hx-get="{% url 'music:home' %}"
               hx-target="#album-results-container"
@@ -285,6 +295,7 @@ var listenStatusOptions = JSON.parse(
             <input type="hidden" name="dir" value="{{ current_dir }}">
         </form>
     </div>
+    {% include 'core/includes/_defer_hidden_sidebar.html' with sidebar_id='album-filter-sidebar' %}
 </div>
 
 {# The saved-filter modals, once for the page. Both the sidebar dropdown #}

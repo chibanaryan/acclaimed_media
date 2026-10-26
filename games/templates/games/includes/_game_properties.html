@@ -11,7 +11,7 @@
             <span class="rank-indicator">
                 {% game_rank_url game.rank game.id as rank_url %}
                 <a href="{{ rank_url }}" class="link link-accent font-medium">{{ game.rank }}</a>
-                {% if total_game_count %}<span class="text-base-content/50 text-sm"> of {{ total_game_count|intcomma }}</span>{% endif %}
+                {% if total_game_count %}<span class="text-base-content/70 text-sm"> of {{ total_game_count|intcomma }}</span>{% endif %}
             </span>
         </td>
     </tr>
@@ -21,7 +21,7 @@
         <td class="pb-3 align-middle tabular-nums">
             {% game_rank_url game.decade_rank game.id game.decade game.decade|add:9 as decade_url %}
             <a href="{{ decade_url }}" class="link link-accent font-medium">{{ game.decade_rank }}</a>
-            {% if decade_game_count %}<span class="text-base-content/50 text-sm"> of {{ decade_game_count|intcomma }}</span>{% endif %}
+            {% if decade_game_count %}<span class="text-base-content/70 text-sm"> of {{ decade_game_count|intcomma }}</span>{% endif %}
         </td>
     </tr>
     {% endif %}
@@ -31,7 +31,7 @@
         <td class="pb-3 align-middle tabular-nums">
             {% game_rank_url game.year_rank game.id game.year_of_release game.year_of_release as year_url %}
             <a href="{{ year_url }}" class="link link-accent font-medium">{{ game.year_rank }}</a>
-            {% if year_game_count %}<span class="text-base-content/50 text-sm"> of {{ year_game_count|intcomma }}</span>{% endif %}
+            {% if year_game_count %}<span class="text-base-content/70 text-sm"> of {{ year_game_count|intcomma }}</span>{% endif %}
         </td>
     </tr>
     {% endif %}
@@ -40,7 +40,7 @@
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-middle whitespace-nowrap">List appearances:</td>
         <td class="pb-3 align-middle tabular-nums">
             <span class="font-medium">{{ game.lists.count }}</span>
-            <span class="text-base-content/50 text-sm">lists</span>
+            <span class="text-base-content/70 text-sm">lists</span>
         </td>
     </tr>
     {% endif %}
@@ -113,7 +113,7 @@
                 HowLongToBeat <span class="mdi mdi-open-in-new text-sm"></span>
             </a>
             {% if game.primary_hltb_game_data.main_story_hours or game.primary_hltb_game_data.completionist_hours %}
-            <div class="text-base-content/50 text-sm mt-1 space-y-0.5 tabular-nums">
+            <div class="text-base-content/70 text-sm mt-1 space-y-0.5 tabular-nums">
                 {% if game.primary_hltb_game_data.main_story_hours %}
                 <div>
                     <span class="mdi mdi-gamepad-variant text-xs"></span>

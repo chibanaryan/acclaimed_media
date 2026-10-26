@@ -48,7 +48,9 @@
             {# Results dropdown, grouped as the games one is #}
             <div x-show="showMenu" x-cloak
                  class="absolute left-0 top-full mt-1 bg-base-200 rounded-box w-80 p-2 shadow-lg z-[9999] max-h-80 overflow-y-auto">
-                <ul class="menu menu-sm p-0">
+                {# DaisyUI sizes a menu, and each item in it, to its content, so a #}
+                {# long title overran the w-80 dropdown instead of truncating. #}
+                <ul class="menu menu-sm p-0 w-full flex-nowrap [&>li>*]:w-full [&>li>*]:min-w-0">
                     <template x-if="!q || q.trim().length < 2">
                         <li class="disabled"><span class="text-base-content/85 text-sm">Enter 2+ characters</span></li>
                     </template>
@@ -138,7 +140,9 @@
             {# Search results dropdown - fixed position to escape sidebar bounds #}
             <div x-show="showMenu" x-cloak
                  class="absolute left-0 top-full mt-1 bg-base-200 rounded-box w-80 p-2 shadow-lg z-[9999] max-h-80 overflow-y-auto">
-                <ul class="menu menu-sm p-0">
+                {# DaisyUI sizes a menu, and each item in it, to its content, so a #}
+                {# long title overran the w-80 dropdown instead of truncating. #}
+                <ul class="menu menu-sm p-0 w-full flex-nowrap [&>li>*]:w-full [&>li>*]:min-w-0">
                     <template x-if="!q || q.trim().length < 2">
                         <li class="disabled"><span class="text-base-content/85 text-sm">Enter 2+ characters</span></li>
                     </template>

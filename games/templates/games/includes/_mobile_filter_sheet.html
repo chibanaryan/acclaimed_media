@@ -54,7 +54,14 @@
     </div>
 
     {# Scrollable Filter Content #}
-    <div class="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-4" id="mobile-filter-form" x-ref="filterScroll">
+    {# Rendered on first open, not on page load. Alpine initialising these #}
+    {# components for a sheet nobody has opened cost ~340 ms of main thread #}
+    {# at Lighthouse's mobile throttle. They read their state from the shared #}
+    {# filters when created, and the mobile-filter-opened event that the first #}
+    {# open fires re-sends the facet counts they missed while absent. #}
+    <div class="flex-1 min-h-0 overflow-y-auto px-4 py-3" id="mobile-filter-form" x-ref="filterScroll">
+    <template x-if="hasOpenedBefore">
+    <div class="space-y-4">
         {# Saved Filters Section (logged-in users only) - Collapsible #}
         {% if user.is_authenticated %}
         <div class="pb-3 border-b border-base-100" x-data="{ expanded: false }">
@@ -154,11 +161,11 @@
                            :class="{ 'btn-primary': filters.played && filters.played.includes('yes') }"
                            @click="togglePlayedStatus('yes')">★ Played</button>
                     {% else %}
-                    <button type="button" class="join-item btn btn-sm opacity-40 cursor-not-allowed"
+                    <button type="button" class="join-item btn btn-sm opacity-40 cursor-not-allowed" aria-disabled="true"
                            title="Sign in to track games" aria-label="Sign in to filter by untracked games">☆ Untracked</button>
-                    <button type="button" class="join-item btn btn-sm opacity-40 cursor-not-allowed"
+                    <button type="button" class="join-item btn btn-sm opacity-40 cursor-not-allowed" aria-disabled="true"
                            title="Sign in to track games" aria-label="Sign in to filter by want to play games">★+ Want</button>
-                    <button type="button" class="join-item btn btn-sm opacity-40 cursor-not-allowed"
+                    <button type="button" class="join-item btn btn-sm opacity-40 cursor-not-allowed" aria-disabled="true"
                            title="Sign in to track games" aria-label="Sign in to filter by played games">★ Played</button>
                     {% endif %}
                 </div>
@@ -247,6 +254,8 @@
                 {% include 'includes/_hltb_filter.html' %}
             </div>
         </div>
+    </div>
+    </template>
     </div>
 
     {# Sticky Footer with Close Button #}

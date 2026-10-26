@@ -19,9 +19,9 @@
     {# Filter subcomponents + filter component factories (must load before Alpine core) #}
     {# The year grid and genre tree live in core and are shared with the album #}
     {# rankings page; this file keeps the platform, series and playtime ones. #}
-    <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/filter-subcomponents.min.js" %}?v=1');</script>
-    <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "games/js/filter-subcomponents.min.js" %}?v=2');</script>
-    <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "games/js/filter-component.min.js" %}?v=12');</script>
+    <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/filter-subcomponents.min.js" %}?v=4');</script>
+    <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "games/js/filter-subcomponents.min.js" %}?v=4');</script>
+    <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "games/js/filter-component.min.js" %}?v=18');</script>
     <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/quick-mark.min.js" %}?v=1');</script>
 {% endblock %}
 
@@ -77,7 +77,7 @@
         var csfLoaded = false;
         var csfLoading = false;
         var interactionEvents = ['pointerdown', 'touchstart', 'keydown'];
-        var csfScriptUrl = '{% static "games/js/client-side-filtering.bundle.min.js" %}?v=17';
+        var csfScriptUrl = '{% static "games/js/client-side-filtering.bundle.min.js" %}?v=18';
 
         function hasActiveFilterParams() {
             var params = new URLSearchParams(window.location.search);

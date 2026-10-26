@@ -51,7 +51,7 @@
                 :class="{
                     'bg-primary text-accent-content': isSelected(series.id),
                     'hover:bg-base-content/10': !isSelected(series.id),
-                    'opacity-40': !isSeriesAvailable(series.id) && !isSelected(series.id),
+                    'opacity-70': !isSeriesAvailable(series.id) && !isSelected(series.id),
                     'bg-error/20 text-error': hasZeroResults(series.id)
                 }"
                 @click="toggleSeries(series.id)"

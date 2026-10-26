@@ -10,7 +10,7 @@
     {# Type header - always visible #}
     <button @click="expanded = !expanded"
             class="w-full flex items-center gap-3 p-3 hover:bg-base-200/50 transition-colors rounded-t-lg cursor-pointer text-left"
-            aria-label="Toggle {{ type_group.type_label }} lists">
+            :aria-expanded="expanded">
         {# Expand/collapse chevron #}
         <svg xmlns="http://www.w3.org/2000/svg"
              class="h-5 w-5 shrink-0 text-base-content/70 transition-transform duration-200"

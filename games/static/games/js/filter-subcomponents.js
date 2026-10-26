@@ -128,6 +128,23 @@
     function createPlatformFilterComponent(config) {
         var filters = config.filters;
         var platforms = config.platforms;
+        // Platforms never change after the page renders - only their filtered
+        // counts do - so the lookups are built once. Every row's bindings used
+        // to scan the reactive array with find(); a year change re-evaluates
+        // every row, so one filter change paid for hundreds of full scans.
+        var indexByCode = indexBy(platforms, function (p) {
+            return p.code;
+        });
+        var indexById = indexBy(platforms, function (p) {
+            return String(p.id);
+        });
+        var idsByManufacturer = {};
+        var idsByFormFactor = {};
+
+        function platformById(platformId) {
+            var i = indexById[String(platformId)];
+            return i === undefined ? undefined : platforms[i];
+        }
 
         return {
             _platformCountsHandler: null,
@@ -226,9 +243,8 @@
             },
 
             getPlatformByCode: function (code) {
-                return platforms.find(function (p) {
-                    return p.code === code;
-                });
+                var i = indexByCode[code];
+                return i === undefined ? undefined : platforms[i];
             },
 
             getEffectiveCount: function (platform) {
@@ -375,9 +391,7 @@
             },
 
             isPlatformAvailable: function (platformId) {
-                var platform = platforms.find(function (p) {
-                    return String(p.id) === String(platformId);
-                });
+                var platform = platformById(platformId);
                 if (!platform) {
                     return false;
                 }
@@ -386,9 +400,7 @@
             },
 
             hasZeroResults: function (platformId) {
-                var platform = platforms.find(function (p) {
-                    return String(p.id) === String(platformId);
-                });
+                var platform = platformById(platformId);
                 if (!platform) {
                     return false;
                 }
@@ -515,26 +527,34 @@
                 }
             },
 
+            // Fixed for the page's life, like the hierarchy they come from.
             getAllPlatformIdsForManufacturer: function (mfrKey) {
-                return this.getAllCodesForManufacturer(mfrKey)
-                    .map(this.getPlatformByCode.bind(this))
-                    .filter(Boolean)
-                    .map(function (p) {
-                        return String(p.id);
-                    });
+                if (!idsByManufacturer[mfrKey]) {
+                    idsByManufacturer[mfrKey] = this.getAllCodesForManufacturer(mfrKey)
+                        .map(this.getPlatformByCode.bind(this))
+                        .filter(Boolean)
+                        .map(function (p) {
+                            return String(p.id);
+                        });
+                }
+                return idsByManufacturer[mfrKey].slice();
             },
 
             getAllPlatformIdsForFormFactor: function (mfrKey, ffKey) {
-                var mfr = this.platformHierarchy[mfrKey];
-                if (!mfr || !mfr.formFactors || !mfr.formFactors[ffKey]) {
-                    return [];
+                var key = mfrKey + "_" + ffKey;
+                if (!idsByFormFactor[key]) {
+                    var mfr = this.platformHierarchy[mfrKey];
+                    if (!mfr || !mfr.formFactors || !mfr.formFactors[ffKey]) {
+                        return [];
+                    }
+                    idsByFormFactor[key] = mfr.formFactors[ffKey].platforms
+                        .map(this.getPlatformByCode.bind(this))
+                        .filter(Boolean)
+                        .map(function (p) {
+                            return String(p.id);
+                        });
                 }
-                return mfr.formFactors[ffKey].platforms
-                    .map(this.getPlatformByCode.bind(this))
-                    .filter(Boolean)
-                    .map(function (p) {
-                        return String(p.id);
-                    });
+                return idsByFormFactor[key].slice();
             },
 
             hasManufacturerOrChildrenSelected: function (mfrKey) {
@@ -669,6 +689,15 @@
     function createSeriesFilterComponent(config) {
         var filters = config.filters;
         var seriesList = config.seriesList;
+        // As for platforms: one lookup instead of a scan per row per update.
+        var indexById = indexBy(seriesList, function (s) {
+            return String(s.id);
+        });
+
+        function seriesById(seriesId) {
+            var i = indexById[String(seriesId)];
+            return i === undefined ? undefined : seriesList[i];
+        }
 
         return {
             _seriesResetHandler: null,
@@ -721,9 +750,7 @@
             },
 
             isSeriesAvailable: function (seriesId) {
-                var series = seriesList.find(function (s) {
-                    return String(s.id) === String(seriesId);
-                });
+                var series = seriesById(seriesId);
                 if (!series) {
                     return false;
                 }
@@ -732,9 +759,7 @@
             },
 
             hasZeroResults: function (seriesId) {
-                var series = seriesList.find(function (s) {
-                    return String(s.id) === String(seriesId);
-                });
+                var series = seriesById(seriesId);
                 if (!series) {
                     return false;
                 }
@@ -752,14 +777,17 @@
 
             get filteredSeries() {
                 var self = this;
-                var list = seriesList;
+                // A copy: sorting seriesList itself wrote every index of the
+                // page's reactive array on each read, re-triggering every
+                // binding that reads it.
+                var list = (seriesList || []).slice();
                 if (this.searchQuery) {
                     var query = this.normalizeSearchText(this.searchQuery);
                     list = list.filter(function (s) {
                         return self.normalizeSearchText(s.name).includes(query);
                     });
                 }
-                list = list.sort(function (a, b) {
+                list.sort(function (a, b) {
                     var countDiff = self.getEffectiveCount(b) - self.getEffectiveCount(a);
                     if (countDiff !== 0) {
                         return countDiff;

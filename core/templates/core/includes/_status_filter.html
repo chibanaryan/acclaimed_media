@@ -58,7 +58,8 @@
             <button type="button"
                     class="join-item btn {% if mobile %}btn-sm h-10 px-2 gap-1{% else %}btn-xs h-8 px-2 gap-1{% endif %} opacity-40 cursor-not-allowed"
                     title="{{ signed_out_hint }}"
-                    aria-label="{{ signed_out_hint }}">
+                    aria-disabled="true"
+                    aria-label="{{ option.label }}: {{ signed_out_hint }}">
                 <span class="mdi {{ option.icon }}" aria-hidden="true"></span>
                 <span>{{ option.label }}</span>
             </button>

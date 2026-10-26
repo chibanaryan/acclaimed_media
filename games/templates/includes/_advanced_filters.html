@@ -77,23 +77,7 @@
 
     {# Mobile Sticky Header + Bottom Sheet (shown only on mobile/tablet) #}
     <div class="desktop:hidden"
-         x-data="{
-            filterOpen: false,
-            hasOpenedBefore: false,
-            init() {
-                // When filter sheet opens for the first time, re-dispatch counts
-                // to ensure mobile filter components have data (handles race conditions)
-                this.$watch('filterOpen', (open) => {
-                    if (open && !this.hasOpenedBefore) {
-                        this.hasOpenedBefore = true;
-                        // Small delay to ensure components are ready
-                        setTimeout(() => {
-                            window.dispatchEvent(new CustomEvent('mobile-filter-opened'));
-                        }, 50);
-                    }
-                });
-            }
-         }"
+         x-data="mobileFilterSheet()"
          x-effect="document.body.classList.toggle('filter-sheet-open', filterOpen)">
         <div class="relative z-10 bg-base-200 border-b border-base-content/10 py-4 mb-4 -mx-4 px-4 flex items-center justify-between gap-3">
             <h1 class="text-lg font-bold flex-1 min-w-0" id="search-title-mobile">{{ filter_title|default:"Most Acclaimed Video Games of All Time" }}</h1>
@@ -122,7 +106,9 @@
         </div>
 
         {# Right sidebar - Filters (fixed 357px width, hidden on mobile) #}
-        <div class="hidden desktop:block" style="width: 357px; flex-shrink: 0; contain: layout;">
+        {# Must carry no Alpine directives of its own: the script after it #}
+        {# may x-ignore it and later initialise it with Alpine.initTree. #}
+        <div id="desktop-filter-sidebar" class="hidden desktop:block" style="width: 357px; flex-shrink: 0; contain: layout;">
             <div style="min-height: 1400px;">
                 <div class="bg-base-200 rounded-lg p-4">
                 {# Top-level Filters header with actions #}
@@ -207,6 +193,7 @@
                                 class="btn btn-ghost btn-xs text-base-content/40 cursor-not-allowed"
                                 title="Sign in to save filters"
                                 aria-label="Saved. Sign in to save filters"
+                                aria-disabled="true"
                                 onclick="return false;">
                             <span class="mdi mdi-bookmark-outline text-sm"></span>
                             <span>Saved</span>
@@ -254,11 +241,11 @@
                                    :class="{ 'btn-primary': filters.played && filters.played.includes('yes') }"
                                    @click="togglePlayedStatus('yes')">★ Played</button>
                             {% else %}
-                            <button type="button" class="join-item btn btn-sm opacity-40 cursor-not-allowed"
+                            <button type="button" class="join-item btn btn-sm opacity-40 cursor-not-allowed" aria-disabled="true"
                                    title="Sign in to track games" aria-label="Sign in to filter by untracked games">☆ Untracked</button>
-                            <button type="button" class="join-item btn btn-sm opacity-40 cursor-not-allowed"
+                            <button type="button" class="join-item btn btn-sm opacity-40 cursor-not-allowed" aria-disabled="true"
                                    title="Sign in to track games" aria-label="Sign in to filter by want to play games">★+ Want</button>
-                            <button type="button" class="join-item btn btn-sm opacity-40 cursor-not-allowed"
+                            <button type="button" class="join-item btn btn-sm opacity-40 cursor-not-allowed" aria-disabled="true"
                                    title="Sign in to track games" aria-label="Sign in to filter by played games">★ Played</button>
                             {% endif %}
                         </div>
@@ -405,6 +392,7 @@
                 </div>
             </div>
         </div>
+        {% include 'core/includes/_defer_hidden_sidebar.html' with sidebar_id='desktop-filter-sidebar' %}
     </div>
 
     {# Save Filter Modal #}

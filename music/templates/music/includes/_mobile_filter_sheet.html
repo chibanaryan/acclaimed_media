@@ -56,7 +56,11 @@
     </div>
 
     {# Scrollable filter content #}
-    <div class="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-4" id="mobile-filter-form" x-ref="filterScroll">
+    {# Rendered on first open, not on page load: Alpine initialising a sheet #}
+    {# nobody has opened is main-thread time the page pays for nothing. #}
+    <div class="flex-1 min-h-0 overflow-y-auto px-4 py-3" id="mobile-filter-form" x-ref="filterScroll">
+    <template x-if="hasOpenedBefore">
+    <div class="space-y-4">
         {# Saved combinations first, as the games sheet has them: it is the #}
         {# one control that replaces every other in one tap. #}
         {% include 'core/includes/_mobile_saved_filters.html' with max_saved=max_saved_filters %}
@@ -107,6 +111,8 @@
         {% if genre_tree %}
         {% include 'core/includes/_mobile_filter_genres.html' with genre_icon='mdi-music-note' genre_icons_element='genre-icons-data' default_genre_icon=default_genre_icon genre_counts_include_descendants=True data_credit_text='Genres use data provided by Discogs' data_credit_url='https://www.discogs.com/' %}
         {% endif %}
+    </div>
+    </template>
     </div>
 
     {# Sticky footer #}

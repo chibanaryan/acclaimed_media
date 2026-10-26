@@ -117,6 +117,8 @@ document.addEventListener('alpine:init', () => {
             if (this._mobileFilterListener) {
                 window.removeEventListener('mobile-filter-opened', this._mobileFilterListener);
             }
+            if (this._debouncedFilter) this._debouncedFilter.cancel();
+            if (this._debouncedUpdate) this._debouncedUpdate.cancel();
         },
 
         init() {
@@ -148,9 +150,22 @@ document.addEventListener('alpine:init', () => {
                     partial: true, historyMethod: 'replaceState'
                 }), 150);
 
-                this._debouncedFilter = debounce(() => this.performUpdate({
-                    partial: true, historyMethod: 'pushState'
-                }), 150);
+                // Leading edge: a click applies at once instead of after
+                // 150 ms; a burst still collapses into one trailing update,
+                // which replaces the history entry the leading run pushed and
+                // is skipped if it would render the same filters again. Only
+                // once the client engine is ready: before that the update is
+                // a server render, and the old trailing wait is what gives
+                // the engine its chance to load first. afterNextPaint lets
+                // the click's own feedback paint before the update's work.
+                this._debouncedFilter = debounceLeading(burst => this.performUpdate({
+                    partial: true,
+                    historyMethod: burst.followsLeading ? 'replaceState' : 'pushState'
+                }), 150, {
+                    canLead: () => this.clientFilterReady,
+                    keyOf: () => buildFilterParams(this.filters).toString(),
+                    schedule: afterNextPaint
+                });
 
                 this._debouncedDisplay = debounce(() => this.performUpdate({
                     partial: true, historyMethod: 'pushState', preservePage: true
@@ -260,6 +275,9 @@ document.addEventListener('alpine:init', () => {
 
                 // Store and register instance-specific listeners (cleanup in destroy())
                 this._popstateListener = (event) => {
+                    // Nothing queued before Back may apply after it.
+                    if (this._debouncedFilter) this._debouncedFilter.cancel();
+                    if (this._debouncedUpdate) this._debouncedUpdate.cancel();
                     // Clean SEO paths (/games/<slug>/ etc.) carry no search
                     // params, so map the path back to its implied filter
                     const params = new URLSearchParams(
@@ -267,7 +285,10 @@ document.addEventListener('alpine:init', () => {
                         (typeof seoPathSearch === 'function'
                             ? seoPathSearch(window.location.pathname) : '')
                     );
-                    this.filters.q = params.get('q') || '';
+                    // The q watcher below would treat the restored text as a
+                    // new search and push it; the update below covers it.
+                    this._restoredQuery = params.get('q') || '';
+                    this.filters.q = this._restoredQuery;
                     this.filters.start = params.get('start') ? parseInt(params.get('start')) : this.minYear;
                     this.filters.end = params.get('end') ? parseInt(params.get('end')) : this.maxYear;
                     this.filters.sort = params.get('sort') || 'rank';
@@ -287,16 +308,24 @@ document.addEventListener('alpine:init', () => {
                     if (this.hasActiveFilters()) {
                         this.requestClientFilteringInit('popstate');
                     }
+                    // Re-render for the restored URL without touching history:
+                    // the URL is already the one being restored, and pushing
+                    // it again cut off the forward history on every Back.
                     if (this.clientFilterReady) {
-                        this.performClientUpdate();
+                        this.performClientUpdate({ historyMethod: null });
                     } else {
-                        setLoading('game-results-container');
+                        this.performUpdate({ partial: true, historyMethod: null });
                     }
                 };
                 window.addEventListener('popstate', this._popstateListener);
 
                 this.$watch('filters.q', val => {
                     if (!this.initialized) return;
+                    if (this._restoredQuery !== undefined && val === this._restoredQuery) {
+                        this._restoredQuery = undefined;
+                        return;
+                    }
+                    this._restoredQuery = undefined;
                     this.updateResults();
                 });
 
@@ -1094,7 +1123,9 @@ document.addEventListener('alpine:init', () => {
                 // at the indexable page
                 const pushUrl = (typeof seoCleanUrl === 'function' &&
                     seoCleanUrl(params, this.minYear, this.maxYear)) || url;
-                window.history[historyMethod]({}, '', pushUrl);
+                if (historyMethod) {
+                    window.history[historyMethod]({}, '', pushUrl);
+                }
             } catch (err) {
                 if (err.name !== 'AbortError') {
                     console.error('Error fetching results:', err);

@@ -1,0 +1,56 @@
+{# Keep a display:none desktop filter sidebar out of Alpine's first pass. #}
+{# Props: sidebar_id - the sidebar element, which must carry no Alpine #}
+{# directives of its own (initTree would run them a second time). #}
+{# Include it straight after that element, so the script finds it. #}
+{# Below the desktop breakpoint the sidebar is display:none, yet Alpine #}
+{# initialising it was ~530 ms of the mobile main thread (Lighthouse's #}
+{# 4x throttle) - more than everything else on the page together. So #}
+{# on a narrow first load it is x-ignored, and initialised only if the #}
+{# window is widened past the breakpoint. Desktop keeps it as rendered, #}
+{# so it still paints before Alpine starts. Skipped when Alpine is #}
+{# already running (an HTMX swap of this partial), where it is too late #}
+{# to matter. mobile-filter-opened is the existing "re-send the facet #}
+{# counts" request; the sidebar needs the same for the same reason. #}
+<script nonce="{{ csp_nonce }}">
+(function() {
+    var sidebar = document.getElementById('{{ sidebar_id }}');
+    var desktop = window.matchMedia('(min-width: 962px)');
+    if (!sidebar || window.Alpine || desktop.matches) return;
+    var alpineStarted = false;
+    var wanted = false;
+    function start() {
+        // An HTMX swap may have replaced this sidebar since; initialising
+        // the detached one would start components nothing ever destroys.
+        if (!document.contains(sidebar)) return;
+        sidebar.removeAttribute('x-ignore');
+        delete sidebar._x_ignore;
+        window.Alpine.initTree(sidebar);
+        window.dispatchEvent(new CustomEvent('mobile-filter-opened'));
+    }
+    document.addEventListener('alpine:initialized', function() {
+        alpineStarted = true;
+        if (wanted) start();
+    }, { once: true });
+    // Safari before 14 has only the older addListener; ignoring the
+    // sidebar with no way to wake it would leave it dead on rotate.
+    var listen = desktop.addEventListener
+        ? function(fn) { desktop.addEventListener('change', fn); }
+        : desktop.addListener ? function(fn) { desktop.addListener(fn); } : null;
+    var unlisten = desktop.removeEventListener
+        ? function(fn) { desktop.removeEventListener('change', fn); }
+        : function(fn) { desktop.removeListener(fn); };
+    if (!listen) return;
+    function onChange(event) {
+        if (!document.contains(sidebar)) {
+            unlisten(onChange);
+            return;
+        }
+        if (!event.matches) return;
+        unlisten(onChange);
+        wanted = true;
+        if (alpineStarted) start();
+    }
+    listen(onChange);
+    sidebar.setAttribute('x-ignore', '');
+})();
+</script>

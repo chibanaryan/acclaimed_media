@@ -1364,6 +1364,60 @@ block - without exempting it there.
   so the body's CSRF header is inherited. The wrapper's
   `onclick="event.stopPropagation()"` keeps the mobile row from navigating,
   so the menu's click listener runs in the **capture** phase.
+- **Alpine skips the filter UI the visitor cannot see** (2026-10-25). At
+  Lighthouse's 4x mobile throttle, Alpine's init on `/` was one ~920 ms task,
+  and nearly all of it went to two invisible things: the `display:none`
+  desktop sidebar (~530 ms) and the never-opened mobile sheet (~340 ms). The
+  100 rows cost nothing, because they carry no directives. The sheet's contents
+  now sit in `<template x-if="hasOpenedBefore">`. The sidebar
+  (`#desktop-filter-sidebar` in `_advanced_filters.html`) is `x-ignore`d
+  by an inline script on a narrow first load, then `Alpine.initTree`d if
+  the window widens past 962px. Both lean on `mobile-filter-opened`, which
+  makes `filterComponent` re-send the facet counts that the late components
+  missed. Alpine init dropped to ~90 ms. The sidebar div must carry no
+  directives of its own, since `initTree` would run them a second time.
+  The album page does the same (`#album-filter-sidebar`, music's sheet):
+  the script is the shared `core/includes/_defer_hidden_sidebar.html`, and
+  `mediaListControls.refreshFacetCounts()` answers `mobile-filter-opened`
+  through the engine's `republishFacets()` once it is ready. Its form keeps
+  working while ignored, because `commit()` writes the fields itself. At 4x,
+  `/music/` went from ~360 ms of Alpine init to ~75 ms on a phone.
+
+**Filter-change speed** (2026-10-26). A decade click took ~290 ms to
+reach the list on a fast machine and ~710 ms at a 4x CPU slowdown, and
+almost none of that was filtering. Now it is ~60 ms and ~250 ms, with
+every click's INP under 200 ms even at 4x. Four things mattered:
+
+- **The trailing debounce** (150 ms in games, 250 ms in music's
+  `mediaListControls`) made every single click wait.
+  `_debouncedFilter` is now `debounceLeading` (`utils-base.js`): the first
+  change applies at once and a burst still collapses into one trailing
+  update. It runs through `afterNextPaint`, because doing the update in
+  the click's own task held back the paint INP measures, at 300-400 ms on a
+  slow CPU. It leads only once the client engine is ready
+  (`clientFilterReady`, music's `clientEngine` setting): before that each
+  update is a server render, and a leading fetch could land after a newer
+  client render. A burst's trailing run replaces the history entry the
+  leading one pushed (music: `form.dataset.historyReplace`), and is skipped
+  when it would render the same filters again.
+- **Sidebar bindings scanned the page's reactive arrays.** Every
+  platform, genre and series row called `find()`/`filter()` over
+  `platforms`/`genres`/`seriesList`. Each scan read, and subscribed to,
+  every item through Alpine's proxy, and a year change re-evaluates every
+  row, so one change cost ~90 ms of Alpine effects. The components now
+  build index maps once (`indexBy`, `buildGenreIndex`) and read
+  `list[i]`, which tracks only that item. The structure of these lists is
+  fixed for the page's life; only `filtered_count` changes.
+- **The desktop series getter sorted `seriesList` in place**, writing
+  every index of the reactive array on each read. It sorts a copy.
+- **The chart animation is frame-capped** (`MAX_FRAME_STEP_MS` in
+  `rank-distribution.js`), so a busy main thread pauses the morph rather
+  than skipping to its end.
+
+Measure with real clicks, at 1x and 4x, through the Event Timing API
+(`interactionId` entries) plus a MutationObserver on
+`#game-list-container`. Puppeteer's `mouse.click` hits nothing off-screen,
+so scroll a sidebar control into view first.
 
 Anything that grows the rendered page, the boot imports, or a per-process
 cache is spending from that 512 MB twice over. `heroku ps`, and the

@@ -72,7 +72,7 @@
                      :class="{
                          'bg-primary text-accent-content': isSeriesSelected(series.id),
                          'hover:bg-base-content/10': !isSeriesSelected(series.id),
-                         'opacity-40': getEffectiveCount(series) === 0 && !isSeriesSelected(series.id)
+                         'opacity-70': getEffectiveCount(series) === 0 && !isSeriesSelected(series.id)
                      }"
                      @click="toggleSeries(series.id); debouncedFilterUpdate();">
                     <span class="text-sm flex-1 truncate" x-text="series.name"></span>

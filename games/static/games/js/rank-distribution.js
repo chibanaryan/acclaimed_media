@@ -9,6 +9,35 @@
     'use strict';
 
     var DEFAULT_BIN_COUNT = 10;
+    var ANIMATION_MS = 300;
+    // The longest step one frame may advance the tween. A filter change runs
+    // the chart update inside the same busy stretch that re-renders the list
+    // and recounts the facets - 150-200 ms on a fast machine, 400-600 ms at a
+    // 3x CPU slowdown - so a purely clock-driven tween found its 300 ms gone
+    // by the next frame and drew only the end state. Capping the step means
+    // a blocked main thread pauses the morph instead of skipping it.
+    var MAX_FRAME_STEP_MS = 34;
+
+    // The curve used to morph through a CSS `transition: d`, which only
+    // Chrome and Firefox implement: WebKit (Safari, Orion) has no CSS `d`
+    // property, so there every update snapped. It is tweened here instead.
+    //
+    // A chart replaced by a server re-render (the first filter change, before
+    // the client engine is ready, swaps #search-heading) hands its last shape
+    // to its successor, so the new chart morphs from it rather than snapping.
+    // Keyed by where the chart sits - its nearest ancestor with an id - and
+    // only within one initCharts pass, so a shape passes to the chart that
+    // took its place there and then, never to a later or unrelated one.
+    var retiredPoints = {};
+
+    function chartSlot(container) {
+        var anchor = container.closest ? container.closest('[id]') : null;
+        return anchor ? anchor.id : '';
+    }
+
+    function prefersReducedMotion() {
+        return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    }
 
     function isValidBinsArray(value) {
         if (!Array.isArray(value)) return false;
@@ -108,6 +137,10 @@
             this.maxRank = resolveMaxRank(maxRank, this.bins);
         }
         this.hoveredBin = null;
+        this.slot = chartSlot(container);
+        this.currentPoints = (this.slot && retiredPoints[this.slot]) || null;
+        delete retiredPoints[this.slot];
+        this.animationFrame = null;
 
         this.svg = container.querySelector('.rank-distribution-svg');
         this.path = container.querySelector('.rank-distribution-fill');
@@ -154,9 +187,7 @@
         return Math.max.apply(null, counts) || 1;
     };
 
-    RankDistributionChart.prototype.computePath = function() {
-        if (this.bins.length === 0) return '';
-
+    RankDistributionChart.prototype.computePoints = function() {
         var width = 100;
         var height = 40;
         var maxCount = this.getMaxCount();
@@ -164,13 +195,20 @@
 
         // Position points at edges: first at x=0, last at x=width
         // This eliminates flat sections at start/end of the chart
-        var points = this.bins.map(function(bin, i) {
+        return this.bins.map(function(bin, i) {
             var x = numBins === 1 ? width / 2 : (i / (numBins - 1)) * width;
             return {
                 x: x,
                 y: height - (bin.count / maxCount) * (height - 6) - 2
             };
         });
+    };
+
+    RankDistributionChart.prototype.pathFromPoints = function(points) {
+        if (!points || points.length === 0) return '';
+
+        var width = 100;
+        var height = 40;
 
         // Start path from bottom-left, up to first point (which is now at x=0)
         var path = 'M0,' + height + ' L' + points[0].x + ',' + points[0].y;
@@ -204,6 +242,11 @@
 
         // Update visibility (use visibility instead of display to reserve space)
         if (this.bins.length === 0) {
+            if (this.animationFrame !== null) {
+                cancelAnimationFrame(this.animationFrame);
+                this.animationFrame = null;
+            }
+            this.currentPoints = null;
             this.svg.style.visibility = 'hidden';
             if (this.peakLabel) this.peakLabel.textContent = '';
             return;
@@ -222,7 +265,7 @@
         }
 
         // Update path
-        this.path.setAttribute('d', this.computePath());
+        this.animateTo(this.computePoints());
 
         // Clear and recreate hover rects using DocumentFragment (single reflow)
         this.rectsContainer.innerHTML = '';
@@ -243,6 +286,45 @@
 
         // Single DOM insertion triggers only one reflow
         this.rectsContainer.appendChild(fragment);
+    };
+
+    // Morph the curve from wherever it is now (mid-flight included, so a
+    // burst of updates chains smoothly) to `target`. Snaps when there is no
+    // previous shape, the bin count changed, or the reader asked for less motion.
+    RankDistributionChart.prototype.animateTo = function(target) {
+        var self = this;
+        var from = this.currentPoints;
+
+        if (this.animationFrame !== null) {
+            cancelAnimationFrame(this.animationFrame);
+            this.animationFrame = null;
+        }
+
+        if (!from || from.length !== target.length ||
+                typeof requestAnimationFrame !== 'function' || prefersReducedMotion()) {
+            this.currentPoints = target;
+            this.path.setAttribute('d', this.pathFromPoints(target));
+            return;
+        }
+
+        var progress = 0;
+        var lastFrame = null;
+        function step(now) {
+            var elapsed = lastFrame === null ? 0 : Math.min(now - lastFrame, MAX_FRAME_STEP_MS);
+            lastFrame = now;
+            progress = Math.min(1, progress + elapsed / ANIMATION_MS);
+            var t = progress;
+            var eased = 1 - Math.pow(1 - t, 3); // ease-out
+            self.currentPoints = target.map(function(point, i) {
+                return {
+                    x: from[i].x + (point.x - from[i].x) * eased,
+                    y: from[i].y + (point.y - from[i].y) * eased
+                };
+            });
+            self.path.setAttribute('d', self.pathFromPoints(self.currentPoints));
+            self.animationFrame = t < 1 ? requestAnimationFrame(step) : null;
+        }
+        this.animationFrame = requestAnimationFrame(step);
     };
 
     RankDistributionChart.prototype.showTooltip = function(binIndex, event) {
@@ -268,9 +350,16 @@
     };
 
     // Cleanup method for memory leak prevention
-    RankDistributionChart.prototype.destroy = function() {
+    RankDistributionChart.prototype.destroy = function(handOff) {
         // No per-instance listeners to clean up - global listener handles updates
         // This method is called when chart container is removed from DOM
+        if (this.animationFrame !== null) {
+            cancelAnimationFrame(this.animationFrame);
+            this.animationFrame = null;
+        }
+        if (handOff && this.slot && this.currentPoints) {
+            retiredPoints[this.slot] = this.currentPoints;
+        }
     };
 
     // Track all active charts for global event handling (memory leak fix)
@@ -314,7 +403,7 @@
 
     // Auto-initialize on DOM ready
     function initCharts() {
-        pruneStaleCharts();
+        pruneStaleCharts(true);
 
         var containers = document.querySelectorAll('.rank-distribution');
         containers.forEach(function(container) {
@@ -345,6 +434,8 @@
             activeCharts.push(chart);
         });
 
+        // A shape nothing took over in this pass has no successor.
+        retiredPoints = {};
         setupGlobalListener();
     }
 
@@ -356,19 +447,19 @@
     }
 
     // Prune charts whose containers are no longer in the DOM
-    function pruneStaleCharts() {
+    function pruneStaleCharts(handOff) {
         activeCharts = activeCharts.filter(function(chart) {
             if (document.contains(chart.container)) {
                 return true;
             }
-            chart.destroy();
+            chart.destroy(handOff);
             return false;
         });
     }
 
     // Also re-initialize after HTMX swaps
     document.addEventListener('htmx:afterSwap', function() {
-        pruneStaleCharts();
+        // initCharts prunes first, handing each replaced chart's shape on.
         initCharts();
     });
 

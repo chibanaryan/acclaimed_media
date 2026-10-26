@@ -36,9 +36,75 @@
         }
     }
 
+    /**
+     * The shape of a genre list, built once: position by id, child positions
+     * by parent id, the roots, and each genre's descendant ids. A genre tree
+     * never changes after the page renders - only its counts do - so none of
+     * this needs to be reactive.
+     *
+     * Every lookup used to scan the page's reactive array (`genres.find`,
+     * `genres.filter`, a recursive getChildren for descendants). A year
+     * change re-evaluates every row's bindings, and each of those scans read
+     * every genre through Alpine's proxy and subscribed to all of them, so a
+     * single filter change cost hundreds of full scans. Reading `genres[i]`
+     * through these positions tracks just the genre a binding shows.
+     */
+    function buildGenreIndex(genres) {
+        var byId = indexBy(genres, function (g) {
+            return String(g.id);
+        });
+        var childPositions = {};
+        var rootPositions = [];
+        (genres || []).forEach(function (g, i) {
+            var parent = String(g.parent_id);
+            (childPositions[parent] = childPositions[parent] || []).push(i);
+            if (g.level === 0) {
+                rootPositions.push(i);
+            }
+        });
+        var descendants = {};
+        function descendantIds(id, seen) {
+            id = String(id);
+            if (descendants[id]) {
+                return descendants[id];
+            }
+            seen = seen || {};
+            seen[id] = true;
+            var ids = [];
+            (childPositions[id] || []).forEach(function (i) {
+                var childId = String(genres[i].id);
+                if (seen[childId]) {
+                    return; // a cycle in bad data; the scan it replaces would have recursed forever
+                }
+                ids.push(childId);
+                ids = ids.concat(descendantIds(childId, seen));
+            });
+            descendants[id] = ids;
+            return ids;
+        }
+        return {
+            byId: byId,
+            childPositions: childPositions,
+            rootPositions: rootPositions,
+            descendantIds: descendantIds,
+        };
+    }
+
     function createGenreFilterComponent(config) {
         var filters = config.filters;
         var genres = config.genres;
+        var index = buildGenreIndex(genres);
+
+        function genreById(genreId) {
+            var i = index.byId[String(genreId)];
+            return i === undefined ? undefined : genres[i];
+        }
+
+        function childrenOf(parentId) {
+            return (index.childPositions[String(parentId)] || []).map(function (i) {
+                return genres[i];
+            });
+        }
         // Each section's taxonomy has its own icons; the games ones are the
         // default because this component started there. The map arrives in a
         // JSON block rather than in the x-data attribute, whose double
@@ -117,9 +183,9 @@
 
             get rootCategories() {
                 var self = this;
-                return genres
-                    .filter(function (g) {
-                        return g.level === 0;
+                return index.rootPositions
+                    .map(function (i) {
+                        return genres[i];
                     })
                     .sort(function (a, b) {
                         return self.getCategoryTotalGameCount(b.id) - self.getCategoryTotalGameCount(a.id);
@@ -127,16 +193,12 @@
             },
 
             getCategoryTotalGameCount: function (categoryId) {
-                var category = genres.find(function (g) {
-                    return String(g.id) === String(categoryId);
-                });
+                var category = genreById(categoryId);
                 var categoryCount = category ? this.getEffectiveCount(category) : 0;
                 if (countsIncludeDescendants) {
                     return categoryCount;
                 }
-                var children = genres.filter(function (g) {
-                    return String(g.parent_id) === String(categoryId);
-                });
+                var children = childrenOf(categoryId);
                 var self = this;
                 var childrenCount = children.reduce(function (sum, c) {
                     return sum + self.getEffectiveCount(c);
@@ -146,30 +208,17 @@
 
             getChildren: function (parentId) {
                 var self = this;
-                return genres
-                    .filter(function (g) {
-                        return String(g.parent_id) === String(parentId);
-                    })
-                    .sort(function (a, b) {
-                        return self.getEffectiveCount(b) - self.getEffectiveCount(a);
-                    });
+                return childrenOf(parentId).sort(function (a, b) {
+                    return self.getEffectiveCount(b) - self.getEffectiveCount(a);
+                });
             },
 
             getDescendantIds: function (genreId) {
-                var children = this.getChildren(genreId);
-                var ids = children.map(function (c) {
-                    return String(c.id);
-                });
-                for (var i = 0; i < children.length; i++) {
-                    ids = ids.concat(this.getDescendantIds(children[i].id));
-                }
-                return ids;
+                return index.descendantIds(genreId).slice();
             },
 
             isGenreAvailable: function (genreId) {
-                var genre = genres.find(function (g) {
-                    return String(g.id) === String(genreId);
-                });
+                var genre = genreById(genreId);
                 if (!genre) {
                     return false;
                 }
@@ -178,9 +227,7 @@
             },
 
             hasZeroResults: function (genreId) {
-                var genre = genres.find(function (g) {
-                    return String(g.id) === String(genreId);
-                });
+                var genre = genreById(genreId);
                 if (!genre) {
                     return false;
                 }
@@ -198,9 +245,7 @@
             },
 
             getCategoryTotalCount: function (categoryId) {
-                var category = genres.find(function (g) {
-                    return String(g.id) === String(categoryId);
-                });
+                var category = genreById(categoryId);
                 var categoryCount = category ? this.getEffectiveCount(category) : 0;
                 if (countsIncludeDescendants) {
                     return categoryCount;
@@ -214,9 +259,7 @@
             },
 
             isCategoryAvailable: function (categoryId) {
-                var category = genres.find(function (g) {
-                    return String(g.id) === String(categoryId);
-                });
+                var category = genreById(categoryId);
                 if (category && this.getEffectiveCount(category) > 0) {
                     return true;
                 }
@@ -260,22 +303,16 @@
             },
 
             findGenreParent: function (genreId) {
-                var genre = genres.find(function (g) {
-                    return String(g.id) === String(genreId);
-                });
+                var genre = genreById(genreId);
                 if (!genre || !genre.parent_id) {
                     return null;
                 }
-                return genres.find(function (g) {
-                    return String(g.id) === String(genre.parent_id);
-                });
+                return genreById(genre.parent_id);
             },
 
             toggleGenre: function (genreId) {
                 var id = String(genreId);
-                var genre = genres.find(function (g) {
-                    return String(g.id) === id;
-                });
+                var genre = genreById(id);
                 if (genre && genre.parent_id) {
                     var parentId = String(genre.parent_id);
                     if (filters.genres.includes(parentId)) {
@@ -457,11 +494,11 @@
                     window.addEventListener("year-counts-update", self._yearCountsHandler);
                 };
 
-                if ("requestIdleCallback" in window) {
-                    requestIdleCallback(setupListeners, { timeout: 200 });
-                } else {
-                    setTimeout(setupListeners, 50);
-                }
+                // At once, not at idle time: adding two listeners costs
+                // nothing, and a grid created late (the mobile sheet on first
+                // open, a sidebar initialised when the window widens) is sent
+                // its counts in the same tick and would miss them.
+                setupListeners();
             },
 
             destroy: function () {
@@ -1005,6 +1042,32 @@
         };
     }
 
+    /**
+     * The rankings pages' mobile filter sheet: open state, and whether it
+     * has ever been opened. The sheet's filters render only once it has
+     * (`<template x-if="hasOpenedBefore">`), so Alpine does not build them
+     * for the many visits that never open it; the first open then asks for
+     * the facet counts those late components missed.
+     */
+    function createMobileFilterSheet() {
+        return {
+            filterOpen: false,
+            hasOpenedBefore: false,
+            init: function () {
+                var self = this;
+                this.$watch("filterOpen", function (open) {
+                    if (open && !self.hasOpenedBefore) {
+                        self.hasOpenedBefore = true;
+                        // After the template has rendered its components.
+                        setTimeout(function () {
+                            window.dispatchEvent(new CustomEvent("mobile-filter-opened"));
+                        }, 50);
+                    }
+                });
+            },
+        };
+    }
+
     function registerFactories() {
         Alpine.data("genreFilterComponent", function (config) {
             return createGenreFilterComponent(config || {});
@@ -1015,6 +1078,7 @@
         Alpine.data("mobileGenreFilterComponent", function (config) {
             return createMobileGenreFilterComponent(config || {});
         });
+        Alpine.data("mobileFilterSheet", createMobileFilterSheet);
         Alpine.data("mobileTimeFilterComponent", function (config) {
             return createMobileTimeFilterComponent(config || {});
         });

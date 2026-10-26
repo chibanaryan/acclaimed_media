@@ -17,7 +17,7 @@
 <div role="tablist" class="tabs tabs-box{% if size_class == 'sm' %} tabs-sm{% elif size_class == 'lg' %} tabs-lg{% endif %} bg-base-100 w-full">
     <a href="{% url 'home' %}"
        role="tab"
-       class="tab gap-1{% if current_type == 'games' %} tab-active{% endif %}"
+       class="tab gap-1{% if current_type == 'games' %} tab-active{% else %} text-base-content/80{% endif %}"
        aria-selected="{% if current_type == 'games' %}true{% else %}false{% endif %}">
         <span class="mdi mdi-gamepad-variant{% if size_class == 'lg' %} text-xl{% endif %}"></span>
         <span>Games</span>
@@ -25,7 +25,7 @@
     {% if BOOKS_ENABLED %}
     <a href="{% url 'books:home' %}"
        role="tab"
-       class="tab gap-1{% if current_type == 'books' %} tab-active{% endif %}"
+       class="tab gap-1{% if current_type == 'books' %} tab-active{% else %} text-base-content/80{% endif %}"
        aria-selected="{% if current_type == 'books' %}true{% else %}false{% endif %}">
         <span class="mdi mdi-book-open-page-variant{% if size_class == 'lg' %} text-xl{% endif %}"></span>
         <span>Books</span>
@@ -34,7 +34,7 @@
     {% if MUSIC_ENABLED %}
     <a href="{% url 'music:home' %}"
        role="tab"
-       class="tab gap-1{% if current_type == 'music' %} tab-active{% endif %}"
+       class="tab gap-1{% if current_type == 'music' %} tab-active{% else %} text-base-content/80{% endif %}"
        aria-selected="{% if current_type == 'music' %}true{% else %}false{% endif %}">
         <span class="mdi mdi-album{% if size_class == 'lg' %} text-xl{% endif %}"></span>
         <span>Music</span>

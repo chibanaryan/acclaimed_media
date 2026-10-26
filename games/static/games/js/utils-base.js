@@ -105,6 +105,141 @@ function debounce(fn, delay) {
 }
 
 /**
+ * Creates a debounced function that also fires on the leading edge.
+ *
+ * The first call after a quiet spell runs at once; calls arriving within
+ * `delay` of the last one are coalesced into a single trailing run. A plain
+ * trailing debounce made every single click on a year, decade, genre or
+ * platform wait out the full delay before anything changed - most of the
+ * ~200 ms between a click and the filtered list - while bursts (quick
+ * successive clicks, the end of a drag) still need collapsing.
+ *
+ * `fn` receives `{ followsLeading }`: true for a trailing run in a burst
+ * that already ran on its leading edge, so the caller can replace rather
+ * than add a history entry for what the user experiences as one change.
+ *
+ * Options:
+ * - `canLead()`: asked at the start of each burst; while it answers false
+ *   the burst behaves as a plain trailing debounce.
+ * - `keyOf()`: the state a run would apply, read when the run executes
+ *   (after `schedule`), not when it was queued. A trailing run whose key
+ *   equals the leading run's is skipped as a repeat of it. Reading it late
+ *   matters: a year click's mouseup and click both request an update, and
+ *   by the time the scheduled leading run executes it sees the click's
+ *   final state, so the trailing run is a repeat rather than a second render.
+ * - `schedule(run)`: how a run is queued, e.g. `afterNextPaint`.
+ *
+ * `cancel()` drops the pending trailing run and any run already queued by
+ * `schedule`, so nothing stale applies after a Back or a teardown.
+ *
+ * @param {Function} fn - Function to debounce
+ * @param {number} delay - Quiet period in milliseconds
+ * @param {Object} [options] - `canLead`, `keyOf`, `schedule`
+ * @returns {Function} Debounced function with cancel method
+ */
+function debounceLeading(fn, delay, options) {
+    const opts = options || {};
+    const schedule = opts.schedule || (run => run());
+    let timeoutId = null;
+    let pending = false;
+    let pendingThis = null;
+    let ledThisBurst = false;
+    let leadingKey;
+    let generation = 0;
+
+    const run = (self, followsLeading) => {
+        const token = generation;
+        schedule(() => {
+            if (token !== generation) return;
+            const key = opts.keyOf ? opts.keyOf.call(self) : undefined;
+            if (followsLeading && opts.keyOf && key === leadingKey) return;
+            leadingKey = followsLeading ? undefined : key;
+            fn.call(self, { followsLeading });
+        });
+    };
+
+    const debounced = function() {
+        if (timeoutId === null && (!opts.canLead || opts.canLead())) {
+            ledThisBurst = true;
+            run(this, false);
+        } else {
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+            }
+            pending = true;
+            pendingThis = this;
+        }
+        timeoutId = setTimeout(() => {
+            timeoutId = null;
+            const followsLeading = ledThisBurst;
+            ledThisBurst = false;
+            if (pending) {
+                const self = pendingThis;
+                pending = false;
+                pendingThis = null;
+                run(self, followsLeading);
+            }
+        }, delay);
+    };
+
+    debounced.cancel = function() {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+        }
+        pending = false;
+        pendingThis = null;
+        ledThisBurst = false;
+        leadingKey = undefined;
+        generation += 1;
+    };
+
+    return debounced;
+}
+
+/**
+ * Map each item's key to its position in `list`, first match winning as
+ * find() would.
+ *
+ * The filter sidebars receive the page's reactive arrays: reading `list[i]`
+ * through such an index tracks that one item, where `list.find()` read -
+ * and so subscribed to - every item, on every re-evaluation.
+ *
+ * @param {Array} list - Items to index
+ * @param {Function} keyOf - The key for an item
+ * @returns {Object} key -> position
+ */
+function indexBy(list, keyOf) {
+    const index = {};
+    (list || []).forEach((item, i) => {
+        const key = keyOf(item);
+        if (!Object.prototype.hasOwnProperty.call(index, key)) {
+            index[key] = i;
+        }
+    });
+    return index;
+}
+
+/**
+ * Runs `fn` once the browser has painted the current frame.
+ *
+ * A click handler that does a filter update's work synchronously holds back
+ * the paint that shows the click registered, which is what INP measures: at
+ * a 4x CPU slowdown that was ~300-400 ms. Waiting for the next animation
+ * frame and then one more task lets that paint land first, for about one
+ * frame of extra delay before the update itself.
+ *
+ * @param {Function} fn - Work to run after the next paint
+ */
+function afterNextPaint(fn) {
+    if (typeof requestAnimationFrame !== 'function') {
+        setTimeout(fn, 0);
+        return;
+    }
+    requestAnimationFrame(() => setTimeout(fn, 0));
+}
+
+/**
  * Creates a throttled function
  * @param {Function} fn - Function to throttle
  * @param {number} limit - Minimum time between calls in milliseconds

@@ -75,6 +75,7 @@
             <div>
                 <label class="text-xs text-base-content/70 mb-2 block">Select Year</label>
                 <select x-model.number="filters.start"
+                        aria-label="Year"
                         @change="filters.end = filters.start; debouncedFilterUpdate()"
                         class="select select-bordered w-full">
                     <option value="{{ min_year }}">All Years</option>
@@ -92,6 +93,7 @@
                 <div>
                     <label class="text-xs text-base-content/70 mb-2 block">From</label>
                     <select x-ref="startYear"
+                            aria-label="From year"
                             x-model.number="filters.start"
                             @change="if (filters.start > filters.end) filters.end = filters.start; debouncedFilterUpdate()"
                             class="select select-bordered w-full">
@@ -105,6 +107,7 @@
                 <div>
                     <label class="text-xs text-base-content/70 mb-2 block">To</label>
                     <select x-ref="endYear"
+                            aria-label="To year"
                             x-model.number="filters.end"
                             @change="if (filters.end < filters.start) filters.start = filters.end; debouncedFilterUpdate()"
                             class="select select-bordered w-full">

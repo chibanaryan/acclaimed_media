@@ -9,6 +9,35 @@
   could not be found or changed in Sentry's UI, so
   `UncompressedUptimeCheckMiddleware` answers it before rate limiting and
   sessions. The gzip monitor still fetches the real page
+- **Lighthouse pass.** Mobile performance on `/` 92 → 98 and on the
+  genre/decade landing pages 83 → 94; accessibility and best practices
+  reach 100 on every page tested but one developer page (a tap-target
+  size, left as is). Alpine no longer initialises the hidden
+  desktop sidebar on phones or the mobile filter sheet before it opens,
+  which was ~870 ms of the 920 ms init task at 4x CPU throttle; the album
+  rankings page gets the same (~360 → ~75 ms on a phone)
+- **Filter changes are 3-6x faster**, on the games and album pages alike.
+  A decade click reaches the list in ~60 ms instead of ~290 (~250 vs ~710
+  at 4x), and every click's INP stays under 200 ms at 4x. The filter
+  debounce now fires on the leading edge after the next paint, and the
+  sidebar's platform, genre and series rows look themselves up by index
+  instead of scanning reactive arrays. Back no longer cuts off Forward
+- **Rank distribution chart morphs in every browser.** It relied on a CSS
+  `transition: d`, which WebKit lacks, and was skipped entirely whenever
+  the filter work outlasted it; it is now a frame-capped JavaScript tween
+  that respects reduced motion
+- **Developer pages: 338 queries → ~7** on a cache hit (thumbnails and
+  the studio parent chain were N+1s); `/developers/nintendo/` rendered in
+  ~800 ms server time on production
+- **Overflow fixes:** long studio names in the developer filter tree, the
+  studio and genre lines of mobile game cards, and long titles in the
+  sidebar search dropdown (DaisyUI menus size to their content)
+- **Smaller fixes:** the contact form's Navi icon is self-hosted and lazy
+  (35 KB hotlinked on every page → 1.4 KB on open); the game cover is no
+  longer squashed and its preload is emitted once, early; an IGDB
+  preconnect; labelled selects, accessible names and raised text contrast,
+  on the album pages too (Discogs credit and notice, media switcher tabs,
+  empty filter rows); music's tracking script no longer blocks first paint
 
 ## 2026-10-25
 

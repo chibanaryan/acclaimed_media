@@ -21,6 +21,7 @@ from django.db.models import (
     When,
     Value,
     IntegerField,
+    prefetch_related_objects,
 )
 from django.db.models.functions import Lower
 from django.forms import Form
@@ -2185,22 +2186,37 @@ class DeveloperDetailView(DetailView):
     slug_field = "slug"
     slug_url_kwarg = "slug"
 
-    def get_queryset(self):
-        # Prefetch subsidiaries and games with optimized queryset
-        games_queryset = models.Game.objects.prefetch_related(
-            "developers",
-            "developers__parent",
-            "platforms",
-            "wikipedia_genres",
-        ).order_by("rank")
+    # How many levels of subsidiaries the uncached build prefetches. Deeper
+    # ones still work, a query per developer.
+    HIERARCHY_PREFETCH_DEPTH = 3
 
-        return models.Developer.objects.prefetch_related(
+    def _prefetch_hierarchy(self, developer):
+        """Prefetch the subsidiary tree and each level's games for the
+        uncached build, which needs only their ids and ranks: the games it
+        renders are re-read with their relations by ``_fetch_games_by_ids``.
+
+        Kept out of ``get_queryset`` so that a cache hit, which needs none
+        of it, does not load every game the developer has.
+        """
+        light_games = models.Game.objects.only("id", "rank")
+        lookups = [Prefetch("developed_games", queryset=light_games)]
+        path = ""
+        for _ in range(self.HIERARCHY_PREFETCH_DEPTH):
+            path += "subsidiaries"
+            lookups.append(
+                Prefetch(path, queryset=models.Developer.objects.order_by("name"))
+            )
+            lookups.append(Prefetch(f"{path}__developed_games", queryset=light_games))
+            path += "__"
+        # One level further without games, so the walk finds the deepest
+        # prefetched studios' (usually empty) subsidiaries without a query each.
+        lookups.append(
             Prefetch(
-                "subsidiaries",
+                path + "subsidiaries",
                 queryset=models.Developer.objects.order_by("name"),
-            ),
-            Prefetch("developed_games", queryset=games_queryset),
+            )
         )
+        prefetch_related_objects([developer], *lookups)
 
     def _get_cached_context(self, developer):
         """Get cached context for this developer, or None if not cached."""
@@ -2318,14 +2334,26 @@ class DeveloperDetailView(DetailView):
         if not game_ids:
             return [], {}
 
-        games = list(
-            Game.objects.filter(id__in=game_ids)
-            .select_related("primary_hltb_game_data")
-            .prefetch_related("developers", "platforms", "wikipedia_genres")
-        )
+        # with_relations() selects the IGDB row the thumbnails read and the
+        # developer parent chain the credit line walks; without them a
+        # 120-game developer page cost 338 queries on a cache hit.
+        games = list(Game.objects.filter(id__in=game_ids).with_relations())
         games_by_id = {game.id: game for game in games}
         ordered_games = [games_by_id[gid] for gid in game_ids if gid in games_by_id]
         return ordered_games, games_by_id
+
+    @classmethod
+    def _swap_in_games(cls, devs_data, games_by_id):
+        """Replace each level's games with the instances in ``games_by_id``.
+
+        A game deleted between the two reads is dropped, as the cached path
+        drops it, rather than raising.
+        """
+        for dev_data in devs_data:
+            dev_data["games"] = [
+                games_by_id[g.id] for g in dev_data["games"] if g.id in games_by_id
+            ]
+            cls._swap_in_games(dev_data["sub_developers"], games_by_id)
 
     def flatten_developers(
         self, devs_data, parent_id=None, level=0, continues_at_levels=None
@@ -2427,6 +2455,8 @@ class DeveloperDetailView(DetailView):
             else:
                 context.update(cached)
             return context
+
+        self._prefetch_hierarchy(developer)
 
         # Recursively gather subsidiaries with nested structure
         def gather_subsidiaries(parent_dev, visited=None):
@@ -2553,7 +2583,6 @@ class DeveloperDetailView(DetailView):
         subsidiaries_count = count_devs(subsidiaries_with_games)
 
         context["subsidiaries_with_games"] = subsidiaries_with_games
-        context["root_games"] = root_games
         context["total_games"] = total_games
         # Include root developer in count (+1) to match filter selection
         context["subsidiaries_count"] = subsidiaries_count + 1
@@ -2587,13 +2616,16 @@ class DeveloperDetailView(DetailView):
         context["developers_flat"] = devs_flat
 
         # Collect all unique games for filter view
-        all_games = list(
-            models.Game.objects.filter(id__in=all_game_ids)
-            .select_related("primary_hltb_game_data")
-            .prefetch_related("developers", "platforms", "wikipedia_genres")
-            .order_by("rank")
-        )
+        all_games, games_by_id = self._fetch_games_by_ids(all_game_ids)
+        all_games.sort(key=lambda g: (g.rank is None, g.rank or 0, g.id))
         context["all_games"] = all_games
+
+        # The tree above was built from id-and-rank instances; render the
+        # fully related ones instead.
+        context["root_games"] = [
+            games_by_id[g.id] for g in root_games if g.id in games_by_id
+        ]
+        self._swap_in_games(subsidiaries_with_games, games_by_id)
 
         # Build developer -> game IDs mapping for Alpine.js
         # Each developer maps to ONLY its direct games (not descendants)

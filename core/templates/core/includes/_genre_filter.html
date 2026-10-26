@@ -35,7 +35,7 @@
                          'bg-primary text-accent-content': isCategorySelected(category.id),
                          'bg-primary/10 text-accent': !isCategorySelected(category.id) && hasSelectedChildren(category.id),
                          'hover:bg-base-content/10': !isCategorySelected(category.id),
-                         'opacity-50': !isCategoryAvailable(category.id) && !hasCategoryOrChildrenSelected(category.id)
+                         'opacity-70': !isCategoryAvailable(category.id) && !hasCategoryOrChildrenSelected(category.id)
                      }">
                     {# Expand/Collapse Arrow #}
                     <button type="button"
@@ -67,7 +67,7 @@
                              :class="{
                                  'bg-primary text-accent-content': isGenreSelected(genre.id),
                                  'hover:bg-base-content/10': !isGenreSelected(genre.id),
-                                 'opacity-40': !isGenreAvailable(genre.id) && !isGenreSelected(genre.id),
+                                 'opacity-70': !isGenreAvailable(genre.id) && !isGenreSelected(genre.id),
                                  'bg-error/20 text-error': hasZeroResults(genre.id)
                              }"
                              @click="toggleGenre(genre.id)"

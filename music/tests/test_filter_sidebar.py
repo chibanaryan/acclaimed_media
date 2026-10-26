@@ -575,7 +575,10 @@ class SavedFilterSidebarTests(MusicDataMixin, TestCase):
         )
         sheet = soup.select_one("#mobile-filter-form")
         self.assertIsNotNone(sheet)
-        self.assertIn("Saved Filters", sheet.get_text())
+        # The sheet's filters sit in a <template x-if> until it is first
+        # opened, and get_text() leaves template content out, so check the
+        # markup instead.
+        self.assertIn("Saved Filters", str(sheet))
 
     def test_a_signed_out_visitor_never_sees_it(self):
         # Unreachable in practice - the section 404s for them - but the

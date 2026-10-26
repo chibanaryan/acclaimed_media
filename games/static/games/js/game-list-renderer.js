@@ -651,7 +651,7 @@ class GameListRenderer extends BaseMediaListRenderer {
             `<button type="button" class="hover:text-primary cursor-pointer transition-colors" data-add-genre="${g.id}" title="${this._escapeHtml(g.name)}">${this._escapeHtml(g.name)}</button>${i < expanded.genres.length - 1 ? '<span class="text-base-content/30"> / </span>' : ''}`
         ).join('');
 
-        const globalRankHtml = showGlobalRank ? `<span class="game-row-global-rank text-xs text-base-content/60 tabular-nums">(#${game.r})</span>` : '';
+        const globalRankHtml = showGlobalRank ? `<span class="game-row-global-rank text-xs text-base-content/80 tabular-nums">(#${game.r})</span>` : '';
         const playedButtonHtml = this._renderPlayedButtonString(game);
         const playedContainerHtml = playedButtonHtml ? `<div class="w-12 min-w-12 max-w-12 shrink-0 flex items-center justify-center">${playedButtonHtml}</div>` : '';
 
@@ -688,7 +688,7 @@ class GameListRenderer extends BaseMediaListRenderer {
         <div class="flex-1 min-w-0 px-4">
             <div class="truncate">
                 <a href="/game/${game.s}/" class="game-title text-lg font-bold link link-hover">${this._escapeHtml(game.n)}</a>
-                <a href="/games/?start=${game.y}&end=${game.y}&highlight=${game.id}" class="text-base-content/60 ml-1.5">(${game.y || 'N/A'})</a>
+                <a href="/games/?start=${game.y}&end=${game.y}&highlight=${game.id}" class="text-base-content/80 ml-1.5">(${game.y || 'N/A'})</a>
             </div>
             <div class="game-row-details text-base-content/80 text-sm ml-4" data-slot="meta-row">${metaRowHtml}</div>
         </div>
@@ -863,7 +863,7 @@ class GameListRenderer extends BaseMediaListRenderer {
         if (titleEl) {
             // Build title HTML: rank (handled above) + name + year + global rank
             const globalRankHtml = showRank === 'filtered'
-                ? `<span class="font-normal text-xs text-base-content/60 tabular-nums" data-slot="global-rank"> (#${game.r})</span>`
+                ? `<span class="font-normal text-xs text-base-content/80 tabular-nums" data-slot="global-rank"> (#${game.r})</span>`
                 : '';
             const rankHtml = showRankInline ? `<span class="text-accent tabular-nums text-lg" data-slot="rank">#${displayRank}</span> ` : '';
             titleEl.innerHTML = `${rankHtml}${this._escapeHtml(game.n)} <span class="font-normal text-sm text-base-content/70">(${game.y || 'N/A'})</span>${globalRankHtml}`;
@@ -950,7 +950,7 @@ class GameListRenderer extends BaseMediaListRenderer {
         const gridCols = hasPlayedButton ? 'auto auto 1fr' : 'auto 1fr';
         // Inline rank and global rank in title
         const rankHtml = showRankInline ? `<span class="text-accent tabular-nums text-lg">#${displayRank}</span> ` : '';
-        const globalRankHtml = showRank === 'filtered' ? `<span class="font-normal text-xs text-base-content/60 tabular-nums"> (#${game.r})</span>` : '';
+        const globalRankHtml = showRank === 'filtered' ? `<span class="font-normal text-xs text-base-content/80 tabular-nums"> (#${game.r})</span>` : '';
 
         const div = document.createElement('div');
         div.innerHTML = `

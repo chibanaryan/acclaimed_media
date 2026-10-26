@@ -59,6 +59,32 @@ class AlbumClientSideFiltering {
             : 'alltime';
     }
 
+    /**
+     * Re-announce the year and genre counts for the form's current state.
+     *
+     * For sidebar components created after the last update - the mobile
+     * sheet builds its filters on first open, and a desktop sidebar skipped
+     * on a narrow first load is initialised when the window widens - which
+     * would otherwise show the counts they were rendered with.
+     * @returns {boolean} Whether there was an engine to count with
+     */
+    republishFacets() {
+        if (!this.isInitialized) return false;
+        const filters = this.form ? this.readFilters(this.form) : this.currentFilters;
+        this._dispatchFacetCounts(this.engine.facets(filters));
+        return true;
+    }
+
+    /** Announce year and genre counts to the sidebar's components. @private */
+    _dispatchFacetCounts(facets) {
+        window.dispatchEvent(
+            new CustomEvent('year-counts-update', { detail: facets.years })
+        );
+        window.dispatchEvent(
+            new CustomEvent('genre-counts-update', { detail: facets.genres })
+        );
+    }
+
     /** Whether the engine and renderer are ready to take the page over. */
     isReady() {
         return this.isInitialized;
@@ -294,13 +320,7 @@ class AlbumClientSideFiltering {
      * @private
      */
     _publishFacets(filters, albums) {
-        const facets = this.engine.facets(filters);
-        window.dispatchEvent(
-            new CustomEvent('year-counts-update', { detail: facets.years })
-        );
-        window.dispatchEvent(
-            new CustomEvent('genre-counts-update', { detail: facets.genres })
-        );
+        this._dispatchFacetCounts(this.engine.facets(filters));
         window.dispatchEvent(
             new CustomEvent('rank-distribution-update', {
                 detail: this.engine.rankDistribution(albums)
@@ -390,7 +410,7 @@ class AlbumClientSideFiltering {
      * Mirror the filter state into the URL, as `hx-push-url` did.
      * @private
      */
-    pushUrl(filters) {
+    pushUrl(filters, { replace = false } = {}) {
         const params = new URLSearchParams();
         if (filters.q) params.set('q', filters.q);
         if (filters.start !== undefined) params.set('start', filters.start);
@@ -409,7 +429,9 @@ class AlbumClientSideFiltering {
         // the genre and reloading brought rock straight back.
         const query = params.toString();
         const base = window.albumRankingsUrl || window.location.pathname;
-        window.history.pushState({}, '', query ? `${base}?${query}` : base);
+        window.history[replace ? 'replaceState' : 'pushState'](
+            {}, '', query ? `${base}?${query}` : base
+        );
     }
 }
 
@@ -668,10 +690,10 @@ function initAlbumFiltering() {
         return Number.isFinite(parsed) ? parsed : null;
     };
 
-    const rerender = ({ push = true, highlightId = null } = {}) => {
+    const rerender = ({ push = true, highlightId = null, replace = false } = {}) => {
         const filters = csf.readFilters(form);
         csf.applyFilters(filters, { highlightId });
-        if (push) csf.pushUrl(filters);
+        if (push) csf.pushUrl(filters, { replace });
     };
 
     // A genre clicked in a row filters by it, as it does on the games
@@ -748,7 +770,11 @@ function initAlbumFiltering() {
             csf.loadPrevious();
         });
 
-        form.addEventListener('change', () => rerender());
+        // The controls mark a burst's trailing commit, which the user
+        // experiences as the same change: one history entry, not two.
+        form.addEventListener('change', event => rerender({
+            replace: Boolean(event.detail && event.detail.historyReplace)
+        }));
         form.addEventListener('submit', event => {
             event.preventDefault();
             rerender();

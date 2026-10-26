@@ -132,6 +132,7 @@
             <span class="mdi mdi-sort text-base text-base-content/70"></span>
             <select class="select select-sm select-bordered bg-base-200"
                     style="width: fit-content; max-width: 100%;"
+                    aria-label="Sort by"
                     @change="updateSort($event.target.value)">
                 <option value="games" :selected="sort === 'games'"># Games</option>
                 <option value="studios" :selected="sort === 'studios'"># Subsidiaries</option>

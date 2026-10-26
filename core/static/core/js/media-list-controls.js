@@ -119,7 +119,6 @@ function mediaListControlsData(config) {
         // the grid on load does not immediately re-filter the page.
         initialized: false,
         defaultSort: settings.sort || 'rank',
-        _commitTimer: null,
         _popstateListener: null,
         _genresSelectedListener: null,
 
@@ -155,6 +154,28 @@ function mediaListControlsData(config) {
             this._applyViewMode();
             this._popstateListener = () => this._syncFromUrl();
             window.addEventListener('popstate', this._popstateListener);
+
+            // Filter components created late (the mobile sheet on first
+            // open, a sidebar skipped on a narrow first load) missed the
+            // counts announced so far; this is their request for them.
+            this._facetRefreshListener = () => this.refreshFacetCounts();
+            window.addEventListener('mobile-filter-opened', this._facetRefreshListener);
+
+            // Leading edge, as on the games page: a click applies at once
+            // rather than after the wait, and a burst still collapses into
+            // one trailing commit, which is skipped if it would apply the
+            // same filters again and otherwise replaces the history entry
+            // the leading one pushed. Only once the client engine can
+            // answer: before that each commit is a server request, and the
+            // old trailing wait is what lets the engine load first.
+            this._leadingCommit = debounceLeading(burst => {
+                this.commit({ historyReplace: burst.followsLeading });
+            }, 250, {
+                canLead: () => this._clientEngineReady(),
+                keyOf: () => JSON.stringify(this.filters),
+                // Let the click's own feedback paint before the re-render.
+                schedule: afterNextPaint
+            });
 
             // A genre clicked in a row filters the list without going
             // through this component - the row's handler writes the form
@@ -209,13 +230,17 @@ function mediaListControlsData(config) {
                 document.body.removeEventListener('htmx:afterSwap', this._swapListener);
                 this._swapListener = null;
             }
+            if (this._facetRefreshListener) {
+                window.removeEventListener('mobile-filter-opened', this._facetRefreshListener);
+                this._facetRefreshListener = null;
+            }
+            if (this._leadingCommit) this._leadingCommit.cancel();
             if (this._savedFilterResetHandler) {
                 document.removeEventListener(
                     'htmx:afterSwap', this._savedFilterResetHandler
                 );
                 this._savedFilterResetHandler = null;
             }
-            clearTimeout(this._commitTimer);
         },
 
         /**
@@ -273,8 +298,40 @@ function mediaListControlsData(config) {
 
         /** What the year grid and genre tree call after a change. */
         debouncedFilterUpdate() {
-            clearTimeout(this._commitTimer);
-            this._commitTimer = setTimeout(() => this.commit(), 250);
+            this._leadingCommit();
+        },
+
+        /**
+         * The page's client-side filtering engine, which a page names with
+         * `clientEngine`; null when it names none.
+         * @private
+         */
+        _clientEngine() {
+            return typeof settings.clientEngine === 'function'
+                ? settings.clientEngine()
+                : null;
+        },
+
+        /**
+         * Whether that engine can take the page over. Always false without
+         * one, so the component behaves as a plain HTMX form.
+         * @private
+         */
+        _clientEngineReady() {
+            const engine = this._clientEngine();
+            return Boolean(engine && engine.isReady && engine.isReady());
+        },
+
+        /**
+         * Re-send the year and genre counts to components that missed them.
+         *
+         * The engine counts the current state when it can; before it is
+         * ready the server-rendered counts in the page are the current ones.
+         */
+        refreshFacetCounts() {
+            const engine = this._clientEngine();
+            if (engine && engine.republishFacets && engine.republishFacets()) return;
+            this.publishFacetCounts();
         },
 
         /**
@@ -771,7 +828,7 @@ function mediaListControlsData(config) {
          * that is how the server spells "no year filter" - the grid spells
          * it as the full range.
          */
-        commit() {
+        commit({ historyReplace = false } = {}) {
             const form = this._form();
             if (!form) return;
 
@@ -789,7 +846,13 @@ function mediaListControlsData(config) {
             setField('dir', this.filters.sortDirection);
 
             this._applyTitle();
-            form.dispatchEvent(new Event('change', { bubbles: true }));
+            // `historyReplace` asks a client engine to replace rather than
+            // push the history entry: a burst's trailing commit belongs to
+            // the change its leading one already recorded. HTMX ignores it.
+            form.dispatchEvent(new CustomEvent('change', {
+                bubbles: true,
+                detail: { historyReplace }
+            }));
         },
 
         /**
@@ -797,6 +860,8 @@ function mediaListControlsData(config) {
          * @private
          */
         _syncFromUrl() {
+            // Nothing queued before Back may apply after it.
+            if (this._leadingCommit) this._leadingCommit.cancel();
             // On a landing page's bare path the path itself is the filter:
             // `landingSearch` is what an empty query string stands for there.
             const onLandingPath = !window.location.search

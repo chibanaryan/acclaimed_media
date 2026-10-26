@@ -567,7 +567,7 @@ class LandingPagesPushOntoTheRankingsUrlTests(SimpleTestCase):
 
     def test_the_url_push_uses_the_rankings_url(self):
         source = self._source("music/static/music/js/album-client-filtering.js")
-        push = source.split("pushUrl(filters) {", 1)[1][:1400]
+        push = source.split("pushUrl(filters, { replace = false } = {}) {", 1)[1][:1400]
         self.assertIn("window.albumRankingsUrl", push)
         self.assertNotIn("query ? `?${query}`", push)
 
@@ -860,3 +860,205 @@ class HighlightSurvivesTheScrollTests(SimpleTestCase):
         )
         self.assertIsNotNone(match)
         self.assertGreater(int(match.group(1)), 4)
+
+
+class RankDistributionMorphsInEveryBrowserTests(SimpleTestCase):
+    """The chart's curve is tweened in JavaScript, not by CSS.
+
+    It used to morph through `transition: d`, which only Chrome and Firefox
+    implement: WebKit (Safari, Orion) has no CSS `d` property, so there every
+    filter change snapped. With both in place Chrome would also run the CSS
+    transition against every frame the script writes.
+    """
+
+    SOURCES = (
+        "games/static/games/js/rank-distribution.js",
+        "games/static/games/js/rank-distribution.min.js",
+    )
+
+    def test_curve_is_tweened_with_animation_frames(self):
+        for relative_path in self.SOURCES:
+            with self.subTest(path=relative_path):
+                source = (Path(settings.BASE_DIR) / relative_path).read_text()
+                self.assertIn("requestAnimationFrame", source)
+                self.assertIn("prefers-reduced-motion", source)
+
+    def test_no_css_transition_on_the_path(self):
+        styles = (
+            Path(settings.BASE_DIR) / "theme/static_src/src/styles.css"
+        ).read_text()
+        self.assertNotRegex(styles, r"transition:\s*d\b")
+
+
+class FilterSidebarLookupsAreIndexedTests(SimpleTestCase):
+    """The sidebar's per-row helpers look items up by index, not by scanning.
+
+    Every platform, genre and series row ran `find()`/`filter()` over the
+    page's reactive array in its bindings, and a year change re-evaluates
+    every row, so one filter change cost hundreds of full scans through
+    Alpine's proxy - ~90 ms of a ~130 ms update on a fast machine. The
+    desktop series list also sorted that reactive array in place on every
+    read, writing every index and re-triggering its own readers.
+    """
+
+    def _source(self, relative_path):
+        return (Path(settings.BASE_DIR) / relative_path).read_text()
+
+    def test_platform_and_series_lookups_use_an_index(self):
+        source = self._source("games/static/games/js/filter-subcomponents.js")
+        self.assertIn("indexBy(platforms,", source)
+        self.assertIn(
+            "function indexBy(", self._source("games/static/games/js/utils-base.js")
+        )
+        self.assertNotIn("platforms.find(", source)
+        self.assertNotIn("seriesList.find(", source)
+
+    def test_series_list_is_sorted_on_a_copy(self):
+        source = self._source("games/static/games/js/filter-subcomponents.js")
+        getter = source[source.index("get filteredSeries()") :]
+        getter = getter[: getter.index("toggleSeries")]
+        self.assertIn("(seriesList || []).slice()", getter)
+
+    def test_genre_tree_lookups_use_an_index(self):
+        source = self._source("core/static/core/js/filter-subcomponents.js")
+        self.assertIn("function buildGenreIndex(", source)
+        code = "\n".join(
+            line for line in source.splitlines() if not line.strip().startswith("*")
+        )
+        self.assertNotIn("genres.find(", code)
+
+    def test_minified_copies_are_current(self):
+        for minified in (
+            "games/static/games/js/filter-subcomponents.min.js",
+            "core/static/core/js/filter-subcomponents.min.js",
+        ):
+            with self.subTest(path=minified):
+                self.assertIn("indexBy(", self._source(minified))
+
+
+class DiscreteFilterChangesApplyAtOnceTests(SimpleTestCase):
+    """A single filter click is not held back by the debounce.
+
+    The trailing 150 ms debounce was most of the time between clicking a
+    year or genre and seeing the list change. It now fires on the leading
+    edge and still coalesces a burst into one trailing update.
+    """
+
+    def test_filter_debounce_is_leading_edge(self):
+        for relative_path in (
+            "games/static/games/js/filter-component.js",
+            "games/static/games/js/filter-component.min.js",
+        ):
+            with self.subTest(path=relative_path):
+                source = (Path(settings.BASE_DIR) / relative_path).read_text()
+                self.assertIn(
+                    "_debouncedFilter=debounceLeading(",
+                    source.replace(" ", "").replace("this.", ""),
+                )
+
+    def test_helper_is_defined_where_the_page_loads_it(self):
+        for relative_path in (
+            "games/static/games/js/utils-base.js",
+            "games/static/games/js/utils-base.min.js",
+        ):
+            with self.subTest(path=relative_path):
+                source = (Path(settings.BASE_DIR) / relative_path).read_text()
+                self.assertIn("function debounceLeading(", source)
+
+
+class LeadingFilterUpdatesCannotBeOverwrittenTests(SimpleTestCase):
+    """Guards around the leading-edge filter update.
+
+    Fired at once, a click made before the client engine is ready would
+    start a server render whose response could land after a newer client
+    update and swap the older results back in, so the leading edge waits
+    for the engine; until then a burst is the old trailing debounce.
+    """
+
+    def _source(self, relative_path):
+        return (Path(settings.BASE_DIR) / relative_path).read_text()
+
+    def test_leading_edge_waits_for_the_client_engine(self):
+        source = self._source("games/static/games/js/filter-component.js")
+        self.assertIn("canLead: () => this.clientFilterReady", source)
+
+    def test_back_restores_without_pushing_a_new_entry(self):
+        source = self._source("games/static/games/js/filter-component.js")
+        popstate = source[source.index("requestClientFilteringInit('popstate')") :]
+        self.assertIn(
+            "this.performClientUpdate({ historyMethod: null });",
+            popstate[: popstate.index("}") + 400],
+        )
+
+    def test_a_burst_replaces_rather_than_adds_a_history_entry(self):
+        source = self._source("games/static/games/js/filter-component.js")
+        self.assertIn(
+            "historyMethod: burst.followsLeading ? 'replaceState' : 'pushState'",
+            source,
+        )
+
+
+class AlbumFilterClicksApplyAtOnceTests(SimpleTestCase):
+    """The album page's filter clicks, as the games page's.
+
+    `mediaListControls` waited out a 250 ms trailing debounce before every
+    commit. It now fires on the leading edge once the album engine can
+    answer, marks a burst's trailing commit so the engine replaces rather
+    than adds a history entry, and re-sends the facet counts to filter
+    components created after the last update.
+    """
+
+    def _source(self, relative_path):
+        return (Path(settings.BASE_DIR) / relative_path).read_text()
+
+    def test_commit_is_leading_edge_once_the_engine_is_ready(self):
+        for path in (
+            "core/static/core/js/media-list-controls.js",
+            "core/static/core/js/media-list-controls.min.js",
+        ):
+            with self.subTest(path=path):
+                source = self._source(path)
+                self.assertIn("debounceLeading(", source)
+                self.assertIn("_clientEngineReady()", source)
+
+    def test_late_components_get_the_counts(self):
+        controls = self._source("core/static/core/js/media-list-controls.js")
+        self.assertIn("window.addEventListener('mobile-filter-opened'", controls)
+        engine = self._source("music/static/music/js/album-client-filtering.js")
+        self.assertIn("republishFacets() {", engine)
+
+    def test_a_burst_replaces_its_history_entry(self):
+        engine = self._source("music/static/music/js/album-client-filtering.js")
+        self.assertIn("event.detail && event.detail.historyReplace", engine)
+        self.assertIn("window.history[replace ? 'replaceState' : 'pushState']", engine)
+        bundle = self._source(
+            "music/static/music/js/music-client-side-filtering.bundle.min.js"
+        )
+        self.assertIn("historyReplace", bundle)
+
+
+class MobileFilterSheetIsSharedTests(SimpleTestCase):
+    """Both rankings pages use one lazy mobile sheet component.
+
+    The flag the sheet's `<template x-if>` reads and the event its first open
+    sends were two hand-kept copies, one per page; a change to either would
+    have left the other sheet's late components without facet counts.
+    """
+
+    def test_one_component_registered_in_core(self):
+        source = (
+            Path(settings.BASE_DIR) / "core/static/core/js/filter-subcomponents.js"
+        ).read_text()
+        self.assertIn(
+            'Alpine.data("mobileFilterSheet", createMobileFilterSheet);', source
+        )
+
+    def test_both_pages_use_it(self):
+        for template in (
+            "games/templates/includes/_advanced_filters.html",
+            "music/templates/music/home.html",
+        ):
+            with self.subTest(template=template):
+                source = (Path(settings.BASE_DIR) / template).read_text()
+                self.assertIn('x-data="mobileFilterSheet()"', source)
+                self.assertNotIn("hasOpenedBefore: false", source)

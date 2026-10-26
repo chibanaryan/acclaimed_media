@@ -12,8 +12,11 @@
     </div>
 
     {# Checkbox tree using DaisyUI menu for proper nesting #}
+    {# DaisyUI's menu sets white-space: nowrap on nested lists, so a long #}
+    {# studio name ("Nintendo EAD Tokyo Software Development Group No.1") #}
+    {# could not wrap and pushed the tree out of the 357px panel. #}
     {% with top_level_ids=subsidiaries_with_games|child_developer_ids %}
-    <ul class="menu menu-sm p-0 [&_ul]:pl-4">
+    <ul class="menu menu-sm p-0 w-full whitespace-normal [&_ul]:pl-4 [&_ul]:whitespace-normal">
         {# Root developer entry #}
         <li>
             <label class="flex items-center gap-2 py-1 cursor-pointer hover:bg-base-100 rounded px-2">
@@ -23,8 +26,8 @@
                        @change="toggleDeveloper(0, {{ top_level_ids|tojson }})"
                        x-effect="$el.indeterminate = isIndeterminate(0, {{ top_level_ids|tojson }})"
                        class="checkbox checkbox-md checkbox-primary">
-                <span class="flex-1 text-sm font-medium">{{ developer.name }}</span>
-                <span class="text-xs text-base-content/70">{{ total_games }}</span>
+                <span class="flex-1 min-w-0 break-words text-sm font-medium">{{ developer.name }}</span>
+                <span class="shrink-0 text-xs text-base-content/70 tabular-nums">{{ total_games }}</span>
             </label>
             {% if subsidiaries_with_games %}
             <ul>
