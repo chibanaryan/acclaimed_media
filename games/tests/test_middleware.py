@@ -1,7 +1,98 @@
+from django.core.exceptions import DisallowedHost
 from django.http import HttpResponse, StreamingHttpResponse
 from django.test import RequestFactory, TestCase
 
-from games.middleware import EventStreamAwareGZipMiddleware, HTMXPushURLMiddleware
+from games.middleware import (
+    EventStreamAwareGZipMiddleware,
+    HTMXPushURLMiddleware,
+    UncompressedUptimeCheckMiddleware,
+)
+
+SENTRY_UPTIME_UA = (
+    "SentryUptimeBot/1.0 (+http://docs.sentry.io/product/alerts/uptime-monitoring/)"
+)
+
+
+class UncompressedUptimeCheckMiddlewareTest(TestCase):
+    """Sentry's gzip-less uptime check gets a tiny 200, everyone else the page."""
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.middleware = UncompressedUptimeCheckMiddleware(
+            lambda request: HttpResponse("<html>the real page</html>")
+        )
+
+    def test_uptime_check_without_gzip_is_short_circuited(self):
+        request = self.factory.get("/", HTTP_USER_AGENT=SENTRY_UPTIME_UA)
+
+        response = self.middleware(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"OK")
+        self.assertEqual(response["Cache-Control"], "no-store")
+        self.assertEqual(response["Vary"], "User-Agent, Accept-Encoding")
+
+    def test_uptime_check_accepting_gzip_gets_the_real_page(self):
+        request = self.factory.get(
+            "/",
+            HTTP_USER_AGENT=SENTRY_UPTIME_UA,
+            HTTP_ACCEPT_ENCODING="gzip, deflate",
+        )
+
+        response = self.middleware(request)
+
+        self.assertEqual(response.content, b"<html>the real page</html>")
+
+    def test_other_clients_without_gzip_get_the_real_page(self):
+        request = self.factory.get("/", HTTP_USER_AGENT="curl/8.7.1")
+
+        response = self.middleware(request)
+
+        self.assertEqual(response.content, b"<html>the real page</html>")
+
+    def test_head_of_root_is_short_circuited_too(self):
+        request = self.factory.head("/", HTTP_USER_AGENT=SENTRY_UPTIME_UA)
+
+        self.assertEqual(self.middleware(request).content, b"OK")
+
+    def test_uptime_check_of_another_path_gets_the_real_page(self):
+        """A monitor on any other URL must still exercise that URL's view."""
+        request = self.factory.get("/music/", HTTP_USER_AGENT=SENTRY_UPTIME_UA)
+
+        response = self.middleware(request)
+
+        self.assertEqual(response.content, b"<html>the real page</html>")
+
+    def test_post_with_the_uptime_user_agent_gets_the_real_view(self):
+        request = self.factory.post("/", HTTP_USER_AGENT=SENTRY_UPTIME_UA)
+
+        response = self.middleware(request)
+
+        self.assertEqual(response.content, b"<html>the real page</html>")
+
+    def test_spoofed_check_with_a_disallowed_host_is_rejected(self):
+        request = self.factory.get(
+            "/", HTTP_USER_AGENT=SENTRY_UPTIME_UA, HTTP_HOST="evil.example"
+        )
+
+        with self.assertRaises(DisallowedHost):
+            self.middleware(request)
+
+    def test_installed_ahead_of_rate_limiting_and_sessions(self):
+        """It must answer before anything that counts, or touches the database."""
+        from django.conf import settings
+
+        stack = settings.MIDDLEWARE
+        position = stack.index("games.middleware.UncompressedUptimeCheckMiddleware")
+        # After SecurityMiddleware, so the HTTPS redirect and HSTS still apply
+        self.assertGreater(
+            position, stack.index("django.middleware.security.SecurityMiddleware")
+        )
+        self.assertLess(position, stack.index("games.middleware.RateLimitMiddleware"))
+        self.assertLess(
+            position,
+            stack.index("django.contrib.sessions.middleware.SessionMiddleware"),
+        )
 
 
 class HTMXPushURLMiddlewareTest(TestCase):

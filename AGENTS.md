@@ -172,15 +172,26 @@ heroku run -- python manage.py shell
 **Middleware:**
 - `django.middleware.security.SecurityMiddleware` - Security headers
 - `whitenoise.middleware.WhiteNoiseMiddleware` - Static file serving in production
+- `games.middleware.UncompressedUptimeCheckMiddleware` - Answers a `GET`/`HEAD`
+  of `/` from `SentryUptimeBot` that refuses gzip with a 2-byte 200, before
+  rate limiting and sessions. One of the two Sentry uptime monitors sends no
+  `Accept-Encoding` and pulled the whole ~667 KB page every minute; it cannot
+  be reconfigured from Sentry's UI. It proves only that a dyno is up - the
+  gzip monitor, which still gets the real page, is the one that catches a
+  broken render, so do not delete that monitor
+- `games.middleware.RateLimitMiddleware` - Per-IP rate limiting (see "Caching")
+- `games.middleware.EventStreamAwareGZipMiddleware` - gzip for any client that
+  accepts it, except `text/event-stream`, which zlib would buffer
 - `django.contrib.sessions.middleware.SessionMiddleware` - Session management
 - `corsheaders.middleware.CorsMiddleware` - CORS headers
 - `django.middleware.common.CommonMiddleware` - Common utilities
 - `django.middleware.csrf.CsrfViewMiddleware` - CSRF protection
 - `django.contrib.auth.middleware.AuthenticationMiddleware` - Authentication
+- `allauth.account.middleware.AccountMiddleware` - django-allauth's account state
 - `django.contrib.messages.middleware.MessageMiddleware` - Messages
 - `django.middleware.clickjacking.XFrameOptionsMiddleware` - Click-jacking protection
-- `games.middleware.HTMXPushURLMiddleware` - HTMX history/URL push support
 - `django.contrib.flatpages.middleware.FlatpageFallbackMiddleware` - Flat pages routing
+- `games.middleware.HTMXPushURLMiddleware` - HTMX history/URL push support
 
 ### Data Models
 

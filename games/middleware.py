@@ -3,11 +3,13 @@ Middleware for HTMX history support, rate limiting, and response compression.
 """
 
 import logging
+import re
 import time
 
 from django.core.cache import caches
 from django.http import HttpResponse
 from django.middleware.gzip import GZipMiddleware
+from django.utils.cache import patch_vary_headers
 
 from games.config import (
     RATE_LIMIT_BLOCK_DURATION,
@@ -35,6 +37,49 @@ RATE_LIMIT_EXEMPT_PREFIXES = (
     "/accounts/",
     "/music/cover/",
 )
+
+
+class UncompressedUptimeCheckMiddleware:
+    """
+    Answer Sentry's uptime checks with a tiny 200 when they refuse gzip.
+
+    Two Sentry uptime monitors poll ``/`` once a minute each. One sends
+    ``Accept-Encoding: gzip`` and gets the ~63 KB compressed page; the other
+    sends none, so it pulled the whole ~667 KB of HTML every minute - about
+    1 GB a day - and the router logged an H13 ("Connection closed without
+    response") on some of those transfers, cut off ~80 KB in. That monitor
+    could not be reconfigured or found in Sentry's UI, so it is short-circuited
+    here.
+
+    The answer proves only that a dyno is up and Django is serving: it touches
+    no database and renders no template. The gzip monitor still fetches the
+    real page, so a broken render is still caught there. Only a ``GET`` or
+    ``HEAD`` of ``/`` qualifies, so a monitor pointed anywhere else still
+    checks the real URL, and ``get_host()`` still runs, so a spoofed
+    User-Agent cannot skip the ``ALLOWED_HOSTS`` check.
+    """
+
+    USER_AGENT_MARKER = "SentryUptimeBot"
+    ACCEPTS_GZIP = re.compile(r"\bgzip\b")
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        user_agent = request.META.get("HTTP_USER_AGENT", "")
+        accept_encoding = request.META.get("HTTP_ACCEPT_ENCODING", "")
+        if (
+            request.path == "/"
+            and request.method in ("GET", "HEAD")
+            and self.USER_AGENT_MARKER in user_agent
+            and not self.ACCEPTS_GZIP.search(accept_encoding)
+        ):
+            request.get_host()  # raises DisallowedHost -> 400, as usual
+            response = HttpResponse("OK", content_type="text/plain")
+            response["Cache-Control"] = "no-store"
+            patch_vary_headers(response, ("User-Agent", "Accept-Encoding"))
+            return response
+        return self.get_response(request)
 
 
 class RateLimitMiddleware:

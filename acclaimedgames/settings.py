@@ -122,6 +122,8 @@ TAILWIND_APP_NAME = "theme"
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",  # Must be after SecurityMiddleware
+    # Tiny 200 for Sentry's uptime monitor that refuses gzip (667 KB a minute)
+    "games.middleware.UncompressedUptimeCheckMiddleware",
     "games.middleware.RateLimitMiddleware",  # Bot/crawler rate limiting
     # Compress HTML responses (48 KiB savings); skips SSE streams
     "games.middleware.EventStreamAwareGZipMiddleware",

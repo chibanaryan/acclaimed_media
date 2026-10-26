@@ -1,5 +1,15 @@
 # Developer Log
 
+## 2026-10-26
+
+- **Sentry's gzip-less uptime check gets a 2-byte 200.** Two Sentry uptime
+  monitors poll `/` once a minute; one sends no `Accept-Encoding`, so it
+  pulled the whole ~667 KB page every minute (~1 GB a day), and the router
+  logged 6 H13s in 12 hours on those transfers, each cut off ~80 KB in. It
+  could not be found or changed in Sentry's UI, so
+  `UncompressedUptimeCheckMiddleware` answers it before rate limiting and
+  sessions. The gzip monitor still fetches the real page
+
 ## 2026-10-25
 
 - **Python 3.14 and Django 6.1, every package at its latest.** The
