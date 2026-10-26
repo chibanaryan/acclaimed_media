@@ -568,9 +568,17 @@ def _compute_game_data_version():
     hltb = models.Game.objects.aggregate(
         main=Sum("primary_hltb_game_data__main_story_hours"),
         completionist=Sum("primary_hltb_game_data__completionist_hours"),
-        open_ended=Sum("id", filter=Q(primary_hltb_game_data__is_open_ended=True)),
     )
-    hltb_fingerprint = f"{hltb['main']}:{hltb['completionist']}:{hltb['open_ended']}"
+    # The open-ended set itself, not a sum a swap could preserve
+    open_ended_ids = (
+        models.Game.objects.filter(primary_hltb_game_data__is_open_ended=True)
+        .order_by("id")
+        .values_list("id", flat=True)
+    )
+    hltb_fingerprint = (
+        f"{hltb['main']}:{hltb['completionist']}:"
+        + hashlib.md5(",".join(map(str, open_ended_ids)).encode()).hexdigest()
+    )
 
     # Combine into version string and hash it
     version_string = (

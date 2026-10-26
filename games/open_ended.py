@@ -17,10 +17,13 @@ but are not played toward it.
 Kept in code rather than written as overrides, so a row created later - a
 listed game HLTB is first matched for - gets the call too. Keyed on IGDB id,
 as HLTBGameData is; a game IGDB re-keys falls back to HLTB's type until its
-new id is listed here. Changing a list needs a migration that re-derives the
-stored flag with ``derive_all`` (as 0119 does); a one-off correction belongs
-in the admin override.
+new id is listed here. Editing a list needs no migration: ``derive_all``
+runs after every ``migrate`` (``games.signals.rederive_open_ended``), which
+the release phase runs on each deploy. A one-off correction belongs in the
+admin override.
 """
+
+from django.db.models import Q
 
 # HLTB entry types for games with no finish line: they catch every MMO, MOBA
 # and arena shooter plus Minecraft, Pac-Man and Wii Sports. "multi" also
@@ -247,19 +250,26 @@ FINISHABLE_IGDB_IDS = frozenset(
 )
 
 
-def derive_all(HLTBGameData):
+def open_ended_q():
+    """``HLTBGameData.derive_open_ended`` as one query expression."""
+    return Q(open_ended_override=True) | (
+        Q(open_ended_override__isnull=True)
+        & ~Q(igdb_id__in=FINISHABLE_IGDB_IDS)
+        & (Q(igdb_id__in=OPEN_ENDED_IGDB_IDS) | Q(game_type__in=OPEN_ENDED_GAME_TYPES))
+    )
+
+
+def derive_all(HLTBGameData, using=None):
     """
-    Re-derive ``is_open_ended`` for every row of ``HLTBGameData`` (a live or a
-    historical model) as queries, lowest precedence first: HLTB's type, then
-    the calls above, then any staff override. Restates
-    ``HLTBGameData.derive_open_ended``, which a historical model lacks;
-    ``games/tests/test_playtime.py`` checks the two agree. Run it from a new
-    migration whenever a list here changes.
+    Bring the stored ``is_open_ended`` of every row of ``HLTBGameData`` (a live
+    or a historical model) in line with ``open_ended_q``, writing only the rows
+    whose flag changes, and return how many did; ``using`` names the database
+    (the router's choice when None). A historical model lacks
+    ``derive_open_ended``; ``games/tests/test_playtime.py`` checks the two
+    agree.
     """
-    rows = HLTBGameData.objects.all()
-    rows.update(is_open_ended=False)
-    rows.filter(game_type__in=OPEN_ENDED_GAME_TYPES).update(is_open_ended=True)
-    rows.filter(igdb_id__in=OPEN_ENDED_IGDB_IDS).update(is_open_ended=True)
-    rows.filter(igdb_id__in=FINISHABLE_IGDB_IDS).update(is_open_ended=False)
-    for override in (True, False):
-        rows.filter(open_ended_override=override).update(is_open_ended=override)
+    rows = HLTBGameData._default_manager.db_manager(using).all()
+    is_open = open_ended_q()
+    return rows.filter(is_open, is_open_ended=False).update(
+        is_open_ended=True
+    ) + rows.exclude(is_open).filter(is_open_ended=True).update(is_open_ended=False)

@@ -361,7 +361,8 @@ class DeriveOpenEndedMigrationTests(TestCase):
             module = (
                 import_module(f"games.migrations.{name}") if app == "games" else None
             )
-            if module and "derive_all" in inspect.getsource(module):
+            derive = getattr(module, "derive_open_ended", None)
+            if derive and "open_ended.derive_all(" in inspect.getsource(derive):
                 names.append(name)
         self.assertEqual(
             names[:2],
@@ -379,3 +380,72 @@ class DeriveOpenEndedMigrationTests(TestCase):
                     self.assertEqual(
                         row.is_open_ended, row.derive_open_ended(), (name, row.__dict__)
                     )
+
+
+class RederiveOnMigrateTests(TestCase):
+    """post_migrate re-derives the flags, so a list edit needs no migration."""
+
+    def setUp(self):
+        self.galaga = make_game("Galaga", 1, 0.8, 2.5, igdb_id=2751)
+        self.zelda = make_game("Zelda", 2, 50, 194)
+        # As if the lists had changed since the rows were saved
+        HLTBGameData.objects.filter(game=self.galaga).update(is_open_ended=False)
+        HLTBGameData.objects.filter(game=self.zelda).update(is_open_ended=True)
+
+    def _flags(self):
+        return [
+            HLTBGameData.objects.get(game=game).is_open_ended
+            for game in (self.galaga, self.zelda)
+        ]
+
+    def test_migrate_signal_fixes_stale_flags(self):
+        from django.apps import apps
+        from django.db.models.signals import post_migrate
+
+        config = apps.get_app_config("games")
+        post_migrate.send(
+            sender=config,
+            app_config=config,
+            verbosity=0,
+            interactive=False,
+            using="default",
+            apps=apps,
+            plan=[],
+        )
+        self.assertEqual(self._flags(), [True, False])
+
+    def test_flush_sends_it_without_apps_or_stdout(self):
+        from django.core.management.sql import emit_post_migrate_signal
+
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            emit_post_migrate_signal(1, False, "default")
+        self.assertEqual(self._flags(), [True, False])
+        self.assertIn("Re-derived is_open_ended on 2 HLTB rows", out.getvalue())
+
+    def test_reports_only_what_it_changed(self):
+        from games.signals import rederive_open_ended
+
+        out = io.StringIO()
+        rederive_open_ended(verbosity=1, stdout=out)
+        rederive_open_ended(verbosity=1, stdout=out)
+        rederive_open_ended(verbosity=0, stdout=out)
+        self.assertEqual(out.getvalue(), "Re-derived is_open_ended on 2 HLTB rows\n")
+
+    def test_skips_a_state_without_the_model_or_the_field(self):
+        from games.signals import rederive_open_ended
+
+        no_model = mock.Mock()
+        no_model.get_model.side_effect = LookupError
+        rederive_open_ended(apps=no_model)
+
+        before_0116 = mock.Mock()
+        before_0116.get_model.return_value._meta.get_fields.return_value = []
+        rederive_open_ended(apps=before_0116)
+        self.assertEqual(self._flags(), [False, True])
+
+    def test_skips_a_database_the_router_keeps_games_off(self):
+        from games.signals import rederive_open_ended
+
+        with mock.patch("games.signals.router.allow_migrate_model", return_value=False):
+            rederive_open_ended(using="replica")
+        self.assertEqual(self._flags(), [False, True])

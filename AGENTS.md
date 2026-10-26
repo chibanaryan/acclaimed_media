@@ -908,9 +908,15 @@ open-ended, 19 finishable), which `derive_open_ended` consults after a staff
 override and before HLTB's type. Its docstring has the test (does the game
 have an ending that HLTB's Main time measures?) and the categories. They
 live in code, not as overrides, so a row created later gets its call too.
-`is_open_ended` is stored and derived in `save()`: after changing a list,
-add a migration that runs `open_ended.derive_all` (as 0119 does), and never
-`.update()` the inputs without re-deriving.
+`is_open_ended` is stored, derived in `save()`, and re-derived after every
+`migrate` by `games.signals.rederive_open_ended`, which writes only the rows
+whose flag changes. The release phase runs `migrate`, so editing a list and
+deploying is enough: no migration. Cached pages and facet counts catch up
+within 5 minutes, `/api/games/all/` within its hour. A refresh still running
+the old code during the deploy can re-save some rows under the old lists;
+run `migrate` again after it. `sync_from_prod` re-derives after loading.
+Never `.update()` the inputs elsewhere without calling
+`open_ended.derive_all`.
 
 The weekly `refresh_all_metadata` refetches every game and so fills in the
 flags. HLTB answers a burst with 429s; a failed lookup leaves the row as it

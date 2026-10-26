@@ -5,8 +5,9 @@ custom ``save()``, so this restates ``HLTBGameData.derive_open_ended`` as
 queries, applied lowest precedence first: HLTB's flags, then the calls, then
 any staff override. ``games/tests/test_playtime.py`` checks the two agree.
 
-Rerun the same function from a new migration whenever a list in
-``games/open_ended.py`` changes.
+Superseded: a list edit now needs no migration, because
+``games.signals.rederive_open_ended`` runs ``open_ended.derive_all`` after
+every ``migrate``.
 """
 
 from django.db import migrations

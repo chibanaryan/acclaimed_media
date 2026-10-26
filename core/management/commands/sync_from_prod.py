@@ -5,6 +5,7 @@ import subprocess
 from django.core.management import call_command
 from django.core.management.base import BaseCommand
 
+from games import open_ended
 from games.models import (
     Developer,
     Game,
@@ -178,6 +179,12 @@ class Command(BaseCommand):
         except Exception as e:
             self.stderr.write(self.style.ERROR(f"Failed to load data: {e}"))
             return
+
+        # loaddata writes production's open-ended flags verbatim; apply this
+        # checkout's calls, as a migrate would
+        changed = open_ended.derive_all(HLTBGameData)
+        if changed:
+            self.stdout.write(f"   Re-derived is_open_ended on {changed} HLTB rows")
 
         # Step 6: Clean up
         if not keep_fixture:
