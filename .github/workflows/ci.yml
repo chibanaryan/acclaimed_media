@@ -136,7 +136,8 @@ jobs:
         run: |
           python manage.py shell -c "
           from django.test import Client
-          client = Client(raise_request_exception=True)
+          # testserver is allowed only under test settings; this is a production shell
+          client = Client(raise_request_exception=True, HTTP_HOST='localhost')
           for path in ('/', '/developers/', '/lists/', '/blog/', '/sitemap.xml'):
               status = client.get(path, secure=True).status_code
               print(path, status)
