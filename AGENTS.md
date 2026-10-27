@@ -1758,10 +1758,11 @@ A Dependabot PR is a merge to `main` like any other. A dependency-only diff
 touches no code or templates, so the `/code-review` gate's skip applies, but
 it merges only with CI green, and a major only after reading its changelog.
 
-**Two npm advisories are waived**: `postcss-selector-parser` below 7.1.6,
-moderate, pinned at 6.0.10 by `@tailwindcss/typography`, whose only "fix" is
-a downgrade of the plugin. It is quadratic parsing of our own CSS at build
-time, with no outside input. CI's audit gates on high and above.
+**`@tailwindcss/typography` pins `postcss-selector-parser` exactly** (at
+6.0.10 in 0.5.20), below the 6.1.5 fix for GHSA-rj75-hqrm-r3gf. An
+`overrides` entry in `theme/static_src/package.json` holds it at the patched
+6.1.5 instead; drop it once the plugin's pin moves past that. Nothing is
+waived any more: CI's `npm audit` fails on any severity, as `pip-audit` does.
 
 **What the first Postgres run found** (2026-10-25), none of which SQLite
 could show:

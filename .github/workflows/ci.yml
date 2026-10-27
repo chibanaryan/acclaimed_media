@@ -158,9 +158,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: lts/*
-      # High and above. The two moderate postcss-selector-parser advisories
-      # are pinned by @tailwindcss/typography and only parse our own CSS.
-      - run: npm audit --audit-level=high
+      - run: npm audit
         working-directory: theme/static_src
 
   # Heroku runs only the Python buildpack, so the committed CSS is what ships.
