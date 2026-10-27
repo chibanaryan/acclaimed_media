@@ -548,3 +548,18 @@ class PlatformSegmentTests(TestCase):
         ]
         result = views._build_platform_segment([1, 2], platforms)
         self.assertEqual(result, "Nintendo Games")
+
+    def test_build_platform_segment_names_game_and_watch_as_nintendo(self):
+        """Game & Watch is in the Nintendo filter, so it is in its heading."""
+        platforms = [
+            {"id": 1, "code": "SW", "name": "Nintendo Switch"},
+            {"id": 2, "code": "GW", "name": "Game & Watch"},
+            {"id": 3, "code": "GB", "name": "Game Boy"},
+        ]
+        self.assertEqual(
+            views._build_platform_segment([1, 2, 3], platforms), "Nintendo Games"
+        )
+        self.assertEqual(
+            views._build_platform_segment([2, 3], platforms),
+            "Nintendo Handheld Games",
+        )

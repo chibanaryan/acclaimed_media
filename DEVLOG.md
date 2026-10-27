@@ -46,7 +46,12 @@
   `<lastmod>`; the admin article preview is styled in production. The
   shared cache is keyed per Heroku release; CI checks minified JS,
   migrations and manifest-storage renders; tests cannot reach the network
-  (four were calling IGDB and HowLongToBeat); the `?v=N` busters are gone
+  (four were calling IGDB and HowLongToBeat); the `?v=N` busters are gone.
+  Client-built rows (Load More, the grid, any filter change) dropped
+  Game & Watch, Vectrex and three microcomputer platforms, which the
+  renderer's family map lacked, so Donkey Kong showed no platform; the
+  client heading had drifted the same way. Tests now hold both to the
+  server's tables
 - **Six CodeQL alerts fixed.** The IGDB client secret rode in the Twitch
   token URL, so a failed auth logged it (and sent it to Sentry); it is in
   the POST body now. Login and logout followed any `Referer`, an open

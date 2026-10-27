@@ -48,7 +48,7 @@ const PLATFORM_HIERARCHY = (typeof window !== 'undefined' && window.AV_PLATFORM_
     },
     retro: {
         name: 'Retro Consoles',
-        codes: ['A26', 'A52', 'A78', 'INTV', 'CV', 'TG16', '3DO', 'NG', 'JAG', 'LYNX', 'VECT']
+        codes: ['A26', 'A52', 'A78', 'INTV', 'CV', 'TG16', '3DO', 'NG', 'JAG', 'LYNX', 'NGP', 'VECT', 'WS']
     },
     computers: {
         name: 'Microcomputers',

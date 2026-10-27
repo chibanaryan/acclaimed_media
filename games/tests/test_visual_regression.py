@@ -16,13 +16,24 @@ Reference files that must stay in sync:
 - games/static/games/js/game-list-renderer.js
 """
 
+import json
+import re
+import shutil
+import subprocess
+from pathlib import Path
+
 from bs4 import BeautifulSoup
+from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.test import Client, SimpleTestCase, TestCase
 from django.urls import reverse
 
 from core.tests.utils import clear_all_caches
 from games import models
+from games.platform_years import PLATFORM_YEAR_RANGES
+from games.services.game_filters import PLATFORM_VIRTUAL_IDS
+from games.templatetags.game_filters import FAMILY_INFO, PLATFORM_FAMILIES
+from games.views.filter_titles import PLATFORM_TITLE_GROUPS
 
 User = get_user_model()
 
@@ -696,3 +707,139 @@ class RowFilterClicksAreDelegatedTests(TestCase):
     def test_the_page_carries_the_delegated_listener(self):
         html = self.client.get(reverse("home")).content.decode()
         self.assertIn("closest('[data-add-platforms],[data-add-genre]')", html)
+
+
+class ClientPlatformFamilyMapParityTests(SimpleTestCase):
+    """The client's platform tables match the server's, entry for entry.
+
+    The client builds every row past the first page, and every row after a
+    filter change, so a code missing from its map leaves the row with no
+    platform at all: Donkey Kong (Game & Watch only, rank 1386) showed none,
+    because the JS map had drifted five codes behind the Python one. The
+    heading's groups had drifted by the same five. The minified copies are
+    checked as well as the source, since they are what the page loads.
+    """
+
+    JS_DIR = Path(settings.BASE_DIR) / "games" / "static" / "games" / "js"
+    FILES = ("game-list-renderer.js", "client-side-filtering.bundle.min.js")
+    maxDiff = None
+
+    ENTRY = re.compile(r"""(?:['"]([^'"]+)['"]|(\w+))\s*:\s*['"](\w+)['"]""")
+    FAMILY = re.compile(
+        r"""['"]?(\w+)['"]?\s*:\s*\{\s*"""
+        r"""icon:\s*(null|['"][^'"]*['"])\s*,\s*"""
+        r"""name:\s*['"]([^'"]+)['"]\s*,\s*"""
+        r"""svg:\s*(null|['"][^'"]*['"])\s*\}"""
+    )
+
+    TITLE_FILES = ("utils-base.js", "utils-base.min.js")
+    TITLE_GROUP = re.compile(r"""\[\s*['"]([^'"]+)['"]\s*,\s*\[([^\]]*)\]\s*\]""")
+    STRING = re.compile(r"""['"]([^'"]+)['"]""")
+
+    @staticmethod
+    def _object(source, name, opening="{", closing="}"):
+        start = re.search(rf"{name}\s*=\s*\{opening}", source).end() - 1
+        depth = 0
+        for end in range(start, len(source)):
+            depth += {opening: 1, closing: -1}.get(source[end], 0)
+            if depth == 0:
+                return source[start + 1 : end]
+        raise AssertionError(f"{name} is not closed")  # pragma: no cover
+
+    @staticmethod
+    def _literal(token):
+        return None if token == "null" else token[1:-1]
+
+    def test_platform_families_match(self):
+        for name in self.FILES:
+            body = self._object((self.JS_DIR / name).read_text(), "_platformFamilies")
+            mapping = {
+                quoted or bare: family
+                for quoted, bare, family in self.ENTRY.findall(body)
+            }
+            with self.subTest(file=name):
+                self.assertEqual(mapping, PLATFORM_FAMILIES)
+
+    def test_family_info_matches(self):
+        expected = {
+            key: (icon, name, svg) for key, (icon, name, _, svg) in FAMILY_INFO.items()
+        }
+        for file in self.FILES:
+            body = self._object((self.JS_DIR / file).read_text(), "_familyInfo")
+            info = {
+                key: (self._literal(icon), name, self._literal(svg))
+                for key, icon, name, svg in self.FAMILY.findall(body)
+            }
+            with self.subTest(file=file):
+                self.assertEqual(info, expected)
+
+    def test_title_platform_groups_match(self):
+        expected = [(name, list(codes)) for name, codes in PLATFORM_TITLE_GROUPS]
+        for name in self.TITLE_FILES:
+            body = self._object(
+                (self.JS_DIR / name).read_text(), "PLATFORM_GROUPS", "[", "]"
+            )
+            groups = [
+                (label, self.STRING.findall(codes))
+                for label, codes in self.TITLE_GROUP.findall(body)
+            ]
+            with self.subTest(file=name):
+                self.assertEqual(groups, expected)
+
+    def test_every_known_platform_has_a_family(self):
+        """A code with no family renders no platform on either side."""
+        self.assertEqual(set(PLATFORM_FAMILIES), set(PLATFORM_YEAR_RANGES))
+
+
+class ClientPlatformHierarchyParityTests(SimpleTestCase):
+    """The sidebar's platform groups expand to what the server's virtual ids do.
+
+    The engine reads window.AV_PLATFORM_HIERARCHY, which the minified
+    filter-subcomponents.js derives from its UI table, and falls back to a
+    literal in client-filter.js when that script has not run yet. Both are
+    run under Node, since the nesting is past what a regex reads reliably.
+    """
+
+    JS_DIR = Path(settings.BASE_DIR) / "games" / "static" / "games" / "js"
+    SCRIPT = """
+        const vm = require("vm"), fs = require("fs");
+        const [subcomponents, engine] = process.argv.slice(1);
+        const page = { window: {}, document: { addEventListener() {} } };
+        vm.runInNewContext(fs.readFileSync(subcomponents, "utf8"), page);
+        const fallback = vm.runInNewContext(
+            fs.readFileSync(engine, "utf8") + ";PLATFORM_HIERARCHY", {}
+        );
+        console.log(JSON.stringify([page.window.AV_PLATFORM_HIERARCHY, fallback]));
+    """
+
+    def setUp(self):
+        if shutil.which("node") is None:
+            self.skipTest("Node is not installed")
+
+    @staticmethod
+    def _virtual_ids(hierarchy):
+        ids = {}
+        for mfr, group in hierarchy.items():
+            ids[f"mfr-{mfr}"] = set(group["codes"])
+            for ff, sub in group.get("formFactors", {}).items():
+                ids[f"ff-{mfr}-{ff}"] = set(sub["codes"])
+        return ids
+
+    def test_both_client_hierarchies_match_the_server(self):
+        result = subprocess.run(
+            [
+                "node",
+                "-e",
+                self.SCRIPT,
+                str(self.JS_DIR / "filter-subcomponents.min.js"),
+                str(self.JS_DIR / "client-filter.min.js"),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        expected = {key: set(codes) for key, codes in PLATFORM_VIRTUAL_IDS.items()}
+        for name, hierarchy in zip(("window", "fallback"), json.loads(result.stdout)):
+            with self.subTest(hierarchy=name):
+                self.assertEqual(self._virtual_ids(hierarchy), expected)

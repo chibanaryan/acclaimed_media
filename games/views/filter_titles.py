@@ -11,103 +11,107 @@ _join_names = titles.join_names
 _build_time_window = titles.build_time_window
 
 
+# Platform groups the heading names whole, as utils-base.js PLATFORM_GROUPS does
+# on the client (games/tests/test_visual_regression.py holds the two equal).
+# Groups are checked in order - broader manufacturer groups first, then form factors
+# This ensures "Nintendo" is used when all Nintendo platforms are selected,
+# but "Nintendo Handheld" when only handhelds are selected
+PLATFORM_TITLE_GROUPS = [
+    # Big manufacturer groups (checked first to collapse when all are selected)
+    (
+        "Nintendo",
+        [
+            "NES",
+            "SNES",
+            "N64",
+            "GC",
+            "Wii",
+            "WiiU",
+            "DS",
+            "3DS",
+            "SW",
+            "SW2",
+            "GB",
+            "GBA",
+            "GBC",
+            "FDS",
+            "GW",
+        ],
+    ),
+    ("PlayStation", ["PS", "PS2", "PS3", "PS4", "PS5", "PSP", "PSV", "PSVR"]),
+    ("Sega", ["GEN", "SMS", "DC", "SAT", "GG", "SCD"]),
+    # Other manufacturer groups
+    ("Xbox", ["Xbox", "X360", "XB1", "XBXS"]),
+    ("PC", ["WIN", "DOS", "LIN", "MAC"]),
+    ("Arcade, Mobile & VR", ["ARC", "AND", "iOS", "LMD", "VR", "BR"]),
+    (
+        "Retro Consoles",
+        [
+            "A26",
+            "A52",
+            "A78",
+            "INTV",
+            "CV",
+            "TG16",
+            "3DO",
+            "NG",
+            "JAG",
+            "LYNX",
+            "NGP",
+            "VECT",
+            "WS",
+        ],
+    ),
+    (
+        "Microcomputer",
+        [
+            "VC20",
+            "C64",
+            "AMI",
+            "CD32",
+            "D32",
+            "MIC",
+            "ZXS",
+            "CPC",
+            "BBCM",
+            "ARCH",
+            "PC88",
+            "PC98",
+            "FM7",
+            "FMT",
+            "SX1",
+            "MSX",
+            "A8",
+            "AST",
+            "A2",
+            "TT",
+            "T80",
+            "TCC",
+            "PDP",
+            "HP21",
+            "E60",
+        ],
+    ),
+    # Form factor groups (checked after manufacturer groups)
+    ("Nintendo Handheld", ["GW", "GB", "GBC", "GBA", "DS", "3DS"]),
+    (
+        "Nintendo Home Console",
+        ["NES", "FDS", "SNES", "N64", "GC", "Wii", "WiiU", "SW", "SW2"],
+    ),
+    ("PlayStation Handheld", ["PSP", "PSV"]),
+    ("PlayStation Home Console", ["PS", "PS2", "PS3", "PS4", "PS5", "PSVR"]),
+    ("Sega Handheld", ["GG"]),
+    ("Sega Home Console", ["SMS", "GEN", "SCD", "SAT", "DC"]),
+    # Microcomputer form factor groups
+    ("Commodore", ["VC20", "C64", "AMI", "CD32"]),
+    ("UK Microcomputer", ["ZXS", "CPC", "BBCM", "ARCH", "D32"]),
+    ("Japanese Microcomputer", ["PC88", "PC98", "FM7", "FMT", "SX1", "MSX", "TT"]),
+    ("Atari Microcomputer", ["A8", "AST"]),
+]
+
+
 def _build_platform_segment(selected_platform_ids, platforms, include_games=True):
     """Return platform segment text like 'Nintendo Switch Games'."""
-    # Groups are checked in order - broader manufacturer groups first, then form factors
-    # This ensures "Nintendo" is used when all Nintendo platforms are selected,
-    # but "Nintendo Handheld" when only handhelds are selected
-    all_groups = [
-        # Big manufacturer groups (checked first to collapse when all are selected)
-        (
-            "Nintendo",
-            [
-                "NES",
-                "SNES",
-                "N64",
-                "GC",
-                "Wii",
-                "WiiU",
-                "DS",
-                "3DS",
-                "SW",
-                "SW2",
-                "GB",
-                "GBA",
-                "GBC",
-                "FDS",
-            ],
-        ),
-        ("PlayStation", ["PS", "PS2", "PS3", "PS4", "PS5", "PSP", "PSV", "PSVR"]),
-        ("Sega", ["GEN", "SMS", "DC", "SAT", "GG", "SCD"]),
-        # Other manufacturer groups
-        ("Xbox", ["Xbox", "X360", "XB1", "XBXS"]),
-        ("PC", ["WIN", "DOS", "LIN", "MAC"]),
-        ("Arcade, Mobile & VR", ["ARC", "AND", "iOS", "LMD", "VR", "BR"]),
-        (
-            "Retro Consoles",
-            [
-                "A26",
-                "A52",
-                "A78",
-                "INTV",
-                "CV",
-                "TG16",
-                "3DO",
-                "NG",
-                "JAG",
-                "LYNX",
-                "NGP",
-                "VECT",
-                "WS",
-            ],
-        ),
-        (
-            "Microcomputer",
-            [
-                "VC20",
-                "C64",
-                "AMI",
-                "CD32",
-                "D32",
-                "MIC",
-                "ZXS",
-                "CPC",
-                "BBCM",
-                "ARCH",
-                "PC88",
-                "PC98",
-                "FM7",
-                "FMT",
-                "SX1",
-                "MSX",
-                "A8",
-                "AST",
-                "A2",
-                "TT",
-                "T80",
-                "TCC",
-                "PDP",
-                "HP21",
-                "E60",
-            ],
-        ),
-        # Form factor groups (checked after manufacturer groups)
-        ("Nintendo Handheld", ["GW", "GB", "GBC", "GBA", "DS", "3DS"]),
-        (
-            "Nintendo Home Console",
-            ["NES", "FDS", "SNES", "N64", "GC", "Wii", "WiiU", "SW", "SW2"],
-        ),
-        ("PlayStation Handheld", ["PSP", "PSV"]),
-        ("PlayStation Home Console", ["PS", "PS2", "PS3", "PS4", "PS5", "PSVR"]),
-        ("Sega Handheld", ["GG"]),
-        ("Sega Home Console", ["SMS", "GEN", "SCD", "SAT", "DC"]),
-        # Microcomputer form factor groups
-        ("Commodore", ["VC20", "C64", "AMI", "CD32"]),
-        ("UK Microcomputer", ["ZXS", "CPC", "BBCM", "ARCH", "D32"]),
-        ("Japanese Microcomputer", ["PC88", "PC98", "FM7", "FMT", "SX1", "MSX", "TT"]),
-        ("Atari Microcomputer", ["A8", "AST"]),
-    ]
-
     name_lookup = {str(p["id"]): p["name"] for p in platforms}
     code_lookup = {str(p["id"]): p.get("code") for p in platforms}
 
@@ -116,7 +120,7 @@ def _build_platform_segment(selected_platform_ids, platforms, include_games=True
     consumed_ids = set()
 
     # Add group labels when entire group is selected (checking more specific first)
-    for group_name, codes in all_groups:
+    for group_name, codes in PLATFORM_TITLE_GROUPS:
         group_ids = [pid for pid, code in code_lookup.items() if code in codes]
         # Only match if ALL platforms in group are selected, none consumed
         unconsumed_group_ids = [gid for gid in group_ids if gid not in consumed_ids]

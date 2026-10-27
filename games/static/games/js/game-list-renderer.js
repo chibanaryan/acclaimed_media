@@ -43,6 +43,7 @@ class GameListRenderer extends BaseMediaListRenderer {
         'SW': 'nintendo', 'SW2': 'nintendo', 'WiiU': 'nintendo', 'Wii': 'nintendo', 'GC': 'nintendo',
         'N64': 'nintendo', 'SNES': 'nintendo', 'NES': 'nintendo', 'GB': 'nintendo',
         'GBC': 'nintendo', 'GBA': 'nintendo', 'DS': 'nintendo', '3DS': 'nintendo', 'FDS': 'nintendo',
+        'GW': 'nintendo',
         // PlayStation
         'PS5': 'playstation', 'PS4': 'playstation', 'PS3': 'playstation',
         'PS2': 'playstation', 'PS': 'playstation', 'PSP': 'playstation',
@@ -56,14 +57,16 @@ class GameListRenderer extends BaseMediaListRenderer {
         // Retro consoles
         'A26': 'retro', 'A52': 'retro', 'A78': 'retro', 'INTV': 'retro',
         'CV': 'retro', 'TG16': 'retro', '3DO': 'retro', 'NG': 'retro',
-        'JAG': 'retro', 'LYNX': 'retro',
+        'JAG': 'retro', 'LYNX': 'retro', 'VECT': 'retro',
+        'NGP': 'retro', 'WS': 'retro',
         // Microcomputers
-        'C64': 'computers', 'AMI': 'computers', 'CD32': 'computers', 'MSX': 'computers',
+        'C64': 'computers', 'AMI': 'computers', 'CD32': 'computers', 'D32': 'computers',
+        'MIC': 'computers', 'MSX': 'computers',
         'CPC': 'computers', 'ZXS': 'computers', 'AST': 'computers', 'BBCM': 'computers',
         'PC88': 'computers', 'PC98': 'computers', 'FMT': 'computers', 'FM7': 'computers',
         'SX1': 'computers', 'T80': 'computers', 'TCC': 'computers', 'VC20': 'computers',
-        'A8': 'computers', 'A2': 'computers', 'ARCH': 'computers', 'E60': 'computers',
-        'HP21': 'computers', 'PDP': 'computers',
+        'A8': 'computers', 'A2': 'computers', 'TT': 'computers', 'ARCH': 'computers',
+        'E60': 'computers', 'HP21': 'computers', 'PDP': 'computers',
         // Arcade/Mobile/VR
         'ARC': 'arcade', 'AND': 'arcade', 'iOS': 'arcade', 'LMD': 'arcade',
         'VR': 'arcade', 'BR': 'arcade',

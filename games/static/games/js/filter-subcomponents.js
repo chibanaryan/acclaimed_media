@@ -62,7 +62,7 @@
         retro: {
             name: "Retro Consoles",
             icon: "mdi-pac-man",
-            platforms: ["A26", "A52", "A78", "INTV", "CV", "TG16", "3DO", "NG", "JAG", "LYNX", "VECT"],
+            platforms: ["A26", "A52", "A78", "INTV", "CV", "TG16", "3DO", "NG", "JAG", "LYNX", "NGP", "VECT", "WS"],
         },
         computers: {
             name: "Microcomputers",

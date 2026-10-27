@@ -143,6 +143,8 @@ PLATFORM_FAMILIES = {
     "JAG": "retro",
     "LYNX": "retro",
     "VECT": "retro",  # Vectrex
+    "NGP": "retro",  # Neo Geo Pocket
+    "WS": "retro",  # WonderSwan
     # Microcomputers
     "C64": "computers",
     "AMI": "computers",

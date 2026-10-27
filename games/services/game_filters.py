@@ -177,6 +177,101 @@ def facet_params(params, skip):
     return out
 
 
+# Platform hierarchy - maps virtual IDs to platform codes. The sidebar's copy is
+# filter-subcomponents.js SHARED_PLATFORM_HIERARCHY_UI, with client-filter.js's
+# fallback; games/tests/test_visual_regression.py holds all three equal.
+PLATFORM_VIRTUAL_IDS = {
+    # Manufacturer virtual IDs
+    "mfr-nintendo": [
+        "NES",
+        "FDS",
+        "SNES",
+        "N64",
+        "GC",
+        "Wii",
+        "WiiU",
+        "SW",
+        "SW2",
+        "GB",
+        "GBC",
+        "GBA",
+        "DS",
+        "3DS",
+        "GW",
+    ],
+    "mfr-playstation": ["PS", "PS2", "PS3", "PS4", "PS5", "PSVR", "PSP", "PSV"],
+    "mfr-xbox": ["Xbox", "X360", "XB1", "XBXS"],
+    "mfr-sega": ["SMS", "GEN", "SCD", "SAT", "DC", "GG"],
+    "mfr-pc": ["WIN", "DOS", "LIN", "MAC"],
+    "mfr-arcadePlus": ["ARC", "AND", "iOS", "LMD", "VR", "BR"],
+    "mfr-retro": [
+        "A26",
+        "A52",
+        "A78",
+        "INTV",
+        "CV",
+        "TG16",
+        "3DO",
+        "NG",
+        "JAG",
+        "LYNX",
+        "NGP",
+        "VECT",
+        "WS",
+    ],
+    "mfr-computers": [
+        "VC20",
+        "C64",
+        "AMI",
+        "CD32",
+        "D32",
+        "MIC",
+        "ZXS",
+        "CPC",
+        "BBCM",
+        "ARCH",
+        "PC88",
+        "PC98",
+        "FM7",
+        "FMT",
+        "SX1",
+        "MSX",
+        "A8",
+        "AST",
+        "A2",
+        "TT",
+        "T80",
+        "TCC",
+        "PDP",
+        "HP21",
+        "E60",
+    ],
+    # Form factor virtual IDs
+    "ff-nintendo-home": [
+        "NES",
+        "FDS",
+        "SNES",
+        "N64",
+        "GC",
+        "Wii",
+        "WiiU",
+        "SW",
+        "SW2",
+    ],
+    "ff-nintendo-handheld": ["GW", "GB", "GBC", "GBA", "DS", "3DS"],
+    "ff-playstation-home": ["PS", "PS2", "PS3", "PS4", "PS5", "PSVR"],
+    "ff-playstation-handheld": ["PSP", "PSV"],
+    "ff-sega-home": ["SMS", "GEN", "SCD", "SAT", "DC"],
+    "ff-sega-handheld": ["GG"],
+    # Microcomputer form factor virtual IDs
+    "ff-computers-commodore": ["VC20", "C64", "AMI", "CD32"],
+    "ff-computers-uk": ["ZXS", "CPC", "BBCM", "ARCH", "D32"],
+    "ff-computers-japan": ["PC88", "PC98", "FM7", "FMT", "SX1", "MSX", "TT"],
+    "ff-computers-atari": ["A8", "AST"],
+    "ff-computers-other": ["A2", "T80", "TCC", "PDP", "HP21", "E60", "MIC"],
+}
+
+
 def expand_platform_virtual_ids(platforms_param, platforms):
     """Expand virtual IDs (mfr-nintendo, ff-nintendo-home) to actual platform IDs.
 
@@ -187,107 +282,15 @@ def expand_platform_virtual_ids(platforms_param, platforms):
     if not platforms_param:
         return []
 
-    # Platform hierarchy - maps virtual IDs to platform codes
-    virtual_id_to_codes = {
-        # Manufacturer virtual IDs
-        "mfr-nintendo": [
-            "NES",
-            "FDS",
-            "SNES",
-            "N64",
-            "GC",
-            "Wii",
-            "WiiU",
-            "SW",
-            "SW2",
-            "GB",
-            "GBC",
-            "GBA",
-            "DS",
-            "3DS",
-            "GW",
-        ],
-        "mfr-playstation": ["PS", "PS2", "PS3", "PS4", "PS5", "PSVR", "PSP", "PSV"],
-        "mfr-xbox": ["Xbox", "X360", "XB1", "XBXS"],
-        "mfr-sega": ["SMS", "GEN", "SCD", "SAT", "DC", "GG"],
-        "mfr-pc": ["WIN", "DOS", "LIN", "MAC"],
-        "mfr-arcadePlus": ["ARC", "AND", "iOS", "LMD", "VR", "BR"],
-        "mfr-retro": [
-            "A26",
-            "A52",
-            "A78",
-            "INTV",
-            "CV",
-            "TG16",
-            "3DO",
-            "NG",
-            "JAG",
-            "LYNX",
-            "NGP",
-            "VECT",
-            "WS",
-        ],
-        "mfr-computers": [
-            "VC20",
-            "C64",
-            "AMI",
-            "CD32",
-            "D32",
-            "MIC",
-            "ZXS",
-            "CPC",
-            "BBCM",
-            "ARCH",
-            "PC88",
-            "PC98",
-            "FM7",
-            "FMT",
-            "SX1",
-            "MSX",
-            "A8",
-            "AST",
-            "A2",
-            "TT",
-            "T80",
-            "TCC",
-            "PDP",
-            "HP21",
-            "E60",
-        ],
-        # Form factor virtual IDs
-        "ff-nintendo-home": [
-            "NES",
-            "FDS",
-            "SNES",
-            "N64",
-            "GC",
-            "Wii",
-            "WiiU",
-            "SW",
-            "SW2",
-        ],
-        "ff-nintendo-handheld": ["GW", "GB", "GBC", "GBA", "DS", "3DS"],
-        "ff-playstation-home": ["PS", "PS2", "PS3", "PS4", "PS5", "PSVR"],
-        "ff-playstation-handheld": ["PSP", "PSV"],
-        "ff-sega-home": ["SMS", "GEN", "SCD", "SAT", "DC"],
-        "ff-sega-handheld": ["GG"],
-        # Microcomputer form factor virtual IDs
-        "ff-computers-commodore": ["VC20", "C64", "AMI", "CD32"],
-        "ff-computers-uk": ["ZXS", "CPC", "BBCM", "ARCH", "D32"],
-        "ff-computers-japan": ["PC88", "PC98", "FM7", "FMT", "SX1", "MSX", "TT"],
-        "ff-computers-atari": ["A8", "AST"],
-        "ff-computers-other": ["A2", "T80", "TCC", "PDP", "HP21", "E60", "MIC"],
-    }
-
     # Build code -> ID lookup from platforms list (ensure int IDs)
     code_to_id = {p.get("code"): int(p["id"]) for p in platforms if p.get("code")}
 
     platform_ids = []
     for param in platforms_param.split(","):
         param = param.strip()
-        if param in virtual_id_to_codes:
+        if param in PLATFORM_VIRTUAL_IDS:
             # Virtual ID - expand to all platform codes
-            codes = virtual_id_to_codes[param]
+            codes = PLATFORM_VIRTUAL_IDS[param]
             for code in codes:
                 if code in code_to_id:
                     platform_ids.append(code_to_id[code])
