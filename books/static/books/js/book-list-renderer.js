@@ -371,7 +371,7 @@ class BookListRenderer extends BaseMediaListRenderer {
                 <td>
                     <div class="flex items-center gap-3">
                         <a href="/books/${expanded.slug}/">
-                            <img src="${book.c || '/static/games/images/placeholder-book.png'}"
+                            <img src="${book.c || window.bookCoverPlaceholder || ''}"
                                  alt="${this._escapeHtml(expanded.name)}"
                                  class="w-12 h-16 object-cover rounded">
                         </a>
@@ -499,7 +499,7 @@ class BookListRenderer extends BaseMediaListRenderer {
                 <div class="flex gap-3">
                     <div class="flex-shrink-0 w-8 text-center font-bold">${rankDisplay}</div>
                     <a href="/books/${expanded.slug}/">
-                        <img src="${book.c || '/static/games/images/placeholder-book.png'}"
+                        <img src="${book.c || window.bookCoverPlaceholder || ''}"
                              alt="${this._escapeHtml(expanded.name)}"
                              class="w-12 h-16 object-cover rounded">
                     </a>
@@ -615,7 +615,7 @@ class BookListRenderer extends BaseMediaListRenderer {
                 <figure class="relative">
                     <div class="absolute top-2 left-2 badge badge-primary font-bold">#${rankDisplay}</div>
                     <a href="/books/${expanded.slug}/">
-                        <img src="${book.c || '/static/games/images/placeholder-book.png'}"
+                        <img src="${book.c || window.bookCoverPlaceholder || ''}"
                              alt="${this._escapeHtml(expanded.name)}"
                              class="w-full h-48 object-cover">
                     </a>

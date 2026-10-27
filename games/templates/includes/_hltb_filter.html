@@ -19,40 +19,40 @@
             {# Preset Buttons - Stacked vertically #}
             <div x-show="countsReady" x-cloak class="space-y-1">
                 {# Short (Under 10h) #}
-                <div @click="selectPreset('short')"
+                <div role="button" tabindex="0" :aria-pressed="(isPresetActive('short')) ? 'true' : 'false'" @keydown.enter.prevent="selectPreset('short')" @keydown.space.prevent="selectPreset('short')" @click="selectPreset('short')"
                      class="flex items-center gap-2 py-1 px-2 rounded-md text-sm transition-colors cursor-pointer"
                      :class="{
                          'bg-primary text-accent-content': isPresetActive('short'),
                          'hover:bg-base-content/10': !isPresetActive('short')
                      }"
                      title="Under 10 hours">
-                    <span class="mdi mdi-rabbit text-base"></span>
+                    <span class="mdi mdi-rabbit text-base" aria-hidden="true"></span>
                     <span class="flex-1">Short</span>
                     <span class="text-xs opacity-70 tabular-nums" x-text="getPresetCount('short')"></span>
                 </div>
 
                 {# Medium (10-30h) #}
-                <div @click="selectPreset('medium')"
+                <div role="button" tabindex="0" :aria-pressed="(isPresetActive('medium')) ? 'true' : 'false'" @keydown.enter.prevent="selectPreset('medium')" @keydown.space.prevent="selectPreset('medium')" @click="selectPreset('medium')"
                      class="flex items-center gap-2 py-1 px-2 rounded-md text-sm transition-colors cursor-pointer"
                      :class="{
                          'bg-primary text-accent-content': isPresetActive('medium'),
                          'hover:bg-base-content/10': !isPresetActive('medium')
                      }"
                      title="10-30 hours">
-                    <span class="mdi mdi-walk text-base"></span>
+                    <span class="mdi mdi-walk text-base" aria-hidden="true"></span>
                     <span class="flex-1">Medium</span>
                     <span class="text-xs opacity-70 tabular-nums" x-text="getPresetCount('medium')"></span>
                 </div>
 
                 {# Long (30+ hours) #}
-                <div @click="selectPreset('long')"
+                <div role="button" tabindex="0" :aria-pressed="(isPresetActive('long')) ? 'true' : 'false'" @keydown.enter.prevent="selectPreset('long')" @keydown.space.prevent="selectPreset('long')" @click="selectPreset('long')"
                      class="flex items-center gap-2 py-1 px-2 rounded-md text-sm transition-colors cursor-pointer"
                      :class="{
                          'bg-primary text-accent-content': isPresetActive('long'),
                          'hover:bg-base-content/10': !isPresetActive('long')
                      }"
                      title="30+ hours">
-                    <span class="mdi mdi-tortoise text-base"></span>
+                    <span class="mdi mdi-tortoise text-base" aria-hidden="true"></span>
                     <span class="flex-1">Long</span>
                     <span class="text-xs opacity-70 tabular-nums" x-text="getPresetCount('long')"></span>
                 </div>

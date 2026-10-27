@@ -31,14 +31,14 @@
                 {% if author.wikipedia_url %}
                 <p class="mt-1">
                     <a href="{{ author.wikipedia_url }}" target="_blank" class="link link-accent text-sm inline-flex items-center gap-1">
-                        Wikipedia <span class="mdi mdi-open-in-new text-xs"></span>
+                        Wikipedia <span class="mdi mdi-open-in-new text-xs" aria-hidden="true"></span>
                     </a>
                 </p>
                 {% endif %}
                 {% if author.goodreads_author_id %}
                 <p class="mt-1">
                     <a href="https://www.goodreads.com/author/show/{{ author.goodreads_author_id }}" target="_blank" class="link link-accent text-sm inline-flex items-center gap-1">
-                        Goodreads <span class="mdi mdi-open-in-new text-xs"></span>
+                        Goodreads <span class="mdi mdi-open-in-new text-xs" aria-hidden="true"></span>
                     </a>
                 </p>
                 {% endif %}
@@ -62,7 +62,7 @@
                         data-next-page="{{ next_page }}"
                         data-total="{{ total_books }}"
                         data-loaded="{{ loaded_count }}">
-                    <span class="mdi mdi-book-open-page-variant"></span>
+                    <span class="mdi mdi-book-open-page-variant" aria-hidden="true"></span>
                     <span class="load-more-text">Load More ({{ remaining_count|intcomma }} remaining)</span>
                 </button>
             </div>
@@ -74,7 +74,7 @@
     </div>
 {% else %}
     <div class="alert alert-error">
-        <span class="mdi mdi-alert-circle"></span>
+        <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
         <div>
             <p class="font-bold">Error: Author not found</p>
             <p>The author you're looking for could not be found or there was a problem loading it.</p>

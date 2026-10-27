@@ -58,7 +58,7 @@
                             {% if item.url %}
                             <a href="{{ item.url }}" target="_blank" rel="noopener" class="link link-hover inline-flex items-center gap-1">
                                 {{ item.name }}
-                                <span class="mdi mdi-open-in-new text-xs opacity-50"></span>
+                                <span class="mdi mdi-open-in-new text-xs opacity-50" aria-hidden="true"></span>
                             </a>
                             {% else %}
                             {{ item.name }}
@@ -83,7 +83,7 @@
                     {% if item.url %}
                     <a href="{{ item.url }}" target="_blank" rel="noopener" class="link link-hover">
                         {{ item.name }}
-                        <span class="mdi mdi-open-in-new text-xs opacity-50"></span>
+                        <span class="mdi mdi-open-in-new text-xs opacity-50" aria-hidden="true"></span>
                     </a>
                     {% else %}
                     {{ item.name }}

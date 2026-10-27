@@ -38,13 +38,13 @@ List name:
 Publication:
 URL:
 Year published: ">
-                <span class="mdi mdi-plus-circle"></span>
+                <span class="mdi mdi-plus-circle" aria-hidden="true"></span>
                 Submit a list
             </a>
             {% if user.is_staff %}
             <a href="{% url 'music:import' %}"
                class="link link-hover text-base-content/70 hover:text-accent inline-flex items-center gap-1 text-sm">
-                <span class="mdi mdi-database-import"></span>
+                <span class="mdi mdi-database-import" aria-hidden="true"></span>
                 Import data
             </a>
             {% endif %}

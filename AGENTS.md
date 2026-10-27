@@ -15,8 +15,8 @@ Acclaimed Games is a video game ranking and aggregation website that combines da
 ## Available Skills
 
 Use these skills for common workflows:
-- `/commit` - Commit and push to git (builds CSS, minifies JS, collects static, runs `/code-review`, pushes to main)
-- `/deploy` - Deploy to Heroku production (all commit steps, review included, + push to Heroku)
+- `/commit` - Commit and push to git (builds CSS, minifies JS, runs `/code-review`, pushes to main)
+- `/deploy` - Deploy to Heroku production (all commit steps, review included, then waits for CI, backs up the database if migrations ship, pushes to Heroku and checks `/healthz/`)
 - `/minify` - Minify JavaScript files and regenerate bundles
 - `/igdb` - Import IGDB game data
 - `/wikipedia` - Fetch Wikipedia metadata and genres
@@ -125,7 +125,14 @@ heroku run -- python manage.py shell
 - **games/** - Main Django app containing:
   - **models.py** - Core data models (Game, Developer, Platform, List, etc.)
   - **api/** - REST API with views, serializers, and URL routing
-  - **views.py** - Django class-based views for all routes
+  - **views/** - The views, one module per page family: `rankings` (home and
+    the SEO landing pages), `game_pages` (detail and the played toggle),
+    `developers`, `lists`, `download` (CSV), `content` (contact, flat pages,
+    blog, 404, robots.txt), `imports` (staff), `auth` (the sign-in modal),
+    plus `filter_titles` and `_helpers`. `__init__` re-exports every name,
+    so `games.views.X` still resolves; patch a name where it is read
+    (`games.views.rankings._get_year_bounds`). Split from one 4,000-line
+    module on 2026-10-26
   - **middleware.py** - HTMXPushURLMiddleware for HTMX history support
   - **templatetags/** - Custom template filters (game_filters.py)
   - **management/commands/** - Custom Django commands (e.g., `get_igdb.py`)
@@ -428,10 +435,16 @@ and "Modern Classical", and the sidebar claimed Classical had two albums when
 it had one. Music passes `genre_counts_include_descendants` to turn the
 summing off.
 
-When changing the filters, re-run the parity check: for a spread of filter and
-sort combinations, compare the engine's ordered ids against
-`GET /music/?<same query>&partial=true`. Unit tests cannot catch a divergence
-here, because both sides can be self-consistently wrong.
+The parity check is automated, for music and games alike:
+`core/tests/test_filter_parity.py` renders a spread of filter and sort
+combinations on the server, runs the real engine files under Node on the same
+data (`core/tests/js/filter_parity.js`), and requires the same order. Unit
+tests cannot catch a divergence here, because both sides can be
+self-consistently wrong. On its first run it found games' name sort comparing
+with `localeCompare` against the database's collation. Games now send `ni` as
+music does, and the server sorts by `Lower(name)`. The test skips where Node
+is missing; CI's runners have it. Add a query there when adding a filter or
+a sort.
 
 ### Album tracking
 
@@ -648,7 +661,7 @@ The application uses Django templates with HTMX for dynamic interactions and Alp
 ### Views and Templates
 
 - **games/** - Main Django app containing:
-  - **views.py** - View functions for all routes
+  - **views/** - Views for all routes, one module per page family
   - **urls.py** - URL routing configuration (in main acclaimedgames/urls.py)
   - **templates/** - Django templates organized by feature:
     - **base.html** - Main template layout with navigation
@@ -1250,6 +1263,29 @@ content is ever shown as-is.
   `children` a query per node. Now 38, and `/?genres=<root>` 109 -> 39.
   `/api/games/all/` uses `descendants_by_id` too, in place of its own copy
   of the walk.
+- **The rest are pinned by growth, not by count**
+  (`games/tests/test_query_budgets.py`). Each test renders a page, adds more
+  of what it lists, and requires the same query count, so an N+1 fails it
+  while an unrelated added query does not. It covers game detail,
+  `/developers/` in every sort, `/api/unified-search/`, `/api/games/all/`,
+  a decade landing page and `/music/lists/`. Game detail was the one that
+  grew: it prefetched one level of each developer's parents, and
+  `display_root_developer` queried the rest a level at a time. It now uses
+  `with_relations()`, which joins four.
+
+**The games filters are one function**, `games.services.game_filters.
+apply_game_filters(qs, params, skip=...)`. It is used by the list, the year,
+genre and platform counts (each skipping its own dimension), the CSV download
+and the landing pages, as `apply_album_filters` is for albums. The five copies
+it replaced had drifted:
+- The counts and the CSV searched `name` only, so "pokemon" listed the
+  Pokémon games while the counts and the download left them out.
+- The counts ignored series and playtime, which the client engine's counts
+  always applied, so the server's first render and the client disagreed.
+- The CSV ignored the sort.
+
+Facet cache keys hash every filter parameter except the skipped dimension's
+(`facet_params`).
 
 ## The rankings heading and the tab title
 
@@ -1293,10 +1329,15 @@ Three aliases, defined by `core/cache_config.py` (which `settings.py` calls):
   exactly one of them, so a metadata refresh left stale filter options behind
   for up to their 24-hour TTL. Local dev stays on LocMem; `createcachetable
   cache_table` runs in the Heroku release phase and is idempotent.
-  Its keys carry `HEROKU_RELEASE_VERSION` as `KEY_PREFIX`, from the app's
-  `runtime-dyno-metadata` lab (enabled 2026-10-26). The table outlives a
-  deploy, so new code used to read what old code had cached. Every deploy
-  and config-var change now starts on fresh keys. The same lab gives Sentry
+  The table outlives a deploy, so the games API's page caches
+  (`games.api.views.cache_page`) are keyed on `HEROKU_RELEASE_VERSION`, from
+  the app's `runtime-dyno-metadata` lab (enabled 2026-10-26). Before that,
+  new code was served old code's output, such as the payload version for up
+  to an hour after a `SCHEMA_VERSION` bump. The rest of the alias is not
+  prefixed. A whole-alias prefix reset allauth's and the contact form's
+  rate-limit counters on every release, and aimed a long job's
+  invalidation at the release it started under. The hand-built caches carry
+  their own version constants. The same lab gives Sentry
   `HEROKU_SLUG_COMMIT`, which it reads as the release.
 - **`local` is per-process, and must stay that way.** It holds the whole
   rendered pages of `core.mixins.AnonymousResponseCacheMixin`. They are large
@@ -1312,14 +1353,21 @@ Three aliases, defined by `core/cache_config.py` (which `settings.py` calls):
   contact form therefore 403'd for anyone whose first page was a cached one.
   The mixin swaps the token for a NUL-delimited sentinel on the way in and
   mints a fresh one per request on the way out, so the page stays cacheable
-  and the secret stays per-visitor. A page gaining a second independent token
-  would need more than the single `replace`.
+  and the secret stays per-visitor. The CSP nonce, the second per-request
+  token, gets the same treatment (`_stash_csp_nonce` / `_restore_csp_nonce`):
+  the header carries a fresh nonce on every response, so a replayed one
+  would put every inline script outside the policy. A third token would
+  need a third pair.
 - **`ratelimit` is per-process too**, and holds the per-IP counters in
   `games.middleware`. It was carved out of `local` on 2026-10-18: page bodies
   and counters were culling each other out of one 500-entry LocMem, so a crawl
   wide enough to matter evicted the counters meant to stop it. DRF's
   anonymous throttle (`core.throttling.ClientIPAnonRateThrottle`) counts
-  there too; on DRF's default it wrote to Postgres on every API hit.
+  there too; on DRF's default it wrote to Postgres on every API hit. Under
+  test the alias is a DummyCache, so no counter is ever kept. Django's
+  runner does not clear caches between tests, and a test process making 120
+  requests in a minute failed unrelated tests with 429s. The tests of the
+  limits override `CACHES` with a real backend.
 
 **Every per-IP limit keys on `core.services.client_ip.get_client_ip`**: the
 middleware, the contact form guard, DRF's throttle and allauth's limits,
@@ -1361,6 +1409,34 @@ invalidates the whole set.
 `/music/cover/` is exempt from rate limiting (`RATE_LIMIT_EXEMPT_PREFIXES`): it
 is a static asset in all but the URL, and one rankings page requests up to a
 hundred of them against a 120/minute budget.
+
+## Content Security Policy
+
+`SECURE_CSP_REPORT_ONLY` in settings, with Django's own
+`ContentSecurityPolicyMiddleware` and `{{ csp_nonce }}`, since 2026-10-26.
+It reports and blocks nothing; enforcing it means moving the dict to
+`SECURE_CSP` once Sentry's CSP reports are quiet. What it rests on:
+- Every inline `<script>` carries `nonce="{{ csp_nonce }}"`. Scripts an
+  htmx swap brings in get the page's nonce through the `htmx-config` meta
+  tag's `inlineScriptNonce`. Cached pages are given the request's nonce, as
+  above.
+- There are no inline event handlers, which a nonce forbids. Mobile row
+  cards navigate through `[data-href]`, dialogs close through
+  `[data-close-dialog]`, and the import page's confirms through
+  `[data-confirm]`, each with one delegated listener. The one exception is
+  `onclick="event.stopPropagation()"` on the tracking buttons, on rows that
+  carry no Alpine on purpose; `'unsafe-hashes'` with its hash
+  (`core.csp.handler_hash`) allows exactly that text.
+- `'unsafe-eval'`, because Alpine evaluates expressions with `new Function`.
+  Dropping it needs Alpine's CSP build.
+- `style-src` has `'unsafe-inline'` and no nonce: a nonce would disable it,
+  and `style=""` attributes are everywhere.
+- Reports go to Sentry's security endpoint, built from the DSN
+  (`core.csp.sentry_report_uri`). Under test there is none.
+
+`core/tests/test_csp.py` pins the nonces and the handler rule. When adding
+an inline script, give it the nonce; when adding a click behaviour, use a
+data attribute and a delegated listener, not `onclick`.
 
 ## Production memory budget
 
@@ -1534,7 +1610,7 @@ Environment variables are managed via django-environ (`.env` file):
 
 - **`.python-version`** - Specifies Python 3.14 for Heroku deployment; the local venv tracks production's patch release (see "Dependencies")
 - **`.pre-commit-config.yaml`** - Pre-commit hook configuration for code quality enforcement (Black, Flake8, tests)
-- **`.coveragerc`** - Coverage configuration excluding migrations and database vendor-specific code
+- **`.coveragerc`** - Coverage configuration. It omits migrations, the tests, every management command and both `import_handler.py` modules, so the 100% gate does not cover the scheduled jobs or the import pipelines
 - **`.flake8`** - Flake8 linter configuration (max line length 88, excludes venv)
 - **`scripts/run_tests.sh`** - The same suites under Django's own test runner; see below
 
@@ -1562,7 +1638,7 @@ instead of crashing the runner on an unpicklable one.
 
 **Tests cannot reach the network under pytest.** `conftest.py` refuses
 every DNS lookup and connection that leaves the machine (loopback stays
-open for the Postgres job), and fails the test even when the client code
+open for the Postgres runs), and fails the test even when the client code
 swallowed the error. The tests also run without outside credentials:
 settings blanks the IGDB, Wikidata and Discogs ones under test, as CI has
 none. When the guard was added on 2026-10-26 it caught four tests calling
@@ -1661,11 +1737,11 @@ Four layers, from automatic to manual:
   |---|---|
   | `lint` | black, flake8 over every file |
   | `pytest` | the suites with the 100% coverage gate |
-  | `django-tests` | `scripts/run_tests.sh`, the runner without conftest |
-  | `postgres` | pytest against Postgres 18, production's version |
+  | `django-tests` | `scripts/run_tests.sh`, the runner without conftest, on Postgres 18 (production's version) |
   | `audit` | `pip-audit` on both locks, `npm audit --audit-level=high` |
   | `css` | rebuilds the CSS and fails if it differs from the committed file |
   | `js` | `scripts/minify_js.sh --check`: the same for the minified JS and bundles |
+  | `browser` | `scripts/browser_smoke.js`: Chrome over the main pages, failing on a JS, Alpine or CSP error |
 
   `css` exists because Heroku runs only the Python buildpack, so the
   committed `theme/static/css/dist/styles.css` is what ships. An npm bump

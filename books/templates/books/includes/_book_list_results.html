@@ -9,7 +9,7 @@
             <button type="button"
                     class="flex items-center gap-1 text-base-content/70 hover:text-base-content transition-colors cursor-pointer"
                     @click="sortOpen = !sortOpen">
-                <span class="mdi mdi-sort text-base"></span>
+                <span class="mdi mdi-sort text-base" aria-hidden="true"></span>
                 <span class="text-sm" x-text="
                     filters?.sort === 'rank' ? 'Rank' :
                     filters?.sort === 'year' ? 'Year' :
@@ -17,7 +17,7 @@
                     filters?.sort === 'pages' ? 'Pages' :
                     'Rank'
                 ">Rank</span>
-                <span class="mdi mdi-chevron-down text-xs"></span>
+                <span class="mdi mdi-chevron-down text-xs" aria-hidden="true"></span>
             </button>
             <ul x-show="sortOpen" x-cloak
                 class="dropdown-content menu menu-sm bg-base-200 rounded-box shadow-lg z-50 w-fit p-2 mt-1"
@@ -33,7 +33,7 @@
                 class="flex items-center text-base-content/70 hover:text-base-content transition-colors cursor-pointer"
                 @click="toggleSortDirection?.()"
                 :title="(filters?.sortDirection || 'asc') === 'asc' ? 'Ascending' : 'Descending'">
-            <span class="mdi text-base" :class="(filters?.sortDirection || 'asc') === 'asc' ? 'mdi-arrow-up' : 'mdi-arrow-down'"></span>
+            <span class="mdi text-base" aria-hidden="true" :class="(filters?.sortDirection || 'asc') === 'asc' ? 'mdi-arrow-up' : 'mdi-arrow-down'"></span>
         </button>
     </div>
     {# Result count - Middle #}
@@ -53,7 +53,7 @@
         <button type="button"
                 class="jump-to-rank-btn btn btn-xs btn-primary btn-square"
                 title="Jump to rank">
-            <span class="mdi mdi-arrow-down"></span>
+            <span class="mdi mdi-arrow-down" aria-hidden="true"></span>
         </button>
     </div>
 </div>
@@ -62,7 +62,7 @@
 <div class="desktop:hidden flex items-center justify-between gap-2 mb-2 text-sm">
     {# Sort - Left side - Native select for mobile touch compatibility #}
     <div class="flex items-center gap-1 shrink-0">
-        <span class="mdi mdi-sort text-base text-base-content/70"></span>
+        <span class="mdi mdi-sort text-base text-base-content/70" aria-hidden="true"></span>
         <select class="select select-xs select-bordered bg-base-200"
                 aria-label="Sort by"
                 @change="updateSort?.($event.target.value)">
@@ -121,14 +121,14 @@
             data-next-page="{{ next_page }}"
             data-total="{{ total_count }}"
             data-loaded="{{ loaded_count }}">
-        <span class="mdi mdi-book-open-page-variant"></span>
+        <span class="mdi mdi-book-open-page-variant" aria-hidden="true"></span>
         <span class="load-more-text">Load More ({{ remaining_count|intcomma }} remaining)</span>
     </button>
 </div>
 {% elif max_loaded %}
 <div id="load-more-container" class="load-more-container text-center my-6">
     <div class="alert alert-info">
-        <span class="mdi mdi-information-outline"></span>
+        <span class="mdi mdi-information-outline" aria-hidden="true"></span>
         <span>Showing maximum of 1,000 results. Refine your filters to see more specific results.</span>
     </div>
 </div>

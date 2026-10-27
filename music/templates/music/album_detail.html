@@ -11,8 +11,6 @@
 {% block og_title %}{{ album.name }} | Acclaimed Video Games{% endblock %}
 {% block og_description %}{{ album.name }} ({{ album.year_released }}) by {{ album.artist_credit }} is ranked #{{ album.rank }} among the most critically acclaimed albums of all time.{% endblock %}
 {% block og_image %}{{ album.image|default:block.super }}{% endblock %}
-{% block twitter_title %}{{ album.name }} | Acclaimed Video Games{% endblock %}
-{% block twitter_description %}{{ album.name }} ({{ album.year_released }}) is ranked #{{ album.rank }} all-time.{% endblock %}
 
 {% block structured_data %}{
     "@context": "https://schema.org",
@@ -86,7 +84,7 @@ document.addEventListener('DOMContentLoaded', function() {
         {% else %}
         <div class="rounded-lg shadow-lg bg-base-200 flex flex-col items-center justify-center w-[300px] max-w-full text-base-content/40"
              style="aspect-ratio: 1/1;">
-            <span class="mdi mdi-album text-6xl"></span>
+            <span class="mdi mdi-album text-6xl" aria-hidden="true"></span>
             <span class="text-xs mt-2">No cover art yet</span>
         </div>
         {% endif %}
@@ -115,7 +113,7 @@ document.addEventListener('DOMContentLoaded', function() {
 {% endif %}
 {% else %}
 <div class="alert alert-error">
-    <span class="mdi mdi-alert-circle"></span>
+    <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
     <div>
         <p class="font-bold">Error: Album not found</p>
         <p>The album you're looking for could not be found or there was a problem loading it.</p>

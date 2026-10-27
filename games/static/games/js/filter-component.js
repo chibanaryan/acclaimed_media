@@ -413,7 +413,6 @@ document.addEventListener('alpine:init', () => {
         requestClientFilteringInit(reason = 'interaction') {
             if (this._clientFilteringInitRequested) return;
             this._clientFilteringInitRequested = true;
-            console.log('[CSF] Initialization requested:', reason);
             this.initClientFiltering();
         },
 
@@ -430,9 +429,7 @@ document.addEventListener('alpine:init', () => {
                 self._csf = getClientSideFiltering();
                 try {
                     await self._csf.init({
-                        onLoadStart: () => console.log('[CSF] Loading game data...'),
                         onLoadComplete: () => {
-                            console.log('[CSF] Game data loaded, client filtering ready');
                             self.clientFilterReady = true;
                             self._csf.setViewMode(self.viewMode);
                             if (self.hasActiveFilters()) {
@@ -458,7 +455,6 @@ document.addEventListener('alpine:init', () => {
                         setTimeout(tryInit, 100);
                         return;
                     }
-                    console.log('[CSF] Client-side filtering not available after retries');
                     self.dispatchInitialCounts();
                     return;
                 }
@@ -870,10 +866,20 @@ document.addEventListener('alpine:init', () => {
 
         _filterUrl() {
             const params = buildFilterParams(this.filters);
-            // Prefer the clean SEO page URL when this filter state has one
+            // The whole year range is no year filter, so it stays out of the
+            // address: every filtered URL used to carry start=1971&end=2025,
+            // and clearing a year left the visitor on /games/?start=...
+            if (Number(this.filters.start) === Number(this.minYear) &&
+                Number(this.filters.end) === Number(this.maxYear)) {
+                params.delete('start');
+                params.delete('end');
+            }
+            const query = normalizeUrl(params.toString());
+            // Prefer the clean SEO page URL when this filter state has one;
+            // no filters at all is the home page (/games/ is the browse index)
             return (typeof seoCleanUrl === 'function' &&
                 seoCleanUrl(params, this.minYear, this.maxYear)) ||
-                ('/games/?' + normalizeUrl(params.toString()));
+                (query ? '/games/?' + query : '/');
         },
 
         resetSearch() {
@@ -1259,8 +1265,6 @@ document.addEventListener('alpine:init', () => {
         },
 
         dispatchInitialCounts(options = {}) {
-            console.log('[CSF] Dispatching initial counts from server-rendered data');
-
             const yearCountsEl = document.getElementById('year-counts-update');
             if (yearCountsEl) {
                 try {

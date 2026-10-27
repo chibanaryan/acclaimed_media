@@ -7,14 +7,14 @@ from django.db.models import Count, F, Min, Prefetch, Q, Sum
 from django.db.models.functions import Lower
 from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
-from django.views.decorators.cache import cache_page
+from django.conf import settings
+from django.views.decorators.cache import cache_page as django_cache_page
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView, Response
 
-from unidecode import unidecode
 
 from core.services.genre_tree import descendants_by_id
 from core.services.query_params import parse_id_list, parse_limit
@@ -23,18 +23,14 @@ from .. import config, models, utils
 from . import serializers
 
 
-def _normalize_search_text(value):
-    """Normalize text for accent-insensitive comparisons."""
-    return unidecode((value or "")).lower().strip()
+def cache_page(timeout):
+    """Django's ``cache_page``, keyed on the Heroku release.
 
-
-def _matches_normalized(name, raw_query_lower, normalized_query):
-    """Check if a name matches either raw or normalized query."""
-    name_value = name or ""
-    return (
-        raw_query_lower in name_value.lower()
-        or normalized_query in _normalize_search_text(name_value)
-    )
+    These responses sit in the shared cache, which outlives a deploy, so a
+    new release must not be served the old code's output; see
+    ``core.cache_config.release_cache_prefix``.
+    """
+    return django_cache_page(timeout, key_prefix=settings.RELEASE_CACHE_PREFIX)
 
 
 @method_decorator(cache_page(60 * 15), name="dispatch")  # 15 min cache
@@ -354,11 +350,23 @@ class WikipediaGenreTreeView(ListAPIView):
 
     serializer_class = serializers.WikipediaGenreTreeSerializer
 
+    def _counted(self):
+        return models.WikipediaGenre.objects.annotate(
+            game_count_annotated=Count("games_with_wikipedia_genre")
+        ).order_by("display_order", "name")
+
     def get_queryset(self):
         """Return only root categories (parent=None) for tree building."""
-        return models.WikipediaGenre.objects.filter(parent=None).order_by(
-            "display_order", "name"
-        )
+        return self._counted().filter(parent=None)
+
+    def get_serializer_context(self):
+        """Every genre, counted, by parent: one query for the whole tree."""
+        context = super().get_serializer_context()
+        children = defaultdict(list)
+        for genre in self._counted().exclude(parent=None):
+            children[genre.parent_id].append(genre)
+        context["genre_children"] = children
+        return context
 
 
 @method_decorator(cache_page(config.CACHE_TIMEOUT_24_HOURS), name="dispatch")
@@ -377,7 +385,7 @@ class GameSearchAPIView(APIView):
         from django.http import JsonResponse
 
         q = request.GET.get("q", "").strip()
-        q_normalized = _normalize_search_text(q)
+        q_normalized = models.normalize_name(q)
         limit = parse_limit(request.GET.get("limit"), default=5)
 
         if len(q) < 2:
@@ -431,25 +439,27 @@ class UnifiedSearchView(APIView):
         game_limit = parse_limit(request.GET.get("game_limit"), default=5)
         developer_limit = parse_limit(request.GET.get("developer_limit"), default=3)
         series_limit = parse_limit(request.GET.get("series_limit"), default=3)
-        q_lower = q.lower()
-        q_normalized = _normalize_search_text(q)
+        q_normalized = models.normalize_name(q)
 
         if len(q) < 2:
             return JsonResponse({"developers": [], "games": [], "series": []})
 
-        # Search developers - find developers with games.
-        # Developer model does not have name_normalized, so normalize in Python.
+        # Developers and series match on the name or its accent-folded
+        # copy, in the database. Both used to be read whole and matched in
+        # Python on every keystroke, which grew with the catalogue.
         developers = (
-            models.Developer.objects.select_related("parent")
+            models.Developer.objects.filter(
+                Q(name__icontains=q) | Q(name_normalized__contains=q_normalized)
+            )
             .annotate(games_count=Count("developed_games"))
             .filter(games_count__gt=0)
-            .order_by("-games_count")
+            # root_developer walks the parent chain; join it instead
+            .select_related(*models.DEVELOPER_PARENT_CHAIN)
+            .order_by("-games_count", "name")[:developer_limit]
         )
 
         developer_results = []
         for dev in developers:
-            if not _matches_normalized(dev.name, q_lower, q_normalized):
-                continue
             # Use root developer's slug and id for URL routing
             root = dev.root_developer
             root_slug = root.slug if root else dev.slug
@@ -463,8 +473,6 @@ class UnifiedSearchView(APIView):
                     "games_count": dev.games_count,
                 }
             )
-            if len(developer_results) >= developer_limit:
-                break
 
         # Search games by original and normalized names for accent-insensitive matching.
         # Use normalized query so accented and ASCII input both match.
@@ -497,28 +505,24 @@ class UnifiedSearchView(APIView):
                 }
             )
 
-        # Search series by name (only show series with 2+ games, like the filter).
-        # Series model does not have name_normalized, so normalize in Python.
+        # Series with 2+ games, as the filter lists
         series = (
-            models.Series.objects.annotate(games_count=Count("games"))
-            .filter(games_count__gte=2)
-            .order_by("-games_count")
-        )
-
-        series_results = []
-        for s in series:
-            if not _matches_normalized(s.name, q_lower, q_normalized):
-                continue
-            series_results.append(
-                {
-                    "id": s.id,
-                    "name": s.name,
-                    "slug": s.slug,
-                    "games_count": s.games_count,
-                }
+            models.Series.objects.filter(
+                Q(name__icontains=q) | Q(name_normalized__contains=q_normalized)
             )
-            if len(series_results) >= series_limit:
-                break
+            .annotate(games_count=Count("games"))
+            .filter(games_count__gte=2)
+            .order_by("-games_count", "name")[:series_limit]
+        )
+        series_results = [
+            {
+                "id": s.id,
+                "name": s.name,
+                "slug": s.slug,
+                "games_count": s.games_count,
+            }
+            for s in series
+        ]
 
         return JsonResponse(
             {
@@ -551,7 +555,8 @@ def _compute_game_data_version():
     # v11: Populated platform year_start/year_end data for all 74 platforms
     # v12: Added remaining prod platform year ranges and refreshed cached platform data
     # v13: Open-ended games (HLTBGameData.is_open_ended) send no 'pt'/'ptc'
-    SCHEMA_VERSION = "13"
+    # v14: 'ni', each game's position in the server's name order
+    SCHEMA_VERSION = "14"
 
     # Get latest game modification time
     latest_game = models.Game.objects.order_by("-modified").first()
@@ -798,6 +803,20 @@ class GameAllDataView(APIView):
             for row in genre_rows
         ]
 
+        # `ni` is each game's position in the server's own name order, which
+        # the client sorts by rather than comparing names itself: no
+        # JavaScript comparator reproduces a database collation (SQLite
+        # files "DOOM 64" before "Doom"; Postgres does not), as
+        # music's payload found first. Ties go to rank, as `_order_games`.
+        name_order = {
+            game_id: position
+            for position, game_id in enumerate(
+                models.Game.objects.order_by(Lower("name"), "rank").values_list(
+                    "id", flat=True
+                )
+            )
+        }
+
         # Assemble games preserving existing compressed keys/semantics.
         games_data = []
         for row in game_rows:
@@ -820,6 +839,9 @@ class GameAllDataView(APIView):
                     "g": game_genre_ids.get(row["id"], []),
                     "sr": game_series_ids.get(row["id"], []),
                     "lc": row["list_count"],  # List count for display
+                    # A game deleted between the two queries sorts last
+                    # rather than failing the whole payload
+                    "ni": name_order.get(row["id"], len(name_order)),
                     "pt": float(playtime) if playtime is not None else None,
                     "ptc": (
                         float(completionist) if completionist is not None else None

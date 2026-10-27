@@ -443,7 +443,9 @@ class AlbumListRenderer extends BaseMediaListRenderer {
         const url = `/music/${encodeURIComponent(album.slug)}/`;
 
         row.id = `music-${album.id}-mobile`;
-        row.setAttribute('onclick', `window.location.href='${url}'`);
+        // Navigated by base.html's [data-href] listener: an onclick string
+        // is inline script, which the CSP forbids
+        row.dataset.href = url;
         if (this.highlightId && album.id === this.highlightId) {
             row.classList.add('is-highlighted');
         }

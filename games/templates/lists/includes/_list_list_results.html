@@ -23,7 +23,7 @@
             data-next-page="{{ next_page }}"
             data-total="{{ total_count }}"
             data-loaded="{{ loaded_count }}">
-        <span class="mdi mdi-space-invaders"></span>
+        <span class="mdi mdi-space-invaders" aria-hidden="true"></span>
         <span class="load-more-text">Load More ({{ remaining_count|intcomma }} remaining)</span>
     </button>
 </div>
@@ -31,7 +31,7 @@
 
 {% else %}
 <div class="alert">
-    <span class="mdi mdi-information-outline"></span>
+    <span class="mdi mdi-information-outline" aria-hidden="true"></span>
     <span>No publications found matching your filters.</span>
 </div>
 {% endif %}

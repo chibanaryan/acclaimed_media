@@ -63,7 +63,7 @@
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-top whitespace-nowrap">{% if genres|length == 1 %}Genre{% else %}Genres{% endif %}:</td>
         <td class="pb-3">
             <span class="flex flex-wrap gap-1">
-                {% for genre in genres %}<a href="{% url 'music:home' %}?genres={{ genre.id }}&highlight={{ album.id }}" class="badge badge-outline opacity-80 hover:opacity-100 hover:badge-primary transition-colors max-w-[200px] overflow-hidden inline-flex items-center gap-1" title="{{ genre.name }}"><span class="mdi {{ genre|music_genre_icon }} text-sm flex-shrink-0"></span><span class="truncate">{{ genre.name }}</span></a>{% endfor %}
+                {% for genre in genres %}<a href="{% url 'music:home' %}?genres={{ genre.id }}&highlight={{ album.id }}" class="badge badge-outline opacity-80 hover:opacity-100 hover:badge-primary transition-colors max-w-[200px] overflow-hidden inline-flex items-center gap-1" title="{{ genre.name }}"><span class="mdi {{ genre|music_genre_icon }} text-sm flex-shrink-0" aria-hidden="true"></span><span class="truncate">{{ genre.name }}</span></a>{% endfor %}
             </span>
             {# Discogs styles are the base of every album's genres, and its API terms want the credit directly beside them. #}
             {% if album.discogs_master_url %}
@@ -91,7 +91,7 @@
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-middle whitespace-nowrap">Wikipedia:</td>
         <td class="pb-3 align-middle">
             <a href="{{ wiki.wikipedia_url }}" target="_blank" rel="noopener" class="link link-accent inline-flex items-center gap-1">
-                {{ wiki.page_title }} <span class="mdi mdi-open-in-new text-sm"></span>
+                {{ wiki.page_title }} <span class="mdi mdi-open-in-new text-sm" aria-hidden="true"></span>
             </a>
         </td>
     </tr>
@@ -103,7 +103,7 @@
         <td class="pb-3 align-middle">
             <a href="https://musicbrainz.org/release-group/{{ album.musicbrainz_release_group_id }}"
                target="_blank" rel="noopener" class="link link-accent inline-flex items-center gap-1">
-                Release group <span class="mdi mdi-open-in-new text-sm"></span>
+                Release group <span class="mdi mdi-open-in-new text-sm" aria-hidden="true"></span>
             </a>
         </td>
     </tr>
@@ -114,7 +114,7 @@
         <td class="pb-3 align-middle">
             <a href="{{ album.discogs_master_url }}"
                target="_blank" rel="noopener" class="link link-accent inline-flex items-center gap-1">
-                Master release <span class="mdi mdi-open-in-new text-sm"></span>
+                Master release <span class="mdi mdi-open-in-new text-sm" aria-hidden="true"></span>
             </a>
         </td>
     </tr>
@@ -125,7 +125,7 @@
         <td class="pb-3 align-middle">
             <a href="https://www.wikidata.org/wiki/{{ album.wikidata_id }}"
                target="_blank" rel="noopener" class="link link-accent inline-flex items-center gap-1">
-                {{ album.wikidata_id }} <span class="mdi mdi-open-in-new text-sm"></span>
+                {{ album.wikidata_id }} <span class="mdi mdi-open-in-new text-sm" aria-hidden="true"></span>
             </a>
         </td>
     </tr>
@@ -136,7 +136,7 @@
                class="contact-modal-trigger link link-hover text-base-content/70 hover:text-warning inline-flex items-center gap-1 text-sm"
                data-category="data"
                data-message="Album: {{ album.name }}{% if album.artist_credit %} by {{ album.artist_credit }}{% endif %}{% if album.wikidata_id %} (Wikidata: {{ album.wikidata_id }}){% endif %}">
-                <span class="mdi mdi-alert-circle"></span>
+                <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
                 Report incorrect data
             </a>
         </td>

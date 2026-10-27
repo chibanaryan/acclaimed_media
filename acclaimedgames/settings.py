@@ -4,10 +4,12 @@ from pathlib import Path
 import sys
 
 import environ
+from django.utils.csp import CSP
 import sentry_sdk
 from sentry_sdk.integrations.django import DjangoIntegration
 
-from core.cache_config import build_caches
+from core.cache_config import build_caches, release_cache_prefix
+from core.csp import handler_hash, sentry_report_uri
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 env = environ.Env(DEBUG=(bool, False))
@@ -69,12 +71,13 @@ SECRET_KEY = env(
 ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",
-    "testserver",  # Required for Django tests
     "acclaimedvideogames.com",
     "www.acclaimedvideogames.com",
 ]
 if TEST_MODE:
-    ALLOWED_HOSTS.append("testserver")  # Django test client uses 'testserver' as host
+    # The test client's host; it was listed unconditionally, so production
+    # answered requests that named it
+    ALLOWED_HOSTS.append("testserver")
 SITE_ID = 1
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
@@ -127,13 +130,13 @@ TAILWIND_APP_NAME = "theme"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "django.middleware.csp.ContentSecurityPolicyMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",  # Must be after SecurityMiddleware
     # Tiny 200 for Sentry's uptime monitor that refuses gzip (667 KB a minute)
     "games.middleware.UncompressedUptimeCheckMiddleware",
     "games.middleware.RateLimitMiddleware",  # Bot/crawler rate limiting
     # Compress HTML responses (48 KiB savings); skips SSE streams
     "games.middleware.EventStreamAwareGZipMiddleware",
-    # "games.csp_middleware.CSPMiddleware",  # Disabled: nonce mismatch
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -176,7 +179,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
-                "games.context_processors.csp_nonce",  # CSP nonce for templates
+                "django.template.context_processors.csp",  # {{ csp_nonce }}
                 "games.context_processors.feature_flags",  # Feature flags
                 "games.context_processors.media_type",  # Current media type
             ],
@@ -222,7 +225,7 @@ if DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3":
     }
 
 # Use in-memory SQLite for faster tests (each parallel process gets its own DB).
-# CI's postgres job sets TEST_DATABASE_URL, because SQLite enforces neither
+# CI's django-tests job sets TEST_DATABASE_URL, because SQLite enforces neither
 # varchar lengths nor some constraints that production's Postgres does.
 if TEST_MODE:
     DATABASES["default"] = env.db("TEST_DATABASE_URL", default="sqlite://:memory:")
@@ -291,7 +294,10 @@ CACHES = build_caches(
     debug=DEBUG,
     test_mode=TEST_MODE,
     base_dir=BASE_DIR,
-    release=os.environ.get("HEROKU_RELEASE_VERSION"),
+)
+# The release, for the API's page caches only; see release_cache_prefix
+RELEASE_CACHE_PREFIX = (
+    "" if TEST_MODE else release_cache_prefix(os.environ.get("HEROKU_RELEASE_VERSION"))
 )
 
 STATIC_URL = "/static/"
@@ -398,51 +404,93 @@ SITE_URL = env(
 
 # Logging configuration
 # Suppress noisy logs during test runs
+# Each app logs INFO and up through one handler, labelled with level and
+# logger name (Heroku adds the timestamp). Until 2026-10-26 only seven named
+# loggers had a handler, so refresh_all_metadata, music.discogs,
+# music.wikidata and every other unnamed module lost their INFO lines, and
+# their warnings went out through Python's bare last-resort handler. The
+# narrower loggers below only set a level and inherit the app's handler, so
+# nothing prints twice. The root logger is left alone: a handler there would
+# also print Django's 404 warnings, which on a public site is mostly bots.
+_APP_LOG_LEVEL = "ERROR" if TEST_MODE else "INFO"
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "formatters": {
+        "labelled": {"format": "%(levelname)s %(name)s: %(message)s"},
+    },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
+            "formatter": "labelled",
         },
     },
     "loggers": {
-        "games.igdb": {
-            "handlers": ["console"],
-            "level": "ERROR" if TEST_MODE else "WARNING",
+        **{
+            app: {
+                "handlers": ["console"],
+                "level": _APP_LOG_LEVEL,
+                "propagate": False,
+            }
+            for app in ("games", "music", "core", "books")
         },
+        "games.igdb": {"level": "ERROR" if TEST_MODE else "WARNING"},
         "games.management.commands.get_igdb": {
-            "handlers": ["console"],
-            "level": "CRITICAL" if TEST_MODE else "INFO",
+            "level": "CRITICAL" if TEST_MODE else "INFO"
         },
-        "games.signals": {
-            "handlers": ["console"],
-            "level": "ERROR" if TEST_MODE else "INFO",
-        },
-        "games.utils": {
-            "handlers": ["console"],
-            "level": "ERROR" if TEST_MODE else "INFO",
-        },
-        "games.middleware": {
-            "handlers": ["console"],
-            "level": "ERROR" if TEST_MODE else "WARNING",
-        },
+        "games.middleware": {"level": "ERROR" if TEST_MODE else "WARNING"},
         # Temporary: SentryUptimeBot's trace headers, for Sentry Support
-        "games.middleware.uptime": {
-            "handlers": ["console"],
-            "level": "ERROR" if TEST_MODE else "INFO",
-            "propagate": False,
-        },
-        "music.services.import_handler": {
-            "handlers": ["console"],
-            "level": "ERROR" if TEST_MODE else "INFO",
-        },
-        "games.services": {
-            "handlers": ["console"],
-            "level": "ERROR" if TEST_MODE else "INFO",
-        },
+        "games.middleware.uptime": {"level": "ERROR" if TEST_MODE else "INFO"},
     },
 }
+
+# Content Security Policy, report-only for now (2026-10-26): violations are
+# reported, nothing is blocked. Enforcing it is a matter of moving this dict
+# to SECURE_CSP once the reports are quiet.
+# - Scripts: this origin, the request's nonce (every inline <script> carries
+#   {{ csp_nonce }}; AnonymousResponseCacheMixin re-mints it on a cached
+#   page, and htmx copies it onto the scripts a swap brings in), Google
+#   Analytics, and the admin's Cloudinary widget. 'unsafe-eval' because
+#   Alpine evaluates its expressions with new Function. 'unsafe-hashes' with
+#   one hash allows exactly the tracking buttons' onclick="event.
+#   stopPropagation()", which sit on rows that carry no Alpine on purpose.
+# - Styles: 'unsafe-inline' without a nonce, since a nonce would disable it
+#   and style="" attributes are everywhere.
+# - Images: any https host, since articles embed images from anywhere.
+# Reports go to Sentry's CSP endpoint, derived from the DSN.
+_CSP_STOP_PROPAGATION = handler_hash("event.stopPropagation()")
+SECURE_CSP_REPORT_ONLY = {
+    "default-src": [CSP.SELF],
+    "script-src": [
+        CSP.SELF,
+        CSP.NONCE,
+        CSP.UNSAFE_EVAL,
+        CSP.UNSAFE_HASHES,
+        _CSP_STOP_PROPAGATION,
+        "https://www.googletagmanager.com",
+        "https://upload-widget.cloudinary.com",
+        # The admin article preview's markdown renderer, by path
+        "https://cdn.jsdelivr.net/npm/marked/",
+    ],
+    "style-src": [CSP.SELF, CSP.UNSAFE_INLINE],
+    "img-src": [CSP.SELF, "data:", "https:"],
+    "font-src": [CSP.SELF, "data:"],
+    "media-src": [CSP.SELF],
+    "connect-src": [
+        CSP.SELF,
+        "https://*.google-analytics.com",
+        "https://*.analytics.google.com",
+        "https://*.googletagmanager.com",
+    ],
+    "frame-src": ["https://upload-widget.cloudinary.com"],
+    "object-src": [CSP.NONE],
+    "base-uri": [CSP.SELF],
+    "form-action": [CSP.SELF],
+    "frame-ancestors": [CSP.NONE],
+}
+_csp_report_uri = None if TEST_MODE else sentry_report_uri(SENTRY_DSN)
+if _csp_report_uri:
+    SECURE_CSP_REPORT_ONLY["report-uri"] = [_csp_report_uri]
 
 # Security settings
 # These headers help protect against common web vulnerabilities

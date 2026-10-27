@@ -25,3 +25,6 @@ django_cache/
 media/
 games/fixtures/prod_dump.json
 core/fixtures/
+
+# Per-person Claude Code settings (permissions, local paths)
+.claude/settings.local.json

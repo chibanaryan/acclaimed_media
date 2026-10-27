@@ -39,8 +39,11 @@ Use this workflow to save changes to the repository WITHOUT deploying to product
 ### 2. Build Tailwind CSS for production
 
 ```bash
-python3 manage.py tailwind build
+venv/bin/python manage.py tailwind build
 ```
+
+Use the venv's interpreter throughout: a bare `python3` is whatever the
+shell finds first, not the Python and packages production runs.
 
 ### 3. Minify JavaScript files
 
@@ -48,11 +51,16 @@ python3 manage.py tailwind build
 ./scripts/minify_js.sh
 ```
 
-### 4. Collect static files
+### 4. Fetch main
 
 ```bash
-python3 manage.py collectstatic --noinput
+git fetch origin
 ```
+
+So the review's `git diff origin/main` is against the real `main`. There is
+no local `collectstatic` step: `staticfiles/` is gitignored and Heroku runs
+it on every build, and CI's `production-install` job renders pages under the
+manifest storage, which is what a local run used to catch.
 
 ### 5. Review the change
 
@@ -76,10 +84,19 @@ on `origin/main` (`git diff origin/main` covers both).
 - **Report it.** The final message carries one line:
   "Reviewed at high: N findings, N fixed, N waived (reasons)".
 
-### 6. Stage all changes
+### 6. Stage the change
 
 ```bash
-git add -A
+git status --short
+```
+
+Read the list before staging: anything you did not mean to change (a
+scratch file, a local database, a `.env`) stays out. Then stage tracked
+changes and add new files by path:
+
+```bash
+git add -u
+git add path/to/new_file.py
 ```
 
 ### 7. Commit with descriptive message
@@ -90,8 +107,20 @@ git commit -m "Your commit message here"
 
 ### 8. Push to main branch
 
+Work happens on a branch (a Conductor worktree), so push its commit to
+`main`:
+
 ```bash
-git push origin main
+git push origin HEAD:main
+```
+
+If the push is rejected because `main` moved meanwhile, rebase onto it,
+re-run the tests, and push again:
+
+```bash
+git fetch origin && git rebase origin/main
+venv/bin/pytest
+git push origin HEAD:main
 ```
 
 **STOP HERE** - Do NOT push to Heroku unless explicitly asked to deploy.

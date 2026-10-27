@@ -41,7 +41,7 @@
                             {% if list.url %}
                             <a href="{{ list.url }}" target="_blank" rel="noopener" class="link link-hover inline-flex items-center gap-1">
                                 {{ list.name }}
-                                <span class="mdi mdi-open-in-new text-xs opacity-50"></span>
+                                <span class="mdi mdi-open-in-new text-xs opacity-50" aria-hidden="true"></span>
                             </a>
                             {% else %}
                             {{ list.name }}
@@ -66,7 +66,7 @@
                     {% if list.url %}
                     <a href="{{ list.url }}" target="_blank" rel="noopener" class="link link-hover">
                         {{ list.name }}
-                        <span class="mdi mdi-open-in-new text-xs opacity-50"></span>
+                        <span class="mdi mdi-open-in-new text-xs opacity-50" aria-hidden="true"></span>
                     </a>
                     {% else %}
                     {{ list.name }}

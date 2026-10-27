@@ -20,13 +20,13 @@ Parameters:
             class="flex items-center justify-between w-full py-1"
             @click="expanded = !expanded; if (expanded && !savedFiltersLoaded) loadSavedFilters();">
         <span class="text-sm font-semibold text-base-content/85 flex items-center gap-1">
-            <span class="mdi mdi-bookmark text-info"></span>
+            <span class="mdi mdi-bookmark text-info" aria-hidden="true"></span>
             Saved Filters
             <span x-show="savedFiltersLoaded && savedFilters.length > 0"
                   class="badge badge-sm badge-info"
                   x-text="savedFilters.length"></span>
         </span>
-        <span class="mdi text-lg transition-transform duration-200"
+        <span class="mdi text-lg transition-transform duration-200" aria-hidden="true"
               :class="expanded ? 'mdi-chevron-up' : 'mdi-chevron-down'"></span>
     </button>
 
@@ -48,13 +48,13 @@ Parameters:
                                 class="btn btn-ghost btn-sm btn-square text-base-content/50 active:text-info"
                                 @click.stop="renameSavedFilter(filter)"
                                 title="Rename">
-                            <span class="mdi mdi-pencil text-lg"></span>
+                            <span class="mdi mdi-pencil text-lg" aria-hidden="true"></span>
                         </button>
                         <button type="button"
                                 class="btn btn-ghost btn-sm btn-square text-base-content/50 active:text-error"
                                 @click.stop="deleteSavedFilter(filter)"
                                 title="Delete">
-                            <span class="mdi mdi-delete text-lg"></span>
+                            <span class="mdi mdi-delete text-lg" aria-hidden="true"></span>
                         </button>
                     </div>
                 </div>
@@ -71,7 +71,7 @@ Parameters:
                 @click="saveCurrentFilters()"
                 class="btn btn-sm btn-info btn-outline w-full"
                 :disabled="savedFilters.length >= {{ max_saved|default:10 }}">
-            <span class="mdi mdi-bookmark-plus"></span>
+            <span class="mdi mdi-bookmark-plus" aria-hidden="true"></span>
             <span x-show="savedFilters.length < {{ max_saved|default:10 }}">Save Current Filters</span>
             <span x-show="savedFilters.length >= {{ max_saved|default:10 }}">Limit Reached ({{ max_saved|default:10 }}/{{ max_saved|default:10 }})</span>
         </button>

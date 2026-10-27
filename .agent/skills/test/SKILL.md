@@ -5,71 +5,57 @@ description: Run Django tests with coverage reporting. Use when asked to test, r
 
 # Django Tests with Coverage
 
-Run the Django test suite with coverage reporting.
+The suites live in `games/tests/`, `music/tests/`, `core/tests/` and
+`books/tests/` (about 3,500 tests). Use the venv's interpreter
+(`venv/bin/...`), not a bare `python3` or `pytest`.
 
 ## IMPORTANT: No Parallel Coverage Runs
 
-**Never run coverage or pytest with coverage in parallel with other agents.** Coverage writes to a shared `.coverage` file, so concurrent runs will corrupt data and cause failures. Wait for any running test/coverage process to complete before starting another.
+**Never run coverage or pytest with coverage in parallel with other agents.**
+Coverage writes to a shared `.coverage` file, so concurrent runs corrupt it.
+Wait for any running test or coverage process to finish before starting
+another.
 
-## Basic Commands
+## Commands
 
 ```bash
-# Run all tests with pytest (same as pre-commit hook)
-DATABASE_URL=sqlite:///db.sqlite3 CACHE_URL=locmemcache:// CORS_ALLOWED_ORIGINS=http://localhost pytest
+# Everything, as the pre-commit hook and CI run it. pytest.ini adds
+# -n auto (xdist), coverage of the four apps, and the 100% gate.
+venv/bin/pytest
 
-# Run tests with coverage
-DATABASE_URL=sqlite:///db.sqlite3 CACHE_URL=locmemcache:// CORS_ALLOWED_ORIGINS=http://localhost coverage run -m pytest
-coverage report
+# One file, or a pattern, without the coverage gate (a partial run can
+# never reach 100%)
+venv/bin/pytest --no-cov games/tests/test_models.py
+venv/bin/pytest --no-cov -k "jump_to_rank"
 
-# Run specific test file
-DATABASE_URL=sqlite:///db.sqlite3 CACHE_URL=locmemcache:// CORS_ALLOWED_ORIGINS=http://localhost pytest games/tests/test_models.py
+# The same suites under Django's runner, where conftest.py does not apply,
+# so a test that leaks cache or process state into the next one fails.
+# Run it when a change touches caching, sessions or other process-wide state.
+venv/bin/pre-commit run django-tests --hook-stage manual
 
-# Run tests matching a pattern
-DATABASE_URL=sqlite:///db.sqlite3 CACHE_URL=locmemcache:// CORS_ALLOWED_ORIGINS=http://localhost pytest -k "test_game"
+# On Postgres, production's database, instead of in-memory SQLite
+TEST_DATABASE_URL=postgres://... venv/bin/pytest --no-cov
 ```
 
-## Coverage Configuration
+## What conftest.py does
 
-- **Configuration:** `.coveragerc` excludes migrations and PostgreSQL-specific optimizations
+- Clears every cache alias between tests.
+- Refuses every network connection and DNS lookup that leaves the machine,
+  and fails a test that tried, even if the client swallowed the error.
+  Patch the client where the code under test reads it.
 
-## Test File Locations
+Settings also blank the IGDB, Wikidata and Discogs credentials under test,
+as CI has none, so a local run takes the same paths as CI.
 
-All tests are in `games/tests/`:
+## Coverage
 
-| File | Description |
-|------|-------------|
-| `test_admin.py` | Django admin functionality |
-| `test_api.py` | API endpoint tests (filtering, serialization, pagination) |
-| `test_auth_views.py` | Authentication view tests |
-| `test_constants.py` | Constants and configuration tests |
-| `test_csp_middleware.py` | Content Security Policy middleware |
-| `test_fetch_wikipedia_metadata_command.py` | Wikipedia metadata command tests |
-| `test_forms.py` | Form validation and processing |
-| `test_game_filter_service.py` | Game filtering service tests |
-| `test_genre_hierarchy.py` | Genre hierarchy and relationships |
-| `test_get_quotes_command.py` | Quote fetching command tests |
-| `test_igdb.py` | IGDB API integration with extensive mocking |
-| `test_igdb_importer.py` | IGDB importer logic and batch processing |
-| `test_imports.py` | Data import functionality and file parsing |
-| `test_main_views.py` | Main application views (game list, detail, search, developers) |
-| `test_management.py` | Custom management command tests |
-| `test_middleware.py` | HTMXPushURLMiddleware and other middleware |
-| `test_mixins.py` | View mixin tests |
-| `test_models.py` | Model behavior, IGDB integration, ranking utilities |
-| `test_played_games.py` | Played games tracking tests |
-| `test_quote_service.py` | Quote service tests |
-| `test_template_tags.py` | Custom template filter and tag tests |
-| `test_utils.py` | Utility function tests |
-| `test_views.py` | Import view integration tests |
-| `test_wiki_genre_command.py` | Wikipedia genre command tests |
-| `test_wiki_genre_service.py` | Wikipedia genre service tests |
+`.coveragerc` measures `games`, `books`, `core` and `music`, and omits
+migrations, the tests themselves, every management command and both
+`import_handler.py` modules. So the 100% gate does not cover the scheduled
+jobs or the import pipelines; their tests still run.
 
 ## Pre-commit Hooks
 
-The project uses pre-commit hooks (`.pre-commit-config.yaml`) to enforce code quality:
-
-1. **Black Formatter** - Automatically formats Python code
-2. **Flake8 Linter** - Lints Python code (max line length 88)
-3. **Pytest** - Runs test suite via pytest
-
-**Note:** Commits will be blocked if any tests fail or linting fails.
+`.pre-commit-config.yaml` runs black, flake8 (max line length 88) and pytest
+on every commit; a failure blocks the commit. The Django-runner pass above
+is a manual-stage hook.

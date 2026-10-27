@@ -5,7 +5,6 @@
 {% block meta_description %}{{ artist.name }} has {{ albums_count }} album{{ albums_count|pluralize }} in the acclaimed album rankings.{% endblock %}
 {% block og_title %}{{ artist.name }} | Acclaimed Video Games{% endblock %}
 {% block og_description %}{{ artist.name }} has {{ albums_count }} album{{ albums_count|pluralize }} in the acclaimed album rankings{% if best_album %}, the most acclaimed being {{ best_album.name }} at #{{ best_album.rank }}{% endif %}.{% endblock %}
-{% block twitter_title %}{{ artist.name }} | Acclaimed Video Games{% endblock %}
 
 {% block pre_alpine %}
 {# The shared sort controls bind to this; it must load before Alpine core. #}
@@ -61,12 +60,12 @@
 <p class="text-sm mb-4">
     {% if artist.wikidata_id %}
     <a href="https://www.wikidata.org/wiki/{{ artist.wikidata_id }}" target="_blank" rel="noopener" class="link link-hover">
-        Wikidata <span class="mdi mdi-open-in-new text-xs"></span>
+        Wikidata <span class="mdi mdi-open-in-new text-xs" aria-hidden="true"></span>
     </a>
     {% endif %}
     {% if artist.musicbrainz_id %}
     <a href="https://musicbrainz.org/artist/{{ artist.musicbrainz_id }}" target="_blank" rel="noopener" class="link link-hover ml-3">
-        MusicBrainz <span class="mdi mdi-open-in-new text-xs"></span>
+        MusicBrainz <span class="mdi mdi-open-in-new text-xs" aria-hidden="true"></span>
     </a>
     {% endif %}
 </p>

@@ -494,6 +494,31 @@ function seoPathSearch(pathname) {
 }
 
 /**
+ * Keep Tab inside a modal panel: from its last focusable element Tab wraps
+ * to the first, and Shift+Tab from the first (or the panel itself) to the
+ * last. For the mobile filter sheets, which are full-screen dialogs that
+ * Tab used to walk straight out of into the page underneath.
+ * @param {KeyboardEvent} event - The Tab keydown
+ * @param {HTMLElement} container - The dialog
+ */
+function trapTabFocus(event, container) {
+    const focusable = Array.from(container.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), ' +
+        'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter(el => el.offsetParent !== null);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || document.activeElement === container)) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+    }
+}
+
+/**
  * The page's filter params: the query string, plus whatever filter a clean
  * SEO path implies. A filter state with its own landing page is pushed as
  * that path (/games/2010s/), with no query string, so anything reading the

@@ -93,7 +93,7 @@
      {% if item %}id="{{ media_type }}-{{ item.id }}-mobile"{% endif %}
      data-slot="root-mobile"
      {% block mobile_grid_style %}style="grid-template-columns: auto 1fr;"{% endblock %}
-     {% if item %}onclick="window.location.href='{{ item.get_absolute_url }}'"{% endif %}>
+     {% if item %}data-href="{{ item.get_absolute_url }}"{% endif %}>
     
     {% block mobile_tracking_button %}{% endblock %}
     

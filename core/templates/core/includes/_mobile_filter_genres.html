@@ -11,9 +11,9 @@
         <button type="button"
                 @click="expanded = !expanded"
                 class="flex items-center gap-2">
-            <span class="mdi {{ genre_icon|default:'mdi-gamepad-variant' }} text-lg text-base-content/70"></span>
+            <span class="mdi {{ genre_icon|default:'mdi-gamepad-variant' }} text-lg text-base-content/70" aria-hidden="true"></span>
             Genre
-            <span class="mdi mdi-chevron-right text-xl transition-transform duration-200" :class="{ 'rotate-90': expanded }"></span>
+            <span class="mdi mdi-chevron-right text-xl transition-transform duration-200" aria-hidden="true" :class="{ 'rotate-90': expanded }"></span>
         </button>
         <template x-if="selectedCount() > 0">
             <span class="badge badge-primary badge-sm ml-2" x-text="selectedCount()"></span>
@@ -25,7 +25,7 @@
                     x-cloak
                     @click.stop="clearGenres(); resetExpanded(); debouncedFilterUpdate();"
                     class="btn btn-ghost btn-xs text-base-content/70 hover:text-error">
-                <span class="mdi mdi-close text-xs"></span>
+                <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
                 <span class="text-xs">Clear</span>
             </button>
             <button type="button"
@@ -34,7 +34,7 @@
                     @click.stop="toggleAllExpanded()"
                     class="btn btn-ghost btn-xs text-base-content/40 hover:text-base-content hover:bg-base-100"
                     title="Expand/collapse all">
-                <span class="mdi mdi-unfold-more-horizontal"></span>
+                <span class="mdi mdi-unfold-more-horizontal" aria-hidden="true"></span>
             </button>
         </div>
     </div>
@@ -67,15 +67,17 @@
                         {# Expand/Collapse Arrow #}
                         <button type="button"
                                 class="p-0.5 rounded hover:bg-base-content/10"
-                                @click.stop="toggleCategoryExpansion(category.id)">
-                            <span class="mdi text-base transition-transform duration-200"
+                                @click.stop="toggleCategoryExpansion(category.id)"
+                                :aria-expanded="isCategoryExpanded(category.id) ? 'true' : 'false'"
+                                :aria-label="(isCategoryExpanded(category.id) ? 'Collapse ' : 'Expand ') + category.name">
+                            <span class="mdi text-base transition-transform duration-200" aria-hidden="true"
                                   :class="isCategoryExpanded(category.id) ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
                         </button>
                         {# Category Icon and Name - clickable to select #}
                         <button type="button"
                                 class="flex items-center gap-2 flex-1 text-left"
                                 @click="toggleCategorySelection(category.id); debouncedFilterUpdate();">
-                            <span class="mdi text-lg" :class="getCategoryIcon(category.name)"></span>
+                            <span class="mdi text-lg" aria-hidden="true" :class="getCategoryIcon(category.name)"></span>
                             <span x-text="category.name" class="text-sm font-medium"></span>
                         </button>
                         {# Game count #}
@@ -89,7 +91,7 @@
                          x-transition:enter-end="opacity-100 translate-y-0"
                          class="pl-6 space-y-1">
                         <template x-for="genre in getChildren(category.id)" :key="genre.id">
-                            <div class="flex items-center gap-2 py-1 px-2 rounded-md cursor-pointer transition-colors"
+                            <div role="button" tabindex="0" :aria-pressed="(isGenreSelected(genre.id)) ? 'true' : 'false'" @keydown.enter.prevent="toggleGenre(genre.id); debouncedFilterUpdate();" @keydown.space.prevent="toggleGenre(genre.id); debouncedFilterUpdate();" class="flex items-center gap-2 py-1 px-2 rounded-md cursor-pointer transition-colors"
                                  :class="{
                                      'bg-primary text-accent-content': isGenreSelected(genre.id),
                                      'hover:bg-base-content/10': !isGenreSelected(genre.id),

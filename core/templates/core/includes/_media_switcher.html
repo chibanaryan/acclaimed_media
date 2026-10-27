@@ -14,53 +14,51 @@
 
 {% if variant_class == 'tabs' %}
 {# Tab-style switcher - Good for sidebar #}
-<div role="tablist" class="tabs tabs-box{% if size_class == 'sm' %} tabs-sm{% elif size_class == 'lg' %} tabs-lg{% endif %} bg-base-100 w-full">
+{# Links to the other sections, so a nav marking the current one: role="tablist" promised in-page tabs and arrow-key switching that links do not give #}
+<nav aria-label="Section" class="tabs tabs-box{% if size_class == 'sm' %} tabs-sm{% elif size_class == 'lg' %} tabs-lg{% endif %} bg-base-100 w-full">
     <a href="{% url 'home' %}"
-       role="tab"
        class="tab gap-1{% if current_type == 'games' %} tab-active{% else %} text-base-content/80{% endif %}"
-       aria-selected="{% if current_type == 'games' %}true{% else %}false{% endif %}">
-        <span class="mdi mdi-gamepad-variant{% if size_class == 'lg' %} text-xl{% endif %}"></span>
+       {% if current_type == 'games' %}aria-current="page"{% endif %}>
+        <span class="mdi mdi-gamepad-variant{% if size_class == 'lg' %} text-xl{% endif %}" aria-hidden="true"></span>
         <span>Games</span>
     </a>
     {% if BOOKS_ENABLED %}
     <a href="{% url 'books:home' %}"
-       role="tab"
        class="tab gap-1{% if current_type == 'books' %} tab-active{% else %} text-base-content/80{% endif %}"
-       aria-selected="{% if current_type == 'books' %}true{% else %}false{% endif %}">
-        <span class="mdi mdi-book-open-page-variant{% if size_class == 'lg' %} text-xl{% endif %}"></span>
+       {% if current_type == 'books' %}aria-current="page"{% endif %}>
+        <span class="mdi mdi-book-open-page-variant{% if size_class == 'lg' %} text-xl{% endif %}" aria-hidden="true"></span>
         <span>Books</span>
     </a>
     {% endif %}
     {% if MUSIC_ENABLED %}
     <a href="{% url 'music:home' %}"
-       role="tab"
        class="tab gap-1{% if current_type == 'music' %} tab-active{% else %} text-base-content/80{% endif %}"
-       aria-selected="{% if current_type == 'music' %}true{% else %}false{% endif %}">
-        <span class="mdi mdi-album{% if size_class == 'lg' %} text-xl{% endif %}"></span>
+       {% if current_type == 'music' %}aria-current="page"{% endif %}>
+        <span class="mdi mdi-album{% if size_class == 'lg' %} text-xl{% endif %}" aria-hidden="true"></span>
         <span>Music</span>
     </a>
     {% endif %}
-</div>
+</nav>
 
 {% elif variant_class == 'pills' %}
 {# Pill-style switcher - Good for mobile nav #}
 <div class="join w-full">
     <a href="{% url 'home' %}"
-       class="join-item btn btn-{% if size_class == 'sm' %}sm{% elif size_class == 'lg' %}lg{% else %}md{% endif %} flex-1{% if current_type == 'games' %} btn-primary{% else %} btn-ghost{% endif %}">
-        <span class="mdi mdi-gamepad-variant"></span>
+       class="join-item btn btn-{% if size_class == 'sm' %}sm{% elif size_class == 'lg' %}lg{% else %}md{% endif %} flex-1{% if current_type == 'games' %} btn-primary{% else %} btn-ghost{% endif %}"{% if current_type == 'games' %} aria-current="page"{% endif %}>
+        <span class="mdi mdi-gamepad-variant" aria-hidden="true"></span>
         <span class="hidden sm:inline">Games</span>
     </a>
     {% if BOOKS_ENABLED %}
     <a href="{% url 'books:home' %}"
-       class="join-item btn btn-{% if size_class == 'sm' %}sm{% elif size_class == 'lg' %}lg{% else %}md{% endif %} flex-1{% if current_type == 'books' %} btn-primary{% else %} btn-ghost{% endif %}">
-        <span class="mdi mdi-book-open-page-variant"></span>
+       class="join-item btn btn-{% if size_class == 'sm' %}sm{% elif size_class == 'lg' %}lg{% else %}md{% endif %} flex-1{% if current_type == 'books' %} btn-primary{% else %} btn-ghost{% endif %}"{% if current_type == 'books' %} aria-current="page"{% endif %}>
+        <span class="mdi mdi-book-open-page-variant" aria-hidden="true"></span>
         <span class="hidden sm:inline">Books</span>
     </a>
     {% endif %}
     {% if MUSIC_ENABLED %}
     <a href="{% url 'music:home' %}"
-       class="join-item btn btn-{% if size_class == 'sm' %}sm{% elif size_class == 'lg' %}lg{% else %}md{% endif %} flex-1{% if current_type == 'music' %} btn-primary{% else %} btn-ghost{% endif %}">
-        <span class="mdi mdi-album"></span>
+       class="join-item btn btn-{% if size_class == 'sm' %}sm{% elif size_class == 'lg' %}lg{% else %}md{% endif %} flex-1{% if current_type == 'music' %} btn-primary{% else %} btn-ghost{% endif %}"{% if current_type == 'music' %} aria-current="page"{% endif %}>
+        <span class="mdi mdi-album" aria-hidden="true"></span>
         <span class="hidden sm:inline">Music</span>
     </a>
     {% endif %}
@@ -70,25 +68,25 @@
 {# Minimal switcher - Icon buttons only #}
 <div class="flex gap-1">
     <a href="{% url 'home' %}"
-       class="btn btn-{% if size_class == 'sm' %}sm{% elif size_class == 'lg' %}lg{% else %}md{% endif %} btn-square{% if current_type == 'games' %} btn-primary{% else %} btn-ghost{% endif %}"
+       class="btn btn-{% if size_class == 'sm' %}sm{% elif size_class == 'lg' %}lg{% else %}md{% endif %} btn-square{% if current_type == 'games' %} btn-primary{% else %} btn-ghost{% endif %}"{% if current_type == 'games' %} aria-current="page"{% endif %}
        aria-label="Games"
        title="Games">
-        <span class="mdi mdi-gamepad-variant{% if size_class == 'lg' %} text-2xl{% elif size_class == 'sm' %} text-lg{% else %} text-xl{% endif %}"></span>
+        <span class="mdi mdi-gamepad-variant{% if size_class == 'lg' %} text-2xl{% elif size_class == 'sm' %} text-lg{% else %} text-xl{% endif %}" aria-hidden="true"></span>
     </a>
     {% if BOOKS_ENABLED %}
     <a href="{% url 'books:home' %}"
-       class="btn btn-{% if size_class == 'sm' %}sm{% elif size_class == 'lg' %}lg{% else %}md{% endif %} btn-square{% if current_type == 'books' %} btn-primary{% else %} btn-ghost{% endif %}"
+       class="btn btn-{% if size_class == 'sm' %}sm{% elif size_class == 'lg' %}lg{% else %}md{% endif %} btn-square{% if current_type == 'books' %} btn-primary{% else %} btn-ghost{% endif %}"{% if current_type == 'books' %} aria-current="page"{% endif %}
        aria-label="Books"
        title="Books">
-        <span class="mdi mdi-book-open-page-variant{% if size_class == 'lg' %} text-2xl{% elif size_class == 'sm' %} text-lg{% else %} text-xl{% endif %}"></span>
+        <span class="mdi mdi-book-open-page-variant{% if size_class == 'lg' %} text-2xl{% elif size_class == 'sm' %} text-lg{% else %} text-xl{% endif %}" aria-hidden="true"></span>
     </a>
     {% endif %}
     {% if MUSIC_ENABLED %}
     <a href="{% url 'music:home' %}"
-       class="btn btn-{% if size_class == 'sm' %}sm{% elif size_class == 'lg' %}lg{% else %}md{% endif %} btn-square{% if current_type == 'music' %} btn-primary{% else %} btn-ghost{% endif %}"
+       class="btn btn-{% if size_class == 'sm' %}sm{% elif size_class == 'lg' %}lg{% else %}md{% endif %} btn-square{% if current_type == 'music' %} btn-primary{% else %} btn-ghost{% endif %}"{% if current_type == 'music' %} aria-current="page"{% endif %}
        aria-label="Music"
        title="Music">
-        <span class="mdi mdi-album{% if size_class == 'lg' %} text-2xl{% elif size_class == 'sm' %} text-lg{% else %} text-xl{% endif %}"></span>
+        <span class="mdi mdi-album{% if size_class == 'lg' %} text-2xl{% elif size_class == 'sm' %} text-lg{% else %} text-xl{% endif %}" aria-hidden="true"></span>
     </a>
     {% endif %}
 </div>
@@ -97,23 +95,23 @@
 {# Default to menu-style for navigation menus #}
 <ul class="menu gap-1">
     <li>
-        <a href="{% url 'home' %}" class="{% if current_type == 'games' %}active{% endif %}">
-            <span class="mdi mdi-gamepad-variant text-xl"></span>
+        <a href="{% url 'home' %}" class="{% if current_type == 'games' %}active{% endif %}"{% if current_type == 'games' %} aria-current="page"{% endif %}>
+            <span class="mdi mdi-gamepad-variant text-xl" aria-hidden="true"></span>
             Games
         </a>
     </li>
     {% if BOOKS_ENABLED %}
     <li>
-        <a href="{% url 'books:home' %}" class="{% if current_type == 'books' %}active{% endif %}">
-            <span class="mdi mdi-book-open-page-variant text-xl"></span>
+        <a href="{% url 'books:home' %}" class="{% if current_type == 'books' %}active{% endif %}"{% if current_type == 'books' %} aria-current="page"{% endif %}>
+            <span class="mdi mdi-book-open-page-variant text-xl" aria-hidden="true"></span>
             Books
         </a>
     </li>
     {% endif %}
     {% if MUSIC_ENABLED %}
     <li>
-        <a href="{% url 'music:home' %}" class="{% if current_type == 'music' %}active{% endif %}">
-            <span class="mdi mdi-album text-xl"></span>
+        <a href="{% url 'music:home' %}" class="{% if current_type == 'music' %}active{% endif %}"{% if current_type == 'music' %} aria-current="page"{% endif %}>
+            <span class="mdi mdi-album text-xl" aria-hidden="true"></span>
             Music
         </a>
     </li>

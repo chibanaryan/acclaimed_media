@@ -372,7 +372,10 @@
 
 /* Accessibility - Skip to main content link */
 .skip-link {
-  @apply absolute -translate-y-full focus:translate-y-0 bg-primary text-primary-content px-4 py-2 z-50;
+  @apply absolute -translate-y-full focus:translate-y-0 bg-primary text-primary-content px-4 py-2;
+  /* Above the fixed mobile header (z-index 99999 in base.html), which hid
+     the focused link below 962px */
+  z-index: 100000;
 }
 
 /* Screen reader only */
@@ -1168,6 +1171,17 @@ tr.entity-row:hover {
     @apply bg-primary text-primary-content font-semibold border-l-2 border-primary -ml-[2px] pl-[calc(0.75rem+2px)];
   }
 
+  /* DaisyUI 5 styles a menu link carrying aria-current as its own active
+     item - neutral background, a drop shadow and a noise texture - and its
+     selector outranks the rule above. The links have carried aria-current
+     since 2026-10-26, so its knobs are set to the site's look instead. */
+  aside .menu li > a[aria-current] {
+    --menu-active-bg: var(--color-primary);
+    --menu-active-fg: var(--color-primary-content);
+    --depth: 0;
+    --fx-noise: none;
+  }
+
   /* Keep active styling on hover - match standard button hover behavior */
   aside .menu li a.active:hover,
   aside .menu li > a.active:hover {
@@ -1692,4 +1706,24 @@ html.quick-mark-game .played-button-wrapper:hover .played-button {
 .game-card-enter,
 .media-card-enter {
   animation: game-card-enter 0.25s ease-out forwards;
+}
+
+/* A visible keyboard focus on the filter controls that are not native
+   buttons: the year grid's cells and the genre, platform, series and
+   playtime rows, which became focusable on 2026-10-26. */
+[role="button"]:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+/* Visitors who ask their OS for less motion get none: row and card entry
+   animations, the played-star pop, the 404 moon and smooth scrolling all
+   ran regardless. The rank distribution chart checks the setting in JS. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

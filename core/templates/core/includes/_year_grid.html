@@ -27,11 +27,19 @@
         </div>
     </div>
 
-    <div class="year-grid">
-        <template x-for="decade in decades" :key="decade.start">
+    {# One tab stop for the whole grid; arrow keys move it, Enter or Space selects, Shift extends a range #}
+    <div class="year-grid" role="group" aria-label="Release year" @keydown="onGridKeydown($event)">
+        <template x-for="(decade, row) in decades" :key="decade.start">
             <div class="year-grid-row">
                 {# Decade label - clickable to select entire decade, draggable for ranges #}
                 <div class="year-grid-decade"
+                     role="button"
+                     :data-row="row"
+                     data-col="0"
+                     :tabindex="isTabStop(row, 0) ? 0 : -1"
+                     :aria-pressed="isDecadeSelected(decade.start) ? 'true' : 'false'"
+                     :aria-label="decade.label + ', ' + getDecadeCount(decade) + ' {{ item_noun_plural|default:'games' }}'"
+                     @focus="focusRow = row; focusCol = 0"
                      :class="{
                          'is-selected': isDecadeSelected(decade.start) || isDecadeInDragRange(decade.start),
                          'sharp-top': (isDecadeSelected(decade.start) || isDecadeInDragRange(decade.start)) && decadeHasSelectedAbove(decade.start),
@@ -50,6 +58,13 @@
                 {# Year cells - positioned by column (0-9) #}
                 <template x-for="(cell, idx) in decade.cells" :key="decade.start + '-' + idx">
                     <div class="year-grid-cell"
+                         :role="cell && cell.year && !cell.hidden ? 'button' : null"
+                         :data-row="row"
+                         :data-col="cell && cell.year && !cell.hidden ? idx + 1 : null"
+                         :tabindex="cell && cell.year && !cell.hidden ? (isTabStop(row, idx + 1) ? 0 : -1) : null"
+                         :aria-pressed="cell && cell.year ? (isInRange(cell.year) ? 'true' : 'false') : null"
+                         :aria-label="cell && cell.year ? cell.year + ', ' + cell.count + ' {{ item_noun_plural|default:'games' }}' : null"
+                         @focus="focusRow = row; focusCol = idx + 1"
                          :class="{
                              'is-selected': cell && cell.year && isInRange(cell.year),
                              'is-dragging': cell && cell.year && isDragging && isInRange(cell.year),

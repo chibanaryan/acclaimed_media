@@ -56,7 +56,7 @@
          data-slot="thumbnail">
     <span class="media-thumb-placeholder{% if not item or item.thumbnail %} hidden{% endif %}"
           aria-hidden="true" data-slot="thumbnail-placeholder">
-        <span class="mdi mdi-album text-lg"></span>
+        <span class="mdi mdi-album text-lg" aria-hidden="true"></span>
     </span>
 </a>
 {% endblock %}
@@ -69,7 +69,7 @@
          data-slot="thumbnail-mobile">
     <span class="media-thumb-placeholder{% if not item or item.thumbnail %} hidden{% endif %}"
           aria-hidden="true" data-slot="thumbnail-mobile-placeholder">
-        <span class="mdi mdi-album text-base"></span>
+        <span class="mdi mdi-album text-base" aria-hidden="true"></span>
     </span>
 </div>
 {% endblock %}

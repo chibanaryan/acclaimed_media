@@ -48,7 +48,7 @@
                              loading="lazy">
                         {% else %}
                         <div class="w-6 h-9 bg-base-100 rounded flex items-center justify-center">
-                            <span class="mdi mdi-book text-base-content/30"></span>
+                            <span class="mdi mdi-book text-base-content/30" aria-hidden="true"></span>
                         </div>
                         {% endif %}
                         <span class="text-sm truncate group-hover:underline">{{ author.top_book.name }}</span>
@@ -80,7 +80,7 @@
                 <img src="{{ author.top_book.thumbnail }}" alt="" width="18" height="27" class="w-4.5 h-7 object-cover rounded shrink-0" loading="lazy">
                 {% else %}
                 <div class="w-4.5 h-7 bg-base-100 rounded flex items-center justify-center shrink-0">
-                    <span class="mdi mdi-book text-xs text-base-content/30"></span>
+                    <span class="mdi mdi-book text-xs text-base-content/30" aria-hidden="true"></span>
                 </div>
                 {% endif %}
                 <span class="text-sm truncate group-hover:underline min-w-0">{{ author.top_book.name }}</span>
@@ -104,7 +104,7 @@
             data-next-page="{{ next_page }}"
             data-total="{{ total_count }}"
             data-loaded="{{ loaded_count }}">
-        <span class="mdi mdi-book-open-page-variant"></span>
+        <span class="mdi mdi-book-open-page-variant" aria-hidden="true"></span>
         <span class="load-more-text">Load More ({{ remaining_count|intcomma }} remaining)</span>
     </button>
 </div>
@@ -112,7 +112,7 @@
 
 {% else %}
 <div class="alert">
-    <span class="mdi mdi-information-outline"></span>
+    <span class="mdi mdi-information-outline" aria-hidden="true"></span>
     <span>No authors found.</span>
 </div>
 {% endif %}

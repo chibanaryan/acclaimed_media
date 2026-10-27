@@ -61,7 +61,7 @@
         {# Left: Title area (matches game results width), vertically centered #}
         <div class="min-w-0 flex-1 max-w-[calc(100%-357px-1.5rem)] flex flex-col justify-center">
             <h1 class="text-3xl font-bold line-clamp-2" id="search-title">
-                {{ filter_title|default:"Advanced Search" }}
+                {{ filter_title|default:"Most Acclaimed Video Games of All Time" }}
             </h1>
             {% if genre_subtitle %}
                 <p class="text-base font-semibold text-base-content/85 -mt-1 truncate" id="genre-subtitle">
@@ -83,7 +83,7 @@
             <h1 class="text-lg font-bold flex-1 min-w-0" id="search-title-mobile">{{ filter_title|default:"Most Acclaimed Video Games of All Time" }}</h1>
             {% include 'core/includes/_quick_mark_picker.html' with scope='game' options=quick_mark_options mobile=True %}
             <button type="button" class="btn btn-primary btn-sm shrink-0" @click="filterOpen = true">
-                <span class="mdi mdi-tune"></span>
+                <span class="mdi mdi-tune" aria-hidden="true"></span>
                 Filters
                 <template x-if="filters.q || filters.genres.length > 0 || filters.platforms.length > 0 || (filters.series && filters.series.length > 0) || filters.start !== {{ min_year }} || filters.end !== {{ max_year }} || filters.hltb_preset || filters.hltb_min !== null">
                     <span class="badge badge-xs badge-secondary">!</span>
@@ -114,7 +114,7 @@
                 {# Top-level Filters header with actions #}
                 <div class="flex items-center justify-between mb-3 pb-2 border-b border-base-100">
                     <div class="flex items-center gap-2">
-                        <span class="mdi mdi-filter-variant text-xl text-accent"></span>
+                        <span class="mdi mdi-filter-variant text-xl text-accent" aria-hidden="true"></span>
                         <span class="font-bold text-base">Filters</span>
                     </div>
                     <div class="flex gap-2 relative">
@@ -124,7 +124,7 @@
                                 class="btn btn-ghost btn-xs text-base-content/70 hover:text-info"
                                 @click="loadSavedFilters()"
                                 title="Saved filters">
-                            <span class="mdi mdi-bookmark-outline text-sm"></span>
+                            <span class="mdi mdi-bookmark-outline text-sm" aria-hidden="true"></span>
                             <span>Saved</span>
                         </button>
                         <ul class="absolute right-0 top-full menu bg-base-100 rounded-box w-96 p-2 shadow-lg z-50 mt-2 overflow-hidden"
@@ -137,7 +137,7 @@
                                     <button type="button"
                                             class="flex items-center gap-2 text-info font-medium"
                                             @click="saveCurrentFilters()">
-                                        <span class="mdi mdi-bookmark-plus"></span>
+                                        <span class="mdi mdi-bookmark-plus" aria-hidden="true"></span>
                                         Save current filters
                                     </button>
                                 </li>
@@ -146,7 +146,7 @@
                             <template x-if="hasActiveFilters() && savedFiltersLoaded && savedFilters.length >= 10">
                                 <li class="border-b border-base-200 mb-1 pb-1">
                                     <span class="text-base-content/70 text-sm pointer-events-none">
-                                        <span class="mdi mdi-bookmark-off"></span>
+                                        <span class="mdi mdi-bookmark-off" aria-hidden="true"></span>
                                         Limit reached (10/10)
                                     </span>
                                 </li>
@@ -175,13 +175,13 @@
                                                     class="btn btn-ghost btn-xs text-base-content/50 hover:text-info hover:bg-transparent"
                                                     @click.stop="renameSavedFilter(filter)"
                                                     title="Rename">
-                                                <span class="mdi mdi-pencil text-sm"></span>
+                                                <span class="mdi mdi-pencil text-sm" aria-hidden="true"></span>
                                             </button>
                                             <button type="button"
                                                     class="btn btn-ghost btn-xs text-base-content/50 hover:text-error hover:bg-transparent"
                                                     @click.stop="deleteSavedFilter(filter)"
                                                     title="Delete">
-                                                <span class="mdi mdi-delete text-sm"></span>
+                                                <span class="mdi mdi-delete text-sm" aria-hidden="true"></span>
                                             </button>
                                         </div>
                                     </div>
@@ -193,23 +193,22 @@
                                 class="btn btn-ghost btn-xs text-base-content/40 cursor-not-allowed"
                                 title="Sign in to save filters"
                                 aria-label="Saved. Sign in to save filters"
-                                aria-disabled="true"
-                                onclick="return false;">
-                            <span class="mdi mdi-bookmark-outline text-sm"></span>
+                                aria-disabled="true">
+                            <span class="mdi mdi-bookmark-outline text-sm" aria-hidden="true"></span>
                             <span>Saved</span>
                         </button>
                         {% endif %}
                         <a :href="'{% url 'games-download' %}?' + buildFilterParams(filters).toString()"
                            class="btn btn-ghost btn-xs text-base-content/70 hover:text-success"
                            title="Download CSV">
-                            <span class="mdi mdi-download"></span>
+                            <span class="mdi mdi-download" aria-hidden="true"></span>
                             <span>CSV</span>
                         </a>
                         <button type="button"
                            @click="resetAllFilters()"
                            class="btn btn-ghost btn-xs text-base-content/70 hover:text-error"
                            title="Clear all filters">
-                            <span class="mdi mdi-close text-xs"></span>
+                            <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
                             <span>Clear All</span>
                         </button>
                     </div>
@@ -218,10 +217,10 @@
                 {# Game Status filter - Multi-select toggle buttons #}
                 <div class="mb-4 pb-3 border-b border-base-100">
                     <div class="flex items-center gap-2 mb-2">
-                        <span class="mdi mdi-star-outline text-xl text-accent"></span>
+                        <span class="mdi mdi-star-outline text-xl text-accent" aria-hidden="true"></span>
                         <span class="font-bold text-base">Game Status</span>
                         <button type="button" class="btn btn-ghost btn-xs ml-auto text-base-content/70 hover:text-error" @click="resetPlayed()" title="Clear status filter" x-cloak x-show="filters.played && filters.played.length > 0">
-                            <span class="mdi mdi-close text-xs"></span>
+                            <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
                             <span class="text-xs">Clear</span>
                         </button>
                     </div>
@@ -270,13 +269,16 @@
 
                 {# Year range heatmap grid #}
                 <div class="mb-4 pb-3 border-b border-base-100" :class="yearExpanded ? 'min-h-[15rem]' : ''">
-                    <div class="flex items-center gap-2 mb-2 cursor-pointer" @click="yearExpanded = !yearExpanded; localStorage.setItem('yearExpanded', yearExpanded)">
-                        <span class="mdi mdi-calendar-range text-xl text-accent"></span>
-                        <span class="font-bold text-base">Release Year</span>
-                        <span class="mdi text-base-content/70 ml-1"
-                              :class="yearExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
+                    <div class="flex items-center gap-2 mb-2">
+                        {# A real button, so the section opens from the keyboard too #}
+                        <button type="button" class="flex flex-1 items-center gap-2 cursor-pointer text-left" @click="yearExpanded = !yearExpanded; localStorage.setItem('yearExpanded', yearExpanded)" :aria-expanded="yearExpanded ? 'true' : 'false'">
+                            <span class="mdi mdi-calendar-range text-xl text-accent" aria-hidden="true"></span>
+                            <span class="font-bold text-base">Release Year</span>
+                            <span class="mdi text-base-content/70 ml-1" aria-hidden="true"
+                                  :class="yearExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
+                        </button>
                         <button type="button" class="btn btn-ghost btn-xs ml-auto text-base-content/70 hover:text-error" @click.stop="resetYears()" title="Clear year filter" x-cloak x-show="filters.start !== {{ min_year }} || filters.end !== {{ max_year }}">
-                            <span class="mdi mdi-close text-xs"></span>
+                            <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
                             <span class="text-xs">Clear</span>
                         </button>
                     </div>
@@ -290,18 +292,21 @@
                 {% if platforms %}
                 {# Platforms filter - Tiered component #}
                 <div class="mb-4 pb-3 border-b border-base-100">
-                    <div class="flex items-center gap-2 mb-2 cursor-pointer" @click="platformsExpanded = !platformsExpanded; localStorage.setItem('platformsExpanded', platformsExpanded)">
-                        <span class="mdi mdi-controller text-xl text-accent"></span>
-                        <span class="font-bold text-base">Platform</span>
-                        <span class="mdi text-base-content/70 ml-1"
-                              :class="platformsExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
+                    <div class="flex items-center gap-2 mb-2">
+                        {# A real button, so the section opens from the keyboard too #}
+                        <button type="button" class="flex flex-1 items-center gap-2 cursor-pointer text-left" @click="platformsExpanded = !platformsExpanded; localStorage.setItem('platformsExpanded', platformsExpanded)" :aria-expanded="platformsExpanded ? 'true' : 'false'">
+                            <span class="mdi mdi-controller text-xl text-accent" aria-hidden="true"></span>
+                            <span class="font-bold text-base">Platform</span>
+                            <span class="mdi text-base-content/70 ml-1" aria-hidden="true"
+                                  :class="platformsExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
+                        </button>
                         <div class="ml-auto flex items-center gap-1">
                             <button type="button" class="btn btn-ghost btn-xs text-base-content/70 hover:text-error" @click.stop="resetPlatforms()" title="Clear platform filter" x-cloak x-show="filters.platforms.length > 0">
-                                <span class="mdi mdi-close text-xs"></span>
+                                <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
                                 <span class="text-xs">Clear</span>
                             </button>
                             <button type="button" class="btn btn-ghost btn-xs text-base-content/40 hover:text-base-content hover:bg-base-100" @click.stop="$dispatch('platforms-toggle-expand')" title="Expand/collapse all" x-cloak x-show="platformsExpanded">
-                                <span class="mdi mdi-unfold-more-horizontal"></span>
+                                <span class="mdi mdi-unfold-more-horizontal" aria-hidden="true"></span>
                             </button>
                         </div>
                     </div>
@@ -319,18 +324,21 @@
                 {% if genres %}
                 {# Genres filter - Inventory Grid Style #}
                 <div :class="genresExpanded ? 'mb-3' : 'mb-1'">
-                    <div class="flex items-center gap-2 mb-2 cursor-pointer" @click="genresExpanded = !genresExpanded; localStorage.setItem('genresExpanded', genresExpanded)">
-                        <span class="mdi mdi-gamepad-variant text-xl text-accent"></span>
-                        <span class="font-bold text-base">Genre</span>
-                        <span class="mdi text-base-content/70 ml-1"
-                              :class="genresExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
+                    <div class="flex items-center gap-2 mb-2">
+                        {# A real button, so the section opens from the keyboard too #}
+                        <button type="button" class="flex flex-1 items-center gap-2 cursor-pointer text-left" @click="genresExpanded = !genresExpanded; localStorage.setItem('genresExpanded', genresExpanded)" :aria-expanded="genresExpanded ? 'true' : 'false'">
+                            <span class="mdi mdi-gamepad-variant text-xl text-accent" aria-hidden="true"></span>
+                            <span class="font-bold text-base">Genre</span>
+                            <span class="mdi text-base-content/70 ml-1" aria-hidden="true"
+                                  :class="genresExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
+                        </button>
                         <div class="ml-auto flex items-center gap-1">
                             <button type="button" class="btn btn-ghost btn-xs text-base-content/70 hover:text-error" @click.stop="resetGenres()" title="Clear genre filter" x-cloak x-show="filters.genres.length > 0">
-                                <span class="mdi mdi-close text-xs"></span>
+                                <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
                                 <span class="text-xs">Clear</span>
                             </button>
                             <button type="button" class="btn btn-ghost btn-xs text-base-content/40 hover:text-base-content hover:bg-base-100" @click.stop="$dispatch('genres-toggle-expand')" title="Expand/collapse all" x-cloak x-show="genresExpanded">
-                                <span class="mdi mdi-unfold-more-horizontal"></span>
+                                <span class="mdi mdi-unfold-more-horizontal" aria-hidden="true"></span>
                             </button>
                         </div>
                     </div>
@@ -347,13 +355,16 @@
                 {% if series_list %}
                 {# Series filter - Flat list with search #}
                 <div class="mt-4 pt-3 border-t border-base-100" :class="seriesExpanded ? 'mb-3' : 'mb-1'">
-                    <div class="flex items-center gap-2 mb-2 cursor-pointer" @click="seriesExpanded = !seriesExpanded; localStorage.setItem('seriesExpanded', seriesExpanded)">
-                        <span class="mdi mdi-mushroom text-xl text-accent"></span>
-                        <span class="font-bold text-base">Series</span>
-                        <span class="mdi text-base-content/70 ml-1"
-                              :class="seriesExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
+                    <div class="flex items-center gap-2 mb-2">
+                        {# A real button, so the section opens from the keyboard too #}
+                        <button type="button" class="flex flex-1 items-center gap-2 cursor-pointer text-left" @click="seriesExpanded = !seriesExpanded; localStorage.setItem('seriesExpanded', seriesExpanded)" :aria-expanded="seriesExpanded ? 'true' : 'false'">
+                            <span class="mdi mdi-mushroom text-xl text-accent" aria-hidden="true"></span>
+                            <span class="font-bold text-base">Series</span>
+                            <span class="mdi text-base-content/70 ml-1" aria-hidden="true"
+                                  :class="seriesExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
+                        </button>
                         <button type="button" class="btn btn-ghost btn-xs ml-auto text-base-content/70 hover:text-error" @click.stop="resetSeries()" title="Clear series filter" x-cloak x-show="filters.series && filters.series.length > 0">
-                            <span class="mdi mdi-close text-xs"></span>
+                            <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
                             <span class="text-xs">Clear Series Filter</span>
                         </button>
                     </div>
@@ -370,13 +381,16 @@
 
                 {# HLTB Playtime filter #}
                 <div class="mt-4 pt-3 border-t border-base-100" :class="hltbExpanded ? 'mb-3' : 'mb-1'">
-                    <div class="flex items-center gap-2 mb-2 cursor-pointer" @click="hltbExpanded = !hltbExpanded; localStorage.setItem('hltbExpanded', hltbExpanded)">
-                        <span class="mdi mdi-clock-outline text-xl text-accent"></span>
-                        <span class="font-bold text-base">Playtime (HowLongToBeat)</span>
-                        <span class="mdi text-base-content/70 ml-1"
-                              :class="hltbExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
+                    <div class="flex items-center gap-2 mb-2">
+                        {# A real button, so the section opens from the keyboard too #}
+                        <button type="button" class="flex flex-1 items-center gap-2 cursor-pointer text-left" @click="hltbExpanded = !hltbExpanded; localStorage.setItem('hltbExpanded', hltbExpanded)" :aria-expanded="hltbExpanded ? 'true' : 'false'">
+                            <span class="mdi mdi-clock-outline text-xl text-accent" aria-hidden="true"></span>
+                            <span class="font-bold text-base">Playtime (HowLongToBeat)</span>
+                            <span class="mdi text-base-content/70 ml-1" aria-hidden="true"
+                                  :class="hltbExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
+                        </button>
                         <button type="button" class="btn btn-ghost btn-xs ml-auto text-base-content/70 hover:text-error" @click.stop="resetHltb()" title="Clear playtime filter" x-cloak x-show="filters.hltb_preset || filters.hltb_min !== null">
-                            <span class="mdi mdi-close text-xs"></span>
+                            <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
                             <span class="text-xs">Clear</span>
                         </button>
                     </div>
@@ -397,11 +411,11 @@
 
     {# Save Filter Modal #}
     <dialog class="modal"
-            :class="{ 'modal-open': saveFilterModalOpen }"
-            @keydown.escape.window="saveFilterModalOpen = false">
+            x-effect="saveFilterModalOpen ? ($el.open || $el.showModal()) : ($el.open && $el.close())"
+            @close="saveFilterModalOpen = false">
         <div class="modal-box max-w-sm">
             <h3 class="font-bold text-lg mb-4">
-                <span class="mdi mdi-bookmark-plus text-info"></span>
+                <span class="mdi mdi-bookmark-plus text-info" aria-hidden="true"></span>
                 Save Filter
             </h3>
             <form @submit.prevent="submitSaveFilter()">
@@ -444,11 +458,11 @@
 
     {# Rename Filter Modal #}
     <dialog class="modal"
-            :class="{ 'modal-open': renameFilterModalOpen }"
-            @keydown.escape.window="renameFilterModalOpen = false">
+            x-effect="renameFilterModalOpen ? ($el.open || $el.showModal()) : ($el.open && $el.close())"
+            @close="renameFilterModalOpen = false">
         <div class="modal-box max-w-sm">
             <h3 class="font-bold text-lg mb-4">
-                <span class="mdi mdi-pencil text-info"></span>
+                <span class="mdi mdi-pencil text-info" aria-hidden="true"></span>
                 Rename Filter
             </h3>
             <form @submit.prevent="submitRenameFilter()">
@@ -490,11 +504,11 @@
 
     {# Delete Filter Modal #}
     <dialog class="modal"
-            :class="{ 'modal-open': deleteFilterModalOpen }"
-            @keydown.escape.window="deleteFilterModalOpen = false">
+            x-effect="deleteFilterModalOpen ? ($el.open || $el.showModal()) : ($el.open && $el.close())"
+            @close="deleteFilterModalOpen = false">
         <div class="modal-box max-w-sm">
             <h3 class="font-bold text-lg mb-4">
-                <span class="mdi mdi-delete text-error"></span>
+                <span class="mdi mdi-delete text-error" aria-hidden="true"></span>
                 Delete Filter
             </h3>
             <p class="py-2">

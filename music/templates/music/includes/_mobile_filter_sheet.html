@@ -22,7 +22,13 @@
 
 {# Sheet panel #}
 <div x-show="filterOpen"
-     x-effect="if (filterOpen) { document.body.style.overflow = 'hidden'; $nextTick(() => $refs.filterScroll.scrollTop = 0); } else { document.body.style.overflow = ''; }"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="mobile-filters-title"
+     tabindex="-1"
+     x-effect="if (filterOpen) { document.body.style.overflow = 'hidden'; window.filterSheetOpener = document.activeElement; $nextTick(() => { $refs.filterScroll.scrollTop = 0; $el.focus(); }); } else { document.body.style.overflow = ''; if (window.filterSheetOpener) { window.filterSheetOpener.focus(); window.filterSheetOpener = null; } }"
+     @keydown.escape.window="if (filterOpen && !document.querySelector('dialog[open]')) filterOpen = false"
+     @keydown.tab="trapTabFocus($event, $el)"
      x-transition:enter="transition ease-out duration-200"
      x-transition:enter-start="opacity-0"
      x-transition:enter-end="opacity-100"
@@ -39,7 +45,7 @@
 
     {# Header #}
     <div class="flex items-center justify-between px-4 pb-3 border-b border-base-100">
-        <h2 class="text-xl font-bold">Filters</h2>
+        <h2 id="mobile-filters-title" class="text-xl font-bold">Filters</h2>
         <div class="flex items-center gap-2">
             <button type="button" @click="resetAllFilters()" class="btn btn-ghost btn-sm">
                 Clear All Filters

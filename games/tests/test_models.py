@@ -796,6 +796,14 @@ class ModelHelpersTests(TestCase):
         self.assertIn("t_cover_small_2x/art123", game.homepage_thumb)
         self.assertIn("t_cover_big/art123", game.homepage_thumb_2x)
 
+    def test_a_game_without_igdb_data_has_no_cover_urls(self):
+        """The rows show the placeholder for these; see CoverPlaceholderTests."""
+        game = models.Game.objects.create(name="No Art", rank=2, igdb_id=21)
+
+        self.assertIsNone(game.thumbnail)
+        self.assertIsNone(game.thumbnail_2x)
+        self.assertIsNone(game.image)
+
     def test_publication_str_and_slug_default(self):
         publication = models.Publication.objects.create(name="GameSpot")
         self.assertEqual(str(publication), "GameSpot")

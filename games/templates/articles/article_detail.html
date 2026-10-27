@@ -33,7 +33,7 @@
     {# Draft indicator for staff #}
     {% if article.status == 'draft' %}
     <div class="alert alert-warning mb-6">
-        <span class="mdi mdi-alert-circle"></span>
+        <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
         <span>This article is a draft and not publicly visible.</span>
     </div>
     {% endif %}
@@ -71,7 +71,7 @@
     {# Back to blog #}
     <div class="mt-12 pt-4 border-t border-base-content/10">
         <a href="{% url 'article-list' %}" class="btn btn-ghost">
-            <span class="mdi mdi-arrow-left"></span>
+            <span class="mdi mdi-arrow-left" aria-hidden="true"></span>
             Back to Blog
         </a>
     </div>

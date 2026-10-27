@@ -7,31 +7,30 @@
   pulled the whole ~667 KB page every minute (~1 GB a day), and the router
   logged 6 H13s in 12 hours on those transfers, each cut off ~80 KB in.
   `UncompressedUptimeCheckMiddleware` answers it before rate limiting and
-  sessions. The gzip monitor still fetches the real page
-- **The gzip-less check is not ours.** Sentry Support says our organization
-  has one monitor, the gzip one at :17; the :39 check is being traced on
-  their side. It now logs its `sentry-trace` and `baggage` to
-  `games.middleware.uptime` for them - temporary, remove once they name it
+  sessions. The gzip monitor still fetches the real page. Sentry Support
+  says the gzip-less check is not ours (our organization has one monitor,
+  the gzip one at :17); the :39 check now logs its `sentry-trace` and
+  `baggage` to `games.middleware.uptime` for them - temporary, remove once
+  they name it
 - **Lighthouse pass.** Mobile performance on `/` 92 → 98 and on the
   genre/decade landing pages 83 → 94; accessibility and best practices
   reach 100 on every page tested but one developer page (a tap-target
   size, left as is). Alpine no longer initialises the hidden
   desktop sidebar on phones or the mobile filter sheet before it opens,
   which was ~870 ms of the 920 ms init task at 4x CPU throttle; the album
-  rankings page gets the same (~360 → ~75 ms on a phone)
+  rankings page gets the same (~360 → ~75 ms on a phone). Developer pages
+  went from 338 queries to ~7 on a cache hit (thumbnails and the studio
+  parent chain were N+1s); `/developers/nintendo/` had taken ~800 ms
+  server time on production
 - **Filter changes are 3-6x faster**, on the games and album pages alike.
   A decade click reaches the list in ~60 ms instead of ~290 (~250 vs ~710
   at 4x), and every click's INP stays under 200 ms at 4x. The filter
   debounce now fires on the leading edge after the next paint, and the
   sidebar's platform, genre and series rows look themselves up by index
-  instead of scanning reactive arrays. Back no longer cuts off Forward
-- **Rank distribution chart morphs in every browser.** It relied on a CSS
-  `transition: d`, which WebKit lacks, and was skipped entirely whenever
-  the filter work outlasted it; it is now a frame-capped JavaScript tween
-  that respects reduced motion
-- **Developer pages: 338 queries → ~7** on a cache hit (thumbnails and
-  the studio parent chain were N+1s); `/developers/nintendo/` rendered in
-  ~800 ms server time on production
+  instead of scanning reactive arrays. Back no longer cuts off Forward. The
+  rank distribution chart morphs in every browser: it relied on a CSS
+  `transition: d`, which WebKit lacks, and is now a frame-capped JavaScript
+  tween that respects reduced motion
 - **Smaller fixes:** the contact form's Navi icon is self-hosted and lazy
   (35 KB hotlinked on every page → 1.4 KB on open); the game cover is no
   longer squashed and its preload is emitted once, early; an IGDB
@@ -69,6 +68,25 @@
   looping arcade games, endless puzzle games). Those games are left out of rows, sort,
   filters, counts, the backlog total and the CSV; the detail page keeps
   the hours under a "No finish line" note
+- **Accessibility and a Content Security Policy.** The year grid, genre,
+  platform, series and playtime rows and the section headers work from the
+  keyboard and announce their state; the mobile filter sheets are dialogs
+  (focus kept inside, Escape closes, focus returns); result counts are
+  announced. A report-only CSP: every inline script carries the request's
+  nonce, cached pages included, and inline handlers became delegated
+  listeners. A browser smoke test and a client/server parity test joined
+  CI; the parity test found games' name sort disagreeing with the
+  database's collation, now sent as a server index (`ni`) as music's is
+- **The games filters are one function** (`apply_game_filters`): the
+  sidebar counts and the CSV ignored accent-insensitive search, the counts
+  ignored series and playtime, and the CSV ignored the sort. Also: SEO
+  descriptions for developer and list pages, a real 500 page, newsletter
+  emails sent off the request, Sentry Crons for both Sunday jobs, a
+  `/healthz/` that checks the database, platform years kept across imports,
+  the navbar search matching developers and series in the database,
+  `games/views.py` split into a package, and the deploy skill waiting for
+  CI and backing up before migrations
+
 
 ## 2026-10-25
 

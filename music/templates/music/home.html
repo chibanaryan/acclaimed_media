@@ -10,8 +10,6 @@
 {% block meta_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}The top {{ album_count }} most recommended albums across {{ list_count }} critic lists from {{ publication_count }} publications.{% endif %}{% endblock %}
 {% block og_title %}{% firstof seo_title filter_title "Most Acclaimed Albums" %} | Acclaimed Video Games{% endblock %}
 {% block og_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}Album rankings aggregated from {{ list_count }} published critics' lists.{% endif %}{% endblock %}
-{% block twitter_title %}{% firstof seo_title filter_title "Most Acclaimed Albums" %} | Acclaimed Video Games{% endblock %}
-{% block twitter_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}Album rankings aggregated from {{ list_count }} published critics' lists.{% endif %}{% endblock %}
 {% block structured_data %}{% if itemlist_json %}{{ itemlist_json|safe }}{% else %}{{ block.super }}{% endif %}{% endblock %}
 
 {% block pre_alpine %}
@@ -152,7 +150,7 @@ var listenStatusOptions = JSON.parse(
         </h1>
         {% include 'core/includes/_quick_mark_picker.html' with scope='album' options=quick_mark_options mobile=True %}
         <button type="button" class="btn btn-primary btn-sm shrink-0" @click="filterOpen = true">
-            <span class="mdi mdi-tune"></span>
+            <span class="mdi mdi-tune" aria-hidden="true"></span>
             Filters
             <template x-if="hasActiveFilters()">
                 <span class="badge badge-xs badge-secondary">!</span>
@@ -192,7 +190,7 @@ var listenStatusOptions = JSON.parse(
             {# Filters header, with the same actions the games sidebar has #}
             <div class="flex items-center justify-between mb-3 pb-2 border-b border-base-100">
                 <div class="flex items-center gap-2">
-                    <span class="mdi mdi-filter-variant text-xl text-accent"></span>
+                    <span class="mdi mdi-filter-variant text-xl text-accent" aria-hidden="true"></span>
                     <span class="font-bold text-base">Filters</span>
                 </div>
                 {# `relative` anchors the Saved dropdown's absolute menu. #}
@@ -202,14 +200,14 @@ var listenStatusOptions = JSON.parse(
                     <a :href="'{% url 'music:download' %}?' + downloadQuery()"
                        class="btn btn-ghost btn-xs text-base-content/70 hover:text-success"
                        title="Download CSV">
-                        <span class="mdi mdi-download"></span>
+                        <span class="mdi mdi-download" aria-hidden="true"></span>
                         <span>CSV</span>
                     </a>
                     <button type="button"
                             @click="resetAllFilters()"
                             class="btn btn-ghost btn-xs text-base-content/70 hover:text-error"
                             title="Clear all filters">
-                        <span class="mdi mdi-close text-xs"></span>
+                        <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
                         <span>Clear All</span>
                     </button>
                 </div>
@@ -239,13 +237,16 @@ var listenStatusOptions = JSON.parse(
 
             {# Release year - the shared heatmap, as on the games page #}
             <div class="mb-4 pb-3 border-b border-base-100" :class="yearExpanded ? 'min-h-[15rem]' : ''">
-                <div class="flex items-center gap-2 mb-2 cursor-pointer" @click="yearExpanded = !yearExpanded; localStorage.setItem('yearExpanded', yearExpanded)">
-                    <span class="mdi mdi-calendar-range text-xl text-accent"></span>
-                    <span class="font-bold text-base">Release Year</span>
-                    <span class="mdi text-base-content/70 ml-1"
-                          :class="yearExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
+                <div class="flex items-center gap-2 mb-2">
+                    {# A real button, so the section opens from the keyboard too #}
+                    <button type="button" class="flex flex-1 items-center gap-2 cursor-pointer text-left" @click="yearExpanded = !yearExpanded; localStorage.setItem('yearExpanded', yearExpanded)" :aria-expanded="yearExpanded ? 'true' : 'false'">
+                        <span class="mdi mdi-calendar-range text-xl text-accent" aria-hidden="true"></span>
+                        <span class="font-bold text-base">Release Year</span>
+                        <span class="mdi text-base-content/70 ml-1" aria-hidden="true"
+                              :class="yearExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
+                    </button>
                     <button type="button" class="btn btn-ghost btn-xs ml-auto text-base-content/70 hover:text-error" @click.stop="resetYears()" title="Clear year filter" x-cloak x-show="hasYearFilter()">
-                        <span class="mdi mdi-close text-xs"></span>
+                        <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
                         <span class="text-xs">Clear</span>
                     </button>
                 </div>
@@ -260,18 +261,21 @@ var listenStatusOptions = JSON.parse(
             {# Genre - the shared tree, so a root genre reads as a root #}
             {% if genre_tree %}
             <div :class="genresExpanded ? 'mb-3' : 'mb-1'">
-                <div class="flex items-center gap-2 mb-2 cursor-pointer" @click="genresExpanded = !genresExpanded; localStorage.setItem('genresExpanded', genresExpanded)">
-                    <span class="mdi mdi-music-note text-xl text-accent"></span>
-                    <span class="font-bold text-base">Genre</span>
-                    <span class="mdi text-base-content/70 ml-1"
-                          :class="genresExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
+                <div class="flex items-center gap-2 mb-2">
+                    {# A real button, so the section opens from the keyboard too #}
+                    <button type="button" class="flex flex-1 items-center gap-2 cursor-pointer text-left" @click="genresExpanded = !genresExpanded; localStorage.setItem('genresExpanded', genresExpanded)" :aria-expanded="genresExpanded ? 'true' : 'false'">
+                        <span class="mdi mdi-music-note text-xl text-accent" aria-hidden="true"></span>
+                        <span class="font-bold text-base">Genre</span>
+                        <span class="mdi text-base-content/70 ml-1" aria-hidden="true"
+                              :class="genresExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
+                    </button>
                     <div class="ml-auto flex items-center gap-1">
                         <button type="button" class="btn btn-ghost btn-xs text-base-content/70 hover:text-error" @click.stop="resetGenres()" title="Clear genre filter" x-cloak x-show="filters.genres.length > 0">
-                            <span class="mdi mdi-close text-xs"></span>
+                            <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
                             <span class="text-xs">Clear</span>
                         </button>
                         <button type="button" class="btn btn-ghost btn-xs text-base-content/40 hover:text-base-content hover:bg-base-100" @click.stop="$dispatch('genres-toggle-expand')" title="Expand/collapse all" x-cloak x-show="genresExpanded">
-                            <span class="mdi mdi-unfold-more-horizontal"></span>
+                            <span class="mdi mdi-unfold-more-horizontal" aria-hidden="true"></span>
                         </button>
                     </div>
                 </div>

@@ -40,6 +40,7 @@ RATE_LIMIT_EXEMPT_PREFIXES = (
     "/static/",
     "/accounts/",
     "/music/cover/",
+    "/healthz/",
 )
 
 

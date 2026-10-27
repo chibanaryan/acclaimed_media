@@ -7,20 +7,20 @@
         <div id="mobile-nav-items" class="flex gap-1 items-center nav-calculating" x-ref="navItems">
             {% if media_type == 'music' %}
             {# Music section: its own links and its own search #}
-            <a href="{% url 'music:home' %}" class="btn btn-ghost btn-sm btn-square shrink-0 nav-item{% if request.resolver_match.url_name == 'home' %} btn-active{% endif %}" data-nav-item="albums" data-menu-label="Albums" aria-label="Albums">
-                <span class="mdi mdi-album text-lg"></span>
+            <a href="{% url 'music:home' %}" class="btn btn-ghost btn-sm btn-square shrink-0 nav-item{% if request.resolver_match.url_name == 'home' %} btn-active{% endif %}"{% if request.resolver_match.url_name == 'home' %} aria-current="page"{% endif %} data-nav-item="albums" data-menu-label="Albums" aria-label="Albums">
+                <span class="mdi mdi-album text-lg" aria-hidden="true"></span>
             </a>
 
-            <a href="{% url 'music:artist-list' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'artist-list' or request.resolver_match.url_name == 'artist-detail' %} btn-active{% endif %}" data-nav-item="artists" data-menu-label="Artists">
+            <a href="{% url 'music:artist-list' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'artist-list' or request.resolver_match.url_name == 'artist-detail' %} btn-active{% endif %}"{% if request.resolver_match.url_name == 'artist-list' or request.resolver_match.url_name == 'artist-detail' %} aria-current="page"{% endif %} data-nav-item="artists" data-menu-label="Artists">
                 Artists
             </a>
 
-            <a href="{% url 'music:list-list' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'list-list' %} btn-active{% endif %}" data-nav-item="music-lists" data-menu-label="Source Lists">
+            <a href="{% url 'music:list-list' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'list-list' %} btn-active{% endif %}"{% if request.resolver_match.url_name == 'list-list' %} aria-current="page"{% endif %} data-nav-item="music-lists" data-menu-label="Source Lists">
                 Lists
             </a>
 
             {% if user.is_staff %}
-            <a href="{% url 'music:import' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'import' %} btn-active{% endif %}" data-nav-item="music-import" data-menu-label="Import Data">
+            <a href="{% url 'music:import' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'import' %} btn-active{% endif %}"{% if request.resolver_match.url_name == 'import' %} aria-current="page"{% endif %} data-nav-item="music-import" data-menu-label="Import Data">
                 Import
             </a>
             {% endif %}
@@ -72,7 +72,7 @@
                                     style="display: none"
                                     :style="{ display: q.length > 0 ? 'flex' : 'none' }"
                                     aria-label="Clear search">
-                                <span class="mdi mdi-close"></span>
+                                <span class="mdi mdi-close" aria-hidden="true"></span>
                             </button>
                         </label>
 
@@ -111,7 +111,7 @@
                                 <template x-for="artist in results.artists" :key="'artist-' + artist.id">
                                     <li>
                                         <a :href="'/music/artists/' + artist.slug + '/'" class="flex items-center gap-3">
-                                            <span class="mdi mdi-account-music text-xl text-accent"></span>
+                                            <span class="mdi mdi-account-music text-xl text-accent" aria-hidden="true"></span>
                                             <div>
                                                 <div class="font-semibold text-sm" x-text="artist.name"></div>
                                                 <div class="text-xs text-base-content/85" x-text="artist.summary"></div>
@@ -126,23 +126,23 @@
             </div>
 
             <a href="{% url 'home' %}" class="btn btn-ghost btn-sm btn-square shrink-0 nav-item" data-nav-item="back-to-games" data-menu-label="Back to Games" aria-label="Back to Games">
-                <span class="mdi mdi-arrow-left text-lg"></span>
+                <span class="mdi mdi-arrow-left text-lg" aria-hidden="true"></span>
             </a>
 
             {% else %}
-            <a href="{% url 'home' %}" class="btn btn-ghost btn-sm btn-square shrink-0 nav-item{% if request.resolver_match.url_name == 'home' or media_type == 'games' %} btn-active{% endif %}" data-nav-item="rankings" aria-label="Rankings" title="">
-                <span class="mdi mdi-medal text-lg"></span>
+            <a href="{% url 'home' %}" class="btn btn-ghost btn-sm btn-square shrink-0 nav-item{% if request.resolver_match.url_name == 'home' or media_type == 'games' %} btn-active{% endif %}"{% if request.resolver_match.url_name == 'home' or media_type == 'games' %} aria-current="true"{% endif %} data-nav-item="rankings" aria-label="Rankings" title="">
+                <span class="mdi mdi-medal text-lg" aria-hidden="true"></span>
             </a>
 
             {% if BOOKS_ENABLED %}
-            <a href="{% url 'books:home' %}" class="btn btn-ghost btn-sm btn-square shrink-0 nav-item{% if request.resolver_match.url_name == 'books:home' or media_type == 'books' %} btn-active{% endif %}" data-nav-item="books" data-menu-label="Books" aria-label="Books">
-                <span class="mdi mdi-book-open-page-variant text-xl"></span>
+            <a href="{% url 'books:home' %}" class="btn btn-ghost btn-sm btn-square shrink-0 nav-item{% if request.resolver_match.url_name == 'books:home' or media_type == 'books' %} btn-active{% endif %}"{% if request.resolver_match.url_name == 'books:home' or media_type == 'books' %} aria-current="true"{% endif %} data-nav-item="books" data-menu-label="Books" aria-label="Books">
+                <span class="mdi mdi-book-open-page-variant text-xl" aria-hidden="true"></span>
             </a>
             {% endif %}
 
             {% if MUSIC_ENABLED %}
             <a href="{% url 'music:home' %}" class="btn btn-ghost btn-sm btn-square shrink-0 nav-item" data-nav-item="music" data-menu-label="Music" aria-label="Music">
-                <span class="mdi mdi-album text-xl"></span>
+                <span class="mdi mdi-album text-xl" aria-hidden="true"></span>
             </a>
             {% endif %}
 
@@ -195,7 +195,7 @@
                                     style="display: none"
                                     :style="{ display: q.length > 0 ? 'flex' : 'none' }"
                                     aria-label="Clear search">
-                                <span class="mdi mdi-close"></span>
+                                <span class="mdi mdi-close" aria-hidden="true"></span>
                             </button>
                         </label>
 
@@ -237,7 +237,7 @@
                                 <template x-for="dev in developers" :key="'dev-' + dev.id">
                                     <li>
                                         <a :href="'/developers/' + dev.root_slug + '/' + (dev.id !== dev.root_id ? '#developer-' + dev.id : '')" class="flex items-center gap-3">
-                                            <span class="mdi mdi-account-group text-xl text-accent"></span>
+                                            <span class="mdi mdi-account-group text-xl text-accent" aria-hidden="true"></span>
                                             <div>
                                                 <div class="font-semibold text-sm" x-text="dev.name"></div>
                                                 <div class="text-xs text-base-content/85" x-text="dev.games_count + ' games'"></div>
@@ -259,7 +259,7 @@
                                 <template x-for="s in series" :key="'series-' + s.id">
                                     <li>
                                         <a :href="'{% url 'home' %}?series=' + s.id" class="flex items-center gap-3">
-                                            <span class="mdi mdi-mushroom text-xl text-accent"></span>
+                                            <span class="mdi mdi-mushroom text-xl text-accent" aria-hidden="true"></span>
                                             <div>
                                                 <div class="font-semibold text-sm" x-text="s.name"></div>
                                                 <div class="text-xs text-base-content/85" x-text="s.games_count + ' games'"></div>
@@ -273,17 +273,17 @@
                 </div>
             </div>
 
-            <a href="{% url 'developers-list' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'developers-list' %} btn-active{% endif %}" data-nav-item="devs" data-menu-label="Developers">
+            <a href="{% url 'developers-list' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'developers-list' %} btn-active{% endif %}"{% if request.resolver_match.url_name == 'developers-list' %} aria-current="page"{% endif %} data-nav-item="devs" data-menu-label="Developers">
                 Devs
             </a>
 
-            <a href="{% url 'list-list' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'list-list' %} btn-active{% endif %}" data-nav-item="lists" data-menu-label="Source Lists">
+            <a href="{% url 'list-list' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'list-list' %} btn-active{% endif %}"{% if request.resolver_match.url_name == 'list-list' %} aria-current="page"{% endif %} data-nav-item="lists" data-menu-label="Source Lists">
                 Lists
             </a>
 
             {% has_published_articles as show_blog %}
             {% if show_blog %}
-            <a href="{% url 'article-list' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'article-list' or request.resolver_match.url_name == 'article-detail' %} btn-active{% endif %}" data-nav-item="blog" data-menu-label="Blog">
+            <a href="{% url 'article-list' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'article-list' or request.resolver_match.url_name == 'article-detail' %} btn-active{% endif %}"{% if request.resolver_match.url_name == 'article-list' or request.resolver_match.url_name == 'article-detail' %} aria-current="page"{% endif %} data-nav-item="blog" data-menu-label="Blog">
                 Blog
             </a>
             {% endif %}
@@ -293,22 +293,22 @@
             {% if user.is_authenticated %}
             {% with display_name=user.name|default:user.email|default:'Account' %}
             <button type="button" class="btn btn-ghost btn-sm shrink-0 nav-item auth-modal-trigger" data-nav-item="login" data-menu-label="{{ display_name }}" data-auth-screen="profile">
-                <span class="mdi mdi-account-circle text-xl"></span>
+                <span class="mdi mdi-account-circle text-xl" aria-hidden="true"></span>
                 {{ display_name }}
             </button>
             {% endwith %}
             {% else %}
             <button type="button" class="btn btn-ghost btn-sm shrink-0 nav-item auth-modal-trigger" data-nav-item="login" data-menu-label="Login">
-                <span class="mdi mdi-login text-xl"></span>
+                <span class="mdi mdi-login text-xl" aria-hidden="true"></span>
                 Login
             </button>
             {% endif %}
 
-            <a href="{% url 'page-detail' slug='donate' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'page-detail' and request.resolver_match.kwargs.slug == 'donate' %} btn-active{% endif %}" data-nav-item="donate" data-menu-label="Donate">
+            <a href="{% url 'page-detail' slug='donate' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'page-detail' and request.resolver_match.kwargs.slug == 'donate' %} btn-active{% endif %}"{% if request.resolver_match.url_name == 'page-detail' and request.resolver_match.kwargs.slug == 'donate' %} aria-current="page"{% endif %} data-nav-item="donate" data-menu-label="Donate">
                 Donate
             </a>
 
-            <a href="{% url 'page-detail' slug='about' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'page-detail' and request.resolver_match.kwargs.slug == 'about' %} btn-active{% endif %}" data-nav-item="about" data-menu-label="About">
+            <a href="{% url 'page-detail' slug='about' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'page-detail' and request.resolver_match.kwargs.slug == 'about' %} btn-active{% endif %}"{% if request.resolver_match.url_name == 'page-detail' and request.resolver_match.kwargs.slug == 'about' %} aria-current="page"{% endif %} data-nav-item="about" data-menu-label="About">
                 About
             </a>
 
@@ -323,8 +323,8 @@
         <div @click.away="expanded = false">
             <button type="button" @click="expanded = !expanded" class="btn btn-ghost btn-sm"
                    aria-label="menu" :aria-expanded="expanded">
-                <span class="mdi mdi-menu text-xl" x-show="!expanded"></span>
-                <span class="mdi mdi-close text-xl" x-show="expanded" x-cloak></span>
+                <span class="mdi mdi-menu text-xl" aria-hidden="true" x-show="!expanded"></span>
+                <span class="mdi mdi-close text-xl" aria-hidden="true" x-show="expanded" x-cloak></span>
             </button>
             <ul x-show="expanded" x-cloak
                 x-transition:enter="transition ease-out duration-100"

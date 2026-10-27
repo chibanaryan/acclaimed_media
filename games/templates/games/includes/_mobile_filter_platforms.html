@@ -11,9 +11,9 @@
         <button type="button"
                 @click="expanded = !expanded"
                 class="flex items-center gap-2">
-            <span class="mdi mdi-controller text-lg text-base-content/70"></span>
+            <span class="mdi mdi-controller text-lg text-base-content/70" aria-hidden="true"></span>
             Platform
-            <span class="mdi mdi-chevron-right text-xl transition-transform duration-200" :class="{ 'rotate-90': expanded }"></span>
+            <span class="mdi mdi-chevron-right text-xl transition-transform duration-200" aria-hidden="true" :class="{ 'rotate-90': expanded }"></span>
         </button>
         <template x-if="selectedCount() > 0">
             <span class="badge badge-primary badge-sm ml-2" x-text="selectedCount()"></span>
@@ -25,7 +25,7 @@
                     x-cloak
                     @click.stop="clearPlatforms(); resetExpanded(); debouncedFilterUpdate();"
                     class="btn btn-ghost btn-xs text-base-content/70 hover:text-error">
-                <span class="mdi mdi-close text-xs"></span>
+                <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
                 <span class="text-xs">Clear</span>
             </button>
             <button type="button"
@@ -34,7 +34,7 @@
                     @click.stop="toggleAllExpanded()"
                     class="btn btn-ghost btn-xs text-base-content/40 hover:text-base-content hover:bg-base-100"
                     title="Expand/collapse all">
-                <span class="mdi mdi-unfold-more-horizontal"></span>
+                <span class="mdi mdi-unfold-more-horizontal" aria-hidden="true"></span>
             </button>
         </div>
     </div>
@@ -68,8 +68,10 @@
                         {# Expand/Collapse Arrow #}
                         <button type="button"
                                 class="p-0.5 rounded hover:bg-base-content/10"
-                                @click.stop="toggleManufacturerExpansion(mfrKey)">
-                            <span class="mdi text-base transition-transform duration-200"
+                                @click.stop="toggleManufacturerExpansion(mfrKey)"
+                                :aria-expanded="isManufacturerExpanded(mfrKey) ? 'true' : 'false'"
+                                :aria-label="(isManufacturerExpanded(mfrKey) ? 'Collapse ' : 'Expand ') + platformHierarchy[mfrKey].name">
+                            <span class="mdi text-base transition-transform duration-200" aria-hidden="true"
                                   :class="isManufacturerExpanded(mfrKey) ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
                         </button>
                         {# Manufacturer Icon and Name - click to toggle selection #}
@@ -85,7 +87,7 @@
                                 </svg>
                             </template>
                             <template x-if="platformHierarchy[mfrKey].icon && !platformHierarchy[mfrKey].svgFile">
-                                <span class="mdi text-lg" :class="platformHierarchy[mfrKey].icon"></span>
+                                <span class="mdi text-lg" aria-hidden="true" :class="platformHierarchy[mfrKey].icon"></span>
                             </template>
                             <span class="font-medium text-sm" x-text="platformHierarchy[mfrKey].name"></span>
                         </button>
@@ -106,7 +108,7 @@
                                 <template x-for="ffKey in getSortedFormFactorKeys(mfrKey)" :key="ffKey">
                                     <div class="space-y-1">
                                         {# Form Factor Header - always visible, no expand/collapse #}
-                                        <div class="flex items-center gap-1 py-1 px-2 ml-2 rounded transition-colors cursor-pointer"
+                                        <div role="button" tabindex="0" :aria-pressed="isFormFactorSelected(mfrKey, ffKey) ? 'true' : 'false'" @keydown.enter.prevent="toggleFormFactorSelection(mfrKey, ffKey); debouncedFilterUpdate();" @keydown.space.prevent="toggleFormFactorSelection(mfrKey, ffKey); debouncedFilterUpdate();" class="flex items-center gap-1 py-1 px-2 ml-2 rounded transition-colors cursor-pointer"
                                              :class="{
                                                  'bg-primary text-accent-content': isFormFactorSelected(mfrKey, ffKey),
                                                  'bg-primary/10 text-accent': !isFormFactorSelected(mfrKey, ffKey) && !isManufacturerSelected(mfrKey) && hasFormFactorSelection(mfrKey, ffKey),
@@ -124,7 +126,7 @@
                                         {# Platforms in Form Factor - always visible when manufacturer is expanded #}
                                         <div class="ml-6 space-y-0.5">
                                             <template x-for="platform in getFormFactorPlatforms(mfrKey, ffKey)" :key="platform.id">
-                                                <div class="flex items-center gap-2 py-1 px-2 rounded-md cursor-pointer transition-colors"
+                                                <div role="button" tabindex="0" :aria-pressed="(isPlatformSelected(platform.id)) ? 'true' : 'false'" @keydown.enter.prevent="togglePlatform(platform.id); debouncedFilterUpdate();" @keydown.space.prevent="togglePlatform(platform.id); debouncedFilterUpdate();" class="flex items-center gap-2 py-1 px-2 rounded-md cursor-pointer transition-colors"
                                                      :class="{
                                                          'bg-primary text-accent-content': isPlatformSelected(platform.id),
                                                          'hover:bg-base-content/10': !isPlatformSelected(platform.id),
@@ -148,7 +150,7 @@
                         <template x-if="platformHierarchy[mfrKey].platforms && !platformHierarchy[mfrKey].formFactors">
                             <div class="ml-2 space-y-0.5">
                                 <template x-for="platform in getFlatPlatforms(mfrKey)" :key="platform.id">
-                                    <div class="flex items-center gap-2 py-1 px-2 rounded-md cursor-pointer transition-colors"
+                                    <div role="button" tabindex="0" :aria-pressed="(isPlatformSelected(platform.id)) ? 'true' : 'false'" @keydown.enter.prevent="togglePlatform(platform.id); debouncedFilterUpdate();" @keydown.space.prevent="togglePlatform(platform.id); debouncedFilterUpdate();" class="flex items-center gap-2 py-1 px-2 rounded-md cursor-pointer transition-colors"
                                          :class="{
                                              'bg-primary text-accent-content': isPlatformSelected(platform.id),
                                              'hover:bg-base-content/10': !isPlatformSelected(platform.id),

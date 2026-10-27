@@ -80,8 +80,9 @@ class ImportHelpersTests(TestCase):
         self.assertTrue(success)
         self.assertIn("objects deleted", message)
         self.assertEqual(models.Game.objects.count(), 0)
-        # Platform is deleted and will be recreated during re-import via get_or_create
-        self.assertEqual(models.Platform.objects.count(), 0)
+        # Platforms survive, keeping their years; the next platform import
+        # removes any code its file drops
+        self.assertEqual(models.Platform.objects.count(), 1)
 
     def test_delete_existing_data_preserves_user_tracking(self):
         """Verify User, PlayedGame, and WantToPlayGame records survive deletion."""
@@ -800,23 +801,96 @@ class NotifySubscribersOfNewPostTests(TestCase):
 
 
 class PostSignalTests(TestCase):
-    """Test Post signal handlers for notifications."""
+    """Test Post signal handlers for notifications.
+
+    The emails go out on a background thread started on commit; these tests
+    run the commit callbacks and the thread inline.
+    """
 
     def setUp(self):
         """Create test author."""
         self.author = User.objects.create_user(
             username="author", email="author@example.com"
         )
+        patcher = mock.patch(
+            "games.signals.start_background_thread",
+            side_effect=lambda t, **kwargs: t(),
+        )
+        self.start_thread = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _create(self, **kwargs):
+        with self.captureOnCommitCallbacks(execute=True):
+            return Post.objects.create(author=self.author, text="Text", **kwargs)
+
+    def test_the_emails_go_out_on_a_thread_after_commit(self):
+        with mock.patch("games.utils.notify_subscribers_of_new_post") as mock_notify:
+            with self.captureOnCommitCallbacks(execute=False) as callbacks:
+                Post.objects.create(
+                    title="Queued",
+                    text="x",
+                    author=self.author,
+                    active=True,
+                    send_notification=True,
+                )
+            mock_notify.assert_not_called()  # not inside the request
+            self.start_thread.assert_not_called()  # not before commit
+
+            for callback in callbacks:
+                callback()
+
+            self.start_thread.assert_called_once()
+            # Not a daemon: a graceful shutdown waits for the send
+            self.assertIs(self.start_thread.call_args.kwargs["daemon"], False)
+            mock_notify.assert_called_once()
+
+    def test_a_second_save_during_the_send_does_not_send_again(self):
+        """The post is claimed before the thread starts, so the admin
+        saving it again while the emails go out queues nothing."""
+        with mock.patch("games.utils.notify_subscribers_of_new_post"):
+            with self.captureOnCommitCallbacks(execute=False) as first:
+                post = Post.objects.create(
+                    title="Racing",
+                    text="x",
+                    author=self.author,
+                    active=True,
+                    send_notification=True,
+                )
+            self.assertEqual(len(first), 1)  # the first send, still pending
+
+            again = Post.objects.get(pk=post.pk)  # as the admin loads it
+            again.text = "edited"
+            with self.captureOnCommitCallbacks(execute=True) as second:
+                again.save()
+
+            self.assertEqual(second, [])
+            self.assertTrue(post.notification_sent)
+
+    def test_a_lost_claim_queues_nothing(self):
+        """Two saves racing both pass pre_save; the one whose conditional
+        update finds the post already claimed sends nothing."""
+        from django.db.models.query import QuerySet
+
+        with mock.patch.object(QuerySet, "update", return_value=0):
+            with self.captureOnCommitCallbacks(execute=True) as callbacks:
+                Post.objects.create(
+                    title="Lost",
+                    text="x",
+                    author=self.author,
+                    active=True,
+                    send_notification=True,
+                )
+
+        self.assertEqual(callbacks, [])
+        self.start_thread.assert_not_called()
 
     def test_notification_signal_triggers_when_conditions_met(self):
         """Test that notification is sent when post is active with send_notification."""
         with mock.patch("games.utils.notify_subscribers_of_new_post") as mock_notify:
             mock_notify.return_value = 5
             # Create post with notification enabled
-            post = Post.objects.create(
+            post = self._create(
                 title="Test Post",
-                text="Test content",
-                author=self.author,
                 active=True,
                 send_notification=True,
             )
@@ -854,10 +928,8 @@ class PostSignalTests(TestCase):
         """Test that notification is not sent again on re-save."""
         with mock.patch("games.utils.notify_subscribers_of_new_post") as mock_notify:
             mock_notify.return_value = 1
-            post = Post.objects.create(
+            post = self._create(
                 title="Test Post",
-                text="Test content",
-                author=self.author,
                 active=True,
                 send_notification=True,
             )

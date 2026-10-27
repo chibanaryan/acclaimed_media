@@ -40,7 +40,7 @@
                     :aria-expanded="sortOpen">
                 <span class="mdi mdi-sort text-base" aria-hidden="true"></span>
                 <span class="text-sm" x-text="{% for option in sort_options %}filters.sort === '{{ option.value }}' ? {% if option.label_expr %}({{ option.label_expr|safe }}){% else %}'{{ option.label }}'{% endif %} : {% endfor %}'{{ default_sort_label }}'">{{ default_sort_label }}</span>
-                <span class="mdi mdi-chevron-down text-xs"></span>
+                <span class="mdi mdi-chevron-down text-xs" aria-hidden="true"></span>
             </button>
             <ul x-show="sortOpen" x-cloak
                 class="dropdown-content menu menu-sm bg-base-200 rounded-box shadow-lg z-50 w-fit p-2 mt-1"
@@ -85,7 +85,7 @@
     </div>
     {# Result count - middle #}
     <div class="@container min-w-0">
-    <div class="result-count text-base-content/70 whitespace-nowrap text-center hidden @min-[9rem]:block" data-result-count="desktop">
+    <div role="status" class="result-count text-base-content/70 whitespace-nowrap text-center hidden @min-[9rem]:block" data-result-count="desktop">
         {% if total_count %}Showing <span id="loaded-count" class="loaded-count-value">{{ loaded_count|intcomma }}</span> of {{ total_count|intcomma }}{% else %}{{ empty_count_label|default_if_none:"" }}{% endif %}
     </div>
     </div>
@@ -119,7 +119,7 @@
 {# Mobile: the same controls, with a native select for touch #}
 <div class="desktop:hidden flex items-center justify-between gap-2 mb-2 text-sm">
     <div class="flex items-center gap-1 shrink-0">
-        <span class="mdi mdi-sort text-base text-base-content/70"></span>
+        <span class="mdi mdi-sort text-base text-base-content/70" aria-hidden="true"></span>
         <select class="select select-xs select-bordered bg-base-200"
                 aria-label="Sort by"
                 @change="updateSort($event.target.value)">
@@ -160,7 +160,7 @@
         {% endif %}
     </div>
     {# Result count - middle, can shrink #}
-    <div class="result-count text-base-content/70 text-xs truncate min-w-0" data-result-count="mobile">
+    <div role="status" class="result-count text-base-content/70 text-xs truncate min-w-0" data-result-count="mobile">
         {% if total_count %}<span class="loaded-count-value">{{ loaded_count|intcomma }}</span> of {{ total_count|intcomma }}{% endif %}
     </div>
     {# Jump to rank - right #}

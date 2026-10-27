@@ -29,7 +29,7 @@
         </div>
         {% endif %}
         <a {% if game %}href="{% url 'game-detail' slug=game.slug %}"{% endif %} class="game-thumb-link" data-slot="thumb-link">
-            <img {% if game %}src="{{ game.thumbnail }}" srcset="{{ game.thumbnail }} 1x, {{ game.thumbnail_2x }} 2x" alt="{{ game.name }}"{% endif %}
+            <img {% if game %}{% if game.thumbnail %}src="{{ game.thumbnail }}" srcset="{{ game.thumbnail }} 1x, {{ game.thumbnail_2x }} 2x"{% else %}src="{% static 'games/images/cover-placeholder.svg' %}"{% endif %} alt="{{ game.name }}"{% endif %}
                  width="90" height="128" loading="lazy" decoding="async"
                  class="game-thumb"
                  data-slot="thumbnail">
@@ -61,16 +61,16 @@
                         <span data-slot="platforms">
                             {% for family in game.platforms.all|platform_families_grouped %}
                                 {% if family.count >= 3 %}
-                                <span class="tooltip tooltip-top inline-flex items-start hover:text-primary cursor-pointer transition-colors" data-tip="{{ family.tooltip }}" data-add-platforms="{{ family.platform_ids_str }}">
+                                <button type="button" class="tooltip tooltip-top inline-flex items-start hover:text-primary cursor-pointer transition-colors" data-tip="{{ family.tooltip }}" aria-label="Filter by {{ family.tooltip }}" data-add-platforms="{{ family.platform_ids_str }}">
                                     {% if family.svg_icon %}
                                     <svg class="w-3.5 h-3.5" aria-hidden="true"><use href="{% static 'games/images/platform-icons.svg' %}#{{ family.svg_icon }}"></use></svg>
                                     {% elif family.icon %}
                                     <span class="mdi {{ family.icon }} text-sm leading-none" aria-hidden="true"></span>
                                     {% endif %}
-                                    <span class="tabular-nums font-bold leading-none" style="font-size: 8px; margin-left: 1px; margin-top: -2px;">{{ family.count }}</span></span>{% if not forloop.last %}, {% endif %}
+                                    <span class="tabular-nums font-bold leading-none" style="font-size: 8px; margin-left: 1px; margin-top: -2px;">{{ family.count }}</span></button>{% if not forloop.last %}, {% endif %}
                                 {% else %}
                                     {% for p in family.platforms %}
-                                    <span class="tooltip tooltip-top hover:text-primary cursor-pointer transition-colors" data-tip="{{ p.name }}" data-add-platforms="{{ p.id }}">{{ p.code }}</span>{% if not forloop.last %}, {% elif not forloop.parentloop.last %}, {% endif %}
+                                    <button type="button" class="tooltip tooltip-top hover:text-primary cursor-pointer transition-colors" data-tip="{{ p.name }}" aria-label="Filter by {{ p.name }}" data-add-platforms="{{ p.id }}">{{ p.code }}</button>{% if not forloop.last %}, {% elif not forloop.parentloop.last %}, {% endif %}
                                     {% endfor %}
                                 {% endif %}
                             {% endfor %}

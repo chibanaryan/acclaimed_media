@@ -15,11 +15,11 @@ Parameters:
 
 {# Save #}
 <dialog class="modal"
-        :class="{ 'modal-open': saveFilterModalOpen }"
-        @keydown.escape.window="saveFilterModalOpen = false">
+        x-effect="saveFilterModalOpen ? ($el.open || $el.showModal()) : ($el.open && $el.close())"
+        @close="saveFilterModalOpen = false">
     <div class="modal-box max-w-sm">
         <h3 class="font-bold text-lg mb-4">
-            <span class="mdi mdi-bookmark-plus text-info"></span>
+            <span class="mdi mdi-bookmark-plus text-info" aria-hidden="true"></span>
             Save Filter
         </h3>
         <form @submit.prevent="submitSaveFilter()">
@@ -62,11 +62,11 @@ Parameters:
 
 {# Rename #}
 <dialog class="modal"
-        :class="{ 'modal-open': renameFilterModalOpen }"
-        @keydown.escape.window="renameFilterModalOpen = false">
+        x-effect="renameFilterModalOpen ? ($el.open || $el.showModal()) : ($el.open && $el.close())"
+        @close="renameFilterModalOpen = false">
     <div class="modal-box max-w-sm">
         <h3 class="font-bold text-lg mb-4">
-            <span class="mdi mdi-pencil text-info"></span>
+            <span class="mdi mdi-pencil text-info" aria-hidden="true"></span>
             Rename Filter
         </h3>
         <form @submit.prevent="submitRenameFilter()">
@@ -108,11 +108,11 @@ Parameters:
 
 {# Delete #}
 <dialog class="modal"
-        :class="{ 'modal-open': deleteFilterModalOpen }"
-        @keydown.escape.window="deleteFilterModalOpen = false">
+        x-effect="deleteFilterModalOpen ? ($el.open || $el.showModal()) : ($el.open && $el.close())"
+        @close="deleteFilterModalOpen = false">
     <div class="modal-box max-w-sm">
         <h3 class="font-bold text-lg mb-4">
-            <span class="mdi mdi-delete text-error"></span>
+            <span class="mdi mdi-delete text-error" aria-hidden="true"></span>
             Delete Filter
         </h3>
         <p class="py-2">

@@ -420,7 +420,9 @@ class TogglePlayedGameAtomicityTests(TestCase):
     def test_caches_are_dropped_only_once_the_write_commits(self):
         from unittest import mock
 
-        with mock.patch("games.views.invalidate_played_games_cache") as invalidate:
+        with mock.patch(
+            "games.views.game_pages.invalidate_played_games_cache"
+        ) as invalidate:
             with self.captureOnCommitCallbacks(execute=False) as callbacks:
                 self.client.post(f"{self.url}?status=played")
             invalidate.assert_not_called()
@@ -815,7 +817,7 @@ class PlayedButtonPageWeightTests(TestCase):
 
         response = self.client.get(reverse("home"))
         self.assertContains(response, 'data-igdb-id="4242"')
-        self.assertNotContains(response, "<script data-played-sync>")
+        self.assertNotContains(response, "<script data-played-sync")
 
     def test_a_page_render_ships_one_menu_and_no_per_button_posts(self):
         from django.urls import reverse
@@ -874,7 +876,8 @@ class PlayedButtonPageWeightTests(TestCase):
 
         url = reverse("toggle-played-game", kwargs={"igdb_id": self.game.igdb_id})
         response = self.client.post(f"{url}?status=played")
-        self.assertContains(response, "<script data-played-sync>", count=1)
+        # Carries the request's CSP nonce, so match the opening of the tag
+        self.assertContains(response, "<script data-played-sync nonce=", count=1)
 
     def test_menu_buttons_inherit_the_csrf_header_from_body(self):
         import re

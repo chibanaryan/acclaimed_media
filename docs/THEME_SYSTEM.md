@@ -31,11 +31,12 @@ All pages include the same theme initialization script from [`games/templates/in
 - Inherits theme from localStorage
 - No separate theme system
 
-**Django Admin** (admin/base_site.html)
-- Custom template overrides Django's admin base
-- Applies our DaisyUI theme system
-- Hides Django's built-in theme toggle
-- Styles admin interface to match site themes
+**Django Admin**
+- Uses Django's own admin styling and theme toggle. A custom
+  `admin/base_site.html` meant to apply the DaisyUI themes was never
+  active - `django.contrib.admin` comes before `games` in `INSTALLED_APPS`,
+  so its template won - and switched on it broke the header; it was
+  deleted on 2026-10-26
 
 ### 3. Theme Configuration
 
@@ -62,10 +63,8 @@ Themes are defined in [`theme/static_src/src/styles.css`](theme/static_src/src/s
 
 **Cause:** Django admin was using its own theme system
 
-**Solution:**
-- Already fixed with custom `admin/base_site.html`
-- Admin now uses the same lofi/forest themes
-- Django's theme toggle is hidden
+**Status:** left as Django's own theme. The custom `admin/base_site.html`
+this section described never took effect and was deleted on 2026-10-26.
 
 ### Problem: Import page styling looks wrong
 
@@ -138,7 +137,6 @@ User clicks theme toggle → JavaScript function `setTheme(newTheme)`:
 
 ### Created
 - `games/templates/includes/_theme_script.html` - Centralized theme initialization
-- `games/templates/admin/base_site.html` - Custom admin template with theme support
 - `games/static/games/js/theme-reset.js` - Debug utilities
 
 ### Modified

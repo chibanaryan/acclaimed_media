@@ -20,22 +20,22 @@
     {% if is_read %}
     {# Read state - Book with checkmark #}
     <span class="flex items-center justify-center {% if size == 'large' %}w-10 h-10{% else %}w-6 h-6{% endif %}{% if just_toggled %} star-appear{% else %} star-idle{% endif %}">
-        <span class="mdi mdi-book-check {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} text-success drop-shadow-[0_0_6px_rgba(34,197,94,0.7)]"></span>
+        <span class="mdi mdi-book-check {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} text-success drop-shadow-[0_0_6px_rgba(34,197,94,0.7)]" aria-hidden="true"></span>
     </span>
     {% elif is_want_to_read %}
     {# Want to Read state - Book with plus #}
     <span class="flex items-center justify-center {% if size == 'large' %}w-10 h-10{% else %}w-6 h-6{% endif %}{% if just_toggled %} star-appear{% endif %}">
-        <span class="mdi mdi-book-plus-outline {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} text-warning"></span>
+        <span class="mdi mdi-book-plus-outline {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} text-warning" aria-hidden="true"></span>
     </span>
     {% else %}
     {# Untracked state - Empty book outline #}
     <span class="flex items-center justify-center {% if size == 'large' %}w-10 h-10{% else %}w-6 h-6{% endif %}{% if just_toggled %} star-disappear{% endif %}">
-        <span class="mdi mdi-book-outline {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} text-base-content/30"></span>
+        <span class="mdi mdi-book-outline {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} text-base-content/30" aria-hidden="true"></span>
     </span>
     {% endif %}
 </button>
 </div>
-<script data-read-sync>
+<script data-read-sync nonce="{{ csp_nonce }}">
 (function() {
     var thisScript = document.currentScript;
     if (!thisScript) return;

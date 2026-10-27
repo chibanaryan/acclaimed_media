@@ -3,9 +3,9 @@
 {% with display_name=user.name|default:user.email|default:"User" %}
 <div class="dropdown dropdown-top w-full" x-data="{ open: false }">
     <button @click="open = !open" class="btn btn-ghost w-full justify-start gap-2 px-3">
-        <span class="mdi mdi-account-circle text-xl"></span>
+        <span class="mdi mdi-account-circle text-xl" aria-hidden="true"></span>
         <span class="truncate flex-1 text-left">{{ display_name }}</span>
-        <span class="mdi mdi-chevron-up transition-transform" :class="{ 'rotate-180': open }"></span>
+        <span class="mdi mdi-chevron-up transition-transform" aria-hidden="true" :class="{ 'rotate-180': open }"></span>
     </button>
     <ul x-show="open" @click.away="open = false" x-cloak
         x-transition:enter="transition ease-out duration-100"
@@ -17,13 +17,13 @@
         class="dropdown-content menu bg-base-100 rounded-box w-full p-2 shadow-lg z-50 mb-2">
         <li>
             <button class="auth-modal-trigger" data-auth-screen="profile" @click="open = false">
-                <span class="mdi mdi-account-circle"></span>
+                <span class="mdi mdi-account-circle" aria-hidden="true"></span>
                 Edit Profile
             </button>
         </li>
         <li>
             <button type="button" @click.stop="$root.querySelector('#logout-form-desktop').submit()" class="w-full flex items-center gap-2 text-left">
-                <span class="mdi mdi-logout"></span>
+                <span class="mdi mdi-logout" aria-hidden="true"></span>
                 Logout
             </button>
         </li>
@@ -35,7 +35,7 @@
 {% endwith %}
 {% else %}
 <button class="btn btn-primary w-full auth-modal-trigger">
-    <span class="mdi mdi-login"></span>
+    <span class="mdi mdi-login" aria-hidden="true"></span>
     Login
 </button>
 {% endif %}

@@ -4,6 +4,12 @@
 
 {% block title %}{{ developer.name }} | Acclaimed Video Games{% endblock %}
 
+{# all_games is in rank order, so the first is the developer's best-ranked #}
+{% block meta_description %}{{ developer.name }} has {{ total_games }} game{{ total_games|pluralize }} among the most critically acclaimed video games of all time{% with top=all_games.0 %}{% if top %}, led by {{ top.name }} (#{{ top.rank }}){% endif %}{% endwith %}.{% endblock %}
+{% block og_title %}{{ developer.name }} | Acclaimed Video Games{% endblock %}
+{% block og_description %}{{ developer.name }}: {{ total_games }} game{{ total_games|pluralize }} among the most critically acclaimed of all time.{% endblock %}
+{% block og_image %}{% with top=all_games.0 %}{% if top.image_og %}{{ top.image_og }}{% else %}{{ block.super }}{% endif %}{% endwith %}{% endblock %}
+
 {% block extra_head %}
 <script nonce="{{ csp_nonce }}">
     // Serialize data for Alpine.js developer filter
@@ -22,8 +28,13 @@
     window.RANK_DISTRIBUTION_MAX_RANK = {{ max_rank|default:0 }};
     window.RANK_DISTRIBUTION_BIN_COUNT = {{ rank_distribution_bin_count|default:10 }};
 </script>
-<script src="{% static 'games/js/rank-distribution.min.js' %}"></script>
-<script src="{% static 'games/js/developer-filter.min.js' %}"></script>
+{% endblock %}
+
+{# Queued with the Alpine scripts, which load in order before Alpine starts, #}
+{# instead of two parser-blocking tags in <head>; base.html already queues #}
+{# rank-distribution on every page, so it was being fetched twice here. #}
+{% block pre_alpine %}
+<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "games/js/developer-filter.min.js" %}');</script>
 {% endblock %}
 
 {% block content %}
@@ -42,7 +53,7 @@
                 {% endif %}
                 <p class="mt-1" x-show="getIgdbUrl()" x-cloak>
                     <a :href="getIgdbUrl()" target="_blank" class="link link-accent text-sm inline-flex items-center gap-1">
-                        <span x-text="`${getIgdbDeveloperName()} on IGDB`"></span><span class="mdi mdi-open-in-new text-xs"></span>
+                        <span x-text="`${getIgdbDeveloperName()} on IGDB`"></span><span class="mdi mdi-open-in-new text-xs" aria-hidden="true"></span>
                     </a>
                 </p>
             </div>
@@ -70,12 +81,18 @@
              class="fixed inset-0 z-50 desktop:hidden">
             <div class="fixed inset-0 bg-black/50" @click="showMobileFilters = false"></div>
             <div class="fixed inset-x-0 bottom-0 max-h-[85vh] bg-base-300 rounded-t-2xl overflow-hidden flex flex-col z-10"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="developer-filters-title"
+                 tabindex="-1"
+                 x-effect="if (showMobileFilters) { window.filterSheetOpener = document.activeElement; $nextTick(() => $el.focus()); } else if (window.filterSheetOpener) { window.filterSheetOpener.focus(); window.filterSheetOpener = null; }"
+                 @keydown.tab="trapTabFocus($event, $el)"
                  @click.stop>
                 {# Modal header #}
                 <div class="flex items-center justify-between p-4 border-b border-base-100">
-                    <h2 class="text-lg font-bold">Filter by Developer</h2>
-                    <button @click="showMobileFilters = false" class="btn btn-sm btn-ghost btn-circle">
-                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <h2 id="developer-filters-title" class="text-lg font-bold">Filter by Developer</h2>
+                    <button type="button" @click="showMobileFilters = false" class="btn btn-sm btn-ghost btn-circle" aria-label="Close filters">
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                         </svg>
                     </button>
@@ -111,7 +128,7 @@
     </div>
 {% else %}
     <div class="alert alert-error">
-        <span class="mdi mdi-alert-circle"></span>
+        <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
         <div>
             <p class="font-bold">Error: Developer not found</p>
             <p>The developer you're looking for could not be found or there was a problem loading it.</p>

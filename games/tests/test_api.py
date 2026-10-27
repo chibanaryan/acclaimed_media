@@ -1189,3 +1189,41 @@ class PostgresSearchFieldTests(TestCase):
             self.assertIn("name__search", views.DeveloperListAPIView.search_fields)
 
         importlib.reload(views)
+
+
+class UnifiedSearchAccentTests(TestCase):
+    """Developers and series match accent-insensitively, in the database."""
+
+    def setUp(self):
+        clear_all_caches()
+        studio = models.Developer.objects.create(
+            name="Hüdson Soft", slug="hudson", igdb_id=9
+        )
+        saga = models.Series.objects.create(name="Pokémon", slug="pokemon", igdb_id=9)
+        for rank in (1, 2):
+            game = models.Game.objects.create(
+                name=f"Bomber {rank}", slug=f"bomber-{rank}", rank=rank
+            )
+            game.developers.add(studio)
+            game.series.add(saga)
+
+    def test_ascii_finds_accented_names(self):
+        data = self.client.get("/api/unified-search/", {"q": "hudson"}).json()
+        self.assertEqual([d["name"] for d in data["developers"]], ["Hüdson Soft"])
+        data = self.client.get("/api/unified-search/", {"q": "pokemon"}).json()
+        self.assertEqual([s["name"] for s in data["series"]], ["Pokémon"])
+
+    def test_a_long_folded_name_fits_its_column(self):
+        """unidecode turns each CJK character into a syllable and a space."""
+        studio = models.Developer.objects.get(slug="hudson")
+        studio.name = "任天堂情報開発本部" * 20  # 180 characters
+        studio.save()
+        studio.refresh_from_db()
+        self.assertEqual(len(studio.name_normalized), 200)
+
+    def test_the_folded_name_is_kept_on_save(self):
+        studio = models.Developer.objects.get(slug="hudson")
+        studio.name = "Ünïcode Works"
+        studio.save()
+        studio.refresh_from_db()
+        self.assertEqual(studio.name_normalized, "unicode works")

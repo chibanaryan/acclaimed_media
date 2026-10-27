@@ -450,6 +450,14 @@ class RefreshAllMetadataCommandTests(TestCase):
         patcher = mock.patch("howlongtobeatpy.HowLongToBeat", return_value=hltb)
         patcher.start()
         self.addCleanup(patcher.stop)
+        # The command sleeps 1.5-4 s between rate-limited requests; under test
+        # that was ~28 s of real waiting across this class
+        sleeper = mock.patch(
+            "games.management.commands.refresh_all_metadata.asyncio.sleep",
+            new=mock.AsyncMock(),
+        )
+        sleeper.start()
+        self.addCleanup(sleeper.stop)
 
         self.game1 = models.Game.objects.create(
             name="Test Game 1",

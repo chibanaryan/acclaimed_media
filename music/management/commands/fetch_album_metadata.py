@@ -38,6 +38,7 @@ from datetime import datetime
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
+from core.services.monitoring import weekly_job_monitor
 from music import views as music_views
 from music.management.commands.rebuild_album_genres import write_report
 from music.models import Album
@@ -124,6 +125,13 @@ class Command(BaseCommand):
             )
             return
 
+        with weekly_job_monitor(
+            "fetch-album-metadata", enabled=options.get("weekly"), max_runtime=120
+        ):
+            self._run(options)
+
+    def _run(self, options):
+        """Everything after the weekly gate, inside the cron check-in."""
         albums = self._get_albums(options)
         if not albums:
             self.stdout.write(self.style.WARNING("No albums matched."))

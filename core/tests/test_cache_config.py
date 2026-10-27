@@ -71,45 +71,34 @@ class BuildCachesTests(SimpleTestCase):
         self.assertEqual(sorted(caches), ["default", "local", "ratelimit"])
         self.assertEqual(caches["default"]["BACKEND"], cache_config.DATABASE_BACKEND)
 
-    def test_the_shared_alias_is_keyed_on_the_release(self):
-        """The Postgres cache outlives a deploy; the prefix starts each
-        release on keys the previous one never wrote."""
+    def test_the_shared_alias_has_no_release_prefix(self):
+        """A whole-alias prefix reset allauth's and the contact form's rate
+        limits on every release; only the API's page caches carry it."""
         caches = cache_config.build_caches(
-            "dbcache://cache_table",
-            debug=False,
-            test_mode=False,
-            base_dir=Path("/tmp"),
-            release="v412",
+            "dbcache://cache_table", debug=False, test_mode=False, base_dir=Path("/tmp")
         )
-        self.assertEqual(caches["default"]["KEY_PREFIX"], "v00000412")
-        self.assertNotIn("KEY_PREFIX", caches["local"])
-        self.assertNotIn("KEY_PREFIX", caches["ratelimit"])
+        self.assertNotIn("KEY_PREFIX", caches["default"])
 
-    def test_a_later_release_sorts_after_an_earlier_one(self):
+    def test_the_release_prefix_is_padded_so_later_releases_sort_after(self):
         """DatabaseCache culls the lowest keys first, by string order."""
-
-        def prefix(release):
-            return cache_config.build_caches(
-                "dbcache://cache_table",
-                debug=False,
-                test_mode=False,
-                base_dir=Path("/tmp"),
-                release=release,
-            )["default"]["KEY_PREFIX"]
-
+        prefix = cache_config.release_cache_prefix
+        self.assertEqual(prefix("v412"), "v00000412")
         self.assertLess(prefix("v99"), prefix("v100"))
+        self.assertEqual(prefix(None), "")
+        self.assertEqual(prefix(""), "")
 
-    def test_no_release_and_tests_get_no_prefix(self):
-        for release, test_mode in ((None, False), ("", False), ("v412", True)):
-            with self.subTest(release=release, test_mode=test_mode):
-                caches = cache_config.build_caches(
-                    "locmemcache://",
-                    debug=False,
-                    test_mode=test_mode,
-                    base_dir=Path("/tmp"),
-                    release=release,
-                )
-                self.assertNotIn("KEY_PREFIX", caches["default"])
+    def test_the_api_page_caches_are_keyed_on_the_release(self):
+        from unittest import mock
+
+        from django.test import override_settings
+
+        from games.api import views as api_views
+
+        with override_settings(RELEASE_CACHE_PREFIX="v00000412"), mock.patch.object(
+            api_views, "django_cache_page"
+        ) as django_cache_page:
+            api_views.cache_page(60)
+        django_cache_page.assert_called_once_with(60, key_prefix="v00000412")
 
     def test_the_per_process_aliases_are_always_per_process(self):
         # Whole-page HTML and the rate-limit counters live here, so neither
@@ -141,12 +130,19 @@ class SettingsWiringTests(SimpleTestCase):
     """What settings.py did with the above."""
 
     def test_the_per_process_aliases_are_configured(self):
-        for alias in ("local", "ratelimit"):
-            with self.subTest(alias=alias):
-                self.assertIn(alias, settings.CACHES)
-                self.assertEqual(
-                    settings.CACHES[alias]["BACKEND"], cache_config.LOCMEM_BACKEND
-                )
+        self.assertEqual(
+            settings.CACHES["local"]["BACKEND"], cache_config.LOCMEM_BACKEND
+        )
+        # Under test the rate-limit counters are a DummyCache; see build_caches
+        self.assertEqual(
+            settings.CACHES["ratelimit"]["BACKEND"], cache_config.DUMMY_BACKEND
+        )
+
+    def test_outside_tests_the_counters_are_per_process(self):
+        caches = cache_config.build_caches(
+            None, debug=False, test_mode=False, base_dir=Path("/tmp")
+        )
+        self.assertEqual(caches["ratelimit"]["BACKEND"], cache_config.LOCMEM_BACKEND)
 
     def test_there_is_no_site_wide_page_cache_middleware(self):
         # Every page varies on Cookie, so this pair stored a copy of each

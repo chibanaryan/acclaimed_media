@@ -58,7 +58,7 @@
                         </div>
                         {% else %}
                         <div class="w-10 h-14 bg-base-100 rounded flex items-center justify-center flex-shrink-0">
-                            <span class="mdi mdi-gamepad-variant text-base-content/30"></span>
+                            <span class="mdi mdi-gamepad-variant text-base-content/30" aria-hidden="true"></span>
                         </div>
                         {% endif %}
                         <span class="text-sm font-medium truncate group-hover:text-accent transition-colors">{{ dev.top_game.name }}</span>
@@ -100,7 +100,7 @@
                 </div>
                 {% else %}
                 <div class="w-10 h-14 bg-base-300 rounded flex items-center justify-center flex-shrink-0">
-                    <span class="mdi mdi-gamepad-variant text-base-content/30"></span>
+                    <span class="mdi mdi-gamepad-variant text-base-content/30" aria-hidden="true"></span>
                 </div>
                 {% endif %}
                 <div class="flex-1 min-w-0">
@@ -114,14 +114,14 @@
             <div class="flex flex-wrap gap-2">
                 {% with count=dev.recursive_games_count|default:dev.games_count %}
                 <span class="badge badge-primary badge-outline">
-                    <span class="mdi mdi-gamepad-variant mr-1"></span>
+                    <span class="mdi mdi-gamepad-variant mr-1" aria-hidden="true"></span>
                     {{ count }} game{{ count|pluralize }}
                 </span>
                 {% endwith %}
                 {% with subs=dev.recursive_studios_count|default:0 %}
                 {% if subs > 0 %}
                 <span class="badge badge-ghost">
-                    <span class="mdi mdi-office-building mr-1"></span>
+                    <span class="mdi mdi-office-building mr-1" aria-hidden="true"></span>
                     {{ subs }} subsidiar{{ subs|pluralize:"y,ies" }}
                 </span>
                 {% endif %}
@@ -139,7 +139,7 @@
             data-next-page="{{ next_page }}"
             data-total="{{ total_count }}"
             data-loaded="{{ loaded_count }}">
-        <span class="mdi mdi-space-invaders"></span>
+        <span class="mdi mdi-space-invaders" aria-hidden="true"></span>
         <span class="load-more-text">Load More ({{ remaining_count|intcomma }} remaining)</span>
     </button>
 </div>
@@ -147,7 +147,7 @@
 
 {% else %}
 <div class="alert">
-    <span class="mdi mdi-information-outline"></span>
+    <span class="mdi mdi-information-outline" aria-hidden="true"></span>
     <span>No developers found.</span>
 </div>
 {% endif %}

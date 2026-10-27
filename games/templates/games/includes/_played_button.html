@@ -32,12 +32,12 @@
         {% elif is_want_to_play %}
         {# Want to Play state - Star with plus #}
         <span class="flex items-center justify-center {% if size == 'large' %}w-10 h-10{% else %}w-6 h-6{% endif %}{% if just_toggled %} star-appear{% endif %}">
-            <span class="mdi mdi-star-plus-outline {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} text-warning"></span>
+            <span class="mdi mdi-star-plus-outline {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} text-warning" aria-hidden="true"></span>
         </span>
         {% else %}
         {# Untracked state - Empty star outline (no animation - should appear at normal size) #}
         <span class="flex items-center justify-center {% if size == 'large' %}w-10 h-10{% else %}w-6 h-6{% endif %}">
-            <span class="mdi mdi-star-outline {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} text-base-content/30"></span>
+            <span class="mdi mdi-star-outline {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} text-base-content/30" aria-hidden="true"></span>
         </span>
         {% endif %}
     </button>
@@ -46,7 +46,7 @@
 {# already filled from played_game_ids and every copy of the button already #}
 {# matches, so 200 copies of it were 448 KB of the logged-in rankings page. #}
 {% if just_toggled %}
-<script data-played-sync>
+<script data-played-sync nonce="{{ csp_nonce }}">
 (function() {
     var thisScript = document.currentScript;
     if (!thisScript) return;

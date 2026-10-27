@@ -19,9 +19,11 @@ from core.tests.utils import clear_all_caches
 from music import models
 
 # The sidebar's own links, as rendered once template indentation is stripped.
-SIDEBAR_RANKINGS_LINK = '<span class="mdi mdi-medal text-xl"></span>\nRankings'
+SIDEBAR_RANKINGS_LINK = (
+    '<span class="mdi mdi-medal text-xl" aria-hidden="true"></span>\nRankings'
+)
 SIDEBAR_BACK_TO_GAMES = (
-    '<span class="mdi mdi-arrow-left text-xl"></span>\nBack to Games'
+    '<span class="mdi mdi-arrow-left text-xl" aria-hidden="true"></span>\nBack to Games'
 )
 
 
@@ -129,7 +131,7 @@ class LaunchedSectionTests(TestCase):
         # as it already was whenever books was enabled.
         response = self.client.get(reverse("developers-list"))
         self.assertNotContains(response, SIDEBAR_RANKINGS_LINK)
-        self.assertContains(response, 'role="tab"')
+        self.assertContains(response, '<nav aria-label="Section"')
 
     def test_music_pages_lead_back_through_the_switcher(self):
         response = self.client.get(reverse("music:home"))

@@ -7,7 +7,7 @@
         hx-get="{% url 'auth-modal-login' %}"
         hx-target="#auth-modal-content"
         hx-swap="innerHTML">
-    <span class="mdi mdi-arrow-left"></span>
+    <span class="mdi mdi-arrow-left" aria-hidden="true"></span>
     Back
 </button>
 {% endif %}
@@ -18,7 +18,7 @@
 {# Non-field errors (password mismatch, etc.) #}
 {% if form.non_field_errors %}
 <div class="alert alert-error mb-4">
-    <span class="mdi mdi-alert-circle"></span>
+    <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
     <div>
         {% for error in form.non_field_errors %}
         <p>{{ error }}</p>
@@ -127,7 +127,7 @@
 
     {# Submit button #}
     <button type="submit" class="btn btn-primary w-full mt-3">
-        <span class="mdi mdi-account-plus"></span>
+        <span class="mdi mdi-account-plus" aria-hidden="true"></span>
         Create Account
     </button>
 </form>

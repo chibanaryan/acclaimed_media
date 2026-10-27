@@ -53,13 +53,13 @@
         :aria-expanded="open">
         <span class="flex items-center justify-center {% if size == 'large' %}w-10 h-10{% else %}w-6 h-6{% endif %}{% if owned_status and is_owned %}{% if just_toggled %} star-appear{% else %} star-idle{% endif %}{% elif just_toggled and is_tracked %} star-appear{% elif is_tracked %} star-idle{% elif just_toggled and is_wanted %} star-appear{% endif %}">
             {% if owned_status and is_owned %}
-            <span class="mdi {{ owned_icon }} {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} {{ owned_icon_class }}"></span>
+            <span class="mdi {{ owned_icon }} {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} {{ owned_icon_class }}" aria-hidden="true"></span>
             {% elif is_tracked %}
-            <span class="mdi {{ tracked_icon }} {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} {{ tracked_icon_class }}"></span>
+            <span class="mdi {{ tracked_icon }} {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} {{ tracked_icon_class }}" aria-hidden="true"></span>
             {% elif is_wanted %}
-            <span class="mdi {{ wanted_icon }} {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} {{ wanted_icon_class }}"></span>
+            <span class="mdi {{ wanted_icon }} {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} {{ wanted_icon_class }}" aria-hidden="true"></span>
             {% else %}
-            <span class="mdi {{ untracked_icon }} {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} {{ untracked_icon_class }}"></span>
+            <span class="mdi {{ untracked_icon }} {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} {{ untracked_icon_class }}" aria-hidden="true"></span>
             {% endif %}
         </span>
     </button>
@@ -83,7 +83,7 @@
                 hx-target="closest .tracking-button-wrapper"
                 hx-swap="outerHTML">
                 <span class="w-5 h-5 flex items-center justify-center">
-                    <span class="mdi {{ owned_icon }} text-xl {{ owned_icon_class }}"></span>
+                    <span class="mdi {{ owned_icon }} text-xl {{ owned_icon_class }}" aria-hidden="true"></span>
                 </span>
                 <span>{{ owned_label }}</span>
             </button>
@@ -97,7 +97,7 @@
                 hx-target="closest .tracking-button-wrapper"
                 hx-swap="outerHTML">
                 <span class="w-5 h-5 flex items-center justify-center">
-                    <span class="mdi {{ tracked_icon }} text-xl {{ tracked_icon_class }}"></span>
+                    <span class="mdi {{ tracked_icon }} text-xl {{ tracked_icon_class }}" aria-hidden="true"></span>
                 </span>
                 <span>{{ tracked_label }}</span>
             </button>
@@ -111,7 +111,7 @@
                 hx-target="closest .tracking-button-wrapper"
                 hx-swap="outerHTML">
                 <span class="w-5 h-5 flex items-center justify-center">
-                    <span class="mdi {{ wanted_icon }} text-xl {{ wanted_icon_class }}"></span>
+                    <span class="mdi {{ wanted_icon }} text-xl {{ wanted_icon_class }}" aria-hidden="true"></span>
                 </span>
                 <span>{{ wanted_label }}</span>
             </button>
@@ -125,7 +125,7 @@
                 hx-target="closest .tracking-button-wrapper"
                 hx-swap="outerHTML">
                 <span class="w-5 h-5 flex items-center justify-center">
-                    <span class="mdi {{ untracked_icon }} text-xl {{ untracked_icon_class }}"></span>
+                    <span class="mdi {{ untracked_icon }} text-xl {{ untracked_icon_class }}" aria-hidden="true"></span>
                 </span>
                 <span>{{ untracked_label }}</span>
             </button>

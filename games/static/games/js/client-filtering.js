@@ -64,10 +64,7 @@ class ClientSideFiltering {
             try {
                 if (options.onLoadStart) options.onLoadStart();
 
-                const data = await this.cache.getData({
-                    onCacheHit: () => console.log('[CSF] Using cached data'),
-                    onCacheMiss: () => console.log('[CSF] Fetching fresh data')
-                });
+                const data = await this.cache.getData();
 
                 this.engine = new GameFilterEngine(data);
                 this.renderer = new GameListRenderer(this.engine);
@@ -100,7 +97,6 @@ class ClientSideFiltering {
                     detail: yearCountsArray
                 }));
 
-                console.log(`[CSF] Initialized with ${data.games.length} games`);
                 return true;
             } catch (e) {
                 console.error('[CSF] Initialization failed:', e);

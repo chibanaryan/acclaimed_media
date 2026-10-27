@@ -18,7 +18,13 @@
 
 {# Bottom Sheet Panel - Full screen with top padding for gap #}
 <div x-show="filterOpen"
-     x-effect="if (filterOpen) { document.body.style.overflow = 'hidden'; $nextTick(() => $refs.filterScroll.scrollTop = 0); } else { document.body.style.overflow = ''; }"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="mobile-filters-title"
+     tabindex="-1"
+     x-effect="if (filterOpen) { document.body.style.overflow = 'hidden'; window.filterSheetOpener = document.activeElement; $nextTick(() => { $refs.filterScroll.scrollTop = 0; $el.focus(); }); } else { document.body.style.overflow = ''; if (window.filterSheetOpener) { window.filterSheetOpener.focus(); window.filterSheetOpener = null; } }"
+     @keydown.escape.window="if (filterOpen && !document.querySelector('dialog[open]')) filterOpen = false"
+     @keydown.tab="trapTabFocus($event, $el)"
      x-transition:enter="transition ease-out duration-200"
      x-transition:enter-start="opacity-0"
      x-transition:enter-end="opacity-100"
@@ -35,7 +41,7 @@
 
     {# Sheet Header #}
     <div class="flex items-center justify-between px-4 pb-3 border-b border-base-100">
-        <h2 class="text-xl font-bold">Filters</h2>
+        <h2 id="mobile-filters-title" class="text-xl font-bold">Filters</h2>
         <div class="flex items-center gap-2">
             <button type="button"
                     @click="resetAllFilters()"
@@ -70,13 +76,13 @@
                     class="flex items-center justify-between w-full py-1"
                     @click="expanded = !expanded; if (expanded && !savedFiltersLoaded) loadSavedFilters();">
                 <span class="text-sm font-semibold text-base-content/85 flex items-center gap-1">
-                    <span class="mdi mdi-bookmark text-info"></span>
+                    <span class="mdi mdi-bookmark text-info" aria-hidden="true"></span>
                     Saved Filters
                     <span x-show="savedFiltersLoaded && savedFilters.length > 0"
                           class="badge badge-sm badge-info"
                           x-text="savedFilters.length"></span>
                 </span>
-                <span class="mdi text-lg transition-transform duration-200"
+                <span class="mdi text-lg transition-transform duration-200" aria-hidden="true"
                       :class="expanded ? 'mdi-chevron-up' : 'mdi-chevron-down'"></span>
             </button>
 
@@ -102,13 +108,13 @@
                                         class="btn btn-ghost btn-sm btn-square text-base-content/50 active:text-info"
                                         @click.stop="renameSavedFilter(filter)"
                                         title="Rename">
-                                    <span class="mdi mdi-pencil text-lg"></span>
+                                    <span class="mdi mdi-pencil text-lg" aria-hidden="true"></span>
                                 </button>
                                 <button type="button"
                                         class="btn btn-ghost btn-sm btn-square text-base-content/50 active:text-error"
                                         @click.stop="deleteSavedFilter(filter)"
                                         title="Delete">
-                                    <span class="mdi mdi-delete text-lg"></span>
+                                    <span class="mdi mdi-delete text-lg" aria-hidden="true"></span>
                                 </button>
                             </div>
                         </div>
@@ -127,7 +133,7 @@
                         @click="saveCurrentFilters()"
                         class="btn btn-sm btn-info btn-outline w-full"
                         :disabled="savedFilters.length >= 10">
-                    <span class="mdi mdi-bookmark-plus"></span>
+                    <span class="mdi mdi-bookmark-plus" aria-hidden="true"></span>
                     <span x-show="savedFilters.length < 10">Save Current Filters</span>
                     <span x-show="savedFilters.length >= 10">Limit Reached (10/10)</span>
                 </button>
@@ -138,10 +144,10 @@
         {# Game Status Filter - Multi-select toggle buttons #}
         <div class="mb-4 pb-3 border-b border-base-100">
             <div class="flex items-center gap-2 mb-2">
-                <span class="mdi mdi-star-outline text-xl text-accent"></span>
+                <span class="mdi mdi-star-outline text-xl text-accent" aria-hidden="true"></span>
                 <span class="font-bold text-base">Game Status</span>
                 <button type="button" class="btn btn-ghost btn-xs ml-auto text-base-content/70 hover:text-error" @click="resetPlayed();" title="Clear status filter" x-cloak x-show="filters.played && filters.played.length > 0">
-                    <span class="mdi mdi-close text-xs"></span>
+                    <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
                     <span class="text-xs">Clear</span>
                 </button>
             </div>
@@ -227,9 +233,9 @@
                 <button type="button"
                         @click="expanded = !expanded"
                         class="flex items-center gap-2">
-                    <span class="mdi mdi-clock-outline text-lg text-base-content/70"></span>
+                    <span class="mdi mdi-clock-outline text-lg text-base-content/70" aria-hidden="true"></span>
                     Playtime (HowLongToBeat)
-                    <span class="mdi mdi-chevron-right text-xl transition-transform duration-200" :class="{ 'rotate-90': expanded }"></span>
+                    <span class="mdi mdi-chevron-right text-xl transition-transform duration-200" aria-hidden="true" :class="{ 'rotate-90': expanded }"></span>
                 </button>
                 <template x-if="filters.hltb_preset || filters.hltb_min !== null">
                     <span class="badge badge-primary badge-sm ml-2"
@@ -242,7 +248,7 @@
                         title="Clear playtime filter"
                         x-cloak
                         x-show="filters.hltb_preset || filters.hltb_min !== null">
-                    <span class="mdi mdi-close text-xs"></span>
+                    <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
                     <span class="text-xs">Clear</span>
                 </button>
             </div>

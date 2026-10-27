@@ -5,6 +5,7 @@ from django.contrib.sitemaps.views import sitemap
 from django.urls import include, path, re_path
 from django.views.generic import RedirectView
 
+from core import views as core_views
 from games import views
 from games.sitemaps import sitemaps
 from music.sitemaps import music_sitemaps
@@ -22,6 +23,7 @@ urlpatterns = [
         name="django.contrib.sitemaps.views.sitemap",
     ),
     path("robots.txt", views.robots_txt, name="robots-txt"),
+    path("healthz/", core_views.healthz, name="healthz"),
     # REST API includes (search endpoints now in app modules)
     path("api/", include("games.api.urls", namespace="games-api")),
     # path("api/books/", include("books.api.urls", namespace="books-api")),

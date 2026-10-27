@@ -210,6 +210,7 @@ class RateLimitMiddlewareTest(TestCase):
         self.assertEqual(response.status_code, 429)
 
 
+@override_settings(CACHES={"default": LOCMEM, "ratelimit": dict(LOCMEM, LOCATION="rl")})
 class RateLimitCounterTests(TestCase):
     """`_incr` has to count every request to a new key, even two at once.
 

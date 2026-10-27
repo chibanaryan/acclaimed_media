@@ -59,7 +59,7 @@
         {% if want_to_play_count %}
         <div class="flex flex-col gap-1 mb-4">
             <div class="flex items-center gap-2 text-base-content/70">
-                <span class="mdi mdi-star-plus-outline text-xl text-warning"></span>
+                <span class="mdi mdi-star-plus-outline text-xl text-warning" aria-hidden="true"></span>
                 <span class="text-sm">
                     <span class="font-semibold text-base-content">{{ want_to_play_count }}</span>
                     game{{ want_to_play_count|pluralize }} on your backlog
@@ -94,7 +94,7 @@
 
         {% if success %}
         <div class="alert alert-success mb-4">
-            <span class="mdi mdi-check-circle"></span>
+            <span class="mdi mdi-check-circle" aria-hidden="true"></span>
             <span>Profile updated successfully!</span>
         </div>
         {% endif %}
@@ -104,7 +104,7 @@
                 Save Changes
             </button>
             <button type="button"
-                    onclick="document.getElementById('authModal').close()"
+                    data-close-dialog="authModal"
                     class="btn btn-ghost">
                 Cancel
             </button>
@@ -116,7 +116,7 @@
     <form action="{% url 'auth-logout' %}" method="post">
         {% csrf_token %}
         <button type="submit" class="btn btn-outline btn-primary w-full">
-            <span class="mdi mdi-logout"></span>
+            <span class="mdi mdi-logout" aria-hidden="true"></span>
             Logout
         </button>
     </form>

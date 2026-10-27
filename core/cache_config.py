@@ -31,6 +31,7 @@ import environ
 LOCMEM_BACKEND = "django.core.cache.backends.locmem.LocMemCache"
 FILE_BACKEND = "django.core.cache.backends.filebased.FileBasedCache"
 DATABASE_BACKEND = "django.core.cache.backends.db.DatabaseCache"
+DUMMY_BACKEND = "django.core.cache.backends.dummy.DummyCache"
 
 # Postgres holds only the small shared entries - filter options, hero stats,
 # counters - so the working set is tens of rows, not thousands. The ceiling is
@@ -70,30 +71,33 @@ def build_default_cache(cache_url, *, debug, test_mode, base_dir):
     return {"BACKEND": FILE_BACKEND, "LOCATION": base_dir / "django_cache"}
 
 
-def build_caches(cache_url, *, debug, test_mode, base_dir, release=None):
-    """Return the whole ``CACHES`` setting: a shared alias and two local ones.
+def release_cache_prefix(release):
+    """Heroku's ``HEROKU_RELEASE_VERSION``, zero-padded, or "" without one.
 
-    ``release`` - Heroku's ``HEROKU_RELEASE_VERSION``, from the app's
-    ``runtime-dyno-metadata`` feature - prefixes every shared key. The
-    shared cache is a Postgres table, so it outlives a deploy: without the
-    prefix, new code read what old code had cached, such as the games
-    payload's version for up to an hour after a ``SCHEMA_VERSION`` bump. A
-    release also covers a config var change, so flipping a flag starts
-    clean too. Old dynos still writing in the seconds before they stop write
-    under their own prefix, which the new ones never read. One-off and
-    scheduler dynos run the same release as the web dynos, so their
-    invalidations still reach them. The per-process aliases need no prefix:
-    a restart empties them.
+    The API's page caches are keyed on it (``games.api.views.cache_page``):
+    they live in the shared Postgres cache, which outlives a deploy, so
+    without it new code served what old code had cached - the games payload's
+    version for up to an hour after a ``SCHEMA_VERSION`` bump. Padded because
+    DatabaseCache culls the lowest keys first, in string order: unpadded,
+    "v100" sorts before "v99", and the first cull after that deploy would
+    evict the live release's entries while the dead ones stayed.
+
+    Only those page caches carry it. The whole alias did until review: that
+    reset allauth's and the contact form's rate-limit counters on every
+    release, and left a long job's cache invalidation aimed at the release
+    it started under. The hand-built caches carry their own version
+    constants (``config.CACHE_VERSION``, music's ``CACHE_VERSION``).
     """
+    if not release:
+        return ""
+    return re.sub(r"\d+", lambda m: m[0].zfill(8), release)
+
+
+def build_caches(cache_url, *, debug, test_mode, base_dir):
+    """Return the whole ``CACHES`` setting: a shared alias and two local ones."""
     default = build_default_cache(
         cache_url, debug=debug, test_mode=test_mode, base_dir=base_dir
     )
-    if release and not test_mode:
-        # Zero-padded because DatabaseCache culls the lowest keys first, in
-        # string order: unpadded, "v100:" sorts before "v99:", and the
-        # first cull after that deploy would evict the live release's keys
-        # while the dead ones stayed.
-        default["KEY_PREFIX"] = re.sub(r"\d+", lambda m: m[0].zfill(8), release)
     return {
         "default": default,
         "local": {
@@ -101,9 +105,18 @@ def build_caches(cache_url, *, debug, test_mode, base_dir, release=None):
             "LOCATION": "local",
             "OPTIONS": dict(LOCAL_CACHE_OPTIONS),
         },
-        "ratelimit": {
-            "BACKEND": LOCMEM_BACKEND,
-            "LOCATION": "ratelimit",
-            "OPTIONS": dict(RATELIMIT_CACHE_OPTIONS),
-        },
+        "ratelimit": (
+            # Under test the counters are kept nowhere. Django's runner does
+            # not clear caches between tests (pytest's conftest does), so a
+            # test process that made 120 requests inside a minute started
+            # failing unrelated tests with 429s. The tests of the limits
+            # override CACHES with a real backend.
+            {"BACKEND": DUMMY_BACKEND}
+            if test_mode
+            else {
+                "BACKEND": LOCMEM_BACKEND,
+                "LOCATION": "ratelimit",
+                "OPTIONS": dict(RATELIMIT_CACHE_OPTIONS),
+            }
+        ),
     }

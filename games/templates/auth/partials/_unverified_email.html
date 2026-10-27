@@ -2,7 +2,7 @@
 
 <div class="text-center py-4">
     {# Warning icon #}
-    <span class="mdi mdi-email-alert text-6xl text-warning mb-4 block"></span>
+    <span class="mdi mdi-email-alert text-6xl text-warning mb-4 block" aria-hidden="true"></span>
 
     <h3 class="text-lg font-bold mb-2">Email Not Verified</h3>
     <p class="text-sm text-base-content/70 mb-6">
@@ -21,7 +21,7 @@
         {% csrf_token %}
         <input type="hidden" name="email" value="{{ email }}">
         <button type="submit" class="btn btn-primary w-full">
-            <span class="mdi mdi-email-sync"></span>
+            <span class="mdi mdi-email-sync" aria-hidden="true"></span>
             Resend Verification Email
         </button>
     </form>
@@ -32,7 +32,7 @@
             hx-get="{% url 'auth-modal-login' %}"
             hx-target="#auth-modal-content"
             hx-swap="innerHTML">
-        <span class="mdi mdi-arrow-left"></span>
+        <span class="mdi mdi-arrow-left" aria-hidden="true"></span>
         Back to Login
     </button>
 </div>

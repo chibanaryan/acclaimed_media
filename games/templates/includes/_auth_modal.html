@@ -4,12 +4,12 @@
         <button type="button"
                 class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
                 aria-label="close"
-                onclick="this.closest('dialog').close()">
-            <span class="mdi mdi-close"></span>
+                data-close-dialog>
+            <span class="mdi mdi-close" aria-hidden="true"></span>
         </button>
         <div id="auth-modal-content">
             {# Content loaded via HTMX when modal opens #}
         </div>
     </div>
-    <div class="modal-backdrop" onclick="document.getElementById('authModal').close()"></div>
+    <div class="modal-backdrop" data-close-dialog="authModal"></div>
 </dialog>

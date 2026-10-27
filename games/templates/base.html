@@ -9,6 +9,8 @@
     <script nonce="{{ csp_nonce }}">function setTheme(t){localStorage.setItem('theme',t);document.documentElement.setAttribute('data-theme',t);updateThemeToggle(t)}function updateThemeToggle(t){var d=t==='forest';['theme-toggle','theme-toggle-mobile'].forEach(function(id){var e=document.getElementById(id);if(e)e.checked=d})}document.addEventListener('change',function(e){if(e.target.classList.contains('theme-controller'))setTheme(e.target.checked?'forest':'lofi')});document.addEventListener('DOMContentLoaded',function(){updateThemeToggle(localStorage.getItem('theme')||'lofi')})</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {# htmx re-creates the scripts a swap brings in; this gives them the page's nonce, the one its CSP header allows #}
+    <meta name="htmx-config" content='{"inlineScriptNonce": "{{ csp_nonce }}"}'>
     <meta name="description" content="{% block meta_description %}Discover the most critically acclaimed video games of all time, ranked by aggregating hundreds of critic lists from major gaming publications.{% endblock %}">
     <link rel="canonical" href="{% block canonical_url %}https://www.acclaimedvideogames.com{{ request.path }}{% endblock %}">
     {# Content Security Policy is set via CSPMiddleware with nonce support #}
@@ -33,9 +35,10 @@
     {# Twitter Card Tags #}
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:site" content="@AVGRankings">
-    <meta name="twitter:title" content="{% block twitter_title %}Acclaimed Video Games{% endblock %}">
-    <meta name="twitter:description" content="{% block twitter_description %}Discover the most critically acclaimed video games of all time.{% endblock %}">
-    <meta name="twitter:image" content="{% block twitter_image %}https://www.acclaimedvideogames.com{% static 'games/brand/og-image.png' %}{% endblock %}">
+    {# No twitter:title/description/image: X falls back to og:title, #}
+    {# og:description and og:image, so every page's card matches its Open #}
+    {# Graph tags. Separate blocks let pages drift: game and album pages set #}
+    {# og_image but not twitter_image, so X showed the generic brand image. #}
 
     {# Preconnect/dns-prefetch to external domains for faster resource loading #}
     {# No crossorigin: the covers are plain no-cors image requests. Games #}
@@ -51,14 +54,19 @@
     <link rel="icon" type="image/png" sizes="16x16" href="{% static 'games/brand/favicon-16.png' %}">
     <link rel="icon" type="image/png" sizes="32x32" href="{% static 'games/brand/favicon-32.png' %}">
     <link rel="icon" type="image/png" sizes="64x64" href="{% static 'games/brand/favicon-64.png' %}">
+    {# iOS home-screen icon (it fills transparency with black, so this one is opaque) #}
+    <link rel="apple-touch-icon" href="{% static 'games/brand/apple-touch-icon.png' %}">
+    {# The browser bar's colour: the lofi and forest themes' base, by the OS preference the theme script also starts from #}
+    <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#27272a" media="(prefers-color-scheme: dark)">
 
     {# Tailwind CSS + DaisyUI - django-tailwind handles optimal loading #}
     {% tailwind_css %}
 
     {# Preload MDI icon font to prevent sidebar jitter - critical for navigation icons #}
     <link rel="preload" href="{% static 'games/fonts/materialdesignicons-webfont.woff2' %}" as="font" type="font/woff2" crossorigin>
-    {# Preload Montserrat font for site title #}
-    <link rel="preload" href="{% static 'games/fonts/Montserrat-SemiBold.woff2' %}" as="font" type="font/woff2" crossorigin>
+    {# Montserrat (the site title, on the home page only) is preloaded by #}
+    {# games/home.html: here it competed with every page's LCP image. #}
 
     {# Material Design Icons - inline CSS mappings + preloaded self-hosted subset font #}
     {# Font file is generated via scripts/build_mdi_subset.sh and only includes used glyphs #}
@@ -230,7 +238,7 @@
         <div class="modal-box bg-base-200 max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto">
             <form method="dialog">
                 <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" aria-label="close">
-                    <span class="mdi mdi-close"></span>
+                    <span class="mdi mdi-close" aria-hidden="true"></span>
                 </button>
             </form>
             <p class="text-lg font-bold mb-4 flex items-center gap-2 flex-wrap">
@@ -295,7 +303,7 @@
 
                 <div class="flex gap-2 mt-5">
                     <button type="submit" class="btn btn-primary">
-                        <span class="mdi mdi-send"></span>
+                        <span class="mdi mdi-send" aria-hidden="true"></span>
                         <span>Send Message</span>
                     </button>
                     <button type="button" class="btn contact-modal-close">Cancel</button>
@@ -346,6 +354,9 @@
             window.gtag = gtag;
             gtag('js', new Date());
             gtag('config', 'G-0591405Q89');
+            // The page view just sent: an HTMX swap that leaves the address
+            // alone (opening the login modal) must not count it again
+            window.lastTrackedPagePath = window.location.pathname + window.location.search;
         }
 
         // Load GA on first explicit user intent
@@ -398,11 +409,14 @@
                     }, 200);
                 }
 
-                // Track HTMX navigation as page views in Google Analytics
-                if (window.gtag) {
-                    gtag('config', 'G-0591405Q89', {
-                        page_path: window.location.pathname + window.location.search
-                    });
+                // Track HTMX navigation as page views in Google Analytics -
+                // but only when the address changed. Every swap used to
+                // count, so opening the login modal or toggling a played
+                // button was a page view of the page already being viewed.
+                var pagePath = window.location.pathname + window.location.search;
+                if (window.gtag && pagePath !== window.lastTrackedPagePath) {
+                    window.lastTrackedPagePath = pagePath;
+                    gtag('config', 'G-0591405Q89', { page_path: pagePath });
                 }
             });
         });
@@ -444,6 +458,27 @@
         // add-platforms / add-genre events the filter components and the
         // fallback below already answer. Only desktop row halves carry
         // these, and those have no row-level click to stop.
+        // A mobile row card goes to its item: [data-href] in place of an
+        // inline onclick, which the CSP's nonce forbids. A click on a link or
+        // button inside the card is its own; the tracking buttons stop
+        // propagation, so their clicks never get here.
+        document.addEventListener('click', function(e) {
+            var row = e.target.closest && e.target.closest('[data-href]');
+            if (!row || e.defaultPrevented) return;
+            var inner = e.target.closest('a, button, [data-add-platforms], [data-add-genre]');
+            if (inner && row.contains(inner)) return;
+            window.location.href = row.dataset.href;
+        });
+        // [data-close-dialog] closes its dialog (or the one it names by id),
+        // in place of inline onclick handlers, which the CSP's nonce forbids
+        document.addEventListener('click', function(e) {
+            var closer = e.target.closest && e.target.closest('[data-close-dialog]');
+            if (!closer) return;
+            var dialog = closer.dataset.closeDialog
+                ? document.getElementById(closer.dataset.closeDialog)
+                : closer.closest('dialog');
+            if (dialog) dialog.close();
+        });
         document.addEventListener('click', function(e) {
             var el = e.target.closest && e.target.closest('[data-add-platforms],[data-add-genre]');
             if (!el) return;
@@ -491,7 +526,7 @@
         class="btn btn-circle btn-primary fixed bottom-6 right-6 z-50 shadow-lg hover:shadow-xl"
         aria-label="Back to top"
         style="display: none;">
-        <span class="mdi mdi-chevron-up text-2xl"></span>
+        <span class="mdi mdi-chevron-up text-2xl" aria-hidden="true"></span>
     </button>
 
     {% if user.is_authenticated %}

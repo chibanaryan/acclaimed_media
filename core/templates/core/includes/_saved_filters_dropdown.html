@@ -20,7 +20,7 @@ absolute, and without it the dropdown anchors to the page instead.
         class="btn btn-ghost btn-xs text-base-content/70 hover:text-info"
         @click="loadSavedFilters()"
         title="Saved filters">
-    <span class="mdi mdi-bookmark-outline text-sm"></span>
+    <span class="mdi mdi-bookmark-outline text-sm" aria-hidden="true"></span>
     <span>Saved</span>
 </button>
 <ul class="absolute right-0 top-full menu bg-base-100 rounded-box w-96 p-2 shadow-lg z-50 mt-2 overflow-hidden"
@@ -33,7 +33,7 @@ absolute, and without it the dropdown anchors to the page instead.
             <button type="button"
                     class="flex items-center gap-2 text-info font-medium"
                     @click="saveCurrentFilters()">
-                <span class="mdi mdi-bookmark-plus"></span>
+                <span class="mdi mdi-bookmark-plus" aria-hidden="true"></span>
                 Save current filters
             </button>
         </li>
@@ -41,7 +41,7 @@ absolute, and without it the dropdown anchors to the page instead.
     <template x-if="hasActiveFilters() && savedFiltersLoaded && savedFilters.length >= {{ max_saved|default:10 }}">
         <li class="border-b border-base-200 mb-1 pb-1">
             <span class="text-base-content/70 text-sm pointer-events-none">
-                <span class="mdi mdi-bookmark-off"></span>
+                <span class="mdi mdi-bookmark-off" aria-hidden="true"></span>
                 Limit reached ({{ max_saved|default:10 }}/{{ max_saved|default:10 }})
             </span>
         </li>
@@ -68,13 +68,13 @@ absolute, and without it the dropdown anchors to the page instead.
                             class="btn btn-ghost btn-xs text-base-content/50 hover:text-info hover:bg-transparent"
                             @click.stop="renameSavedFilter(filter)"
                             title="Rename">
-                        <span class="mdi mdi-pencil text-sm"></span>
+                        <span class="mdi mdi-pencil text-sm" aria-hidden="true"></span>
                     </button>
                     <button type="button"
                             class="btn btn-ghost btn-xs text-base-content/50 hover:text-error hover:bg-transparent"
                             @click.stop="deleteSavedFilter(filter)"
                             title="Delete">
-                        <span class="mdi mdi-delete text-sm"></span>
+                        <span class="mdi mdi-delete text-sm" aria-hidden="true"></span>
                     </button>
                 </div>
             </div>
@@ -86,9 +86,8 @@ absolute, and without it the dropdown anchors to the page instead.
         class="btn btn-ghost btn-xs text-base-content/40 cursor-not-allowed"
         title="{{ signed_out_hint|default:'Sign in to save filters' }}"
         aria-label="Saved. {{ signed_out_hint|default:'Sign in to save filters' }}"
-        aria-disabled="true"
-        onclick="return false;">
-    <span class="mdi mdi-bookmark-outline text-sm"></span>
+        aria-disabled="true">
+    <span class="mdi mdi-bookmark-outline text-sm" aria-hidden="true"></span>
     <span>Saved</span>
 </button>
 {% endif %}

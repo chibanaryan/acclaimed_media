@@ -776,6 +776,45 @@ class ImportPlatformsTests(TestCase):
         self.assertEqual(platform.year_start, 1994)  # Year preserved
         self.assertEqual(platform.year_end, 2006)  # Year preserved
 
+    def test_import_platforms_fills_years_for_a_new_platform(self):
+        """A platform an import creates takes its years from the table, so
+        nobody has to re-run populate_platform_years after a release."""
+        success, _ = utils.import_platforms(StringIO("N64\tNintendo 64\r\n"))
+
+        self.assertTrue(success)
+        platform = models.Platform.objects.get(code="N64")
+        self.assertEqual((platform.year_start, platform.year_end), (1996, 2002))
+
+    def test_import_platforms_fills_missing_years_but_not_set_ones(self):
+        models.Platform.objects.create(code="N64", name="Nintendo 64")
+        models.Platform.objects.create(
+            code="SNES", name="Super Nintendo", year_start=1991, year_end=1999
+        )
+
+        utils.import_platforms(StringIO("N64\tNintendo 64\r\nSNES\tSuper Nintendo\r\n"))
+
+        n64 = models.Platform.objects.get(code="N64")
+        snes = models.Platform.objects.get(code="SNES")
+        self.assertEqual((n64.year_start, n64.year_end), (1996, 2002))
+        self.assertEqual((snes.year_start, snes.year_end), (1991, 1999))
+
+    def test_a_platform_unknown_to_the_table_gets_no_years(self):
+        utils.import_platforms(StringIO("ZZZ\tSomething New\r\n"))
+
+        platform = models.Platform.objects.get(code="ZZZ")
+        self.assertIsNone(platform.year_start)
+
+    def test_years_survive_delete_then_reimport(self):
+        models.Platform.objects.create(
+            code="SNES", name="Super Nintendo", year_start=1991, year_end=1999
+        )
+
+        utils.import_data({"delete": True})
+        utils.import_platforms(StringIO("SNES\tSuper Nintendo\r\n"))
+
+        snes = models.Platform.objects.get(code="SNES")
+        self.assertEqual((snes.year_start, snes.year_end), (1991, 1999))
+
     def test_import_platforms_with_progress_callback_line_687(self):
         """Test import_platforms progress callback at line 687 (row % 10 == 0)."""
         callback_events = []
@@ -1480,9 +1519,9 @@ class ImportDataTests(TestCase):
         data = {"delete": True}
         success, message = utils.import_data(data)
 
-        # Should have deleted all data including platforms
+        # Platforms survive: their years are in no import file
         self.assertTrue(success)
-        self.assertEqual(models.Platform.objects.count(), 0)  # Platforms are deleted
+        self.assertEqual(models.Platform.objects.count(), 1)
 
     def test_import_data_legacy_game_import_updates_metadata(self):
         """Test that legacy game import updates SiteMetadata (lines 51-58)."""

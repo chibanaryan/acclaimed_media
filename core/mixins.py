@@ -8,6 +8,7 @@ from django.contrib.auth.mixins import UserPassesTestMixin
 from django.core.cache import caches
 from django.core.paginator import EmptyPage, Paginator
 from django.http import Http404, HttpResponse
+from django.middleware.csp import get_nonce as get_csp_nonce
 from django.middleware.csrf import get_token
 
 
@@ -80,6 +81,14 @@ class AnonymousResponseCacheMixin:
     # occur in the rendered HTML, so the sentinel cannot collide with it.
     CSRF_TOKEN_SENTINEL = b"\x00csrf-token\x00"
     CSRF_INPUT_RE = re.compile(rb'name="csrfmiddlewaretoken" value="([^"]+)"')
+    # The CSP nonce is the second per-request token, and the same trap: the
+    # Content-Security-Policy header carries a fresh nonce on every
+    # response, so a cached page replaying the nonce it was rendered with
+    # would have every inline script fail the policy. Stashed and re-minted
+    # the same way; every copy of it (script tags, htmx's inlineScriptNonce)
+    # shares one value, so one replace catches them all.
+    CSP_NONCE_SENTINEL = b"\x00csp-nonce\x00"
+    CSP_NONCE_RE = re.compile(rb'nonce="([^"]+)"')
 
     CACHE_HEADER_SKIP = {
         "content-length",
@@ -109,6 +118,27 @@ class AnonymousResponseCacheMixin:
         # Replace the value itself, not the input tag, so the copy in
         # `base.html`'s `hx-headers` is caught by the same pass.
         return content.replace(match.group(1), cls.CSRF_TOKEN_SENTINEL)
+
+    @classmethod
+    def _stash_csp_nonce(cls, content):
+        """Swap this render's CSP nonce for the sentinel, if it has one."""
+        match = cls.CSP_NONCE_RE.search(content)
+        if match is None:
+            return content
+        return content.replace(match.group(1), cls.CSP_NONCE_SENTINEL)
+
+    @classmethod
+    def _restore_csp_nonce(cls, request, content):
+        """Put this request's nonce, the one its CSP header names, back in."""
+        if cls.CSP_NONCE_SENTINEL not in content:
+            return content
+        # A LazyNonce is falsy until generated, so test for None: str() is
+        # what generates it, and the middleware then puts the same value in
+        # the header. No nonce at all (no CSP middleware) leaves the
+        # attribute empty rather than a NUL byte in the page.
+        nonce = get_csp_nonce(request)
+        value = str(nonce).encode() if nonce is not None else b""
+        return content.replace(cls.CSP_NONCE_SENTINEL, value)
 
     @classmethod
     def _restore_csrf_token(cls, request, content):
@@ -192,8 +222,11 @@ class AnonymousResponseCacheMixin:
         cached_payload = cache.get(cache_key)
         if cached_payload is not None:
             if isinstance(cached_payload, dict) and "body" in cached_payload:
-                content = self._restore_csrf_token(
-                    request, zlib.decompress(cached_payload["body"])
+                content = self._restore_csp_nonce(
+                    request,
+                    self._restore_csrf_token(
+                        request, zlib.decompress(cached_payload["body"])
+                    ),
                 )
                 status = cached_payload.get("status", 200)
                 content_type = cached_payload.get("content_type")
@@ -221,7 +254,10 @@ class AnonymousResponseCacheMixin:
                 {
                     # Level 1: the saving over level 6 is a few percent on
                     # HTML this repetitive, and this runs in the request.
-                    "body": zlib.compress(self._stash_csrf_token(response.content), 1),
+                    "body": zlib.compress(
+                        self._stash_csp_nonce(self._stash_csrf_token(response.content)),
+                        1,
+                    ),
                     "status": response.status_code,
                     "content_type": response.get("Content-Type"),
                     "headers": self._serialize_headers(response),

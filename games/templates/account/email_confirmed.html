@@ -9,7 +9,7 @@
             {% if success %}
             {# Success Icon #}
             <div class="text-6xl text-success mb-4">
-                <span class="mdi mdi-check-circle"></span>
+                <span class="mdi mdi-check-circle" aria-hidden="true"></span>
             </div>
 
             <h1 class="card-title text-2xl mb-4">Email Verified!</h1>
@@ -21,14 +21,14 @@
 
             <div class="card-actions mt-4">
                 <a href="{% url 'home' %}" class="btn btn-primary">
-                    <span class="mdi mdi-home mr-2"></span>
+                    <span class="mdi mdi-home mr-2" aria-hidden="true"></span>
                     Start Exploring
                 </a>
             </div>
             {% else %}
             {# Error Icon #}
             <div class="text-6xl text-error mb-4">
-                <span class="mdi mdi-alert-circle"></span>
+                <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
             </div>
 
             <h1 class="card-title text-2xl mb-4">Invalid Verification Link</h1>
@@ -40,7 +40,7 @@
 
             <div class="card-actions mt-4">
                 <a href="{% url 'home' %}" class="btn btn-primary">
-                    <span class="mdi mdi-home mr-2"></span>
+                    <span class="mdi mdi-home mr-2" aria-hidden="true"></span>
                     Return Home
                 </a>
             </div>

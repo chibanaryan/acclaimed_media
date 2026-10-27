@@ -11,9 +11,12 @@
 {% block meta_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}{{ block.super }}{% endif %}{% endblock %}
 {% block og_title %}{% firstof seo_title filter_title as page_title %}{% if page_title %}{{ page_title }} | Acclaimed Video Games{% else %}{{ block.super }}{% endif %}{% endblock %}
 {% block og_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}{{ block.super }}{% endif %}{% endblock %}
-{% block twitter_title %}{% firstof seo_title filter_title as page_title %}{% if page_title %}{{ page_title }} | Acclaimed Video Games{% else %}{{ block.super }}{% endif %}{% endblock %}
-{% block twitter_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}{{ block.super }}{% endif %}{% endblock %}
 {% block structured_data %}{% if itemlist_json %}{{ itemlist_json|safe }}{% else %}{{ block.super }}{% endif %}{% endblock %}
+
+{# The site title's font; only this page (and its landing pages) shows it #}
+{% block early_preload %}
+<link rel="preload" href="{% static 'games/fonts/Montserrat-SemiBold.woff2' %}" as="font" type="font/woff2" crossorigin>
+{% endblock %}
 
 {% block pre_alpine %}
     {# Filter subcomponents + filter component factories (must load before Alpine core) #}
@@ -54,6 +57,7 @@
     <script nonce="{{ csp_nonce }}">
     window.staticUrls = {
         platformIcons: '{% static "games/images/platform-icons.svg" %}',
+        placeholder: '{% static "games/images/cover-placeholder.svg" %}',
         marioStar: '{% static "games/images/mario-star.png" %}',
         marioStar2x: '{% static "games/images/mario-star@2x.png" %}'
     };
@@ -154,10 +158,11 @@
                      alt="Acclaimed Video Games"
                      class="w-20 h-20 sm:w-[135px] sm:h-[135px]"
                      fetchpriority="high">
-                <h1 class="site-title text-base-content text-center md:text-center text-2xl sm:text-3xl leading-tight select-none">
+                {# Branding, not the page's heading: the filter title below is the h1 #}
+                <p class="site-title text-base-content text-center md:text-center text-2xl sm:text-3xl leading-tight select-none">
                     <span class="block select-none">Acclaimed</span>
                     <span class="block select-none">Video Games</span>
-                </h1>
+                </p>
             </div>
 
             {# Right: Tagline and Update Info #}

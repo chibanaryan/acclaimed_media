@@ -29,7 +29,7 @@
                         {% if item.url %}
                         <a href="{{ item.url }}" target="_blank" rel="noopener" class="link link-hover inline-flex items-center gap-1">
                             {{ item.name }}
-                            <span class="mdi mdi-open-in-new text-xs opacity-50"></span>
+                            <span class="mdi mdi-open-in-new text-xs opacity-50" aria-hidden="true"></span>
                         </a>
                         {% else %}
                         {{ item.name }}
@@ -54,7 +54,7 @@
                 {% if item.url %}
                 <a href="{{ item.url }}" target="_blank" rel="noopener" class="link link-hover">
                     {{ item.name }}
-                    <span class="mdi mdi-open-in-new text-xs opacity-50"></span>
+                    <span class="mdi mdi-open-in-new text-xs opacity-50" aria-hidden="true"></span>
                 </a>
                 {% else %}
                 {{ item.name }}
@@ -67,7 +67,7 @@
 {% endwith %}
 {% else %}
 <div class="alert">
-    <span class="mdi mdi-information-outline"></span>
+    <span class="mdi mdi-information-outline" aria-hidden="true"></span>
     <span>No lists found matching your filters.</span>
 </div>
 {% endif %}

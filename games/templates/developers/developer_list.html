@@ -3,6 +3,8 @@
 {% load humanize %}
 
 {% block title %}Developers | Acclaimed Video Games{% endblock %}
+{% block meta_description %}The studios and publishers behind the most critically acclaimed video games of all time, by how many of their games the critics' lists rank.{% endblock %}
+{% block og_title %}Developers | Acclaimed Video Games{% endblock %}
 
 {% block content %}
 <div class="max-w-5xl mx-auto">
@@ -105,9 +107,9 @@
                 <button type="button"
                         class="flex items-center gap-1 text-base-content/70 hover:text-base-content transition-colors cursor-pointer"
                         @click="sortOpen = !sortOpen">
-                    <span class="mdi mdi-sort text-base"></span>
+                    <span class="mdi mdi-sort text-base" aria-hidden="true"></span>
                     <span class="text-sm" x-text="sort === 'games' ? '# Games' : (sort === 'studios' ? '# Subsidiaries' : (sort === 'rank' ? 'Top Rank' : 'Name (A-Z)'))"># Games</span>
-                    <span class="mdi mdi-chevron-down text-xs"></span>
+                    <span class="mdi mdi-chevron-down text-xs" aria-hidden="true"></span>
                 </button>
                 <ul x-show="sortOpen" x-cloak
                     class="dropdown-content menu menu-sm bg-base-200 rounded-box shadow-lg z-50 w-fit p-2 mt-1"
@@ -123,13 +125,13 @@
                     class="flex items-center gap-1 text-base-content/70 hover:text-base-content transition-colors cursor-pointer"
                     @click="toggleSortDirection()"
                     :title="sortDirection === 'asc' ? 'Ascending order' : 'Descending order'">
-                <span class="mdi text-base" :class="sortDirection === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending'"></span>
+                <span class="mdi text-base" aria-hidden="true" :class="sortDirection === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending'"></span>
                 <span class="text-xs" x-text="sortDirection === 'asc' ? 'Asc' : 'Desc'"></span>
             </button>
         </div>
         {# Mobile: Native select for touch compatibility #}
         <div class="desktop:hidden flex items-center gap-1">
-            <span class="mdi mdi-sort text-base text-base-content/70"></span>
+            <span class="mdi mdi-sort text-base text-base-content/70" aria-hidden="true"></span>
             <select class="select select-sm select-bordered bg-base-200"
                     style="width: fit-content; max-width: 100%;"
                     aria-label="Sort by"
@@ -144,7 +146,7 @@
                     class="p-1 text-base-content/70 hover:text-base-content transition-colors"
                     @click="toggleSortDirection()"
                     :title="sortDirection === 'asc' ? 'Ascending order' : 'Descending order'">
-                <span class="mdi text-lg" :class="sortDirection === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending'"></span>
+                <span class="mdi text-lg" aria-hidden="true" :class="sortDirection === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending'"></span>
             </button>
         </div>
     </div>

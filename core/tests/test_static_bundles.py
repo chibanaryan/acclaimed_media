@@ -1033,3 +1033,44 @@ class JumpToRankReadsLandingPagePathsTests(SimpleTestCase):
                 source = self._source(path)
                 body = source[source.index("function currentFilterParams") :]
                 self.assertIn("seoPathSearch(window.location.pathname)", body[:400])
+
+
+class AFullYearRangeStaysOutOfTheAddressTests(SimpleTestCase):
+    """Every filtered games URL carried start=1971&end=2025, and clearing a
+    year left the visitor on /games/?start=1971&end=2025 rather than /.
+    Checked in Chrome with the mouse and the keyboard on 2026-10-26."""
+
+    def _source(self, relative_path):
+        return (Path(settings.BASE_DIR) / relative_path).read_text()
+
+    def test_the_pushed_url_drops_the_whole_range(self):
+        for path in (
+            "games/static/games/js/filter-component.js",
+            "games/static/games/js/filter-component.min.js",
+        ):
+            with self.subTest(path=path):
+                source = self._source(path)
+                start = source.index("_filterUrl()")
+                body = source[start : start + 900]
+                self.assertIn('delete("start")', body.replace("'", '"'))
+
+
+class NameSortSurvivesAnOldPayloadTests(SimpleTestCase):
+    """game-cache.js keeps a payload five minutes without asking for its
+    version, so a visitor can hold one from before `ni` existed; the sort
+    falls back to comparing names rather than returning NaN for every pair."""
+
+    def test_the_comparator_checks_for_ni(self):
+        for path in (
+            "games/static/games/js/client-filter.js",
+            "games/static/games/js/client-side-filtering.bundle.min.js",
+        ):
+            with self.subTest(path=path):
+                source = (Path(settings.BASE_DIR) / path).read_text()
+                self.assertIn("localeCompare", source)
+                # Either operand order: terser writes `void 0!==e.ni`
+                self.assertRegex(
+                    source,
+                    r"\.ni\s*!==\s*(void 0|undefined)"
+                    r"|(void 0|undefined)\s*!==\s*\w+\.ni",
+                )

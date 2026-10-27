@@ -6,6 +6,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.urls import reverse
 
+from games.services import game_filters
 from games import models, views
 
 
@@ -31,7 +32,7 @@ class ImportViewIntegrationTests(TestCase):
         response = self.client.get(reverse("import"))
         self.assertEqual(response.status_code, 404)
 
-    @mock.patch("games.views.utils.import_batch", return_value=(True, "Done"))
+    @mock.patch("games.utils.import_batch", return_value=(True, "Done"))
     def test_successful_data_import(self, mock_import):
         """Test batch import with a single file."""
         self.client.login(username="tester", password="pass")
@@ -47,7 +48,7 @@ class ImportViewIntegrationTests(TestCase):
         self.assertEqual(response.wsgi_request.session.get("import_success"), "Done")
         mock_import.assert_called_once()
 
-    @mock.patch("games.views.utils.import_data", return_value=(True, "Deleted"))
+    @mock.patch("games.utils.import_data", return_value=(True, "Deleted"))
     def test_delete_existing_data_triggers_import(self, mock_import):
         self.client.login(username="tester", password="pass")
         response = self.client.post(
@@ -61,8 +62,8 @@ class ImportViewIntegrationTests(TestCase):
         self.assertEqual(response.wsgi_request.session.get("import_success"), "Deleted")
         mock_import.assert_called_once()
 
-    @mock.patch("games.views.utils.import_data")
-    @mock.patch("games.views.utils.import_batch", return_value=(True, "Imported"))
+    @mock.patch("games.utils.import_data")
+    @mock.patch("games.utils.import_batch", return_value=(True, "Imported"))
     def test_batch_files_take_precedence_over_delete_flag(
         self, mock_import_batch, mock_import_data
     ):
@@ -83,7 +84,7 @@ class ImportViewIntegrationTests(TestCase):
         mock_import_batch.assert_called_once()
         mock_import_data.assert_not_called()
 
-    @mock.patch("games.views.utils.import_data", return_value=(True, "IGDB"))
+    @mock.patch("games.utils.import_data", return_value=(True, "IGDB"))
     def test_igdb_import_triggers_command(self, mock_import):
         self.client.login(username="tester", password="pass")
         response = self.client.post(
@@ -97,7 +98,7 @@ class ImportViewIntegrationTests(TestCase):
         self.assertEqual(response.wsgi_request.session.get("import_success"), "IGDB")
         mock_import.assert_called_once()
 
-    @mock.patch("games.views.utils.import_batch", return_value=(False, "Failed"))
+    @mock.patch("games.utils.import_batch", return_value=(False, "Failed"))
     def test_failed_data_import_sets_error_message(self, mock_import):
         self.client.login(username="tester", password="pass")
         fake_file = SimpleUploadedFile("PlatformDB.txt", b"PC\tPersonal Computer")
@@ -112,7 +113,7 @@ class ImportViewIntegrationTests(TestCase):
         self.assertEqual(response.wsgi_request.session.get("import_errors"), ["Failed"])
         mock_import.assert_called_once()
 
-    @mock.patch("games.views.utils.import_data", return_value=(False, "Error message"))
+    @mock.patch("games.utils.import_data", return_value=(False, "Error message"))
     def test_form_valid_error_path(self, mock_import):
         """Test form_valid error path (line 161)."""
         self.client.login(username="tester", password="pass")
@@ -158,7 +159,7 @@ class ImportViewIntegrationTests(TestCase):
         self.assertIsNone(response2.context.get("import_success_message"))
         self.assertIsNone(response2.context.get("import_errors"))
 
-    @mock.patch("games.views.models.Game.objects.count", side_effect=Exception("boom"))
+    @mock.patch("games.models.Game.objects.count", side_effect=Exception("boom"))
     def test_get_context_data_handles_count_errors(self, _mock_count):
         """Import page should render safe defaults if count queries fail."""
         self.client.login(username="tester", password="pass")
@@ -178,9 +179,9 @@ class ImportViewIntegrationTests(TestCase):
         self.assertContains(response, "Games File (e.g. Top1400.txt)")
         self.assertContains(response, "You do not need to delete data first.")
 
-    @mock.patch("games.views.utils.import_batch", return_value=(True, "Loaded"))
+    @mock.patch("games.utils.import_batch", return_value=(True, "Loaded"))
     @mock.patch("builtins.open", new_callable=mock_open, read_data=b"test data")
-    @mock.patch("games.views.Path")
+    @mock.patch("games.views.imports.Path")
     def test_seed_test_data_success(self, mock_path, mock_file, mock_import):
         """Test seed_test_data loads bundled test files successfully."""
         self.client.login(username="tester", password="pass")
@@ -204,9 +205,9 @@ class ImportViewIntegrationTests(TestCase):
         )
         mock_import.assert_called_once()
 
-    @mock.patch("games.views.utils.import_batch", return_value=(True, "Loaded"))
+    @mock.patch("games.utils.import_batch", return_value=(True, "Loaded"))
     @mock.patch("builtins.open", new_callable=mock_open, read_data=b"test data")
-    @mock.patch("games.views.Path")
+    @mock.patch("games.views.imports.Path")
     def test_seed_test_data_falls_back_to_top1000_when_top1400_missing(
         self, mock_path, mock_file, mock_import
     ):
@@ -246,7 +247,7 @@ class ImportViewIntegrationTests(TestCase):
         )
 
     @mock.patch("builtins.open", side_effect=FileNotFoundError)
-    @mock.patch("games.views.Path")
+    @mock.patch("games.views.imports.Path")
     def test_seed_test_data_file_not_found(self, mock_path, mock_file):
         """Test seed_test_data handles missing test files."""
         self.client.login(username="tester", password="pass")
@@ -292,7 +293,7 @@ class IGDBProgressViewTests(TestCase):
         self.client.login(username="tester", password="pass")
 
         # Mock the import_igdb_with_progress to return a simple generator
-        with mock.patch("games.views.utils.import_igdb_with_progress") as mock_progress:
+        with mock.patch("games.utils.import_igdb_with_progress") as mock_progress:
             mock_progress.return_value = iter(["data: test\n\n"])
 
             response = self.client.get("/import/igdb-progress/")
@@ -305,7 +306,7 @@ class IGDBProgressViewTests(TestCase):
         """force=true re-fetches games that already have IGDB data."""
         self.client.login(username="tester", password="pass")
 
-        with mock.patch("games.views.utils.import_igdb_with_progress") as mock_progress:
+        with mock.patch("games.utils.import_igdb_with_progress") as mock_progress:
             mock_progress.return_value = iter(["data: test\n\n"])
 
             response = self.client.get("/import/igdb-progress/?force=true")
@@ -342,7 +343,7 @@ class WikipediaPageProgressViewTests(TestCase):
         self.client.login(username="tester2", password="pass")
 
         with mock.patch(
-            "games.views.utils.import_wikipedia_pages_with_progress"
+            "games.utils.import_wikipedia_pages_with_progress"
         ) as mock_progress:
             mock_progress.return_value = iter(["data: test\n\n"])
 
@@ -382,7 +383,7 @@ class BatchImportProgressViewTests(TestCase):
         payload = next(response.streaming_content).decode("utf-8")
         self.assertIn("No files provided", payload)
 
-    @mock.patch("games.views.utils.import_batch_with_progress")
+    @mock.patch("games.utils.import_batch_with_progress")
     def test_batch_progress_with_files_streams_import_generator(self, mock_progress):
         mock_progress.return_value = iter(["data: ok\n\n"])
         upload = SimpleUploadedFile("PlatformDB.txt", b"PC\tPersonal Computer")
@@ -490,8 +491,16 @@ class PlayedFilterTests(TestCase):
         user = User.objects.create_user(username="tester", password="pass")
 
         qs = models.Game.objects.all()
-        filtered = views._apply_played_filter(qs, user, "maybe")
+        filtered = game_filters.apply_played_filter(qs, user, "maybe")
 
+        self.assertEqual(list(filtered), [game])
+
+    def test_apply_played_filter_ignores_a_signed_out_user(self):
+        from django.contrib.auth.models import AnonymousUser
+
+        game = models.Game.objects.create(name="Anon Game", rank=3, igdb_id=102)
+        qs = models.Game.objects.all()
+        filtered = game_filters.apply_played_filter(qs, AnonymousUser(), "yes")
         self.assertEqual(list(filtered), [game])
 
     def test_apply_played_filter_with_only_empty_tokens_returns_queryset(self):
@@ -499,7 +508,7 @@ class PlayedFilterTests(TestCase):
         game = models.Game.objects.create(name="Token Game", rank=2, igdb_id=101)
         user = get_user_model().objects.create_user(username="tokens", password="pass")
         qs = models.Game.objects.all()
-        filtered = views._apply_played_filter(qs, user, " , , ")
+        filtered = game_filters.apply_played_filter(qs, user, " , , ")
         self.assertEqual(list(filtered), [game])
 
 

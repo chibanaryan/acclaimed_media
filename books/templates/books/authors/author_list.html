@@ -104,9 +104,9 @@
                 <button type="button"
                         class="flex items-center gap-1 text-base-content/70 hover:text-base-content transition-colors cursor-pointer"
                         @click="sortOpen = !sortOpen">
-                    <span class="mdi mdi-sort text-base"></span>
+                    <span class="mdi mdi-sort text-base" aria-hidden="true"></span>
                     <span class="text-sm" x-text="sort === 'books' ? '# Books' : (sort === 'rank' ? 'Top Rank' : 'Name (A-Z)')"># Books</span>
-                    <span class="mdi mdi-chevron-down text-xs"></span>
+                    <span class="mdi mdi-chevron-down text-xs" aria-hidden="true"></span>
                 </button>
                 <ul x-show="sortOpen" x-cloak
                     class="dropdown-content menu menu-sm bg-base-200 rounded-box shadow-lg z-50 w-fit p-2 mt-1"
@@ -121,12 +121,12 @@
                     class="flex items-center text-base-content/70 hover:text-base-content transition-colors cursor-pointer"
                     @click="toggleSortDirection()"
                     :title="sortDirection === 'asc' ? 'Ascending' : 'Descending'">
-                <span class="mdi text-base" :class="sortDirection === 'asc' ? 'mdi-arrow-up' : 'mdi-arrow-down'"></span>
+                <span class="mdi text-base" aria-hidden="true" :class="sortDirection === 'asc' ? 'mdi-arrow-up' : 'mdi-arrow-down'"></span>
             </button>
         </div>
         {# Mobile: Native select for touch compatibility #}
         <div class="desktop:hidden flex items-center gap-1">
-            <span class="mdi mdi-sort text-base text-base-content/70"></span>
+            <span class="mdi mdi-sort text-base text-base-content/70" aria-hidden="true"></span>
             <select class="select select-sm select-bordered bg-base-200"
                     style="width: fit-content; max-width: 100%;"
                     @change="updateSort($event.target.value)">
@@ -139,7 +139,7 @@
                     class="flex items-center text-base-content/70 hover:text-base-content transition-colors cursor-pointer"
                     @click="toggleSortDirection()"
                     :title="sortDirection === 'asc' ? 'Ascending' : 'Descending'">
-                <span class="mdi text-sm" :class="sortDirection === 'asc' ? 'mdi-arrow-up' : 'mdi-arrow-down'"></span>
+                <span class="mdi text-sm" aria-hidden="true" :class="sortDirection === 'asc' ? 'mdi-arrow-up' : 'mdi-arrow-down'"></span>
             </button>
         </div>
     </div>

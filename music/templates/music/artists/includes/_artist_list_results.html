@@ -23,7 +23,7 @@
 
     {% if current_q %}
     <a href="{% url 'music:artist-list' %}" class="btn btn-ghost btn-sm">
-        <span class="mdi mdi-close"></span>
+        <span class="mdi mdi-close" aria-hidden="true"></span>
         <span>Clear search</span>
     </a>
     {% endif %}
@@ -66,7 +66,7 @@
 
 {% else %}
 <div class="alert">
-    <span class="mdi mdi-account-music"></span>
+    <span class="mdi mdi-account-music" aria-hidden="true"></span>
     <span>No artists found.</span>
 </div>
 {% endif %}

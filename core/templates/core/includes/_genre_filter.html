@@ -43,14 +43,14 @@
                             :aria-label="isCategoryExpanded(category.id) ? 'Collapse ' + category.name : 'Expand ' + category.name"
                             :aria-expanded="isCategoryExpanded(category.id)"
                             @click.stop="toggleCategoryExpanded(category.id)">
-                        <span class="mdi text-base transition-transform duration-200"
+                        <span class="mdi text-base transition-transform duration-200" aria-hidden="true"
                               :class="isCategoryExpanded(category.id) ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
                     </button>
                     {# Category Icon and Name - clickable to select #}
                     <button type="button"
                             class="flex items-center gap-2 flex-1 text-left"
                             @click="toggleCategorySelection(category.id)">
-                        <span class="mdi text-lg" :class="getCategoryIcon(category.name)"></span>
+                        <span class="mdi text-lg" aria-hidden="true" :class="getCategoryIcon(category.name)"></span>
                         <span class="font-medium text-sm" x-text="category.name"></span>
                     </button>
                     {# Game count for category #}
@@ -63,7 +63,7 @@
                      x-show="isCategoryExpanded(category.id)"
                      x-collapse>
                     <template x-for="genre in getChildren(category.id)" :key="genre.id">
-                        <div class="genre-item flex items-center gap-2 w-full py-1 px-2 rounded-md text-left text-sm transition-colors cursor-pointer"
+                        <div role="button" tabindex="0" :aria-pressed="(isGenreSelected(genre.id)) ? 'true' : 'false'" @keydown.enter.prevent="toggleGenre(genre.id)" @keydown.space.prevent="toggleGenre(genre.id)" class="genre-item flex items-center gap-2 w-full py-1 px-2 rounded-md text-left text-sm transition-colors cursor-pointer"
                              :class="{
                                  'bg-primary text-accent-content': isGenreSelected(genre.id),
                                  'hover:bg-base-content/10': !isGenreSelected(genre.id),

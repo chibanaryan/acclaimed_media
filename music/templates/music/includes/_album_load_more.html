@@ -18,14 +18,14 @@
             data-next-page="{{ next_page }}"
             data-total="{{ total_count }}"
             data-loaded="{{ loaded_count }}">
-        <span class="mdi mdi-album"></span>
+        <span class="mdi mdi-album" aria-hidden="true"></span>
         <span class="load-more-text">Load More ({{ remaining_count|intcomma }} remaining)</span>
     </button>
 </div>
 {% elif total_count %}
 <div id="load-more-container" class="load-more-container text-center my-6"{% if oob %} hx-swap-oob="true"{% endif %}>
     <div class="text-base-content/50 text-sm">
-        <span class="mdi mdi-check-circle-outline"></span>
+        <span class="mdi mdi-check-circle-outline" aria-hidden="true"></span>
         <span>All {{ total_count|intcomma }} results loaded</span>
     </div>
 </div>

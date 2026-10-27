@@ -36,7 +36,7 @@ from games.models import (
     WantToPlayGame,
     WikipediaGenre,
 )
-from games.views import HomePageView, _build_filter_cache_key
+from games.views import HomePageView
 
 
 class HomePageViewTest(TestCase):
@@ -606,7 +606,9 @@ class GameListViewTest(TestCase):
                 stats["max_year"] or timezone.now().year,
             )
 
-        with mock.patch("games.views._get_year_bounds", side_effect=fresh_year_bounds):
+        with mock.patch(
+            "games.views.rankings._get_year_bounds", side_effect=fresh_year_bounds
+        ):
             # Without filter, both years should have counts
             response = self.client.get(
                 reverse("home"), HTTP_X_REQUESTED_WITH="XMLHttpRequest"
@@ -1181,33 +1183,27 @@ class GameSearchPlayedFilterTest(TestCase):
         self.assertEqual(response.context["filters"]["played"], "")
 
 
-class FilterCacheKeyTest(TestCase):
-    def test_cache_key_stable_for_reordered_lists(self):
-        filters_a = {
-            "q": "zelda",
-            "start": 1990,
-            "end": 1999,
-            "genres": ["2", "1"],
-            "platforms": ["3", "2"],
+class RankDistributionCacheKeyTest(TestCase):
+    """The chart's key is built from the raw parameters, like the facets'.
+
+    It came from the derived filters dict, which leaves `hltb_preset` out,
+    so every preset and the unfiltered page shared one cached chart.
+    """
+
+    def test_presets_and_the_playtime_sort_get_their_own_keys(self):
+        from django.http import QueryDict
+
+        from games.views._helpers import _facet_cache_key
+
+        keys = {
+            _facet_cache_key(
+                "home_rank_dist",
+                QueryDict(query),
+                extra={"sort": QueryDict(query).get("sort", "rank")},
+            )
+            for query in ("", "hltb_preset=short", "hltb_preset=long", "sort=playtime")
         }
-        filters_b = {
-            "q": "zelda",
-            "start": 1990,
-            "end": 1999,
-            "genres": ["1", "2"],
-            "platforms": ["2", "3"],
-        }
-        key_a = _build_filter_cache_key(
-            "home_year_counts",
-            filters_a,
-            keys=["q", "start", "end", "genres", "platforms"],
-        )
-        key_b = _build_filter_cache_key(
-            "home_year_counts",
-            filters_b,
-            keys=["q", "start", "end", "genres", "platforms"],
-        )
-        self.assertEqual(key_a, key_b)
+        self.assertEqual(len(keys), 4)
 
 
 class HomeFacetCacheTimeoutTest(TestCase):
@@ -1253,7 +1249,7 @@ class HomeFacetCacheTimeoutTest(TestCase):
         ]
 
     def test_filter_facet_caches_use_five_minutes_without_query(self):
-        with mock.patch("games.views.cache.set") as cache_set_mock:
+        with mock.patch("games.views.rankings.cache.set") as cache_set_mock:
             response = self.client.get(reverse("home"))
         self.assertEqual(response.status_code, 200)
         timeouts = self._get_facet_cache_timeouts(cache_set_mock)
@@ -1263,7 +1259,7 @@ class HomeFacetCacheTimeoutTest(TestCase):
         )
 
     def test_filter_facet_caches_use_one_minute_with_query(self):
-        with mock.patch("games.views.cache.set") as cache_set_mock:
+        with mock.patch("games.views.rankings.cache.set") as cache_set_mock:
             response = self.client.get(reverse("home") + "?q=timeout")
         self.assertEqual(response.status_code, 200)
         timeouts = self._get_facet_cache_timeouts(cache_set_mock)
@@ -1274,7 +1270,7 @@ class HomeFacetCacheTimeoutTest(TestCase):
 
     def test_filter_facet_caches_use_one_minute_with_played_filter(self):
         self.client.login(username="timeout-user", password="testpass123")
-        with mock.patch("games.views.cache.set") as cache_set_mock:
+        with mock.patch("games.views.rankings.cache.set") as cache_set_mock:
             response = self.client.get(reverse("home") + "?played=yes")
         self.assertEqual(response.status_code, 200)
         timeouts = self._get_facet_cache_timeouts(cache_set_mock)
@@ -2761,6 +2757,12 @@ class RobotsTxtViewTest(TestCase):
         content = response.content.decode("utf-8")
         self.assertIn("Sitemap:", content)
         self.assertIn("sitemap.xml", content)
+
+    def test_robots_txt_keeps_crawlers_off_the_csv_download(self):
+        """Every filter combination is a distinct /download/ URL, each a
+        full render of the CSV; music's download was already disallowed."""
+        response = self.client.get("/robots.txt")
+        self.assertIn("Disallow: /download/", response.content.decode())
 
     def test_robots_txt_blocks_aggressive_crawlers(self):
         """Test that aggressive crawlers are blocked."""
@@ -4325,7 +4327,9 @@ class PlatformVirtualIdTests(TestCase):
 
     def test_expand_virtual_id_nintendo_manufacturer(self):
         """Test that mfr-nintendo expands to Nintendo platform IDs."""
-        from games.views import _expand_platform_virtual_ids
+        from games.services.game_filters import (
+            expand_platform_virtual_ids as _expand_platform_virtual_ids,
+        )
 
         platforms = [
             {"id": self.nes.id, "code": "NES"},
@@ -4342,7 +4346,9 @@ class PlatformVirtualIdTests(TestCase):
 
     def test_expand_virtual_id_nintendo_home_form_factor_includes_sw2(self):
         """Test that ff-nintendo-home expands to include Switch 2."""
-        from games.views import _expand_platform_virtual_ids
+        from games.services.game_filters import (
+            expand_platform_virtual_ids as _expand_platform_virtual_ids,
+        )
 
         platforms = [
             {"id": self.nes.id, "code": "NES"},
@@ -4356,7 +4362,9 @@ class PlatformVirtualIdTests(TestCase):
 
     def test_expand_virtual_id_nintendo_handheld_includes_game_and_watch(self):
         """Test that ff-nintendo-handheld expands to include Game & Watch."""
-        from games.views import _expand_platform_virtual_ids
+        from games.services.game_filters import (
+            expand_platform_virtual_ids as _expand_platform_virtual_ids,
+        )
 
         platforms = [
             {"id": self.gw.id, "code": "GW"},
@@ -4368,7 +4376,9 @@ class PlatformVirtualIdTests(TestCase):
 
     def test_expand_virtual_id_microcomputer_subgroups_include_new_codes(self):
         """Test new prod microcomputer codes land in the expected subgroups."""
-        from games.views import _expand_platform_virtual_ids
+        from games.services.game_filters import (
+            expand_platform_virtual_ids as _expand_platform_virtual_ids,
+        )
 
         platforms = [
             {"id": self.d32.id, "code": "D32"},
@@ -4387,7 +4397,9 @@ class PlatformVirtualIdTests(TestCase):
 
     def test_expand_virtual_id_retro_manufacturer_includes_vectrex(self):
         """Test that mfr-retro expands to include Vectrex."""
-        from games.views import _expand_platform_virtual_ids
+        from games.services.game_filters import (
+            expand_platform_virtual_ids as _expand_platform_virtual_ids,
+        )
 
         platforms = [
             {"id": self.vect.id, "code": "VECT"},
@@ -4399,7 +4411,9 @@ class PlatformVirtualIdTests(TestCase):
 
     def test_expand_regular_id(self):
         """Test that regular numeric IDs are returned as-is."""
-        from games.views import _expand_platform_virtual_ids
+        from games.services.game_filters import (
+            expand_platform_virtual_ids as _expand_platform_virtual_ids,
+        )
 
         platforms = [{"id": self.pc.id, "code": "PC"}]
         result = _expand_platform_virtual_ids(str(self.pc.id), platforms)
@@ -4407,7 +4421,9 @@ class PlatformVirtualIdTests(TestCase):
 
     def test_expand_invalid_id_ignored(self):
         """Test that invalid IDs are silently ignored."""
-        from games.views import _expand_platform_virtual_ids
+        from games.services.game_filters import (
+            expand_platform_virtual_ids as _expand_platform_virtual_ids,
+        )
 
         platforms = [{"id": self.pc.id, "code": "PC"}]
         result = _expand_platform_virtual_ids("invalid,abc,xyz", platforms)
@@ -4415,7 +4431,9 @@ class PlatformVirtualIdTests(TestCase):
 
     def test_expand_empty_param_returns_empty(self):
         """Test that empty param returns empty list."""
-        from games.views import _expand_platform_virtual_ids
+        from games.services.game_filters import (
+            expand_platform_virtual_ids as _expand_platform_virtual_ids,
+        )
 
         platforms = [{"id": self.pc.id, "code": "PC"}]
         result = _expand_platform_virtual_ids("", platforms)
@@ -4423,7 +4441,9 @@ class PlatformVirtualIdTests(TestCase):
 
     def test_expand_mixed_ids(self):
         """Test that mix of virtual and regular IDs works."""
-        from games.views import _expand_platform_virtual_ids
+        from games.services.game_filters import (
+            expand_platform_virtual_ids as _expand_platform_virtual_ids,
+        )
 
         platforms = [
             {"id": self.nes.id, "code": "NES"},

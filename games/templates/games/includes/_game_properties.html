@@ -57,7 +57,7 @@
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-top whitespace-nowrap">{% if platforms|length == 1 %}Platform{% else %}Platforms{% endif %}:</td>
         <td class="pb-3">
             <span class="flex flex-wrap gap-1">
-                {% for platform in platforms %}<a href="{% url 'home' %}?platforms={{ platform.id }}&highlight={{ game.id }}" class="badge badge-outline opacity-80 hover:opacity-100 hover:badge-primary transition-colors max-w-[200px] overflow-hidden inline-flex items-center gap-1" title="{{ platform.name }}">{% with svg_icon=platform|platform_svg_icon mdi_icon=platform|platform_icon %}{% if svg_icon %}<svg class="w-3.5 h-3.5 fill-current flex-shrink-0" aria-hidden="true"><use href="{% static 'games/images/platform-icons.svg' %}#{{ svg_icon }}"></use></svg>{% elif mdi_icon %}<span class="mdi {{ mdi_icon }} text-sm flex-shrink-0"></span>{% endif %}{% endwith %}<span class="truncate">{{ platform.name }}</span></a>{% endfor %}
+                {% for platform in platforms %}<a href="{% url 'home' %}?platforms={{ platform.id }}&highlight={{ game.id }}" class="badge badge-outline opacity-80 hover:opacity-100 hover:badge-primary transition-colors max-w-[200px] overflow-hidden inline-flex items-center gap-1" title="{{ platform.name }}">{% with svg_icon=platform|platform_svg_icon mdi_icon=platform|platform_icon %}{% if svg_icon %}<svg class="w-3.5 h-3.5 fill-current flex-shrink-0" aria-hidden="true"><use href="{% static 'games/images/platform-icons.svg' %}#{{ svg_icon }}"></use></svg>{% elif mdi_icon %}<span class="mdi {{ mdi_icon }} text-sm flex-shrink-0" aria-hidden="true"></span>{% endif %}{% endwith %}<span class="truncate">{{ platform.name }}</span></a>{% endfor %}
             </span>
         </td>
     </tr>
@@ -68,7 +68,7 @@
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-top whitespace-nowrap">{% if genres|length == 1 %}Genre{% else %}Genres{% endif %}:</td>
         <td class="pb-3">
             <span class="flex flex-wrap gap-1">
-                {% for genre in genres %}<a href="{% url 'home' %}?genres={{ genre.id }}&highlight={{ game.id }}" class="badge badge-outline opacity-80 hover:opacity-100 hover:badge-primary transition-colors max-w-[200px] overflow-hidden inline-flex items-center gap-1" title="{{ genre.name }}"><span class="mdi {{ genre|genre_icon }} text-sm flex-shrink-0"></span><span class="truncate">{{ genre.name }}</span></a>{% endfor %}
+                {% for genre in genres %}<a href="{% url 'home' %}?genres={{ genre.id }}&highlight={{ game.id }}" class="badge badge-outline opacity-80 hover:opacity-100 hover:badge-primary transition-colors max-w-[200px] overflow-hidden inline-flex items-center gap-1" title="{{ genre.name }}"><span class="mdi {{ genre|genre_icon }} text-sm flex-shrink-0" aria-hidden="true"></span><span class="truncate">{{ genre.name }}</span></a>{% endfor %}
             </span>
         </td>
     </tr>
@@ -89,7 +89,7 @@
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-middle whitespace-nowrap">Wikipedia:</td>
         <td class="pb-3 align-middle">
             <a href="{{ game.primary_wikipedia_game_data.wikipedia_url }}" target="_blank" class="link link-accent inline-flex items-center gap-1">
-                Wikipedia <span class="mdi mdi-open-in-new text-sm"></span>
+                Wikipedia <span class="mdi mdi-open-in-new text-sm" aria-hidden="true"></span>
             </a>
         </td>
     </tr>
@@ -99,7 +99,7 @@
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-middle whitespace-nowrap">IGDB:</td>
         <td class="pb-3 align-middle">
             <a href="{{ game.primary_igdb_game_data.url }}" target="_blank" class="link link-accent inline-flex items-center gap-1">
-                IGDB <span class="mdi mdi-open-in-new text-sm"></span>
+                IGDB <span class="mdi mdi-open-in-new text-sm" aria-hidden="true"></span>
             </a>
         </td>
     </tr>
@@ -110,7 +110,7 @@
         <td class="pb-3">
             <a href="{{ game.primary_hltb_game_data.hltb_url }}" target="_blank"
                class="link link-accent inline-flex items-center gap-1">
-                HowLongToBeat <span class="mdi mdi-open-in-new text-sm"></span>
+                HowLongToBeat <span class="mdi mdi-open-in-new text-sm" aria-hidden="true"></span>
             </a>
             {% if game.primary_hltb_game_data.main_story_hours or game.primary_hltb_game_data.completionist_hours %}
             <div class="text-base-content/70 text-sm mt-1 space-y-0.5 tabular-nums">
@@ -119,19 +119,19 @@
                 {% endif %}
                 {% if game.primary_hltb_game_data.main_story_hours %}
                 <div>
-                    <span class="mdi mdi-gamepad-variant text-xs"></span>
+                    <span class="mdi mdi-gamepad-variant text-xs" aria-hidden="true"></span>
                     Main: {{ game.primary_hltb_game_data.main_story_hours|format_playtime }}
                 </div>
                 {% endif %}
                 {% if game.primary_hltb_game_data.main_extra_hours %}
                 <div>
-                    <span class="mdi mdi-star-outline text-xs"></span>
+                    <span class="mdi mdi-star-outline text-xs" aria-hidden="true"></span>
                     Main+Extra: {{ game.primary_hltb_game_data.main_extra_hours|format_playtime }}
                 </div>
                 {% endif %}
                 {% if game.primary_hltb_game_data.completionist_hours %}
                 <div>
-                    <span class="mdi mdi-trophy text-xs"></span>
+                    <span class="mdi mdi-trophy text-xs" aria-hidden="true"></span>
                     100%: {{ game.primary_hltb_game_data.completionist_hours|format_playtime }}
                 </div>
                 {% endif %}
@@ -146,7 +146,7 @@
                class="contact-modal-trigger link link-hover text-base-content/70 hover:text-warning inline-flex items-center gap-1 text-sm"
                data-category="data"
                data-message="Game: {{ game.name }}{% if game.primary_igdb_game_data.igdb_id %} (IGDB ID: {{ game.primary_igdb_game_data.igdb_id }}){% endif %}">
-                <span class="mdi mdi-alert-circle"></span>
+                <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
                 Report incorrect data
             </a>
         </td>

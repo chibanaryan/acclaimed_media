@@ -433,6 +433,11 @@
             _yearSet: null,
             _minCount: 0,
             _decadeStructure: null,
+            // The grid's one tab stop (a roving tabindex): a row (decade) and
+            // a column, 0 for the decade label and 1-10 for its years. Until
+            // the grid is focused it is the first decade's label.
+            focusRow: 0,
+            focusCol: 0,
 
             init: function () {
                 var self = this;
@@ -750,6 +755,101 @@
                 } else {
                     this.lastClicked = year;
                 }
+            },
+
+            isTabStop: function (row, col) {
+                return row === this.focusRow && col === this.focusCol;
+            },
+
+            /**
+             * Keyboard use of the grid, which was mouse-only: arrows and
+             * Home/End move between the decade labels and the years that
+             * exist, Enter or Space selects, and Shift with either extends
+             * the range from the last pick, as Shift+click does.
+             */
+            onGridKeydown: function (event) {
+                var cell = event.target.closest("[data-col]");
+                if (!cell) return;
+                var row = parseInt(cell.dataset.row, 10);
+                var col = parseInt(cell.dataset.col, 10);
+                if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    var decade = this.decades[row];
+                    if (col === 0) {
+                        this.keySelectRange(decade.start, decade.start + 9, event);
+                    } else {
+                        var year = decade.cells[col - 1].year;
+                        this.keySelectRange(year, year, event);
+                    }
+                    return;
+                }
+                var grid = event.currentTarget;
+                var target = null;
+                if (event.key === "Home" || event.key === "End") {
+                    // Home: the row's decade label. End: its last year that
+                    // exists, walking back past empty cells (the 2020s row
+                    // stops at the current year)
+                    event.preventDefault();
+                    for (var c = event.key === "Home" ? 0 : 10; c >= 0 && !target; c--) {
+                        target = grid.querySelector('[data-row="' + row + '"][data-col="' + c + '"]');
+                    }
+                    if (target) target.focus();
+                    return;
+                }
+                var moves = {
+                    ArrowLeft: [0, -1], ArrowRight: [0, 1],
+                    ArrowUp: [-1, 0], ArrowDown: [1, 0]
+                };
+                var move = moves[event.key];
+                if (!move) return;
+                event.preventDefault();
+                target = this._nextFocusable(grid, row, col, move[0], move[1]);
+                if (target) target.focus();
+            },
+
+            /** The nearest focusable cell from (row, col) in a direction. */
+            _nextFocusable: function (grid, row, col, rowStep, colStep) {
+                var r = row + rowStep;
+                var c = Math.max(0, Math.min(10, col + colStep));
+                if (colStep !== 0 && rowStep === 0) {
+                    // Along a row: walk on past empty cells
+                    var step = colStep > 0 ? 1 : -1;
+                    for (; c >= 0 && c <= 10; c += step) {
+                        var found = grid.querySelector('[data-row="' + row + '"][data-col="' + c + '"]');
+                        if (found) return found;
+                    }
+                    return null;
+                }
+                // Up or down: the same column, else that row's decade label
+                for (; r >= 0 && r < this.decades.length; r += rowStep) {
+                    var same = grid.querySelector('[data-row="' + r + '"][data-col="' + c + '"]');
+                    if (same) return same;
+                    var label = grid.querySelector('[data-row="' + r + '"][data-col="0"]');
+                    if (label) return label;
+                }
+                return null;
+            },
+
+            /**
+             * Select a year or decade from the keyboard. A mouse selection
+             * is set by the drag (endDrag) and the click only settles it, so
+             * the keyboard sets the range itself: picking the range that is
+             * already the whole selection clears it, as a second click does.
+             */
+            keySelectRange: function (start, end, event) {
+                if (event.shiftKey && this.lastClicked !== null) {
+                    filters.start = Math.min(this.lastClicked, start);
+                    filters.end = Math.max(this.lastClicked, end);
+                } else if (filters.start === start && filters.end === end) {
+                    filters.start = minYear;
+                    filters.end = maxYear;
+                    this.lastClicked = null;
+                } else {
+                    filters.start = start;
+                    filters.end = end;
+                    this.lastClicked = start;
+                }
+                requestFilterUpdate();
             },
 
             startDrag: function (year, event) {

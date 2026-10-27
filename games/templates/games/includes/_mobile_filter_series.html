@@ -12,9 +12,9 @@
         <button type="button"
                 @click="expanded = !expanded"
                 class="flex items-center gap-2">
-            <span class="mdi mdi-mushroom text-lg text-base-content/70"></span>
+            <span class="mdi mdi-mushroom text-lg text-base-content/70" aria-hidden="true"></span>
             Series
-            <span class="mdi mdi-chevron-right text-xl transition-transform duration-200" :class="{ 'rotate-90': expanded }"></span>
+            <span class="mdi mdi-chevron-right text-xl transition-transform duration-200" aria-hidden="true" :class="{ 'rotate-90': expanded }"></span>
         </button>
         <template x-if="isSeriesActive()">
             <span class="badge badge-primary badge-sm ml-2">1</span>
@@ -25,7 +25,7 @@
                 x-cloak
                 @click.stop="clearSeries(); debouncedFilterUpdate();"
                 class="btn btn-ghost btn-xs ml-2 text-base-content/70 hover:text-error">
-            <span class="mdi mdi-close text-xs"></span>
+            <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
             <span class="text-xs">Clear Series</span>
         </button>
     </div>
@@ -68,7 +68,7 @@
         {# Series List - scrollable, shows 8 series at a time #}
         <div class="space-y-1 overflow-y-auto" style="max-height: 224px;">
             <template x-for="series in filteredSeries" :key="series.id">
-                <div class="flex items-center gap-2 py-1.5 px-2 rounded-md cursor-pointer transition-colors"
+                <div role="button" tabindex="0" :aria-pressed="(isSeriesSelected(series.id)) ? 'true' : 'false'" @keydown.enter.prevent="toggleSeries(series.id); debouncedFilterUpdate();" @keydown.space.prevent="toggleSeries(series.id); debouncedFilterUpdate();" class="flex items-center gap-2 py-1.5 px-2 rounded-md cursor-pointer transition-colors"
                      :class="{
                          'bg-primary text-accent-content': isSeriesSelected(series.id),
                          'hover:bg-base-content/10': !isSeriesSelected(series.id),

@@ -54,7 +54,7 @@
                             </svg>
                         </template>
                         <template x-if="platformHierarchy[mfrKey].icon && !platformHierarchy[mfrKey].svgFile">
-                            <span class="mdi text-lg" :class="platformHierarchy[mfrKey].icon"></span>
+                            <span class="mdi text-lg" aria-hidden="true" :class="platformHierarchy[mfrKey].icon"></span>
                         </template>
                         <span class="font-medium text-sm" x-text="platformHierarchy[mfrKey].name"></span>
                     </button>
@@ -106,7 +106,7 @@
                                          x-show="isFormFactorExpanded(mfrKey, ffKey)"
                                          x-collapse>
                                         <template x-for="platform in getFormFactorPlatforms(mfrKey, ffKey)" :key="platform.id">
-                                            <div class="platform-item"
+                                            <div role="button" tabindex="0" :aria-pressed="(isPlatformSelected(platform.id)) ? 'true' : 'false'" @keydown.enter.prevent="togglePlatform(platform.id); debouncedFilterUpdate();" @keydown.space.prevent="togglePlatform(platform.id); debouncedFilterUpdate();" class="platform-item"
                                                  :class="{
                                                      'is-selected': isPlatformSelected(platform.id),
                                                      'opacity-70': !isPlatformAvailable(platform.id) && !isPlatformSelected(platform.id)
@@ -133,7 +133,7 @@
                     <template x-if="platformHierarchy[mfrKey].platforms && !platformHierarchy[mfrKey].formFactors">
                         <div class="ml-2 space-y-0.5">
                             <template x-for="platform in getFlatPlatforms(mfrKey)" :key="platform.id">
-                                <div class="platform-item"
+                                <div role="button" tabindex="0" :aria-pressed="(isPlatformSelected(platform.id)) ? 'true' : 'false'" @keydown.enter.prevent="togglePlatform(platform.id); debouncedFilterUpdate();" @keydown.space.prevent="togglePlatform(platform.id); debouncedFilterUpdate();" class="platform-item"
                                      :class="{
                                          'is-selected': isPlatformSelected(platform.id),
                                          'opacity-70': !isPlatformAvailable(platform.id) && !isPlatformSelected(platform.id)

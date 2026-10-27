@@ -19,6 +19,8 @@ from typing import Any, Callable, Dict, Optional, Tuple
 from django.db import connection, transaction
 from django.db.models import Q
 
+from core.services.background import start_background_thread
+from games.platform_years import years_for
 from games import config, constants, models
 from games.services.genre_normalizer import (
     canonicalize_genre_payload,
@@ -37,24 +39,11 @@ IMPORT_FAILED = "Import failed; see the server logs."
 
 
 def _start_import_thread(target: Callable[[], None]):
-    """Run ``target`` on a daemon thread that closes its DB connection after.
+    """Run an import off the request; see ``start_background_thread``.
 
-    Django's connections are per thread, and one opened here outlives its
-    thread until the cyclic garbage collector gets to the thread's wrapper,
-    holding a Postgres slot meanwhile. Under gunicorn's gthread workers the
-    web threads already account for workers x threads of those slots.
+    Kept as its own name so tests can run imports inline by patching it.
     """
-    import threading
-
-    def run():
-        try:
-            target()
-        finally:
-            connection.close()
-
-    thread = threading.Thread(target=run, daemon=True)
-    thread.start()
-    return thread
+    return start_background_thread(target)
 
 
 def import_data(data: Dict[str, Any]) -> Optional[Tuple[bool, str]]:
@@ -994,8 +983,11 @@ def delete_existing_data() -> Tuple[bool, str]:
     Delete all game-related data from the database.
 
     Deletes: Games, Lists, ListMemberships, Publications, Developers, Series,
-             IGDBGameData, Platform.
+             IGDBGameData.
     Preserves (orphaned): WikipediaGameData, HLTBGameData, WikipediaGenre.
+    Preserves: Platform, whose years (`year_start`/`year_end`) are not in
+    any import file. The next platform import still removes any code its
+    file no longer lists.
     """
     models_to_delete = [
         models.List,
@@ -1005,7 +997,6 @@ def delete_existing_data() -> Tuple[bool, str]:
         models.Developer,
         models.Series,
         models.IGDBGameData,
-        models.Platform,
     ]
 
     with transaction.atomic():
@@ -1017,7 +1008,8 @@ def delete_existing_data() -> Tuple[bool, str]:
         # Clear primary IGDB relationship before deleting IGDBGameData
         models.Game.objects.update(primary_igdb_game_data=None)
 
-        # Clear M2M relationships before deleting Developer, Series, Platform
+        # Clear M2M relationships before deleting Developer and Series (games
+        # leave their platforms, which survive)
         models.Game.developers.through.objects.all().delete()
         models.Game.series.through.objects.all().delete()
         models.Game.platforms.through.objects.all().delete()
@@ -1353,9 +1345,7 @@ def import_games(
                 code = code.strip()
                 platform, _ = models.Platform.objects.get_or_create(
                     code=code,
-                    defaults={
-                        "name": code,
-                    },
+                    defaults={"name": code, **years_for(code)},
                 )
                 platform_objs.append(platform)
 
@@ -1554,14 +1544,22 @@ def import_platforms(
             name = name.strip()
             imported_codes.add(code)
 
-            # Update or create platform, preserving year_start/year_end
+            # Update or create platform, preserving year_start/year_end. A
+            # new platform, or one with no years yet, takes them from the
+            # table; years set by hand are never overwritten.
             platform, created = models.Platform.objects.get_or_create(
-                code=code, defaults={"name": name}
+                code=code, defaults={"name": name, **years_for(code)}
             )
+            changed = []
             if not created and platform.name != name:
-                # Update name if changed
                 platform.name = name
-                platform.save(update_fields=["name"])
+                changed.append("name")
+            if platform.year_start is None and years_for(code):
+                for field, value in years_for(code).items():
+                    setattr(platform, field, value)
+                changed += ["year_start", "year_end"]
+            if changed:
+                platform.save(update_fields=changed)
             count += 1
 
             # Report progress

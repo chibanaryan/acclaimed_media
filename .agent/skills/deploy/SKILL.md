@@ -35,7 +35,7 @@ Use this workflow when making changes that need to be deployed to production.
 ### 2. Build Tailwind CSS for production
 
 ```bash
-python3 manage.py tailwind build
+venv/bin/python manage.py tailwind build
 ```
 
 ### 3. Minify JavaScript files
@@ -44,11 +44,13 @@ python3 manage.py tailwind build
 ./scripts/minify_js.sh
 ```
 
-### 4. Collect static files
+### 4. Fetch main
 
 ```bash
-python3 manage.py collectstatic --noinput
+git fetch origin
 ```
+
+(No local `collectstatic`: Heroku runs it on build; see the commit skill.)
 
 ### 5. Review the change
 
@@ -58,11 +60,10 @@ every finding fixed or waived out loud, and a one-line summary in the
 final message. If there is nothing new to push (HEAD is already on
 `origin/main`), there is nothing to review; skip the step.
 
-### 6. Stage all changes
+### 6. Stage the change
 
-```bash
-git add -A
-```
+As in the commit skill: read `git status --short`, then `git add -u` and
+add new files by path.
 
 ### 7. Commit with descriptive message
 
@@ -73,14 +74,52 @@ git commit -m "Your commit message here"
 ### 8. Push to main branch
 
 ```bash
-git push origin main
+git push origin HEAD:main
 ```
 
-### 9. Deploy to Heroku
+If rejected because `main` moved, rebase, re-run the tests and push again,
+as in the commit skill.
+
+### 9. Wait for CI
+
+Heroku builds whatever it is pushed; CI is what runs the Postgres suite,
+the production-only install, the manifest-storage renders and the browser
+smoke test, none of which the pre-commit hook runs. Deploy a green commit:
 
 ```bash
-git push heroku main
+gh run list --branch main --limit 1
+gh run watch <run id> --exit-status
 ```
+
+If it fails, fix it and go round again; do not deploy.
+
+### 10. Back up the database if migrations ship
+
+```bash
+git fetch heroku
+git diff --name-only heroku/main..HEAD | grep /migrations/ \
+  && heroku pg:backups:capture -a acclaimedgames
+```
+
+`heroku rollback` puts the old code back but does **not** undo migrations;
+a backup is the way back from a bad one (`heroku pg:backups:restore`).
+
+### 11. Deploy to Heroku
+
+```bash
+git push heroku HEAD:main
+```
+
+### 12. Check it is up
+
+```bash
+curl -sf https://www.acclaimedvideogames.com/healthz/ && echo ok
+heroku releases -a acclaimedgames -n 1
+```
+
+`/healthz/` answers 200 only when Django can reach the database. If it
+fails, `heroku logs --tail -a acclaimedgames`, and `heroku rollback` if the
+release is at fault.
 
 ## Pre-commit Hook Handling
 

@@ -15,8 +15,8 @@
 
     {# Thumbnail #}
     <div class="w-12 h-12 shrink-0 rounded-lg overflow-hidden bg-base-100">
-        <img src="{{ game.thumbnail }}"
-             srcset="{{ game.thumbnail }} 1x, {{ game.thumbnail_2x }} 2x"
+        <img {% if game.thumbnail %}src="{{ game.thumbnail }}"
+             srcset="{{ game.thumbnail }} 1x, {{ game.thumbnail_2x }} 2x"{% else %}src="{% static 'games/images/cover-placeholder.svg' %}"{% endif %}
              alt="{{ game.name }}"
              width="90" height="128"
              class="w-full h-full object-cover"

@@ -23,7 +23,7 @@
 {# Keep every template comment on a single line. #}
 <div class="{% if mobile %}space-y-2{% else %}mb-4 pb-3 border-b border-base-100{% endif %}">
     <div class="flex items-center gap-2 mb-2">
-        <span class="mdi {{ status_icon }} text-xl text-accent"></span>
+        <span class="mdi {{ status_icon }} text-xl text-accent" aria-hidden="true"></span>
         <span class="font-bold text-base">{{ status_label }}</span>
         {% if user.is_authenticated %}
         <button type="button"
@@ -32,7 +32,7 @@
                 title="Clear {{ status_label|lower }}"
                 x-cloak
                 x-show="(filters.{{ status_param }} || []).length > 0">
-            <span class="mdi mdi-close text-xs"></span>
+            <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
             <span>Clear</span>
         </button>
         {% endif %}

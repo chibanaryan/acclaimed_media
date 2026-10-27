@@ -64,28 +64,13 @@ jobs:
       # pytest.ini carries the 100% coverage gate.
       - run: pytest
 
-  # The same suites without conftest.py, which hides cache and process-state
-  # leaks between tests.
+  # The same suites under Django's runner, without conftest.py (which hides
+  # cache and process-state leaks between tests), on production's database:
+  # SQLite enforces neither varchar lengths nor some constraints, so a test
+  # can pass locally and the write still fail on Heroku. One job for both,
+  # since 2026-10-26: the suite ran three times before, pytest on SQLite and
+  # on Postgres plus this runner on SQLite. Coverage is the pytest job's gate.
   django-tests:
-    if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version-file: .python-version
-          cache: pip
-          cache-dependency-path: requirements-dev.txt
-      # Both locks at once: pip refuses two different pins for one package,
-      # so a production lock recompiled without the dev lock fails here.
-      - run: pip install -r requirements.txt -r requirements-dev.txt
-      - run: scripts/run_tests.sh
-
-  # Production's database. SQLite enforces neither varchar lengths nor some
-  # constraints, so a test can pass locally and the write still fail on Heroku.
-  # Coverage is the pytest job's gate; branches here differ by vendor.
-  postgres:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -110,7 +95,7 @@ jobs:
       # Both locks at once: pip refuses two different pins for one package,
       # so a production lock recompiled without the dev lock fails here.
       - run: pip install -r requirements.txt -r requirements-dev.txt
-      - run: pytest --no-cov
+      - run: scripts/run_tests.sh
 
   # requirements.txt alone, as Heroku installs it. Every other job installs
   # the dev lock too, so an import satisfied only by a dev package (or by one
@@ -209,3 +194,40 @@ jobs:
         with:
           node-version: lts/*
       - run: scripts/minify_js.sh --check
+
+  # Real Chrome over the main pages at desktop and phone widths: fails on an
+  # uncaught error, an Alpine expression error or a CSP violation - the
+  # template bindings that only throw in a browser, which no Python test sees.
+  browser:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DEBUG: "True"
+      MUSIC_ENABLED: "true"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: pip install -r requirements.txt
+      - run: python manage.py migrate --noinput
+      - run: python manage.py shell < scripts/smoke_seed.py
+      - run: python manage.py runserver 127.0.0.1:8000 --noreload > runserver.log 2>&1 &
+      - name: Wait for the server
+        run: |
+          for attempt in $(seq 30); do
+            curl -sf -o /dev/null http://127.0.0.1:8000/healthz/ && exit 0
+            sleep 1
+          done
+          cat runserver.log
+          exit 1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - run: npm install --no-save --prefix /tmp/smoke puppeteer-core@25.16.0
+      - run: node scripts/browser_smoke.js http://127.0.0.1:8000
+        env:
+          NODE_PATH: /tmp/smoke/node_modules

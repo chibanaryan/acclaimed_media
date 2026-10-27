@@ -557,11 +557,11 @@ class GameListRenderer extends BaseMediaListRenderer {
                             : `<span class="mdi ${f.icon} text-sm leading-none" aria-hidden="true"></span>`;
                         const countHtml = `<span class="tabular-nums font-bold leading-none" style="font-size: 8px; margin-left: 1px; margin-top: -2px;">${f.count}</span>`;
                         const comma = fi < platformFamilies.length - 1 ? ', ' : '';
-                        return `<span class="tooltip tooltip-top inline-flex items-start hover:text-primary cursor-pointer transition-colors" data-tip="${this._escapeHtml(f.tooltip)}" data-add-platforms="${f.platformIdsStr}">${iconHtml}${countHtml}</span>${comma}`;
+                        return `<button type="button" class="tooltip tooltip-top inline-flex items-start hover:text-primary cursor-pointer transition-colors" data-tip="${this._escapeHtml(f.tooltip)}" aria-label="Filter by ${this._escapeHtml(f.tooltip)}" data-add-platforms="${f.platformIdsStr}">${iconHtml}${countHtml}</button>${comma}`;
                     } else {
                         return f.platforms.map((p, pi) => {
                             const comma = (pi < f.platforms.length - 1) ? ', ' : (fi < platformFamilies.length - 1 ? ', ' : '');
-                            return `<span class="tooltip tooltip-top hover:text-primary cursor-pointer transition-colors" data-tip="${this._escapeHtml(p.name)}" data-add-platforms="${p.id}">${p.code}</span>${comma}`;
+                            return `<button type="button" class="tooltip tooltip-top hover:text-primary cursor-pointer transition-colors" data-tip="${this._escapeHtml(p.name)}" aria-label="Filter by ${this._escapeHtml(p.name)}" data-add-platforms="${p.id}">${p.code}</button>${comma}`;
                         }).join('');
                     }
                 }).join('');
@@ -636,11 +636,11 @@ class GameListRenderer extends BaseMediaListRenderer {
                     : `<span class="mdi ${f.icon} text-sm leading-none" aria-hidden="true"></span>`;
                 const countHtml = `<span class="tabular-nums font-bold leading-none" style="font-size: 8px; margin-left: 1px; margin-top: -2px;">${f.count}</span>`;
                 const comma = fi < platformFamilies.length - 1 ? ', ' : '';
-                return `<span class="tooltip tooltip-top inline-flex items-start hover:text-primary cursor-pointer transition-colors" data-tip="${this._escapeHtml(f.tooltip)}" data-add-platforms="${f.platformIdsStr}">${iconHtml}${countHtml}</span>${comma}`;
+                return `<button type="button" class="tooltip tooltip-top inline-flex items-start hover:text-primary cursor-pointer transition-colors" data-tip="${this._escapeHtml(f.tooltip)}" aria-label="Filter by ${this._escapeHtml(f.tooltip)}" data-add-platforms="${f.platformIdsStr}">${iconHtml}${countHtml}</button>${comma}`;
             } else {
                 return f.platforms.map((p, pi) => {
                     const comma = (pi < f.platforms.length - 1) ? ', ' : (fi < platformFamilies.length - 1 ? ', ' : '');
-                    return `<span class="tooltip tooltip-top hover:text-primary cursor-pointer transition-colors" data-tip="${this._escapeHtml(p.name)}" data-add-platforms="${p.id}">${p.code}</span>${comma}`;
+                    return `<button type="button" class="tooltip tooltip-top hover:text-primary cursor-pointer transition-colors" data-tip="${this._escapeHtml(p.name)}" aria-label="Filter by ${this._escapeHtml(p.name)}" data-add-platforms="${p.id}">${p.code}</button>${comma}`;
                 }).join('');
             }
         }).join('');
@@ -819,7 +819,8 @@ class GameListRenderer extends BaseMediaListRenderer {
 
         // Set root element attributes
         row.id = `game-${game.id}-mobile`;
-        row.onclick = () => { window.location.href = `/game/${game.s}/`; };
+        // Navigated by base.html's [data-href] listener, as the server's row is
+        row.dataset.href = `/game/${game.s}/`;
         if (isHighlighted) row.classList.add('is-highlighted');
 
         // Fill played button (or remove container if not authenticated)
@@ -952,7 +953,7 @@ class GameListRenderer extends BaseMediaListRenderer {
 
         const div = document.createElement('div');
         div.innerHTML = `
-<div class="game-row game-card-mobile desktop:hidden grid items-center gap-3 p-2 bg-base-200 rounded-lg mb-2 cursor-pointer ${isHighlighted ? 'is-highlighted' : ''}" id="game-${game.id}-mobile" onclick="window.location.href='/game/${game.s}/'" style="grid-template-columns: ${gridCols};">
+<div class="game-row game-card-mobile desktop:hidden grid items-center gap-3 p-2 bg-base-200 rounded-lg mb-2 cursor-pointer ${isHighlighted ? 'is-highlighted' : ''}" id="game-${game.id}-mobile" data-href="/game/${game.s}/" style="grid-template-columns: ${gridCols};">
     ${playedContainerHtml}
     <div class="w-12 rounded overflow-hidden bg-base-100" style="aspect-ratio: 90/128;"><img src="${thumbnail}" alt="${this._escapeHtml(game.n)}" width="90" height="128" class="w-full h-full object-cover" loading="lazy" decoding="async"></div>
     <div class="min-w-0 flex items-center justify-between">

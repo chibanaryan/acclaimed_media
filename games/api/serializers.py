@@ -219,9 +219,20 @@ class WikipediaGenreTreeSerializer(serializers.ModelSerializer):
         ]
 
     def get_children(self, obj):
-        """Recursively serialize child genres."""
-        children = obj.children.all().order_by("display_order", "name")
-        return WikipediaGenreTreeSerializer(children, many=True).data
+        """Recursively serialize child genres.
+
+        `WikipediaGenreTreeView` passes every genre, already counted, as
+        ``genre_children`` (parent id to children, in display order): asking
+        each node for its children and its count was two queries a genre.
+        """
+        children_by_parent = self.context.get("genre_children")
+        if children_by_parent is not None:
+            children = children_by_parent.get(obj.id, [])
+        else:
+            children = obj.children.all().order_by("display_order", "name")
+        return WikipediaGenreTreeSerializer(
+            children, many=True, context=self.context
+        ).data
 
     def get_game_count(self, obj):
         """

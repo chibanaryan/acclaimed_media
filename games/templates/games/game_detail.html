@@ -8,8 +8,6 @@
 {% block og_title %}{{ game.name }} | Acclaimed Video Games{% endblock %}
 {% block og_description %}{{ game.name }} ({{ game.year_of_release }}) is ranked #{{ game.rank }} among the most critically acclaimed games of all time.{% endblock %}
 {% block og_image %}{{ game.image_og }}{% endblock %}
-{% block twitter_title %}{{ game.name }} | Acclaimed Video Games{% endblock %}
-{% block twitter_description %}{{ game.name }} ({{ game.year_of_release }}) is ranked #{{ game.rank }} all-time.{% endblock %}
 
 {% block structured_data %}{{ structured_data_json|safe }}{% endblock %}
 
@@ -66,7 +64,7 @@
     {% endif %}
 {% else %}
     <div class="alert alert-error">
-        <span class="mdi mdi-alert-circle"></span>
+        <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
         <div>
             <p class="font-bold">Error: Game not found</p>
             <p>The game you're looking for could not be found or there was a problem loading it.</p>

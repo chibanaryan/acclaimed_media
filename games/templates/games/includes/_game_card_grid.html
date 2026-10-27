@@ -23,7 +23,7 @@
         <a {% if game %}href="{% url 'game-detail' slug=game.slug %}"{% endif %}
            class="block w-full h-full"
            data-slot="cover-link">
-            <img {% if game %}src="{{ game.image }}" srcset="{{ game.image }} 1x, {{ game.image_2x }} 2x" alt="{{ game.name }}"{% endif %}
+            <img {% if game %}{% if game.image %}src="{{ game.image }}" srcset="{{ game.image }} 1x, {{ game.image_2x }} 2x"{% else %}src="{% static 'games/images/cover-placeholder.svg' %}"{% endif %} alt="{{ game.name }}"{% endif %}
                  width="264" height="374"
                  loading="lazy" decoding="async"
                  class="w-full h-full object-cover"

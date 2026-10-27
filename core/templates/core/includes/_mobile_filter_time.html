@@ -11,9 +11,9 @@
         <button type="button"
                 @click="expanded = !expanded"
                 class="flex items-center gap-2">
-            <span class="mdi mdi-calendar-range text-lg text-base-content/70"></span>
+            <span class="mdi mdi-calendar-range text-lg text-base-content/70" aria-hidden="true"></span>
             Release Year
-            <span class="mdi mdi-chevron-right text-xl transition-transform duration-200" :class="{ 'rotate-90': expanded }"></span>
+            <span class="mdi mdi-chevron-right text-xl transition-transform duration-200" aria-hidden="true" :class="{ 'rotate-90': expanded }"></span>
         </button>
         <template x-if="hasYearFilter()">
             <span class="badge badge-primary badge-sm ml-2 whitespace-nowrap" x-text="filters.start === filters.end ? String.fromCharCode(39) + String(filters.start).slice(-2) : String.fromCharCode(39) + String(filters.start).slice(-2) + '-' + String.fromCharCode(39) + String(filters.end).slice(-2)"></span>
@@ -24,7 +24,7 @@
                 x-cloak
                 @click.stop="clearYears(); debouncedFilterUpdate();"
                 class="btn btn-ghost btn-xs ml-2 text-base-content/70 hover:text-error">
-            <span class="mdi mdi-close text-xs"></span>
+            <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
             <span class="text-xs">Clear Years</span>
         </button>
     </div>

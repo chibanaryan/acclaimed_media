@@ -21,7 +21,7 @@
 
 {% if error %}
 <div class="alert alert-error mb-4">
-    <span class="mdi mdi-alert-circle"></span>
+    <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
     <div>
         <h3 class="font-bold">Import failed</h3>
         <p class="text-sm">{{ error }}</p>
@@ -32,7 +32,7 @@
 
 {% if summary %}
 <div class="alert alert-success mb-4">
-    <span class="mdi mdi-check-circle"></span>
+    <span class="mdi mdi-check-circle" aria-hidden="true"></span>
     <div>
         <h3 class="font-bold">Import complete</h3>
         <p class="text-sm">{{ summary.message }}</p>
@@ -58,12 +58,12 @@
 {# until the metadata pass fetches them. #}
 <div class="card bg-base-200 p-4 mb-4">
     <h2 class="font-semibold mb-2 flex items-center gap-2">
-        <span class="mdi mdi-database"></span>
+        <span class="mdi mdi-database" aria-hidden="true"></span>
         Metadata
     </h2>
     {% if metadata.complete %}
     <p class="text-sm text-base-content/70">
-        <span class="mdi mdi-check-circle text-success"></span>
+        <span class="mdi mdi-check-circle text-success" aria-hidden="true"></span>
         Every album has Wikidata, cover art and genres.
     </p>
     {% else %}
@@ -94,7 +94,7 @@
 
     {% if form.non_field_errors %}
     <div class="alert alert-error mb-4">
-        <span class="mdi mdi-alert-circle"></span>
+        <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
         <div>
             {% for message in form.non_field_errors %}<p class="text-sm">{{ message }}</p>{% endfor %}
         </div>
@@ -157,7 +157,7 @@
 
     <div class="flex items-center gap-3 mt-2">
         <button type="submit" class="btn btn-primary btn-sm">
-            <span class="mdi mdi-database-import"></span> Run import
+            <span class="mdi mdi-database-import" aria-hidden="true"></span> Run import
         </button>
         <span class="text-xs text-base-content/70">
             Replaces every album, list and position; updates artists in place by their id.

@@ -74,12 +74,10 @@ class NoHardcodedStaticPathsTests(SimpleTestCase):
     404s there while working in development and under test, which use plain
     storage. The admin article preview loaded its stylesheet that way.
 
-    Books is left out: it is unlaunched, and its renderer's placeholder paths
-    name a file that does not exist in any storage.
     """
 
     def _sources(self):
-        for app in ("games", "core", "music"):
+        for app in ("games", "core", "music", "books"):
             root = Path(settings.BASE_DIR) / app
             for path in list(root.rglob("*.js")) + list(root.rglob("*.html")):
                 if path.name.endswith(".min.js") or "vendor" in path.parts:
@@ -118,3 +116,21 @@ class NoHandMaintainedCacheBustersTests(SimpleTestCase):
             if busted.search(template.read_text())
         ]
         self.assertEqual(offenders, [])
+
+
+class VendoredLibraryVersionsTests(SimpleTestCase):
+    """vendor/README.md records what Dependabot cannot see; keep it true."""
+
+    VENDOR = Path(settings.BASE_DIR) / "games" / "static" / "games" / "js" / "vendor"
+
+    def test_the_recorded_versions_are_the_shipped_ones(self):
+        readme = (self.VENDOR / "README.md").read_text()
+        for filename, package in (
+            ("htmx.min.js", "htmx.org"),
+            ("alpine.min.js", "alpinejs"),
+        ):
+            with self.subTest(filename=filename):
+                shipped = re.search(
+                    r'version:"([0-9.]+)"', (self.VENDOR / filename).read_text()
+                ).group(1)
+                self.assertIn(f"| `{package}` | {shipped} |", readme)

@@ -213,7 +213,7 @@
 <!-- Success Messages -->
 {% if import_success_message %}
 <div class="alert alert-success mb-6 shadow-lg">
-    <span class="mdi mdi-check-circle text-2xl"></span>
+    <span class="mdi mdi-check-circle text-2xl" aria-hidden="true"></span>
     <span>{{ import_success_message }}</span>
 </div>
 {% endif %}
@@ -222,7 +222,7 @@
 {% if import_errors %}
 <div class="alert alert-error mb-6 shadow-lg" id="error-container">
     <div class="flex-1">
-        <span class="mdi mdi-alert-circle text-2xl"></span>
+        <span class="mdi mdi-alert-circle text-2xl" aria-hidden="true"></span>
         <div>
             <h3 class="font-bold">Import Errors</h3>
             <ul class="text-sm mt-2 ml-4 list-disc">
@@ -232,7 +232,7 @@
             </ul>
         </div>
     </div>
-    <button type="button" class="btn btn-sm btn-ghost" onclick="dismissErrorContainer()">Dismiss</button>
+    <button type="button" class="btn btn-sm btn-ghost" data-dismiss-errors>Dismiss</button>
 </div>
 <script nonce="{{ csp_nonce }}">
     localStorage.removeItem('importErrorsDismissed');
@@ -243,8 +243,18 @@
             container.remove();
         }
     }
+    document.querySelector('[data-dismiss-errors]').addEventListener('click', dismissErrorContainer);
 </script>
 {% endif %}
+
+<script nonce="{{ csp_nonce }}">
+    // Destructive buttons ask first. Their questions sit in data-confirm, in
+    // place of an inline confirm() handler, which the CSP forbids.
+    document.addEventListener('click', function (e) {
+        const button = e.target.closest('[data-confirm]');
+        if (button && !confirm(button.dataset.confirm)) e.preventDefault();
+    });
+</script>
 
 <!-- Database Status Section -->
 <div class="card bg-base-200 shadow-xl mb-6">
@@ -310,13 +320,13 @@
 <div class="card bg-base-200 shadow-xl mb-6">
     <div class="card-body">
         <h2 class="card-title text-2xl mb-4">
-            <span class="mdi mdi-upload"></span>
+            <span class="mdi mdi-upload" aria-hidden="true"></span>
             Regular Import
         </h2>
         <p class="text-sm opacity-70 mb-4">Run every time you update game rankings or list data</p>
 
         <div class="alert alert-info mb-6">
-            <span class="mdi mdi-file-document"></span>
+            <span class="mdi mdi-file-document" aria-hidden="true"></span>
             <div>
                 <h3 class="font-bold">Import Order</h3>
                 <p class="text-sm mt-2"><strong>Files are imported in the correct order:</strong></p>
@@ -341,7 +351,7 @@
                 <div class="form-control">
                     <label class="input input-bordered flex items-center gap-2 cursor-pointer">
                         <input type="file" name="platforms_file" id="id_platforms_file" accept=".txt" class="hidden">
-                        <span class="mdi mdi-file-document"></span>
+                        <span class="mdi mdi-file-document" aria-hidden="true"></span>
                         <span class="file-label-text flex-1 text-base-content/50">No file selected</span>
                     </label>
                 </div>
@@ -357,7 +367,7 @@
                 <div class="form-control">
                     <label class="input input-bordered flex items-center gap-2 cursor-pointer">
                         <input type="file" name="lists_file" id="id_lists_file" accept=".txt" class="hidden">
-                        <span class="mdi mdi-file-document"></span>
+                        <span class="mdi mdi-file-document" aria-hidden="true"></span>
                         <span class="file-label-text flex-1 text-base-content/50">No file selected</span>
                     </label>
                 </div>
@@ -373,7 +383,7 @@
                 <div class="form-control">
                     <label class="input input-bordered flex items-center gap-2 cursor-pointer">
                         <input type="file" name="games_file" id="id_games_file" accept=".txt" class="hidden">
-                        <span class="mdi mdi-file-document"></span>
+                        <span class="mdi mdi-file-document" aria-hidden="true"></span>
                         <span class="file-label-text flex-1 text-base-content/50">No file selected</span>
                     </label>
                 </div>
@@ -389,7 +399,7 @@
                 <div class="form-control">
                     <label class="input input-bordered flex items-center gap-2 cursor-pointer">
                         <input type="file" name="memberships_file" id="id_memberships_file" accept=".txt" class="hidden">
-                        <span class="mdi mdi-file-document"></span>
+                        <span class="mdi mdi-file-document" aria-hidden="true"></span>
                         <span class="file-label-text flex-1 text-base-content/50">No file selected</span>
                     </label>
                 </div>
@@ -403,7 +413,7 @@
 
             <div class="flex gap-3">
                 <button class="btn btn-primary" type="submit" id="import-submit">
-                    <span class="mdi mdi-upload"></span>
+                    <span class="mdi mdi-upload" aria-hidden="true"></span>
                     Import Files
                 </button>
                 <button class="btn btn-ghost" type="reset">Clear</button>
@@ -412,7 +422,7 @@
 
             {% if form.non_field_errors %}
                 <div class="alert alert-error mt-6">
-                    <span class="mdi mdi-alert-circle"></span>
+                    <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
                     <span>{{ form.non_field_errors }}</span>
                 </div>
             {% endif %}
@@ -489,7 +499,7 @@
             <!-- Errors during import -->
             <div id="batch-errors" style="display: none;">
                 <div class="alert alert-error mt-4">
-                    <span class="mdi mdi-alert-circle"></span>
+                    <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
                     <div>
                         <strong>Errors encountered:</strong>
                         <div id="batch-error-list" class="text-sm mt-2"></div>
@@ -504,7 +514,7 @@
 <div class="card bg-base-200 shadow-xl mb-6">
     <div class="card-body">
         <h2 class="card-title text-2xl mb-4">
-            <span class="mdi mdi-database"></span>
+            <span class="mdi mdi-database" aria-hidden="true"></span>
             Metadata Operations
         </h2>
         <p class="text-sm opacity-70 mb-4">Run once when first importing games, or when adding new games that need enrichment</p>
@@ -514,7 +524,7 @@
             <div class="card bg-base-100">
                 <div class="card-body">
                     <h3 class="card-title text-lg">
-                        <span class="mdi mdi-refresh"></span>
+                        <span class="mdi mdi-refresh" aria-hidden="true"></span>
                         Fetch IGDB Data
                     </h3>
                     <p class="text-sm opacity-70 mb-3">
@@ -522,7 +532,7 @@
                     </p>
                     <div class="flex flex-col gap-2">
                         <button id="fetch-igdb-btn" class="btn btn-info btn-sm">
-                            <span class="mdi mdi-refresh"></span>
+                            <span class="mdi mdi-refresh" aria-hidden="true"></span>
                             Fetch for {{ igdb_counts.games_needing }} game{{ igdb_counts.games_needing|pluralize }}
                         </button>
                         {% if igdb_counts.games_needing > 0 %}
@@ -538,7 +548,7 @@
             <div class="card bg-base-100">
                 <div class="card-body">
                     <h3 class="card-title text-lg">
-                        <span class="mdi mdi-wikipedia"></span>
+                        <span class="mdi mdi-wikipedia" aria-hidden="true"></span>
                         Fetch Wikipedia Pages
                     </h3>
                     <p class="text-sm opacity-70 mb-3">
@@ -546,7 +556,7 @@
                     </p>
                     <div class="flex flex-col gap-2">
                         <button id="fetch-wikipedia-btn" class="btn btn-info btn-sm">
-                            <span class="mdi mdi-wikipedia"></span>
+                            <span class="mdi mdi-wikipedia" aria-hidden="true"></span>
                             Fetch for {{ wikipedia_counts.games_needing }} game{{ wikipedia_counts.games_needing|pluralize }}
                         </button>
                         {% if wikipedia_counts.games_needing > 0 %}
@@ -565,7 +575,7 @@
             <div class="card bg-base-100">
                 <div class="card-body">
                     <h3 class="card-title text-lg">
-                        <span class="mdi mdi-reload"></span>
+                        <span class="mdi mdi-reload" aria-hidden="true"></span>
                         Force Refresh
                     </h3>
                     <p class="text-sm opacity-70 mb-3">
@@ -573,11 +583,11 @@
                     </p>
                     <div class="flex flex-col gap-2">
                         <button id="fetch-igdb-force-btn" class="btn btn-warning btn-sm">
-                            <span class="mdi mdi-reload"></span>
+                            <span class="mdi mdi-reload" aria-hidden="true"></span>
                             Refresh All IGDB Data
                         </button>
                         <button id="fetch-wikipedia-force-btn" class="btn btn-warning btn-sm">
-                            <span class="mdi mdi-reload"></span>
+                            <span class="mdi mdi-reload" aria-hidden="true"></span>
                             Refresh All Wikipedia Pages
                         </button>
                         <span class="text-xs opacity-70">
@@ -619,7 +629,7 @@
 <div class="card bg-base-200 shadow-xl mb-6">
     <div class="card-body">
         <h2 class="card-title text-2xl mb-4">
-            <span class="mdi mdi-tools"></span>
+            <span class="mdi mdi-tools" aria-hidden="true"></span>
             Maintenance & Cleanup
         </h2>
         <p class="text-sm opacity-70 mb-4">Advanced operations for database maintenance</p>
@@ -629,17 +639,17 @@
             <div class="card bg-base-100">
                 <div class="card-body">
                     <h3 class="card-title text-lg">
-                        <span class="mdi mdi-delete"></span>
+                        <span class="mdi mdi-delete" aria-hidden="true"></span>
                         Delete Game Data
                     </h3>
                     <p class="text-sm opacity-70 mb-3">
-                        Deletes ranked games, list memberships, lists, publications, platforms, developers, series, and connected IGDB records. Preserves user accounts, played/want-to-play tracking, and orphanable metadata such as Wikipedia records.
+                        Deletes ranked games, list memberships, lists, publications, developers, series, and connected IGDB records. Preserves user accounts, played/want-to-play tracking, platforms and their years, and orphanable metadata such as Wikipedia records.
                     </p>
                     <form method="POST" action=".">
                         {% csrf_token %}
                         <input type="hidden" name="delete" value="true">
-                        <button class="btn btn-error btn-sm" onclick="return confirm('This will delete ranked games, list memberships, lists, publications, platforms, developers, series, and connected IGDB records.\n\nIt preserves user accounts, played/want-to-play tracking, and orphanable metadata such as Wikipedia records.\n\nAre you sure?');">
-                            <span class="mdi mdi-delete"></span>
+                        <button class="btn btn-error btn-sm" data-confirm="This will delete ranked games, list memberships, lists, publications, developers, series, and connected IGDB records.&#10;&#10;It preserves user accounts, played/want-to-play tracking, platforms and their years, and orphanable metadata such as Wikipedia records.&#10;&#10;Are you sure?">
+                            <span class="mdi mdi-delete" aria-hidden="true"></span>
                             Delete Game Data
                         </button>
                     </form>
@@ -650,7 +660,7 @@
             <div class="card bg-base-100">
                 <div class="card-body">
                     <h3 class="card-title text-lg">
-                        <span class="mdi mdi-database-remove"></span>
+                        <span class="mdi mdi-database-remove" aria-hidden="true"></span>
                         Clear IGDB Metadata
                     </h3>
                     <p class="text-sm opacity-70 mb-3">
@@ -659,8 +669,8 @@
                     <form method="POST" action=".">
                         {% csrf_token %}
                         <input type="hidden" name="clear_igdb_metadata" value="true">
-                        <button class="btn btn-warning btn-sm" onclick="return confirm('⚠️ This will delete ALL IGDB metadata including orphaned records. You will need to re-fetch IGDB data after this. Are you sure?');">
-                            <span class="mdi mdi-database-remove"></span>
+                        <button class="btn btn-warning btn-sm" data-confirm="⚠️ This will delete ALL IGDB metadata including orphaned records. You will need to re-fetch IGDB data after this. Are you sure?">
+                            <span class="mdi mdi-database-remove" aria-hidden="true"></span>
                             Clear IGDB Metadata
                         </button>
                     </form>
@@ -671,7 +681,7 @@
             <div class="card bg-base-100">
                 <div class="card-body">
                     <h3 class="card-title text-lg">
-                        <span class="mdi mdi-wikipedia"></span>
+                        <span class="mdi mdi-wikipedia" aria-hidden="true"></span>
                         Clear Wikipedia Metadata
                     </h3>
                     <p class="text-sm opacity-70 mb-3">
@@ -680,8 +690,8 @@
                     <form method="POST" action=".">
                         {% csrf_token %}
                         <input type="hidden" name="clear_wikipedia_metadata" value="true">
-                        <button class="btn btn-warning btn-sm" onclick="return confirm('⚠️ This will delete ALL Wikipedia metadata including orphaned records. You will need to re-fetch Wikipedia data after this. Are you sure?');">
-                            <span class="mdi mdi-wikipedia"></span>
+                        <button class="btn btn-warning btn-sm" data-confirm="⚠️ This will delete ALL Wikipedia metadata including orphaned records. You will need to re-fetch Wikipedia data after this. Are you sure?">
+                            <span class="mdi mdi-wikipedia" aria-hidden="true"></span>
                             Clear Wikipedia Metadata
                         </button>
                     </form>
@@ -693,7 +703,7 @@
             <div class="card bg-base-100">
                 <div class="card-body">
                     <h3 class="card-title text-lg">
-                        <span class="mdi mdi-package"></span>
+                        <span class="mdi mdi-package" aria-hidden="true"></span>
                         Load Test Data
                     </h3>
                     <p class="text-sm opacity-70 mb-3">
@@ -703,7 +713,7 @@
                         {% csrf_token %}
                         <input type="hidden" name="seed_test_data" value="true">
                         <button class="btn btn-success btn-sm" id="seed-data-btn">
-                            <span class="mdi mdi-package"></span>
+                            <span class="mdi mdi-package" aria-hidden="true"></span>
                             Load Test Data
                         </button>
                     </form>
@@ -748,7 +758,7 @@
                 let submitBtn = form.querySelector('#import-submit')
                 if (submitBtn) {
                     submitBtn.disabled = false
-                    submitBtn.innerHTML = '<span class="mdi mdi-upload mr-2"></span>Import Files'
+                    submitBtn.innerHTML = '<span class="mdi mdi-upload mr-2" aria-hidden="true"></span>Import Files'
                 }
             })
 
@@ -893,7 +903,7 @@
                         const alert = document.createElement('div')
                         alert.className = 'alert alert-success shadow-lg fixed top-4 right-4 w-96 z-50'
                         alert.innerHTML = `
-                            <span class="mdi mdi-check-circle"></span>
+                            <span class="mdi mdi-check-circle" aria-hidden="true"></span>
                             <span>Import completed successfully!</span>
                         `
                         document.body.appendChild(alert)
@@ -901,7 +911,7 @@
                     } else {
                         // Reset button for retry
                         submitBtn.disabled = false
-                        submitBtn.innerHTML = '<span class="mdi mdi-upload"></span>Import Files'
+                        submitBtn.innerHTML = '<span class="mdi mdi-upload" aria-hidden="true"></span>Import Files'
                     }
 
                 } catch (error) {
@@ -909,7 +919,7 @@
                     errorsContainer.style.display = 'block'
                     errorList.innerHTML = `<div>Connection error: ${error.message}</div>`
                     submitBtn.disabled = false
-                    submitBtn.innerHTML = '<span class="mdi mdi-upload"></span>Import Files'
+                    submitBtn.innerHTML = '<span class="mdi mdi-upload" aria-hidden="true"></span>Import Files'
                 }
             })
         }
@@ -985,7 +995,7 @@
                             const alert = document.createElement('div')
                             alert.className = 'alert alert-success shadow-lg fixed top-4 right-4 w-96 z-50'
                             alert.innerHTML = `
-                                <span class="mdi mdi-check-circle"></span>
+                                <span class="mdi mdi-check-circle" aria-hidden="true"></span>
                                 <span>IGDB data fetch completed! Fetched data for ${data.total} games.</span>
                             `
                             document.body.appendChild(alert)
@@ -999,7 +1009,7 @@
                         const alert = document.createElement('div')
                         alert.className = 'alert alert-error shadow-lg fixed top-4 right-4 w-96 z-50'
                         alert.innerHTML = `
-                            <span class="mdi mdi-alert-circle"></span>
+                            <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
                             <span>Error: ${data.error}</span>
                         `
                         document.body.appendChild(alert)
@@ -1018,7 +1028,7 @@
                 const alert = document.createElement('div')
                 alert.className = 'alert alert-error shadow-lg fixed top-4 right-4 w-96 z-50'
                 alert.innerHTML = `
-                    <span class="mdi mdi-alert-circle"></span>
+                    <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
                     <span>Connection error. Check that games exist in the database.</span>
                 `
                 document.body.appendChild(alert)
@@ -1102,7 +1112,7 @@
                                 ? `Found ${data.successful} pages, ${data.failed} failed`
                                 : `Found pages for ${data.total} games`
                             alert.innerHTML = `
-                                <span class="mdi mdi-check-circle"></span>
+                                <span class="mdi mdi-check-circle" aria-hidden="true"></span>
                                 <span>Wikipedia page lookup completed! ${summaryText}.</span>
                             `
                             document.body.appendChild(alert)
@@ -1116,7 +1126,7 @@
                         const alert = document.createElement('div')
                         alert.className = 'alert alert-error shadow-lg fixed top-4 right-4 w-96 z-50'
                         alert.innerHTML = `
-                            <span class="mdi mdi-alert-circle"></span>
+                            <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
                             <span>Error: ${data.error}</span>
                         `
                         document.body.appendChild(alert)
@@ -1135,7 +1145,7 @@
                 const alert = document.createElement('div')
                 alert.className = 'alert alert-error shadow-lg fixed top-4 right-4 w-96 z-50'
                 alert.innerHTML = `
-                    <span class="mdi mdi-alert-circle"></span>
+                    <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
                     <span>Connection error. Check that games exist in the database.</span>
                 `
                 document.body.appendChild(alert)
@@ -1196,7 +1206,7 @@
                                     ? `Found ${data.successful} pages, ${data.failed} failed`
                                     : `Refreshed pages for ${data.total} games`
                                 alert.innerHTML = `
-                                    <span class="mdi mdi-check-circle"></span>
+                                    <span class="mdi mdi-check-circle" aria-hidden="true"></span>
                                     <span>Wikipedia force refresh completed! ${summaryText}.</span>
                                 `
                                 document.body.appendChild(alert)
@@ -1210,7 +1220,7 @@
                             const alert = document.createElement('div')
                             alert.className = 'alert alert-error shadow-lg fixed top-4 right-4 w-96 z-50'
                             alert.innerHTML = `
-                                <span class="mdi mdi-alert-circle"></span>
+                                <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
                                 <span>Error: ${data.error}</span>
                             `
                             document.body.appendChild(alert)
@@ -1229,7 +1239,7 @@
                     const alert = document.createElement('div')
                     alert.className = 'alert alert-error shadow-lg fixed top-4 right-4 w-96 z-50'
                     alert.innerHTML = `
-                        <span class="mdi mdi-alert-circle"></span>
+                        <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
                         <span>Connection error. Check that games exist in the database.</span>
                     `
                     document.body.appendChild(alert)

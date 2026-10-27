@@ -23,6 +23,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db.models import Case, IntegerField, Value, When
 
+from core.services.monitoring import weekly_job_monitor
 from games import config
 from games.models import Game, HLTBGameData, WikipediaGameData
 from games.services.genre_normalizer import (
@@ -119,6 +120,13 @@ class Command(BaseCommand):
                 )
                 return
 
+        with weekly_job_monitor(
+            "refresh-all-metadata", enabled=options.get("weekly"), max_runtime=180
+        ):
+            self._run(options)
+
+    def _run(self, options):
+        """Everything after the weekly gate, inside the cron check-in."""
         # Validate flags
         exclusive_flags = [
             options.get("igdb_only"),

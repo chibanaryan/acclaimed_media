@@ -55,7 +55,7 @@
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-top whitespace-nowrap">{% if genres|length == 1 %}Genre{% else %}Genres{% endif %}:</td>
         <td class="pb-3">
             <span class="flex flex-wrap gap-1">
-                {% for genre in genres %}<a href="{% url 'books:home' %}?genres={{ genre.id }}&highlight={{ book.id }}" class="badge badge-outline opacity-80 hover:opacity-100 hover:badge-primary transition-colors max-w-[200px] overflow-hidden inline-flex items-center gap-1" title="{{ genre.name }}"><span class="mdi mdi-book text-sm flex-shrink-0"></span><span class="truncate">{{ genre.name }}</span></a>{% endfor %}
+                {% for genre in genres %}<a href="{% url 'books:home' %}?genres={{ genre.id }}&highlight={{ book.id }}" class="badge badge-outline opacity-80 hover:opacity-100 hover:badge-primary transition-colors max-w-[200px] overflow-hidden inline-flex items-center gap-1" title="{{ genre.name }}"><span class="mdi mdi-book text-sm flex-shrink-0" aria-hidden="true"></span><span class="truncate">{{ genre.name }}</span></a>{% endfor %}
             </span>
         </td>
     </tr>
@@ -91,7 +91,7 @@
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-middle whitespace-nowrap">Wikipedia:</td>
         <td class="pb-3 align-middle">
             <a href="{{ book.primary_wikipedia_book_data.wikipedia_url }}" target="_blank" class="link link-accent inline-flex items-center gap-1">
-                Wikipedia <span class="mdi mdi-open-in-new text-sm"></span>
+                Wikipedia <span class="mdi mdi-open-in-new text-sm" aria-hidden="true"></span>
             </a>
         </td>
     </tr>
@@ -101,7 +101,7 @@
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-middle whitespace-nowrap">Open Library:</td>
         <td class="pb-3 align-middle">
             <a href="https://openlibrary.org/works/{{ book.open_library_id }}" target="_blank" class="link link-accent inline-flex items-center gap-1">
-                Open Library <span class="mdi mdi-open-in-new text-sm"></span>
+                Open Library <span class="mdi mdi-open-in-new text-sm" aria-hidden="true"></span>
             </a>
         </td>
     </tr>
@@ -112,7 +112,7 @@
                class="contact-modal-trigger link link-hover text-base-content/70 hover:text-warning inline-flex items-center gap-1 text-sm"
                data-category="data"
                data-message="Book: {{ book.name }}{% if book.goodreads_id %} (Goodreads ID: {{ book.goodreads_id }}){% endif %}">
-                <span class="mdi mdi-alert-circle"></span>
+                <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
                 Report incorrect data
             </a>
         </td>

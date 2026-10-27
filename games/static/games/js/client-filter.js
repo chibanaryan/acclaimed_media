@@ -406,9 +406,17 @@ class GameFilterEngine {
                 break;
 
             case 'name':
+                // `ni` is the game's position in the server's own name
+                // order: localeCompare disagreed with the database's
+                // collation (and SQLite's with Postgres'), which
+                // core/tests/test_filter_parity.py caught
+                // A payload cached before `ni` existed (schema 13, kept up
+                // to five minutes) falls back to comparing names
                 sortedGames.sort((a, b) => {
-                    const nameComp = a.n.localeCompare(b.n);
-                    return isDesc ? -nameComp : nameComp;
+                    const order = (a.ni !== undefined && b.ni !== undefined)
+                        ? a.ni - b.ni
+                        : a.n.localeCompare(b.n);
+                    return isDesc ? -order : order;
                 });
                 break;
 

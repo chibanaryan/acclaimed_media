@@ -37,23 +37,6 @@ urlpatterns = [
     # Genre endpoints
     path("genres/", views.BookGenreListView.as_view(), name="genre-list"),
     path("genres/tree/", views.BookGenreTreeView.as_view(), name="genre-tree"),
-    # User tracking endpoints
-    path("read-books/", views.ReadBookListCreateView.as_view(), name="read-book-list"),
-    path(
-        "read-books/<int:goodreads_id>/",
-        views.ReadBookDeleteView.as_view(),
-        name="read-book-delete",
-    ),
-    path(
-        "want-to-read/",
-        views.WantToReadBookListCreateView.as_view(),
-        name="want-to-read-list",
-    ),
-    path(
-        "want-to-read/<int:goodreads_id>/",
-        views.WantToReadBookDeleteView.as_view(),
-        name="want-to-read-delete",
-    ),
     # Book detail - must be last (slug pattern catches everything)
     path("<slug:slug>/", views.BookDetailView.as_view(), name="book-detail"),
 ]

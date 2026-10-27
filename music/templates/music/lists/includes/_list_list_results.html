@@ -71,7 +71,7 @@
 
     {% if current_type or current_year or current_q %}
     <a href="{% url 'music:list-list' %}" class="btn btn-ghost btn-sm">
-        <span class="mdi mdi-close"></span>
+        <span class="mdi mdi-close" aria-hidden="true"></span>
         <span>Clear filters</span>
     </a>
     {% endif %}
@@ -82,7 +82,7 @@
             class="btn btn-ghost btn-sm text-base-content/70"
             @click="allExpanded = !allExpanded; $dispatch(allExpanded ? 'publications-expand-all' : 'publications-collapse-all')"
             :title="allExpanded ? 'Collapse all' : 'Expand all'">
-        <span class="mdi" :class="allExpanded ? 'mdi-unfold-less-horizontal' : 'mdi-unfold-more-horizontal'"></span>
+        <span class="mdi" aria-hidden="true" :class="allExpanded ? 'mdi-unfold-less-horizontal' : 'mdi-unfold-more-horizontal'"></span>
         <span x-text="allExpanded ? 'Collapse All' : 'Expand All'"></span>
     </button>
 </div>
@@ -101,7 +101,7 @@
             {% include 'core/includes/_publication_group.html' %}
         {% empty %}
             <div class="alert">
-                <span class="mdi mdi-album"></span>
+                <span class="mdi mdi-album" aria-hidden="true"></span>
                 <span>No lists match these filters.</span>
             </div>
         {% endfor %}

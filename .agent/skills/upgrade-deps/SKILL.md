@@ -54,6 +54,20 @@ script describes.
 `npm outdated` lists the majors `npm update` will not take. Take one by
 editing `package.json`, then treat it like a red `css` job above.
 
+**Vendored browser libraries.** htmx and Alpine are copied into
+`games/static/games/js/vendor/`, so nothing above sees them. Compare the
+versions in that directory's `README.md` with the latest, and check for
+advisories against the version we ship:
+
+```bash
+npm view htmx.org@1 version          # the 1.x line; 2.x is a deliberate major
+npm view alpinejs version
+gh api "/advisories?ecosystem=npm&affects=htmx.org@1.9.10" --jq '.[].summary'
+gh api "/advisories?ecosystem=npm&affects=alpinejs@3.14.3" --jq '.[].summary'
+```
+
+The README says how to update one.
+
 ## 3. Audit
 
 ```bash

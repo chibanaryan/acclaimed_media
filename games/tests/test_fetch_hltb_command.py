@@ -14,6 +14,15 @@ class FetchHltbDataCommandTests(TestCase):
 
     def setUp(self):
         """Set up test games."""
+        # The command waits between HowLongToBeat requests to stay polite;
+        # under test that was a real second a test
+        patcher = mock.patch(
+            "games.management.commands.fetch_hltb_data.asyncio.sleep",
+            new=mock.AsyncMock(),
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
         self.game_with_hltb_id = Game.objects.create(
             name="Test Game With HLTB ID",
             rank=1,

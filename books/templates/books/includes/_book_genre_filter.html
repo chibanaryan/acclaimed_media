@@ -328,14 +328,14 @@
                             :aria-label="isCategoryExpanded(category.id) ? 'Collapse ' + category.name : 'Expand ' + category.name"
                             :aria-expanded="isCategoryExpanded(category.id)"
                             @click.stop="toggleCategoryExpanded(category.id)">
-                        <span class="mdi text-base transition-transform duration-200"
+                        <span class="mdi text-base transition-transform duration-200" aria-hidden="true"
                               :class="isCategoryExpanded(category.id) ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
                     </button>
                     {# Category Icon and Name - clickable to select #}
                     <button type="button"
                             class="flex items-center gap-2 flex-1 text-left"
                             @click="toggleCategorySelection(category.id)">
-                        <span class="mdi text-lg" :class="getCategoryIcon(category.name)"></span>
+                        <span class="mdi text-lg" aria-hidden="true" :class="getCategoryIcon(category.name)"></span>
                         <span class="font-medium text-sm" x-text="category.name"></span>
                     </button>
                     {# Book count for category #}

@@ -16,6 +16,9 @@
     window.wantToReadBookIds = new Set();
     window.isAuthenticated = false;
     {% endif %}
+    // A cover for books without one, by its hashed name; the renderer's
+    // literal path named a file that never existed
+    window.bookCoverPlaceholder = '{% static "games/images/cover-placeholder.svg" %}';
     </script>
     {% if enable_client_filtering %}
     {% comment %}
@@ -35,7 +38,7 @@
     {# Logo/Heading #}
     <div class="flex-shrink-0 text-center" style="max-width: 280px;">
         <h1 class="text-4xl font-bold text-primary mb-2">
-            <span class="mdi mdi-book-open-page-variant"></span>
+            <span class="mdi mdi-book-open-page-variant" aria-hidden="true"></span>
             Acclaimed Books
         </h1>
     </div>
@@ -45,18 +48,18 @@
         <div class="flex flex-wrap justify-center gap-2">
             {% if not user.is_authenticated %}
             <button type="button" class="btn btn-primary gap-2 auth-modal-trigger" data-auth-screen="signup">
-                <span class="mdi mdi-book"></span>
+                <span class="mdi mdi-book" aria-hidden="true"></span>
                 <span>Sign Up</span>
             </button>
             {% endif %}
             {% if user.is_staff %}
             <a href="{% url 'books:goodreads-import' %}" class="btn btn-outline gap-2">
-                <span class="mdi mdi-bookmark-plus"></span>
+                <span class="mdi mdi-bookmark-plus" aria-hidden="true"></span>
                 <span>Import Goodreads</span>
             </a>
             {% endif %}
             <a href="{% url 'page-detail' slug='donate' %}" class="btn btn-primary gap-2">
-                <span class="mdi mdi-heart"></span>
+                <span class="mdi mdi-heart" aria-hidden="true"></span>
                 <span>Support This Project</span>
             </a>
         </div>

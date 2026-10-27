@@ -3,6 +3,7 @@ from functools import cached_property
 from typing import Any, Dict, Optional
 
 import markdown
+from unidecode import unidecode
 from django.conf import settings
 from django.db import models
 from django.utils.text import Truncator, slugify
@@ -222,6 +223,27 @@ class Platform(models.Model):
         super().save(*args, **kwargs)
 
 
+# Four levels of a developer's parents, joined so `root_developer` reads them
+# rather than querying a level at a time (game rows, game detail, search)
+DEVELOPER_PARENT_CHAIN = (
+    "parent",
+    "parent__parent",
+    "parent__parent__parent",
+    "parent__parent__parent__parent",
+)
+
+
+def normalize_name(name):
+    """A name as the search compares it: accents folded, lower case.
+
+    Cut to the 200 characters `name_normalized` holds: unidecode can
+    lengthen text several times (each CJK character becomes a romanized
+    syllable and a space), and Postgres enforces the column's limit where
+    SQLite does not.
+    """
+    return unidecode(name or "").lower().strip()[:200]
+
+
 class Developer(CreatorBase):
     """
     A game development entity with optional parent hierarchy.
@@ -258,10 +280,17 @@ class Developer(CreatorBase):
         blank=True,
         help_text="IGDB company detail page URL",
     )
+    # unidecode(name).lower(), so the navbar search can match "Hudson" for
+    # "Hüdson" in the database instead of reading every developer
+    name_normalized = models.CharField(max_length=200, blank=True, default="")
 
     class Meta:
         ordering = ["name"]
         verbose_name_plural = "Developers"
+
+    def save(self, *args, **kwargs):
+        self.name_normalized = normalize_name(self.name)
+        super().save(*args, **kwargs)
 
     # Backward compatibility aliases for existing code that uses
     # root_developer and display_root_developer instead of
@@ -473,6 +502,8 @@ class Series(models.Model):
     name = models.CharField(max_length=200, unique=True, db_index=True)
     slug = models.SlugField(max_length=210, unique=True, db_index=True)
     igdb_id = models.IntegerField(unique=True, db_index=True)
+    # unidecode(name).lower(), for the navbar search; see Developer's
+    name_normalized = models.CharField(max_length=200, blank=True, default="")
 
     class Meta:
         ordering = ["name"]
@@ -480,6 +511,10 @@ class Series(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        self.name_normalized = normalize_name(self.name)
+        super().save(*args, **kwargs)
 
 
 class IGDBGameData(models.Model):
@@ -933,12 +968,7 @@ class GameQuerySet(models.QuerySet):
         """Prefetch common relations for game lists and search results."""
         from django.db.models import Prefetch
 
-        developer_qs = Developer.objects.select_related(
-            "parent",
-            "parent__parent",
-            "parent__parent__parent",
-            "parent__parent__parent__parent",
-        )
+        developer_qs = Developer.objects.select_related(*DEVELOPER_PARENT_CHAIN)
         return self.prefetch_related(
             Prefetch("developers", queryset=developer_qs),
             "platforms",
