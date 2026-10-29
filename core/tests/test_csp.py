@@ -64,6 +64,23 @@ class PolicyTests(TestCase):
                 self.assertEqual(handlers - allowed, set())
 
 
+class ConnectSrcTests(TestCase):
+    def test_the_served_policy_lets_google_analytics_send_its_hits(self):
+        """gtag.js posts to these; www.google.com/g/collect was reported
+        blocked on 2026-10-29 (ACCLAIMED-VIDEO-GAMES-99)."""
+        policy = self.client.get("/lists/")[HEADER]
+        connect_src = re.search(r"connect-src ([^;]*)", policy).group(1).split()
+        for source in (
+            "https://*.google-analytics.com",
+            "https://*.analytics.google.com",
+            "https://*.googletagmanager.com",
+            "https://www.google.com/g/collect",
+        ):
+            with self.subTest(source=source):
+                self.assertIn(source, connect_src)
+        self.assertNotIn("https://www.google.com", connect_src)
+
+
 class ReportUriTests(SimpleTestCase):
     def test_built_from_the_sentry_dsn(self):
         self.assertEqual(

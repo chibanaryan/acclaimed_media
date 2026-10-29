@@ -457,6 +457,9 @@ LOGGING = {
 # - Styles: 'unsafe-inline' without a nonce, since a nonce would disable it
 #   and style="" attributes are everywhere.
 # - Images: any https host, since articles embed images from anywhere.
+# - Connections: the hosts gtag.js sends its hits to. www.google.com is
+#   scoped to /g/collect, the one path it posts to there, so the rest of
+#   google.com stays out.
 # Reports go to Sentry's CSP endpoint, derived from the DSN.
 _CSP_STOP_PROPAGATION = handler_hash("event.stopPropagation()")
 SECURE_CSP_REPORT_ONLY = {
@@ -481,6 +484,8 @@ SECURE_CSP_REPORT_ONLY = {
         "https://*.google-analytics.com",
         "https://*.analytics.google.com",
         "https://*.googletagmanager.com",
+        # GA4's hits to www.google.com, by path (2026-10-29)
+        "https://www.google.com/g/collect",
     ],
     "frame-src": ["https://upload-widget.cloudinary.com"],
     "object-src": [CSP.NONE],
