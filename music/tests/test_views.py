@@ -1294,6 +1294,8 @@ class MusicCacheInvalidationTests(MusicDataMixin, TestCase):
         # helper populates its key, then checks nothing was cached under a
         # key the invalidation list does not know about.
         self.client.get(reverse("music:home"))
+        # Filtered, for the year heatmap's whole-corpus colour scale.
+        self.client.get(reverse("music:home"), {"q": "revolver"})
         self.client.get(
             reverse("music:album-detail", kwargs={"slug": self.revolver.slug})
         )

@@ -46,6 +46,7 @@ CACHE_KEY_HERO_STATS = f"{CACHE_VERSION}:music_hero_stats"
 CACHE_KEY_TOTAL_ALBUM_COUNT = f"{CACHE_VERSION}:total_album_count"
 CACHE_KEY_LANDING_GENRES = f"{CACHE_VERSION}:music_landing_genres"
 CACHE_KEY_LANDING_DECADES = f"{CACHE_VERSION}:music_landing_decades"
+CACHE_KEY_YEAR_BASELINE = f"{CACHE_VERSION}:music_year_baseline"
 
 CACHE_KEYS = (
     CACHE_KEY_YEAR_STATS,
@@ -55,6 +56,7 @@ CACHE_KEYS = (
     CACHE_KEY_TOTAL_ALBUM_COUNT,
     CACHE_KEY_LANDING_GENRES,
     CACHE_KEY_LANDING_DECADES,
+    CACHE_KEY_YEAR_BASELINE,
 )
 
 # Album detail is the catch-all `/music/<slug>/`, so every fixed first

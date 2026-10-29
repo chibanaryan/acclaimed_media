@@ -15,6 +15,12 @@
   and their pages 404. Soundtracks credit an artist and others ("Jimmy Cliff
   & Various Artists"). The release itself: 996 albums kept, 4 added, 4
   removed, one new list (AllMusic's 2010s)
+- **The album year heatmap no longer goes blank after a filter is
+  cleared.** A page loaded already filtered (`/music/?listened=no`) gave
+  the grid that filter's counts as its colour scale; clearing it asked for
+  opacities over 100%, which the CSS drops, so only the filtered years
+  stayed coloured. The page now renders the whole corpus's counts as the
+  grid's scale (`year-baseline-counts-data`), and the grid caps the opacity
 
 ## 2026-10-26
 

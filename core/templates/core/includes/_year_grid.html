@@ -1,5 +1,6 @@
 {# Year heatmap selector, shared by every ranking page. #}
 {# Props: year_counts (list of {year, count}), min_year, max_year, #}
+{#   year_baseline_counts (optional, the same for the whole corpus: the colour scale, else year_counts is), #}
 {#   item_noun_plural ('games' / 'albums') for the cell tooltips #}
 {# Uses the parent Alpine component: filters.start, filters.end, #}
 {#   initialized, debouncedFilterUpdate(). #}
@@ -10,6 +11,7 @@
 
 {# Pass year counts data to Alpine.js via JSON script tag #}
 <script type="application/json" id="year-counts-data">{{ year_counts|tojson }}</script>
+{% if year_baseline_counts %}<script type="application/json" id="year-baseline-counts-data">{{ year_baseline_counts|tojson }}</script>{% endif %}
 
 <div class="year-grid-wrapper"
      x-data="yearGridComponent({ filters, minYear: {{ min_year }}, maxYear: {{ max_year }}, requestFilterUpdate: () => { if (initialized) debouncedFilterUpdate(); }, isApplyingSavedFilter: () => (typeof applyingSavedFilter !== 'undefined' && applyingSavedFilter) })"

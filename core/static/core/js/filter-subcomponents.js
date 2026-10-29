@@ -444,11 +444,18 @@
                 var dataEl = document.getElementById("year-counts-data");
                 if (dataEl) {
                     this.yearCounts = JSON.parse(dataEl.textContent);
-                    this.originalYearCounts = this.yearCounts.slice();
+                    // The colour scale: the whole corpus when the page sends
+                    // it, else the counts it rendered with - which, on a
+                    // page loaded filtered, would scale every later count
+                    // to that filter's.
+                    var baselineEl = document.getElementById("year-baseline-counts-data");
+                    this.originalYearCounts = baselineEl
+                        ? JSON.parse(baselineEl.textContent)
+                        : this.yearCounts.slice();
                     this._rebuildCaches();
                     this.maxCount = Math.max.apply(
                         null,
-                        this.yearCounts.map(function (y) {
+                        this.originalYearCounts.map(function (y) {
                             return y.count;
                         }).concat([1])
                     );
@@ -652,7 +659,9 @@
                 if (count === 0) {
                     return "5%";
                 }
-                var normalized = count / this.maxCount;
+                // Capped: a count above a stale baseline would otherwise give
+                // an opacity over 100%, which the CSS rejects, drawing nothing.
+                var normalized = Math.min(1, count / this.maxCount);
                 var opacity = 0.2 + normalized * 0.8;
                 return Math.round(opacity * 100) + "%";
             },

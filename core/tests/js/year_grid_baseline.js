@@ -1,0 +1,61 @@
+/**
+ * Runs the year grid under Node for core/tests/test_year_grid_baseline.py.
+ *
+ *   node core/tests/js/year_grid_baseline.js
+ *
+ * Builds the grid as a page loaded with a narrow filter would - its
+ * `year-counts-data` the filter's counts - once with the page's whole-corpus
+ * `year-baseline-counts-data` and once without, and prints the colour scale
+ * each ends up with, plus the opacity of a count above a stale scale.
+ */
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const root = path.resolve(__dirname, '..', '..', '..');
+const noop = () => {};
+const documentListeners = {};
+let elements = {};
+globalThis.window = globalThis;
+globalThis.document = {
+    addEventListener: (type, handler) => {
+        (documentListeners[type] = documentListeners[type] || []).push(handler);
+    },
+    getElementById: id => (id in elements ? { textContent: JSON.stringify(elements[id]) } : null),
+};
+globalThis.CustomEvent = class { constructor(type, init) { this.type = type; this.detail = init && init.detail; } };
+globalThis.addEventListener = noop;
+globalThis.removeEventListener = noop;
+globalThis.dispatchEvent = noop;
+
+const factories = {};
+globalThis.Alpine = { data: (name, factory) => { factories[name] = factory; } };
+vm.runInThisContext(
+    fs.readFileSync(path.join(root, 'core/static/core/js/filter-subcomponents.js'), 'utf8')
+);
+documentListeners['alpine:init'].forEach(handler => handler());
+
+const filtered = [{ year: 1970, count: 1 }, { year: 1971, count: 0 }, { year: 1972, count: 0 }];
+const corpus = [{ year: 1970, count: 20 }, { year: 1971, count: 12 }, { year: 1972, count: 3 }];
+
+function build(withBaseline) {
+    elements = { 'year-counts-data': filtered };
+    if (withBaseline) elements['year-baseline-counts-data'] = corpus;
+    const grid = factories.yearGridComponent({ filters: {}, minYear: 1970, maxYear: 1972 });
+    grid.init();
+    return {
+        maxCount: grid.maxCount,
+        originalMaxCount: grid.originalMaxCount,
+        current: grid.yearCounts.map(y => y.count),
+        cells: grid.decades[0].cells.filter(c => c.year).map(c => c.year),
+    };
+}
+
+const stale = factories.yearGridComponent({ filters: {}, minYear: 1970, maxYear: 1972 });
+stale.maxCount = 1;
+
+process.stdout.write(JSON.stringify({
+    withBaseline: build(true),
+    withoutBaseline: build(false),
+    opacityAboveScale: stale.getOpacity(20),
+}));

@@ -11,42 +11,32 @@ import datetime
 import html
 import json
 import re
-import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 
-from django.conf import settings
 from django.test import TestCase, override_settings
 
 from core.models import User
+from core.tests.node import node_available, run_node
 from core.tests.utils import clear_all_caches
 from games.models import Game, HLTBGameData, Platform, Series, WikipediaGenre
 from music import models as music
 from music.templatetags.music_filters import artist_links
-
-HARNESS = Path(settings.BASE_DIR) / "core" / "tests" / "js" / "filter_parity.js"
 
 
 def run_engines(payloads):
     """Run the harness on ``{section: {"payload", "queries"}}``."""
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
         json.dump(payloads, handle)
-    result = subprocess.run(
-        ["node", str(HARNESS), handle.name],
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    Path(handle.name).unlink()
-    if result.returncode:
-        raise AssertionError(f"filter_parity.js failed:\n{result.stderr}")
-    return json.loads(result.stdout)
+    try:
+        return run_node("filter_parity.js", handle.name)
+    finally:
+        Path(handle.name).unlink()
 
 
 class ParityTestCase(TestCase):
     def setUp(self):
-        if shutil.which("node") is None:
+        if not node_available():
             self.skipTest("Node is not installed")
         clear_all_caches()
 

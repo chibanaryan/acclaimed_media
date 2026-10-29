@@ -555,6 +555,25 @@ def group_genre_options(options):
     return groups
 
 
+def _cached_year_baseline(min_year, max_year):
+    """Every album per release year: the year heatmap's colour scale.
+
+    Stored with the bounds it spans and rebuilt when they move: the bounds
+    are cached apart (`_get_year_bounds`), and a baseline missing a decade
+    they include would leave that decade with no cells to click.
+    """
+    cached = cache.get(config.CACHE_KEY_YEAR_BASELINE)
+    if cached is not None and cached["bounds"] == [min_year, max_year]:
+        return cached["counts"]
+    counts = _year_counts(models.Album.objects.all(), min_year, max_year)
+    cache.set(
+        config.CACHE_KEY_YEAR_BASELINE,
+        {"bounds": [min_year, max_year], "counts": counts},
+        config.CACHE_TIMEOUT_24_HOURS,
+    )
+    return counts
+
+
 def _cached_hero_stats():
     """Return the counts shown in the page heading."""
     cache_key = config.CACHE_KEY_HERO_STATS
@@ -700,6 +719,16 @@ class AlbumHomePageView(MusicVisibleMixin, RobustPaginationMixin, ListView):
             min_year,
             max_year,
         )
+        # The grid's colour scale is the whole corpus, as games' is. Scaled
+        # to the counts of a page loaded filtered (`?listened=no`), clearing
+        # the filter asked for opacities over 100%, and only the filtered
+        # years stayed coloured. Sent only when it differs from the counts
+        # above, which the grid falls back to, and only with the grid: an
+        # HTMX swap or a Load More page renders none.
+        if not self._is_partial_request() and self.request.GET.get("append") != "true":
+            baseline = _cached_year_baseline(min_year, max_year)
+            if baseline != context["year_counts"]:
+                context["year_baseline_counts"] = baseline
         context["genre_counts"] = _genre_counts(
             apply_album_filters(
                 base,
