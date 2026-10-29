@@ -1,5 +1,14 @@
 # Developer Log
 
+## 2026-10-29
+
+- **The CSP lets GA4 send its hits to `www.google.com`.** gtag.js now also
+  posts to `https://www.google.com/g/collect`, which `connect-src` didn't
+  allow, so Sentry reported it (ACCLAIMED-VIDEO-GAMES-99, from `/lists/`).
+  The policy is still report-only, so nothing was being blocked. The source
+  is scoped to that path, so the rest of google.com stays out, and the test
+  reads the served header
+
 ## 2026-10-28
 
 - **Music artists have name variants instead of relation tags.** The
