@@ -103,6 +103,10 @@ class CanonicalizeTests(SimpleTestCase):
         self.assertEqual(gn.canonicalize("Glam").leaf, "Glam Rock")
         self.assertEqual(gn.canonicalize("thrash").leaf, "Thrash Metal")
         self.assertEqual(gn.canonicalize("Ethereal").leaf, "Dream Pop")
+        self.assertEqual(
+            gn.canonicalize("electro-industrial"),
+            gn.Canonical("Industrial", ("Electronic",)),
+        )
 
     def test_a_root_alias_means_only_the_root(self):
         self.assertEqual(gn.canonicalize("rock music"), gn.Canonical(None, ("Rock",)))
@@ -640,8 +644,9 @@ class RealVocabularyTests(SimpleTestCase):
     ]
 
     # Every MusicBrainz genre within the first MAX_MUSICBRAINZ_GENRES of an
-    # album on the same release, from the first --musicbrainz pass
-    # (2026-10-18). Only those count as its vote, so only those are listed.
+    # album, from the first --musicbrainz pass (2026-10-18) and each release
+    # since (2026-10-28: "electro-industrial"). Only those count as its
+    # vote, so only those are listed.
     MUSICBRAINZ_LABELS = [
         "2 tone",
         "2-step",
@@ -777,6 +782,7 @@ class RealVocabularyTests(SimpleTestCase):
         "electro",
         "electro house",
         "electro-disco",
+        "electro-industrial",
         "electroclash",
         "electronic",
         "electronic rock",

@@ -182,7 +182,12 @@ GENRE_VOCABULARY: Dict[str, Dict[str, Tuple[str, ...]]] = {
         ),
         "Techno": ("deep techno", "minimal", "ambient techno", "acid techno"),
         "Electro": (),
-        "Industrial": ("industrial rock", "post-industrial", "industrial metal"),
+        "Industrial": (
+            "industrial rock",
+            "post-industrial",
+            "industrial metal",
+            "electro-industrial",
+        ),
         "UK Garage": ("2-step garage", "uk funky", "2-step", "future garage"),
         "Drum and Bass": (
             "drum n bass",
