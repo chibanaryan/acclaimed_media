@@ -146,9 +146,14 @@ class AdminChangelistTests(TestCase):
 
 
 class AdminInlineTests(TestCase):
+    def test_artists_cannot_be_added_by_hand(self):
+        self.assertFalse(
+            music_admin.ArtistAdmin(models.Artist, site).has_add_permission(None)
+        )
+
     def test_the_artist_names_and_ids_are_read_only(self):
         # The import rewrites them from ArtistInfo.txt every time.
-        for field in ("source_id", "name_variants", "all_wikidata_ids"):
+        for field in ("source_id", "slug", "name_variants", "all_wikidata_ids"):
             self.assertIn(field, music_admin.ArtistAdmin.readonly_fields)
 
     def test_the_album_credit_inline_edits_the_through_rows(self):

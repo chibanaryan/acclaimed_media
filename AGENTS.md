@@ -773,6 +773,9 @@ way. Turning it off hides everything again.
   the ordinary test client skips CSRF.
 - Books still uses `core.mixins.StaffOnlyMixin` / `core.permissions.IsStaffOrHide`.
 - Flipping the flag is the launch: `heroku config:set MUSIC_ENABLED=true`.
+  **First** give artist slugs redirects: every import rebuilds them from the
+  current names (see "Music Data Import"), which is safe only while nothing
+  links in.
   The games pages are whole-page cached for anonymous visitors in the
   per-process `local` alias, nav and all; that is safe only because a config
   var change restarts every dyno and so empties it. Flipping the flag any
@@ -997,10 +1000,14 @@ differ from the games files:
   Either file in its pre-2026-10-28 layout fails with a message saying so.
 - **Artists are upserted, not replaced.** Matched on `source_id`; a row that
   predates the ids is adopted by Wikidata id, exact name, then normalized name,
-  so pks, slugs and `?artists=` links survive. A slug is never rewritten, so
-  John Mayall, renamed from "John Mayall & the Bluesbreakers" in 2026-10-28's
-  release, keeps that slug until staff change it. An artist the file does not
-  list is deleted, with its page.
+  so pks and `?artists=` links survive. **Slugs are not kept**: every import
+  rebuilds them from the current names (`plan_artist_slugs`), so a renamed
+  act's URL follows its name and an admin edit lasts until the next import.
+  Same-named acts are numbered by provider id - the lowest has the plain
+  slug - so a file always gives the same slugs. That is safe only while
+  music is the staff beta with nothing linking in; before launch, add a
+  redirect from a replaced slug. `--dry-run` lists the slugs that would
+  change. An artist the file does not list is deleted, with its page.
 - **Albums are upserted, not replaced.** `match_albums` pairs each row with
   the stored album carrying any of its Wikidata ids (`Album.wikidata_qids`,
   the primary and every id in `all_wikidata_ids`), primary id first; an album

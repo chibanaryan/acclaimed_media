@@ -21,6 +21,10 @@
   opacities over 100%, which the CSS drops, so only the filtered years
   stayed coloured. The page now renders the whole corpus's counts as the
   grid's scale (`year-baseline-counts-data`), and the grid caps the opacity
+- **Artist slugs follow the current names.** Every import rebuilds them,
+  numbering same-named acts by provider id, so 2Pac is no longer
+  `tupac-shakur` and John Mayall no longer `john-mayall-the-bluesbreakers`.
+  Fine while music is a staff beta; add old-slug redirects before launch
 
 ## 2026-10-26
 

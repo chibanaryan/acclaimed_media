@@ -42,8 +42,13 @@ class ArtistAdmin(admin.ModelAdmin):
     search_fields = ["name", "slug", "musicbrainz_id", "wikidata_id", "=source_id"]
     # The names and ids come from ArtistInfo.txt and every import rewrites
     # them, so an edit here would last only until the next one.
-    readonly_fields = ["source_id", "name_variants", "all_wikidata_ids"]
-    prepopulated_fields = {"slug": ("name",)}
+    # The slug too: every import rebuilds it from the name.
+    readonly_fields = ["source_id", "slug", "name_variants", "all_wikidata_ids"]
+
+    def has_add_permission(self, request):
+        # Artists come from ArtistInfo.txt alone; one added here would have
+        # no slug, and so no page, and the next import would delete it.
+        return False
 
     def get_queryset(self, request):
         return super().get_queryset(request).annotate(_album_count=Count("albums"))

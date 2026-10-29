@@ -227,12 +227,20 @@ class ImportArtistsTests(TestCase):
             dict(models.Artist.objects.values_list("source_id", "pk")), before
         )
 
-    def test_a_renamed_artist_keeps_its_slug(self):
+    def test_a_renamed_artist_gets_the_new_names_slug(self):
         import_artists()
-        import_artists(ARTISTS_TSV.replace("\tCrazy Horse\n", "\tCrazy Horse (band)\n"))
         horse = models.Artist.objects.get(source_id=192)
-        self.assertEqual(horse.name, "Crazy Horse (band)")
-        self.assertEqual(horse.slug, "crazy-horse")
+        import_artists(ARTISTS_TSV.replace("\tCrazy Horse\n", "\tCrazy Horse (band)\n"))
+        renamed = models.Artist.objects.get(source_id=192)
+        self.assertEqual(renamed.pk, horse.pk)
+        self.assertEqual(renamed.name, "Crazy Horse (band)")
+        self.assertEqual(renamed.slug, "crazy-horse-band")
+
+    def test_a_slug_edited_by_hand_is_rebuilt(self):
+        import_artists()
+        models.Artist.objects.filter(source_id=3).update(slug="beach-boys-old")
+        import_artists()
+        self.assertEqual(models.Artist.objects.get(source_id=3).slug, "the-beach-boys")
 
     def test_a_changed_qid_drops_the_old_musicbrainz_id(self):
         import_artists()
@@ -273,10 +281,11 @@ class ImportArtistsTests(TestCase):
         import_artists()
         self.assertEqual(models.Artist.objects.get(source_id=113).pk, old.pk)
 
-    def test_an_adopted_artist_without_a_slug_gets_one(self):
-        models.Artist.objects.create(name="Crazy Horse", slug="")
+    def test_an_adopted_artist_takes_the_slug_of_its_name(self):
+        old = models.Artist.objects.create(name="Crazy Horse", slug="horse")
         import_artists()
-        self.assertEqual(models.Artist.objects.get(source_id=192).slug, "crazy-horse")
+        adopted = models.Artist.objects.get(source_id=192)
+        self.assertEqual((adopted.pk, adopted.slug), (old.pk, "crazy-horse"))
 
     def test_artists_the_file_does_not_list_are_removed(self):
         models.Artist.objects.create(name="Guessed From A Credit", slug="guessed")
@@ -288,10 +297,38 @@ class ImportArtistsTests(TestCase):
         )
         self.assertFalse(models.Artist.objects.filter(source_id=192).exists())
 
-    def test_a_colliding_slug_gets_a_numeric_tail(self):
-        models.Artist.objects.create(name="Nico (singer)", slug="nico", source_id=1)
-        import_artists(ARTISTS_TSV + "22\t44634\tNico\n")
-        self.assertEqual(models.Artist.objects.get(source_id=22).slug, "nico-2")
+    def test_same_named_artists_are_numbered_by_provider_id(self):
+        # Whatever order the rows come in, the lowest id has the plain slug.
+        for tsv in ("90\t\tNirvana\n12\t\tNirvana\n", "12\t\tNirvana\n90\t\tNirvana\n"):
+            with self.subTest(tsv=tsv):
+                import_artists(tsv)
+                self.assertEqual(
+                    dict(models.Artist.objects.values_list("source_id", "slug")),
+                    {12: "nirvana", 90: "nirvana-2"},
+                )
+
+    def test_a_tail_never_takes_another_artists_own_slug(self):
+        import_artists("1\t\tNico\n2\t\tNico\n3\t\tNico 2\n")
+        self.assertEqual(
+            dict(models.Artist.objects.values_list("source_id", "slug")),
+            {1: "nico", 2: "nico-3", 3: "nico-2"},
+        )
+
+    def test_a_long_transliterated_name_fits_the_slug_column(self):
+        import_artists("1\t\t" + "\u6771\u4eac\u4e8b\u5909" * 20 + "\n")
+        slug = models.Artist.objects.get(source_id=1).slug
+        self.assertLessEqual(len(slug), 200)
+        self.assertFalse(slug.endswith("-"))
+
+    def test_names_are_transliterated_before_slugifying(self):
+        import_artists(
+            "1\t\tR\u00f8yksopp\n2\t\t\u30b5\u30ab\u30ca\u30af\u30b7\u30e7\u30f3\n"
+            "3\t\t!!!\n"
+        )
+        self.assertEqual(
+            dict(models.Artist.objects.values_list("source_id", "slug")),
+            {1: "royksopp", 2: "sakanakushiyon", 3: "artist"},
+        )
 
     def test_progress_callback_receives_each_stage(self):
         events = []
@@ -803,9 +840,15 @@ class ImportMusicDataCommandTests(TestCase):
         self.assertIn("4 artists, 2 with name variants", output)
         self.assertIn("56 0: Neil Young | 1: Neil Young & Crazy Horse", output)
         self.assertIn("- 999 Dropped (removed)", output)
+        self.assertNotRegex(output, r"(?m)^  ~ \d+ slug ")
         self.assertNotIn("!", output)
         # A row without a provider id may yet be adopted, so is not listed.
         self.assertNotIn("legacy", output)
+
+    def test_a_dry_run_lists_slug_changes(self):
+        models.Artist.objects.filter(source_id=56).update(slug="neil-young-old")
+        output = self.run_command(dry_run=True)
+        self.assertIn("~ 56 slug neil-young-old -> neil-young", output)
 
     def test_a_dry_run_lists_every_bad_credit(self):
         Path(self.paths["albums"]).write_text(

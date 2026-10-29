@@ -33,10 +33,13 @@ class Artist(models.Model):
 
     Every artist comes from the release's ``ArtistInfo.txt`` under the data
     provider's own permanent index, ``source_id``, which is what an import
-    upserts on - so an artist keeps its pk and slug across imports, and
-    ``?artists=`` links keep working. An artist can be credited under several
-    names, ``name_variants``: Prince is also "Prince and the Revolution", Frank
-    Zappa "The Mothers of Invention". A credit names the artist and the
+    upserts on - so an artist keeps its pk across imports, and ``?artists=``
+    links keep working. Its slug follows its current name: every import
+    rebuilds it, in ``import_handler.plan_artist_slugs``.
+
+    An artist can be credited under several names, ``name_variants``:
+    Prince is also "Prince and the Revolution", Frank Zappa "The Mothers of
+    Invention". A credit names the artist and the
     variant (``AlbumCredit.variant``), so every album credited under any of
     an artist's names is theirs, and the credit line still reads as printed.
 
@@ -49,7 +52,7 @@ class Artist(models.Model):
         null=True,
         blank=True,
         db_index=True,
-        help_text="URL-friendly identifier, fixed once assigned",
+        help_text="From the current name; every import rebuilds it",
     )
     source_id = models.PositiveIntegerField(
         null=True,

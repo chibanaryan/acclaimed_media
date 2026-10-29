@@ -38,6 +38,7 @@ from typing import Callable, Dict, List, NamedTuple, Optional, Tuple
 
 from django.db import transaction
 from django.utils.text import slugify
+from unidecode import unidecode
 
 from core import constants as core_constants
 from core.services.ranking import update_year_decade_ranks
@@ -275,6 +276,41 @@ def parse_artists_file(file_obj) -> List[ArtistRow]:
     return parsed
 
 
+def plan_artist_slugs(rows: List[ArtistRow]) -> Dict[int, str]:
+    """Each artist's slug, from its current name, by provider id.
+
+    Rebuilt on every import, so an artist's URL follows its name: a stored
+    slug from an older name ("john-mayall-the-bluesbreakers") is corrected
+    by the next import. Music is a staff-only beta with nothing linking in;
+    once it is public, a rename will want a redirect from the old slug.
+
+    Artists whose names slugify alike are numbered in provider-id order -
+    the lowest id takes the plain slug, the next "-2" - so the same file
+    always gives the same slugs, whichever order its rows are in. A tail
+    never takes a slug another artist's own name gives.
+    """
+    # Through unidecode, as `name_normalized` is: "Røyksopp" is "royksopp"
+    # rather than "rykssopp", and a name in another script reads as itself
+    # instead of every one of them being "artist".
+    # Trimmed with room for a "-N" tail: transliteration can make a slug
+    # several times longer than the name, past Artist.slug's 210 characters.
+    bases = {
+        row.source_id: slugify(unidecode(row.names[0]))[:200].strip("-") or "artist"
+        for row in rows
+    }
+    natural = set(bases.values())
+    taken = set()
+    slugs = {}
+    for source_id in sorted(bases):
+        slug, suffix = bases[source_id], 2
+        while slug in taken or (slug != bases[source_id] and slug in natural):
+            slug = f"{bases[source_id]}-{suffix}"
+            suffix += 1
+        taken.add(slug)
+        slugs[source_id] = slug
+    return slugs
+
+
 def import_artists(
     file_obj, progress_callback: Optional[Callable[[str, Dict], None]] = None
 ) -> Tuple[bool, str]:
@@ -283,13 +319,13 @@ def import_artists(
     Artists are matched on ``source_id``. A row that predates the provider's
     ids (the earlier releases named artists only in the credit text) is
     adopted on first sight by any of its Wikidata ids, then exact name, then
-    a normalized name, so it keeps its pk and slug. An artist the file no
-    longer lists is deleted - including the acts an earlier release listed
+    a normalized name, so it keeps its pk. An artist the file no longer
+    lists is deleted - including the acts an earlier release listed
     separately and this one folds into another's variants, such as Prince
     and the Revolution.
 
-    A slug is assigned once and never rewritten, so a renamed act keeps its
-    URL; staff can change it in the admin.
+    Slugs follow the current names (:func:`plan_artist_slugs`), so a slug
+    edited in the admin lasts only until the next import.
     """
     parsed = parse_artists_file(file_obj)
     total = len(parsed)
@@ -297,6 +333,7 @@ def import_artists(
     if progress_callback:
         progress_callback("start", {"total": total, "file": "Artists"})
 
+    slugs = plan_artist_slugs(parsed)
     existing = list(models.Artist.objects.all())
     by_source = {a.source_id: a for a in existing if a.source_id is not None}
     unclaimed = [a for a in existing if a.source_id is None]
@@ -320,7 +357,7 @@ def import_artists(
         name = row.names[0]
         artist = by_source.get(row.source_id) or adopt(name, row.wikidata_ids)
         if artist is None:
-            artist = models.Artist(slug=_unique_artist_slug(name))
+            artist = models.Artist()
             created += 1
         primary = row.wikidata_ids[0] if row.wikidata_ids else None
         if artist.wikidata_id != primary:
@@ -332,8 +369,7 @@ def import_artists(
         artist.name_variants = row.names
         artist.wikidata_id = primary
         artist.all_wikidata_ids = row.wikidata_ids
-        if not artist.slug:
-            artist.slug = _unique_artist_slug(name)
+        artist.slug = slugs[row.source_id]
         artist.save()
         artists_by_source[row.source_id] = artist
 
@@ -657,17 +693,6 @@ def import_albums(
         f"Albums: {total} ({kept} kept, {added} added, {removed} removed), "
         f"{albums_ranked} ranks calculated",
     )
-
-
-def _unique_artist_slug(name: str) -> str:
-    """Slugify an artist name, adding a numeric tail on collision."""
-    base = slugify(name) or "artist"
-    if not models.Artist.objects.filter(slug=base).exists():
-        return base
-    suffix = 2
-    while models.Artist.objects.filter(slug=f"{base}-{suffix}").exists():
-        suffix += 1
-    return f"{base}-{suffix}"
 
 
 def import_listmemberships(

@@ -100,13 +100,20 @@ class Command(BaseCommand):
                 f"{index}: {name}" for index, name in enumerate(row.names)
             )
             self.stdout.write(f"  {row.source_id:>5} {variants}")
-        listed = {row.source_id for row in artists}
+        slugs = import_handler.plan_artist_slugs(artists)
         # Rows without a provider id are left out: the import adopts what it
         # can of them by Wikidata id or name, so they are not known losses.
-        stored = models.Artist.objects.filter(source_id__isnull=False)
-        for artist in stored.order_by("source_id"):
-            if artist.source_id not in listed:
+        stored = models.Artist.objects.filter(source_id__isnull=False).order_by(
+            "source_id"
+        )
+        for artist in stored:
+            slug = slugs.get(artist.source_id)
+            if slug is None:
                 self.stdout.write(f"  - {artist.source_id} {artist.name} (removed)")
+            elif artist.slug != slug:
+                self.stdout.write(
+                    f"  ~ {artist.source_id} slug {artist.slug} -> {slug}"
+                )
 
         with paths["lists"].open(encoding="utf-8-sig", newline="") as f:
             rows = [line.rstrip("\r\n").split("\t") for line in f if line.strip()]
