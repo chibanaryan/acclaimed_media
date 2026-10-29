@@ -2,16 +2,18 @@
 {# #}
 {# A wrapper over core/includes/_tracking_button.html supplying music's #}
 {# verbs, icons and route, so no call site has to name that partial's whole #}
-{# contract. Icons are one vinyl record at three fills, as games' three are #}
-{# one star: a hollow ring untracked, a solid disc for the backlog, and the #}
-{# labelled accent record once listened. A plus-in-a-circle sat in the #}
-{# middle first and read as an orange blob at row size, being the only one #}
-{# of the three that was not a record; MDI has no record-with-a-plus. #}
-{# #}
-{# Have is the same record in a filled sleeve (mdi-album-jacket, drawn in #}
-{# styles.css), so the progression stays one family and Have differs from #}
-{# Heard by shape as well as colour. #}
+{# contract. The marks are one vinyl record throughout, as games' are one #}
+{# star: a hollow ring untracked, the ring with a plus for the backlog (as #}
+{# games' Want is mdi-star-plus-outline; mdi-record-plus is drawn in #}
+{# styles.css, since MDI has no such glyph), then #}
+{# illustrations for the two collected states, as games' Played is its Mario #}
+{# Star - a gold record for Heard, and for Have the same record sliding out #}
+{# of its sleeve, so Have differs from Heard by shape and not only colour. #}
+{# They replaced flat glyphs (mdi-album, and a CSS knock-out of it in a #}
+{# square), which looked dull beside the games marks. #}
+{# A plus-in-a-circle once sat in the middle and read as an orange blob at #}
+{# row size, being the only mark that was not a record. #}
 {# #}
 {# Props: album, is_owned, is_tracked, is_wanted, and optionally size and just_toggled. #}
 {# Keep every template comment on a single line. #}
-{% include 'core/includes/_tracking_button.html' with item=album external_id=album.wikidata_id tracking_scope='album' toggle_url_name='music:toggle-listened' owned_status='own' owned_icon='mdi-album-jacket' owned_icon_class='text-accent' owned_label='Have' owned_tip='You have this album!' tracked_status='listened' tracked_icon='mdi-album' tracked_icon_class='text-accent' wanted_icon='mdi-record-circle' wanted_icon_class='text-warning' untracked_icon='mdi-record-circle-outline' untracked_icon_class='text-base-content/30' tracked_label='Heard' wanted_label='Want' untracked_label='Untracked' tracked_tip='You have heard this album!' wanted_tip='You want this album!' untracked_tip="You aren't tracking this album." %}
+{% include 'core/includes/_tracking_button.html' with item=album external_id=album.wikidata_id tracking_scope='album' toggle_url_name='music:toggle-listened' owned_status='own' owned_image='music/images/record-sleeve.svg' owned_label='Have' owned_tip='You have this album!' tracked_status='listened' tracked_image='music/images/gold-record.svg' wanted_icon='mdi-record-plus' wanted_icon_class='text-warning' untracked_icon='mdi-record-circle-outline' untracked_icon_class='text-base-content/30' tracked_label='Heard' wanted_label='Want' untracked_label='Untracked' tracked_tip='You have heard this album!' wanted_tip='You want this album!' untracked_tip="You aren't tracking this album." %}

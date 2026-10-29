@@ -17,6 +17,7 @@
 {#     must therefore take the item's pk as its one positional argument. #}
 {#   is_tracked / is_wanted - the current state, mutually exclusive #}
 {#   is_owned, owned_status, owned_icon, owned_icon_class, owned_label, owned_tip - an optional fourth state above tracked (music's 'Have'). Without owned_status none of it renders, so a section with three states is unchanged. #}
+{#   owned_image / tracked_image - optional static paths of an illustration to show in place of the glyph, as games' Played shows its Mario Star; music's Have and Heard are gold records. Without them the icon classes are used. #}
 {#   tracked_status - the 'done' value for ?status= ('listened', 'played') #}
 {#   tracked_icon / wanted_icon / untracked_icon and their _class twins #}
 {#   tracked_label / wanted_label / untracked_label - the dropdown rows #}
@@ -29,6 +30,7 @@
 {# Unlike games' and books' versions this ships no inline <script>. The #}
 {# global Sets are kept up to date by one delegated listener instead. #}
 {# Keep every template comment on a single line - Django only strips those. #}
+{% load static %}
 {% if user.is_authenticated and external_id %}
 <div class="tracking-button-wrapper relative"
     x-data="{ open: false, zHigh: false }"
@@ -53,9 +55,17 @@
         :aria-expanded="open">
         <span class="flex items-center justify-center {% if size == 'large' %}w-10 h-10{% else %}w-6 h-6{% endif %}{% if owned_status and is_owned %}{% if just_toggled %} star-appear{% else %} star-idle{% endif %}{% elif just_toggled and is_tracked %} star-appear{% elif is_tracked %} star-idle{% elif just_toggled and is_wanted %} star-appear{% endif %}">
             {% if owned_status and is_owned %}
+            {% if owned_image %}
+            <img src="{% static owned_image %}" alt="" width="40" height="40" class="{% if size == 'large' %}w-10 h-10{% else %}w-6 h-6{% endif %} drop-shadow-[0_0_6px_rgba(250,204,21,0.9)]">
+            {% else %}
             <span class="mdi {{ owned_icon }} {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} {{ owned_icon_class }}" aria-hidden="true"></span>
+            {% endif %}
             {% elif is_tracked %}
+            {% if tracked_image %}
+            <img src="{% static tracked_image %}" alt="" width="40" height="40" class="{% if size == 'large' %}w-10 h-10{% else %}w-6 h-6{% endif %} drop-shadow-[0_0_6px_rgba(250,204,21,0.9)]">
+            {% else %}
             <span class="mdi {{ tracked_icon }} {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} {{ tracked_icon_class }}" aria-hidden="true"></span>
+            {% endif %}
             {% elif is_wanted %}
             <span class="mdi {{ wanted_icon }} {% if size == 'large' %}text-5xl{% else %}text-2xl{% endif %} {{ wanted_icon_class }}" aria-hidden="true"></span>
             {% else %}
@@ -83,7 +93,11 @@
                 hx-target="closest .tracking-button-wrapper"
                 hx-swap="outerHTML">
                 <span class="w-5 h-5 flex items-center justify-center">
+                    {% if owned_image %}
+                    <img src="{% static owned_image %}" alt="" width="20" height="20" class="w-5 h-5">
+                    {% else %}
                     <span class="mdi {{ owned_icon }} text-xl {{ owned_icon_class }}" aria-hidden="true"></span>
+                    {% endif %}
                 </span>
                 <span>{{ owned_label }}</span>
             </button>
@@ -97,7 +111,11 @@
                 hx-target="closest .tracking-button-wrapper"
                 hx-swap="outerHTML">
                 <span class="w-5 h-5 flex items-center justify-center">
+                    {% if tracked_image %}
+                    <img src="{% static tracked_image %}" alt="" width="20" height="20" class="w-5 h-5">
+                    {% else %}
                     <span class="mdi {{ tracked_icon }} text-xl {{ tracked_icon_class }}" aria-hidden="true"></span>
+                    {% endif %}
                 </span>
                 <span>{{ tracked_label }}</span>
             </button>

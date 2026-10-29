@@ -63,92 +63,48 @@
         });
     }
 }">
-    <label class="input input-bordered w-64 bg-base-200">
-        <svg class="h-4 w-4 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-            <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor">
-                <circle cx="11" cy="11" r="8"></circle>
-                <path d="m21 21-4.3-4.3"></path>
-            </g>
-        </svg>
-        <input type="text"
-               class="grow"
-               name="q"
-               id="developer-search"
-               placeholder="Search by name"
-               x-model="q"
-               hx-get="{% url 'developers-list' %}"
-               hx-target="#results-container"
-               hx-trigger="input changed delay:300ms, sort-changed"
-               hx-swap="innerHTML"
-               :hx-vals="JSON.stringify({sort: sort, dir: sortDirection})"
-               x-on:htmx:after-request="updateUrl($event)"
-               autocomplete="off">
-        <button type="button"
-                @click="q = ''; $nextTick(() => { document.getElementById('developer-search').dispatchEvent(new Event('input', { bubbles: true })); })"
-                title="Clear search"
-                class="btn btn-ghost btn-xs btn-circle"
-                style="display: none"
-                :style="{ display: q.length > 0 ? 'flex' : 'none' }"
-                aria-label="Clear search">
-            <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2.5" fill="none" stroke="currentColor">
-                    <path d="M18 6 6 18"></path>
-                    <path d="m6 6 12 12"></path>
+    {# Search and sort on one row, as on the artist list. The sort is the shared control, which this page's own copy of it predated. #}
+    <div class="flex flex-wrap items-center gap-2 min-h-[2.5rem]">
+        <label class="input input-bordered w-64 bg-base-200">
+            <svg class="h-4 w-4 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.3-4.3"></path>
                 </g>
             </svg>
-        </button>
-    </label>
+            <input type="text"
+                   class="grow"
+                   name="q"
+                   id="developer-search"
+                   placeholder="Search by name"
+                   x-model="q"
+                   hx-get="{% url 'developers-list' %}"
+                   hx-target="#results-container"
+                   hx-trigger="input changed delay:300ms, sort-changed"
+                   hx-swap="innerHTML"
+                   :hx-vals="JSON.stringify({sort: sort, dir: sortDirection})"
+                   x-on:htmx:after-request="updateUrl($event)"
+                   autocomplete="off">
+            <button type="button"
+                    @click="q = ''; $nextTick(() => { document.getElementById('developer-search').dispatchEvent(new Event('input', { bubbles: true })); })"
+                    title="Clear search"
+                    class="btn btn-ghost btn-xs btn-circle"
+                    style="display: none"
+                    :style="{ display: q.length > 0 ? 'flex' : 'none' }"
+                    aria-label="Clear search">
+                <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2.5" fill="none" stroke="currentColor">
+                        <path d="M18 6 6 18"></path>
+                        <path d="m6 6 12 12"></path>
+                    </g>
+                </svg>
+            </button>
+        </label>
 
-    {# Sort dropdown #}
-    <div class="flex items-center gap-3 mt-4">
-        {# Desktop: Custom dropdown #}
-        <div class="hidden desktop:flex items-center gap-2">
-            <div class="dropdown" x-data="{ sortOpen: false }" @click.away="sortOpen = false">
-                <button type="button"
-                        class="flex items-center gap-1 text-base-content/70 hover:text-base-content transition-colors cursor-pointer"
-                        @click="sortOpen = !sortOpen">
-                    <span class="mdi mdi-sort text-base" aria-hidden="true"></span>
-                    <span class="text-sm" x-text="sort === 'games' ? '# Games' : (sort === 'studios' ? '# Subsidiaries' : (sort === 'rank' ? 'Top Rank' : 'Name (A-Z)'))"># Games</span>
-                    <span class="mdi mdi-chevron-down text-xs" aria-hidden="true"></span>
-                </button>
-                <ul x-show="sortOpen" x-cloak
-                    class="dropdown-content menu menu-sm bg-base-200 rounded-box shadow-lg z-50 w-fit p-2 mt-1"
-                    @click="sortOpen = false">
-                    <li><button type="button" @click="updateSort('games')" :class="sort === 'games' ? 'active' : ''"># Games</button></li>
-                    <li><button type="button" @click="updateSort('studios')" :class="sort === 'studios' ? 'active' : ''"># Subsidiaries</button></li>
-                    <li><button type="button" @click="updateSort('rank')" :class="sort === 'rank' ? 'active' : ''">Top Rank</button></li>
-                    <li><button type="button" @click="updateSort('name')" :class="sort === 'name' ? 'active' : ''">Name (A-Z)</button></li>
-                </ul>
-            </div>
-            {# Direction flip button #}
-            <button type="button"
-                    class="flex items-center gap-1 text-base-content/70 hover:text-base-content transition-colors cursor-pointer"
-                    @click="toggleSortDirection()"
-                    :title="sortDirection === 'asc' ? 'Ascending order' : 'Descending order'">
-                <span class="mdi text-base" aria-hidden="true" :class="sortDirection === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending'"></span>
-                <span class="text-xs" x-text="sortDirection === 'asc' ? 'Asc' : 'Desc'"></span>
-            </button>
-        </div>
-        {# Mobile: Native select for touch compatibility #}
-        <div class="desktop:hidden flex items-center gap-1">
-            <span class="mdi mdi-sort text-base text-base-content/70" aria-hidden="true"></span>
-            <select class="select select-sm select-bordered bg-base-200"
-                    style="width: fit-content; max-width: 100%;"
-                    aria-label="Sort by"
-                    @change="updateSort($event.target.value)">
-                <option value="games" :selected="sort === 'games'"># Games</option>
-                <option value="studios" :selected="sort === 'studios'"># Subsidiaries</option>
-                <option value="rank" :selected="sort === 'rank'">Top Rank</option>
-                <option value="name" :selected="sort === 'name'">Name (A-Z)</option>
-            </select>
-            {# Direction flip button #}
-            <button type="button"
-                    class="p-1 text-base-content/70 hover:text-base-content transition-colors"
-                    @click="toggleSortDirection()"
-                    :title="sortDirection === 'asc' ? 'Ascending order' : 'Descending order'">
-                <span class="mdi text-lg" aria-hidden="true" :class="sortDirection === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending'"></span>
-            </button>
-        </div>
+        {# Only beside the search box: on a phone the sort wraps below it, and the divider was left hanging at the end of the first line. #}
+        <div class="hidden desktop:block w-px h-6 bg-base-content/20"></div>
+
+        {% include 'core/includes/_entity_sort_controls.html' with sort_options=sort_options default_sort_label='# Games' %}
     </div>
 </div>
 

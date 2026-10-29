@@ -16,7 +16,8 @@ from music.forms import MusicImportForm
 FIXTURE_DIR = Path(settings.BASE_DIR) / "acclaimedgames" / "test_input_files" / "music"
 
 LISTS_TSV = (
-    b"Rolling Stone\t2023\tThe 500 Greatest Albums of All Time\thttps://rs.example\n"
+    b"Rolling Stone\t2023\tAll Time\tThe 500 Greatest Albums of All Time\t"
+    b"https://rs.example\n"
 )
 ALBUMS_TSV = b"1\tPet Sounds\t3,0\t1966\tQ212863\n"
 POSITIONS_TSV = b"0:1\n"
@@ -85,7 +86,7 @@ class MusicImportFormTests(TestCase):
         files["lists_file"] = _upload("ListData.txt", b"Mojo\t1995\n")
         form = MusicImportForm(data={}, files=files)
         self.assertFalse(form.is_valid())
-        self.assertIn("at least 3", str(form.errors["lists_file"]))
+        self.assertIn("at least 4", str(form.errors["lists_file"]))
 
     def test_an_albums_file_with_too_few_columns_is_rejected(self):
         files = _all_files()

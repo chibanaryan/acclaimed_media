@@ -1,26 +1,28 @@
 {# User-tracking status filter: a multi-select row of toggle buttons. #}
 {# #}
-{# Games carries this markup twice, verbatim, in its sidebar and its mobile #}
-{# sheet; this is one definition for both, with the options supplied rather #}
-{# than written in. Games can adopt it by passing status_param='played' and #}
-{# its own labels - the yes/want/no value triple is already shared. #}
+{# One definition for both sections, sidebar and sheet: games passes #}
+{# status_param='played' and GAME_STATUS_OPTIONS, music 'listened' and #}
+{# LISTEN_STATUS_OPTIONS. Games carried two verbatim copies of its own, in #}
+{# Unicode stars, until 2026-10-29. #}
 {# #}
 {# Props: #}
 {#   status_param - the filter's parameter and Alpine key ('listened') #}
 {#   status_label - the section heading ('Album Status') #}
 {#   status_icon - the mdi class beside that heading #}
-{#   status_options - [{value, label, title, icon}], in display order #}
+{#   status_options - [{value, label, title, icon and icon_class, or image}], in display order; image is a static path, shown in place of the glyph. Give each the mark and colours its tracking button shows, so the filter reads the same in every section. #}
 {#   signed_out_hint - the title on the disabled buttons #}
 {#   mobile - truthy for the bottom-sheet sizing #}
 {# Both sizes keep their padding tight so four states and All fit the sidebar and a 360px sheet; the sheet keeps a 40px touch height. #}
 {# #}
 {# Contract: an enclosing Alpine component exposing filters, #}
 {# debouncedFilterUpdate(), toggleStatusValue(key, value) and #}
-{# resetStatus(key). core's mediaListControls provides all four. #}
+{# resetStatus(key). Music's mediaListControls and games' filterComponent #}
+{# both provide all four; renaming either pair breaks that section's filter. #}
 {# #}
 {# status_param is interpolated into Alpine expressions below. It comes from #}
 {# a literal at the call site and must never be fed from a request. #}
 {# Keep every template comment on a single line. #}
+{% load static %}
 <div class="{% if mobile %}space-y-2{% else %}mb-4 pb-3 border-b border-base-100{% endif %}">
     <div class="flex items-center gap-2 mb-2">
         <span class="mdi {{ status_icon }} text-xl text-accent" aria-hidden="true"></span>
@@ -51,7 +53,11 @@
                     @click="toggleStatusValue('{{ status_param }}', '{{ option.value }}')"
                     title="{{ option.title }}"
                     aria-label="Filter by {{ option.title|lower }}">
-                <span class="mdi {{ option.icon }}" aria-hidden="true"></span>
+                {% if option.image %}
+                <img src="{% static option.image %}" alt="" width="16" height="16" class="w-4 h-4">
+                {% else %}
+                <span class="mdi {{ option.icon }} {{ option.icon_class }}" aria-hidden="true"></span>
+                {% endif %}
                 <span>{{ option.label }}</span>
             </button>
             {% else %}
@@ -60,7 +66,11 @@
                     title="{{ signed_out_hint }}"
                     aria-disabled="true"
                     aria-label="{{ option.label }}: {{ signed_out_hint }}">
-                <span class="mdi {{ option.icon }}" aria-hidden="true"></span>
+                {% if option.image %}
+                <img src="{% static option.image %}" alt="" width="16" height="16" class="w-4 h-4">
+                {% else %}
+                <span class="mdi {{ option.icon }} {{ option.icon_class }}" aria-hidden="true"></span>
+                {% endif %}
                 <span>{{ option.label }}</span>
             </button>
             {% endif %}

@@ -10,9 +10,9 @@ Ingests the four TSV files that make up an album ranking release:
   variants, the first being the name itself: Prince's row goes on with
   "Prince and the Revolution" and "Prince & the New Power Generation". The
   ids describe the artist, not the names, so there need not be one per name.
-- **lists**: ``publisher<TAB>year<TAB>name<TAB>url`` - one published list per
-  row. Unlike the games equivalent there is no type column, so
-  :func:`infer_list_type` derives it from the title.
+- **lists**: ``publisher<TAB>year<TAB>type<TAB>name<TAB>url`` - one published
+  list per row, laid out as the games file is: ``type`` is All Time, Decade,
+  EOY or Misc.
 - **albums**: ``rank<TAB>name<TAB>credits<TAB>year<TAB>wikidata_ids`` - one
   album per row, already in aggregate rank order. ``credits`` is
   ``;``-separated, in credit order: each ``artist_id,variant``, indexes into
@@ -56,65 +56,6 @@ _ARTIST_NOISE_TOKENS = frozenset({"the"})
 # second column was the name.
 _ARTIST_QIDS = re.compile(r"^(Q?\d+)?(\s*,\s*Q?\d+)*$", re.IGNORECASE)
 
-# Title patterns that pin a list to a type. Order matters: the first match
-# wins, so the narrow decade and era patterns are tried before "all time".
-_DECADE_PATTERNS = (
-    r"\b(19|20)\d0s\b",  # "1990s", "2010s"
-    r"\bof the (’|')?\d0s\b",  # "of the '90s", "of the 90s"
-    r"\bof the decade\b",
-    r"\b(eighties|nineties|seventies|sixties|fifties|aughts)\b",
-    r"\bd(e|er) (\d0|\d0-?er)\b",  # "der 10-er Jahre"
-    r"\bannées (19|20)\d0\b",  # "années 2010"
-)
-
-_ERA_PATTERNS = (
-    r"\bpast \d+ years\b",
-    r"\blast \d+ years\b",
-    r"\b\d{4}\s*-\s*\d{4}\b",  # "1969 - 2009", "2000-2015"
-    r"\b21st century\b",
-    r"\blifetime\b",
-    r"\bannées \d{4} ?- ?\d{4}\b",
-)
-
-_ALLTIME_PATTERNS = (
-    r"\ball[- ]time\b",
-    r"\bof all time\b",
-    r"\balbums ever\b",
-    r"\bever made\b",
-    r"\bgreatest albums ever\b",
-    r"\bmust hear before you die\b",
-)
-
-
-def infer_list_type(name: str) -> str:
-    """Classify a list by its title into one of the shared type codes.
-
-    The supplied lists file has no type column, so the title is all there is
-    to go on. Decade and era wording is checked first because titles like
-    "The 100 Best Albums of the 1990s" would otherwise be swallowed by a
-    looser all-time match.
-
-    An unqualified title ("Top 100 Albums", "Apple Music 100 Best Albums")
-    falls back to all-time rather than end-of-year: every album list in this
-    corpus is retrospective, and a ranking with no period in its name is
-    making an all-time claim.
-
-    Returns one of ``core.constants`` ``LIST_ALLTIME``, ``LIST_DECADE`` or
-    ``LIST_MISC``.
-    """
-    haystack = (name or "").lower()
-
-    for pattern in _DECADE_PATTERNS:
-        if re.search(pattern, haystack):
-            return core_constants.LIST_DECADE
-    for pattern in _ERA_PATTERNS:
-        if re.search(pattern, haystack):
-            return core_constants.LIST_MISC
-    for pattern in _ALLTIME_PATTERNS:
-        if re.search(pattern, haystack):
-            return core_constants.LIST_ALLTIME
-    return core_constants.LIST_ALLTIME
-
 
 def normalize_artist_name(name: str) -> str:
     """A comparison key for an artist name.
@@ -140,16 +81,75 @@ def _rows(file_obj) -> list:
     return [row for row in reader if any(cell.strip() for cell in row)]
 
 
+#: The lists file's type column, in the words the games file uses, plus the
+#: codes themselves. Matched case-insensitively, with runs of spaces and
+#: hyphens read as one space ("All-Time", "all  time").
+_LIST_TYPE_WORDS = {
+    "all time": core_constants.LIST_ALLTIME,
+    "alltime": core_constants.LIST_ALLTIME,
+    "decade": core_constants.LIST_DECADE,
+    "eoy": core_constants.LIST_EOY,
+    "end of year": core_constants.LIST_EOY,
+    "misc": core_constants.LIST_MISC,
+    "miscellaneous": core_constants.LIST_MISC,
+    **{code.lower(): code for code, _label in core_constants.LIST_TYPES},
+}
+
+
+def _list_type_code(cell: str) -> Optional[str]:
+    """The type code a type-column cell names, or None if it names none."""
+    return _LIST_TYPE_WORDS.get(" ".join(re.split(r"[\s-]+", cell.strip())).lower())
+
+
+class ListRow(NamedTuple):
+    """One validated row of the lists file."""
+
+    publisher: str
+    year: str
+    type: str
+    name: str
+    url: str
+
+
+def parse_lists_file(file_obj) -> List[ListRow]:
+    """Read and validate the lists file: publisher, year, type, name[, url].
+
+    Every row must name a known type, so a typo fails the import with its row
+    number rather than storing a type nobody chose - games' importer keeps
+    whatever letter its cell starts with. Before the 2026-10-29 release the
+    file had no type column, and the types were guessed from the titles.
+    """
+    parsed = []
+    for index, row in enumerate(_rows(file_obj)):
+        number = index + 1
+        if len(row) < 4:
+            raise ValueError(
+                f"Lists row {number} has {len(row)} columns, expected at "
+                "least 4 (publisher, year, type, name[, url])"
+            )
+        publisher, year, type_cell, name = (cell.strip() for cell in row[:4])
+        list_type = _list_type_code(type_cell)
+        if list_type is None:
+            raise ValueError(
+                f"Lists row {number}: column 3 should be a list type (All Time, "
+                f"Decade, EOY or Misc), not {type_cell!r} (is this a release "
+                "file from before list types, with the name third?)"
+            )
+        url = row[4].strip() if len(row) > 4 else ""
+        parsed.append(ListRow(publisher, year, list_type, name, url))
+    return parsed
+
+
 def import_lists(
     file_obj, progress_callback: Optional[Callable[[str, Dict], None]] = None
 ) -> Tuple[bool, str]:
     """Replace every list and publication from a TSV file.
 
-    Columns: publisher, year, name, url. The type is inferred from the name.
-    ``order`` is the 1-based row number and is the join key the positions
-    file relies on, so row order is significant.
+    Columns as :func:`parse_lists_file` reads them. ``order`` is the 1-based
+    row number and is the join key the positions file relies on, so row
+    order is significant.
     """
-    rows = _rows(file_obj)
+    rows = parse_lists_file(file_obj)
     total = len(rows)
 
     if progress_callback:
@@ -161,30 +161,19 @@ def import_lists(
     models.MusicPublication.objects.all().delete()
 
     count = 0
-    inferred = []
+    types = []
     for index, row in enumerate(rows):
-        if len(row) < 3:
-            raise ValueError(
-                f"Lists row {index + 1} has {len(row)} columns, expected at "
-                "least 3 (publisher, year, name[, url])"
-            )
-        publisher_name, year, name = (cell.strip() for cell in row[:3])
-        url = row[3].strip() if len(row) > 3 else ""
-
-        publisher, _ = models.MusicPublication.objects.get_or_create(
-            name=publisher_name
-        )
-        list_type = infer_list_type(name)
+        publisher, _ = models.MusicPublication.objects.get_or_create(name=row.publisher)
         models.MusicList.objects.create(
             publisher=publisher,
-            year=year,
-            name=name,
+            year=row.year,
+            name=row.name,
             order=index + 1,
-            url=url or None,
-            type=list_type,
+            url=row.url or None,
+            type=row.type,
         )
         count += 1
-        inferred.append((list_type, publisher_name, year, name))
+        types.append((row.type, row.publisher, row.year, row.name))
 
         if progress_callback:
             progress_callback(
@@ -192,8 +181,8 @@ def import_lists(
                 {
                     "current": index + 1,
                     "total": total,
-                    "list_name": name,
-                    "type": list_type,
+                    "list_name": row.name,
+                    "type": row.type,
                 },
             )
 
@@ -204,7 +193,7 @@ def import_lists(
                 "count": count,
                 "lists_deleted": lists_deleted,
                 "publications_deleted": pubs_deleted,
-                "inferred": inferred,
+                "types": types,
             },
         )
 

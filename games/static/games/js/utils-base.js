@@ -691,7 +691,7 @@ function createSearchData(apiUrl, limit = 5) {
 async function searchUnified(query, developerLimit, gameLimit, seriesLimit, apiUrl) {
     const trimmedQuery = query.trim();
     if (trimmedQuery.length < 2) {
-        return { developers: [], games: [], series: [] };
+        return { developers: [], games: [], series: [], order: null };
     }
 
     const response = await fetch(
@@ -706,9 +706,31 @@ async function searchUnified(query, developerLimit, gameLimit, seriesLimit, apiU
     return {
         developers: data.developers || [],
         games: data.games || [],
-        series: data.series || []
+        series: data.series || [],
+        order: data.order || null
     };
 }
+
+/**
+ * The groups in the order a search response asks for, known names only.
+ *
+ * The unified search endpoints put whichever group holds the best match
+ * first ("Beatles" leads with the band, "Nintendo" with the developer); the
+ * dropdowns loop over this. Anything missing keeps `defaults`' order, so an
+ * older cached response without `order` still renders every group. Here,
+ * where every page loads it, for games' createUnifiedSearchData below and
+ * music's createMediaSearchData (core/js/media-search.js).
+ */
+function searchGroupOrder(order, defaults) {
+    const known = (Array.isArray(order) ? order : [])
+        .filter((group, index, all) => defaults.includes(group) && all.indexOf(group) === index);
+    return known.concat(defaults.filter(group => !known.includes(group)));
+}
+
+// The games search's groups before a response orders them, in the order a
+// tie falls: games.api.views.SEARCH_GROUPS, which the response's own
+// `order` carries, so this matters only before the first answer.
+var SEARCH_GROUPS_GAMES = ['games', 'series', 'developers'];
 
 /**
  * Creates Alpine.js unified search component data (developers, games, and series)
@@ -725,6 +747,7 @@ function createUnifiedSearchData(apiUrl, developerLimit = 3, gameLimit = 5, seri
         developers: [],
         games: [],
         series: [],
+        order: SEARCH_GROUPS_GAMES.slice(),
         loading: false,
 
         hasResults() {
@@ -761,11 +784,13 @@ function createUnifiedSearchData(apiUrl, developerLimit = 3, gameLimit = 5, seri
                 this.developers = results.developers;
                 this.games = results.games;
                 this.series = results.series;
+                this.order = searchGroupOrder(results.order, SEARCH_GROUPS_GAMES);
             } catch (e) {
                 console.error('Search error:', e);
                 this.developers = [];
                 this.games = [];
                 this.series = [];
+                this.order = SEARCH_GROUPS_GAMES.slice();
             } finally {
                 this.loading = false;
             }
@@ -777,6 +802,7 @@ function createUnifiedSearchData(apiUrl, developerLimit = 3, gameLimit = 5, seri
             this.developers = [];
             this.games = [];
             this.series = [];
+            this.order = SEARCH_GROUPS_GAMES.slice();
             this.loading = false;
         }
     };

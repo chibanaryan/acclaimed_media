@@ -45,8 +45,8 @@ class Command(BaseCommand):
             "--dry-run",
             action="store_true",
             help=(
-                "Report the inferred list types and which albums would be "
-                "kept, added and removed, then stop"
+                "Report the list types and which albums would be kept, "
+                "added and removed, then stop"
             ),
         )
 
@@ -72,7 +72,7 @@ class Command(BaseCommand):
                 lists_file, albums_file, positions_file, artists_file
             )
 
-        self._print_inferred_types()
+        self._print_list_types()
         self.stdout.write(self.style.SUCCESS(message))
         self.stdout.write(
             "Albums: {albums} | Artists: {artists} ({credits} credits) | "
@@ -123,12 +123,16 @@ class Command(BaseCommand):
                 )
 
         with paths["lists"].open(encoding="utf-8-sig", newline="") as f:
-            rows = [line.rstrip("\r\n").split("\t") for line in f if line.strip()]
-        self.stdout.write(f"Lists file: {len(rows)} rows")
-        for row in rows:
-            list_type = import_handler.infer_list_type(row[2])
-            label = core_constants.get_list_type_label(list_type)
-            self.stdout.write(f"  {list_type} {label:<14} {row[0]} {row[1]} - {row[2]}")
+            try:
+                lists = import_handler.parse_lists_file(f)
+            except ValueError as exc:
+                raise CommandError(str(exc)) from exc
+        self.stdout.write(f"Lists file: {len(lists)} rows")
+        for row in lists:
+            label = core_constants.get_list_type_label(row.type)
+            self.stdout.write(
+                f"  {row.type} {label:<14} {row.publisher} {row.year} - {row.name}"
+            )
 
         with paths["albums"].open(encoding="utf-8-sig", newline="") as f:
             albums = import_handler.parse_albums_file(f)
@@ -160,9 +164,9 @@ class Command(BaseCommand):
                 )
             )
 
-    def _print_inferred_types(self):
-        """Summarize the stored list types so a bad inference is visible."""
-        self.stdout.write("Inferred list types:")
+    def _print_list_types(self):
+        """Summarize the stored list types, as a check on the type column."""
+        self.stdout.write("List types:")
         for code, label in core_constants.LIST_TYPES:
             count = models.MusicList.objects.filter(type=code).count()
             if count:

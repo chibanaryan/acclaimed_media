@@ -10,10 +10,12 @@
 {# no URLs: the renderer fills data-item-id, data-toggle-url, data-status #}
 {# and the hx-post attributes per row, because they differ per item. #}
 {# owned_icon, owned_icon_class and owned_label add the optional fourth state; the owned slots exist only when owned_label is given, which is a section constant, never per item. #}
+{# owned_image and tracked_image swap a state's glyph for an illustration, as on the real partial. They are section constants too, so the slots themselves never move. #}
 {# #}
 {# The dropdown opens upward (bottom-full), the list-row position; the #}
 {# detail page renders the real partial at size='large' instead. #}
 {# Keep every template comment on a single line. #}
+{% load static %}
 <div class="tracking-button-wrapper relative"
      x-data="{ open: false, zHigh: false }"
      x-effect="if (open) { zHigh = true } else { setTimeout(() => zHigh = false, 100) }"
@@ -36,11 +38,19 @@
             :aria-expanded="open">
         {% if owned_label %}
         <span class="flex items-center justify-center w-6 h-6 hidden" data-slot="owned-icon">
+            {% if owned_image %}
+            <img src="{% static owned_image %}" alt="" width="24" height="24" class="w-6 h-6 drop-shadow-[0_0_6px_rgba(250,204,21,0.9)]">
+            {% else %}
             <span class="mdi {{ owned_icon }} text-2xl {{ owned_icon_class }}" aria-hidden="true"></span>
+            {% endif %}
         </span>
         {% endif %}
         <span class="flex items-center justify-center w-6 h-6 hidden" data-slot="tracked-icon">
+            {% if tracked_image %}
+            <img src="{% static tracked_image %}" alt="" width="24" height="24" class="w-6 h-6 drop-shadow-[0_0_6px_rgba(250,204,21,0.9)]">
+            {% else %}
             <span class="mdi {{ tracked_icon }} text-2xl {{ tracked_icon_class }}" aria-hidden="true"></span>
+            {% endif %}
         </span>
         <span class="flex items-center justify-center w-6 h-6 hidden" data-slot="wanted-icon">
             <span class="mdi {{ wanted_icon }} text-2xl {{ wanted_icon_class }}" aria-hidden="true"></span>
@@ -66,7 +76,11 @@
                 hx-swap="outerHTML"
                 hx-target="closest .tracking-button-wrapper">
                 <span class="w-5 h-5 flex items-center justify-center">
+                    {% if owned_image %}
+                    <img src="{% static owned_image %}" alt="" width="20" height="20" class="w-5 h-5">
+                    {% else %}
                     <span class="mdi {{ owned_icon }} text-xl {{ owned_icon_class }}" aria-hidden="true"></span>
+                    {% endif %}
                 </span>
                 <span>{{ owned_label }}</span>
             </button>
@@ -79,7 +93,11 @@
                 hx-swap="outerHTML"
                 hx-target="closest .tracking-button-wrapper">
                 <span class="w-5 h-5 flex items-center justify-center">
+                    {% if tracked_image %}
+                    <img src="{% static tracked_image %}" alt="" width="20" height="20" class="w-5 h-5">
+                    {% else %}
                     <span class="mdi {{ tracked_icon }} text-xl {{ tracked_icon_class }}" aria-hidden="true"></span>
+                    {% endif %}
                 </span>
                 <span>{{ tracked_label }}</span>
             </button>

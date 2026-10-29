@@ -9,7 +9,7 @@ from django import forms
 # missing trailing column (url on lists, wikidata ids on albums), so these
 # are floors rather than exact counts.
 ARTISTS_MIN_COLUMNS = 2
-LISTS_MIN_COLUMNS = 3
+LISTS_MIN_COLUMNS = 4
 ALBUMS_MIN_COLUMNS = 4
 
 
@@ -24,17 +24,23 @@ class MusicImportForm(forms.Form):
     artists_file = forms.FileField(
         required=False,
         label="Artists (ArtistInfo.txt)",
-        help_text="Tab-separated: id, name, tags (e.g. P:8,F:22), wikidata id",
+        help_text="Tab-separated: id, wikidata ids, name, then any other names",
     )
     lists_file = forms.FileField(
         required=False,
         label="Source Lists (ListData.txt)",
-        help_text="Tab-separated: publisher, year, name, url",
+        help_text=(
+            "Tab-separated: publisher, year, type (All Time, Decade, EOY, Misc), "
+            "name, url"
+        ),
     )
     albums_file = forms.FileField(
         required=False,
         label="Albums (WebRankings.txt)",
-        help_text="Tab-separated: rank, name, artist ids, year, wikidata ids",
+        help_text=(
+            "Tab-separated: rank, name, credits (artist,variant;...), year, "
+            "wikidata ids"
+        ),
     )
     positions_file = forms.FileField(
         required=False,

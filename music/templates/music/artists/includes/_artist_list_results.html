@@ -13,7 +13,8 @@
 <div class="flex flex-wrap items-center gap-2 mb-6 min-h-[2.5rem]">
     {% include 'core/includes/_search_box.html' with input_id='artist-search' placeholder='Search by name' value=current_q hx_get=request.path hx_target='#artist-results-wrapper' hx_include="[name='sort'], [name='dir']" %}
 
-    <div class="w-px h-6 bg-base-content/20"></div>
+    {# Only beside the search box: on a phone the sort wraps below it, and the divider was left hanging at the end of the first line. #}
+    <div class="hidden desktop:block w-px h-6 bg-base-content/20"></div>
 
     {# The sort state, as fields the search box's hx-include can send. #}
     <input type="hidden" name="sort" :value="sort">
@@ -34,17 +35,16 @@
 <div class="hidden desktop:block overflow-x-auto">
     <table class="table-minimal table-fixed w-full">
         <colgroup>
-            <col style="width: 38%;">
-            <col style="width: 10%;">
-            <col style="width: 38%;">
-            <col style="width: 14%;">
+            {# Text columns align left and the count column is centred, header and figures alike, and sized to its header. Right-aligned between two left-aligned text columns, the figures read as justified at random. #}
+            <col style="width: 36%;">
+            <col style="width: 7rem;">
+            <col>
         </colgroup>
         <thead>
             <tr>
                 <th class="font-semibold">Name</th>
-                <th class="font-semibold text-center">Rank</th>
+                <th class="font-semibold text-center">Albums</th>
                 <th class="font-semibold">Top Album</th>
-                <th class="font-semibold text-right">Albums</th>
             </tr>
         </thead>
         <tbody id="artist-list-container">

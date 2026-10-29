@@ -1406,8 +1406,12 @@ input[type="number"] {
   transform: scale(1.15);
 }
 
+/* Both sections' collected states are images - games' Mario Star, music's
+   gold records - so one rule brightens their glow. Music's menu sits inside
+   its wrapper, so the rule names the button, or the menu's own images
+   would glow too. */
 .played-button-wrapper:hover img,
-.tracking-button-wrapper:hover img {
+.tracking-button-wrapper:hover > .tracking-button img {
   filter: drop-shadow(0 0 10px rgba(250, 204, 21, 1));
 }
 
@@ -1418,33 +1422,34 @@ input[type="number"] {
   color: oklch(var(--bc) / 0.5);
 }
 
-/* The listened record gets the same glow the played star's image has. */
-.tracking-button-wrapper:hover .mdi-album,
-.tracking-button-wrapper:hover .mdi-album-jacket {
-  filter: drop-shadow(0 0 10px oklch(var(--a) / 0.9));
-}
-
-/* "Have": the same record in a filled sleeve. MDI has no record-in-a-jacket
-   glyph, so it is the mdi-album glyph knocked out of a square drawn in the
-   icon's own colour. It differs from Heard by its shape, not only its
-   colour, and stays one class so every `<span class="mdi {{ icon }}">` call
-   site - the button, the status filter, the quick-mark picker - takes it. */
-.mdi-album-jacket {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+/* "Want" for albums: the empty record with a plus, as games' Want is
+   mdi-star-plus-outline. MDI has no record with a plus, so the shape is an
+   SVG mask filled with the text colour - text-warning on the button - and,
+   being one class on the ::before the .mdi rule already sizes, it works in
+   every `<span class="mdi {{ icon }}">` that names it: the button, the
+   status filter, the quick-mark picker. */
+.mdi-record-plus::before {
+  content: "";
   width: 1em;
   height: 1em;
-  line-height: 1;
-  border-radius: 0.12em;
+  vertical-align: -0.125em;
   background-color: currentColor;
-  vertical-align: middle;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cmask id='m'%3E%3Crect width='24' height='24' fill='white'/%3E%3Ccircle cx='18.5' cy='18.5' r='5.5' fill='black'/%3E%3C/mask%3E%3Cg mask='url(%23m)'%3E%3Ccircle cx='11' cy='11' r='8' fill='none' stroke='black' stroke-width='2'/%3E%3Ccircle cx='11' cy='11' r='3'/%3E%3C/g%3E%3Cpath d='M17.5 14h2v3.5H23v2h-3.5V23h-2v-3.5H14v-2h3.5z'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
-.mdi-album-jacket::before {
-  content: "\F0025";
-  font-size: 0.84em;
-  color: var(--color-base-100);
+/* A search dropdown's result group (the `search-group` <li> in
+   includes/_sidebar.html and _nav_mobile.html). Each group is a nested list
+   only so Alpine can loop over the groups in the order the response gives;
+   DaisyUI draws a nested list as an indented submenu with a guide line,
+   which these undo so it reads as part of the one menu. */
+.menu .search-group > ul {
+  margin-inline-start: 0;
+  padding-inline-start: 0;
+  white-space: normal;
+}
+
+.menu .search-group > ul::before {
+  display: none;
 }
 
 /* Quick-mark mode (core/js/quick-mark.js): while a mode is on, a click on a

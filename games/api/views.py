@@ -16,6 +16,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView, Response
 
 
+from core.services import search_ranking
 from core.services.genre_tree import descendants_by_id
 from core.services.query_params import parse_id_list, parse_limit
 
@@ -426,10 +427,48 @@ class GameSearchAPIView(APIView):
         return JsonResponse({"results": results, "count": len(results)})
 
 
+#: The unified search's groups, in the order a tie between them falls: a
+#: name that is a game and a series equally ("Portal") is after the game.
+SEARCH_GROUPS = ("games", "series", "developers")
+
+
+def _best_first(q, matches, limit):
+    """A creator-like group's rows, best match first, then most games.
+
+    ``matches`` is annotated with ``games_count``. Exact names come first in
+    the database (``search_ranking.exact_first``), so the bounded read of
+    ``search_ranking.CANDIDATES`` rows cannot leave one out. Each row is
+    ``(score, -games, name, id, games)``.
+    """
+    candidates = search_ranking.exact_first(
+        matches,
+        "-games_count",
+        "name",
+        name=q,
+        name_normalized=models.normalize_name(q),
+    ).values_list("id", "name", "name_normalized", "games_count")
+    return sorted(
+        (
+            search_ranking.quality_or(q, (name, normalized), search_ranking.SUBSTRING),
+            -count,
+            name.lower(),
+            row_id,
+            count,
+        )
+        for row_id, name, normalized, count in candidates[: search_ranking.CANDIDATES]
+    )[:limit]
+
+
 class UnifiedSearchView(APIView):
     """
     Unified search endpoint for navbar - returns both developers and games.
     Used by unified search component in navbar for grouped dropdown results.
+
+    ``order`` names the groups in the order the dropdown shows them: the one
+    holding the better match (``core.services.search_ranking``) leads, so
+    "Nintendo" leads with the developer and "Halo" with the series. Games
+    keep rank order but for an exact title; developers and series are best
+    match first, then most games.
     """
 
     def get(self, request):
@@ -442,24 +481,33 @@ class UnifiedSearchView(APIView):
         q_normalized = models.normalize_name(q)
 
         if len(q) < 2:
-            return JsonResponse({"developers": [], "games": [], "series": []})
+            return JsonResponse(
+                {"developers": [], "games": [], "series": [], "order": SEARCH_GROUPS}
+            )
 
-        # Developers and series match on the name or its accent-folded
-        # copy, in the database. Both used to be read whole and matched in
-        # Python on every keystroke, which grew with the catalogue.
-        developers = (
+        # Each group is scored in Python on a bounded read of its matches
+        # (search_ranking.CANDIDATES), and only the rows shown are fetched
+        # whole.
+        developer_rows = _best_first(
+            q,
             models.Developer.objects.filter(
                 Q(name__icontains=q) | Q(name_normalized__contains=q_normalized)
             )
             .annotate(games_count=Count("developed_games"))
-            .filter(games_count__gt=0)
-            # root_developer walks the parent chain; join it instead
-            .select_related(*models.DEVELOPER_PARENT_CHAIN)
-            .order_by("-games_count", "name")[:developer_limit]
+            .filter(games_count__gt=0),
+            developer_limit,
         )
+        # root_developer walks the parent chain; join it instead
+        developers_by_id = models.Developer.objects.select_related(
+            *models.DEVELOPER_PARENT_CHAIN
+        ).in_bulk([row[3] for row in developer_rows])
 
         developer_results = []
-        for dev in developers:
+        # A row an import replaced between the two reads is gone; drop it, so
+        # it neither raises nor decides which group leads.
+        developer_rows = [row for row in developer_rows if row[3] in developers_by_id]
+        for *_, dev_id, games_count in developer_rows:
+            dev = developers_by_id[dev_id]
             # Use root developer's slug and id for URL routing
             root = dev.root_developer
             root_slug = root.slug if root else dev.slug
@@ -470,26 +518,32 @@ class UnifiedSearchView(APIView):
                     "name": dev.name,
                     "root_slug": root_slug,
                     "root_id": root_id,
-                    "games_count": dev.games_count,
+                    "games_count": games_count,
                 }
             )
 
         # Search games by original and normalized names for accent-insensitive matching.
         # Use normalized query so accented and ASCII input both match.
-        games = (
-            models.Game.objects.filter(
-                Q(name__icontains=q) | Q(name_normalized__icontains=q_normalized)
+        # Ranked, with an exact title first, in one bounded query.
+        games = list(
+            search_ranking.exact_first(
+                models.Game.objects.filter(
+                    Q(name__icontains=q) | Q(name_normalized__icontains=q_normalized)
+                ),
+                "rank",
+                name=q,
+                name_normalized=q_normalized,
             )
             .select_related("primary_igdb_game_data")
             .only(
                 "id",
                 "name",
+                "name_normalized",
                 "slug",
                 "year_of_release",
                 "rank",
                 "primary_igdb_game_data__artwork_id",
-            )
-            .order_by("rank")[:game_limit]
+            )[:game_limit]
         )
 
         game_results = []
@@ -506,29 +560,54 @@ class UnifiedSearchView(APIView):
             )
 
         # Series with 2+ games, as the filter lists
-        series = (
+        series_rows = _best_first(
+            q,
             models.Series.objects.filter(
                 Q(name__icontains=q) | Q(name_normalized__contains=q_normalized)
             )
             .annotate(games_count=Count("games"))
-            .filter(games_count__gte=2)
-            .order_by("-games_count", "name")[:series_limit]
+            .filter(games_count__gte=2),
+            series_limit,
         )
+        series_by_id = models.Series.objects.only("id", "name", "slug").in_bulk(
+            [row[3] for row in series_rows]
+        )
+        series_rows = [row for row in series_rows if row[3] in series_by_id]
         series_results = [
             {
-                "id": s.id,
-                "name": s.name,
-                "slug": s.slug,
-                "games_count": s.games_count,
+                "id": series_id,
+                "name": series_by_id[series_id].name,
+                "slug": series_by_id[series_id].slug,
+                "games_count": games_count,
             }
-            for s in series
+            for *_, series_id, games_count in series_rows
         ]
+
+        order = search_ranking.group_order(
+            {
+                "games": min(
+                    (
+                        search_ranking.quality_or(
+                            q,
+                            (game.name, game.name_normalized),
+                            search_ranking.SUBSTRING,
+                        )
+                        for game in games
+                    ),
+                    default=None,
+                ),
+                "series": series_rows[0][0] if series_rows else None,
+                "developers": developer_rows[0][0] if developer_rows else None,
+            },
+            SEARCH_GROUPS,
+        )
 
         return JsonResponse(
             {
                 "developers": developer_results,
                 "games": game_results,
                 "series": series_results,
+                "order": order,
             }
         )
 

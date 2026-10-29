@@ -2,6 +2,28 @@
 
 ## 2026-10-29
 
+- **Search leads with the better match, in both sections.** "Beatles"
+  filled all five album rows with Beatles albums, matched on their credit
+  line, and the band sat below the dropdown's fold. Each group is now
+  scored (exact name, word start, substring, credit-only) and the best
+  group comes first: "Beatles" leads with the artist, "Nintendo" with the
+  developer, "Halo" with the series, "Abbey Road" with the album. Albums
+  and games stay in rank order except an exact title
+  (`core/services/search_ranking.py`)
+- **List types come from the release file.** `ListData.txt` gained the
+  games file's type column; an unknown word fails the import with its row
+  number, and the title-guessing `infer_list_type` is gone (it filed
+  AllMusic's "Decade in Review" as all-time)
+- **Music marks are illustrated, as games' are.** Heard is a gold record
+  and Have that record leaving its sleeve, as Played is the Mario Star;
+  Want is the record with a plus, as games' is the star with one. Both
+  sections' status filters are now the one shared control, each option
+  showing its button's mark in its colours
+- **Artist and developer lists:** the count is the second column, centred;
+  the top item's rank moved under its title, where in a column of its own
+  it read as the artist's rank. The developer sort sits beside the search
+  box, as the shared control the artist list uses
+
 - **The CSP lets GA4 send its hits to `www.google.com`.** gtag.js now also
   posts to `https://www.google.com/g/collect`, which `connect-src` didn't
   allow, so Sentry reported it (ACCLAIMED-VIDEO-GAMES-99, from `/lists/`).

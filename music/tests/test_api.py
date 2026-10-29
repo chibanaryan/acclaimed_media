@@ -644,7 +644,10 @@ class MusicUnifiedSearchViewTests(MusicAPITestMixin, TestCase):
         # endpoint must not run a full scan for a single letter.
         response = self.client.get(self.url, {"q": "a"})
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"albums": [], "artists": []})
+        self.assertEqual(
+            response.json(),
+            {"albums": [], "artists": [], "order": ["artists", "albums"]},
+        )
 
     def test_albums_match_on_title_and_on_credit(self):
         by_title = self.client.get(self.url, {"q": "kid a"}).json()
@@ -705,3 +708,86 @@ class MusicUnifiedSearchViewTests(MusicAPITestMixin, TestCase):
     def test_anonymous_callers_get_404(self):
         self.client.logout()
         self.assertEqual(self.client.get(self.url, {"q": "kid a"}).status_code, 404)
+
+    def _album(self, name, rank, credit, artist=None):
+        album = models.Album.objects.create(name=name, rank=rank, artist_credit=credit)
+        if artist:
+            album.artists.set([artist])
+        return album
+
+    def test_artists_lead_when_the_query_names_an_artist(self):
+        # "Beatles" filled all five album rows with Beatles albums, matched
+        # on their credit, and the band sat below the dropdown's fold.
+        data = self.client.get(self.url, {"q": "radiohead"}).json()
+        self.assertEqual(data["order"], ["artists", "albums"])
+
+    def test_albums_lead_when_a_title_is_the_better_match(self):
+        self._album(
+            "Kid Astray Live",
+            40,
+            "Kid Astray",
+            models.Artist.objects.create(name="Kid Astray", slug="kid-astray"),
+        )
+        data = self.client.get(self.url, {"q": "kid a"}).json()
+        self.assertEqual([a["name"] for a in data["artists"]], ["Kid Astray"])
+        self.assertEqual(data["order"], ["albums", "artists"])
+        self.assertEqual(data["albums"][0]["name"], "Kid A")
+
+    def test_an_artist_and_a_self_titled_album_tie_to_the_artist(self):
+        self._album("Radiohead", 30, "Radiohead", self.artist)
+        data = self.client.get(self.url, {"q": "radiohead"}).json()
+        self.assertEqual(data["order"], ["artists", "albums"])
+        # Among the albums, the exact title comes first all the same.
+        self.assertEqual(data["albums"][0]["name"], "Radiohead")
+
+    def test_with_no_artist_match_albums_lead(self):
+        data = self.client.get(self.url, {"q": "computer"}).json()
+        self.assertEqual(data["artists"], [])
+        self.assertEqual(data["order"], ["albums", "artists"])
+
+    def test_albums_keep_rank_order_but_for_an_exact_title(self):
+        # By match alone "Beatles" put Meet the Beatles! (#820) above Abbey
+        # Road (#4); only an exact title jumps the ranking.
+        self._album("Radiohead Covered", 900, "Various Artists")
+        self._album("Radiohead", 950, "Various Artists")
+        names = [
+            album["name"]
+            for album in self.client.get(self.url, {"q": "radiohead"}).json()["albums"]
+        ]
+        self.assertEqual(
+            names, ["Radiohead", "Kid A", "OK Computer", "Radiohead Covered"]
+        )
+
+    def test_the_album_limit_keeps_the_exact_title(self):
+        self._album("Radiohead", 950, "Various Artists")
+        data = self.client.get(self.url, {"q": "radiohead", "album_limit": "1"}).json()
+        self.assertEqual([a["name"] for a in data["albums"]], ["Radiohead"])
+
+    def test_only_the_albums_shown_decide_which_group_leads(self):
+        stray = models.Artist.objects.create(name="Kid Astray", slug="kid-astray")
+        self._album("Live", 3, "Kid Astray", stray)
+        self._album("Strays", 900, "Somebody Else")
+        # "Strays" starts with the query, and Kid Astray only contains it,
+        # but the one album shown is matched on its credit alone.
+        data = self.client.get(self.url, {"q": "stray", "album_limit": "1"}).json()
+        self.assertEqual([a["name"] for a in data["albums"]], ["Live"])
+        self.assertEqual(data["order"], ["artists", "albums"])
+        data = self.client.get(self.url, {"q": "stray"}).json()
+        self.assertEqual(data["order"], ["albums", "artists"])
+
+    def test_artists_are_ordered_by_match_before_album_count(self):
+        tribute = models.Artist.objects.create(
+            name="Radiohead Tribute Band", slug="radiohead-tribute-band"
+        )
+        for rank in (50, 51, 52):
+            self._album(f"Tribute {rank}", rank, "Radiohead Tribute Band", tribute)
+        artists = self.client.get(self.url, {"q": "radiohead"}).json()["artists"]
+        self.assertEqual(
+            [(a["name"], a["albums_count"]) for a in artists],
+            [("Radiohead", 2), ("Radiohead Tribute Band", 3)],
+        )
+        # With the match equal, the most albums still come first.
+        artists = self.client.get(self.url, {"q": "radioh"}).json()["artists"]
+        self.assertEqual(
+            [a["name"] for a in artists], ["Radiohead Tribute Band", "Radiohead"]
+        )

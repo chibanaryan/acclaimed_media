@@ -13,6 +13,7 @@ from tempfile import TemporaryDirectory
 
 from django.conf import settings
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 
 from core import constants as core_constants
@@ -27,9 +28,10 @@ from music.tests.test_views import StaffUserTestMixin
 FIXTURE_DIR = Path(settings.BASE_DIR) / "acclaimedgames" / "test_input_files" / "music"
 
 LISTS_TSV = (
-    "Rolling Stone\t2023\tThe 500 Greatest Albums of All Time\thttps://rs.example\n"
-    "Pitchfork\t2022\tThe 150 Best Albums of the 1990s\thttps://pf.example\n"
-    "Spin\t2010\t125 Best Albums of the Past 25 Years\t\n"
+    "Rolling Stone\t2023\tAll Time\tThe 500 Greatest Albums of All Time\t"
+    "https://rs.example\n"
+    "Pitchfork\t2022\tDecade\tThe 150 Best Albums of the 1990s\thttps://pf.example\n"
+    "Spin\t2010\tMisc\t125 Best Albums of the Past 25 Years\t\n"
 )
 
 # Shaped like the real ArtistInfo.txt: sparse provider ids, Wikidata ids
@@ -72,90 +74,67 @@ def import_release(**overrides):
     )
 
 
-class InferListTypeTests(TestCase):
-    """The lists file has no type column, so the title has to carry it."""
+class ListTypeColumnTests(TestCase):
+    """Column 3 of the lists file is the type, in the games file's words."""
 
-    def test_all_time_wording(self):
-        for title in [
-            "The 500 Greatest Albums of All Time",
-            "The All-TIME 100 Albums",
-            "100 Greatest Albums Ever",
-            "The 100 Greatest Albums Ever Made",
-            "1001 Albums You Must Hear Before You Die (2021)",
-        ]:
-            with self.subTest(title=title):
-                self.assertEqual(
-                    import_handler.infer_list_type(title),
-                    core_constants.LIST_ALLTIME,
-                )
-
-    def test_decade_wording(self):
-        for title in [
-            "The 150 Best Albums of the 1990s",
-            "100 Best Albums of the ’90s",
-            "100 Best Albums of the Eighties",
-            "The Best Albums of The Decade: The 2010s",
-            "Die 100 besten Alben der 10-er Jahre",
-            "100 meilleurs albums des années 2000",
-        ]:
-            with self.subTest(title=title):
-                self.assertEqual(
-                    import_handler.infer_list_type(title),
-                    core_constants.LIST_DECADE,
-                )
-
-    def test_era_wording_is_miscellaneous(self):
-        for title in [
-            "The 300 Best Albums of the Past 30 Years",
-            "Top 100 Albums of the Last 20 Years",
-            "The 250 Greatest Albums of the 21st Century So Far",
-            "The 100 Greatest Albums of Our Lifetime",
-            "The 100 Best Albums 1969 - 2009",
-            "The Best Albums 2000-2015",
-            "Les 100 albums des années 1986 - 1996",
-        ]:
-            with self.subTest(title=title):
-                self.assertEqual(
-                    import_handler.infer_list_type(title),
-                    core_constants.LIST_MISC,
-                )
-
-    def test_an_unqualified_title_falls_back_to_all_time(self):
-        # Every list in this corpus is retrospective, so a ranking with no
-        # period in its name is making an all-time claim.
-        for title in ["Top 100 Albums", "Apple Music 100 Best Albums"]:
-            with self.subTest(title=title):
-                self.assertEqual(
-                    import_handler.infer_list_type(title),
-                    core_constants.LIST_ALLTIME,
-                )
-
-    def test_empty_and_none_titles_do_not_raise(self):
-        self.assertEqual(
-            import_handler.infer_list_type(""), core_constants.LIST_ALLTIME
+    def _types(self, *cells):
+        tsv = "".join(
+            f"Mojo\t1995\t{cell}\tList {i}\t\n" for i, cell in enumerate(cells)
         )
+        return [row.type for row in import_handler.parse_lists_file(StringIO(tsv))]
+
+    def test_the_games_words_map_to_the_shared_codes(self):
         self.assertEqual(
-            import_handler.infer_list_type(None), core_constants.LIST_ALLTIME
+            self._types("All Time", "Decade", "EOY", "Misc"),
+            [
+                core_constants.LIST_ALLTIME,
+                core_constants.LIST_DECADE,
+                core_constants.LIST_EOY,
+                core_constants.LIST_MISC,
+            ],
         )
 
-    def test_decade_wording_wins_over_all_time_wording(self):
-        # "of the 1990s" must not be swallowed by a looser all-time match.
+    def test_spelling_variants_and_bare_codes_are_read(self):
         self.assertEqual(
-            import_handler.infer_list_type(
-                "The Greatest Albums of All Time: the 1990s"
-            ),
-            core_constants.LIST_DECADE,
+            self._types("all-time", " ALL  TIME ", "End of Year", "miscellaneous", "d"),
+            [
+                core_constants.LIST_ALLTIME,
+                core_constants.LIST_ALLTIME,
+                core_constants.LIST_EOY,
+                core_constants.LIST_MISC,
+                core_constants.LIST_DECADE,
+            ],
         )
 
-    def test_every_real_list_title_classifies_without_falling_through(self):
-        rows = _read_fixture_rows("ListData.txt")
-        self.assertGreater(len(rows), 0)
-        types = {import_handler.infer_list_type(row[2]) for row in rows}
-        # Every supplied title lands on a known type, and none of them is an
-        # end-of-year list.
-        self.assertTrue(types)
-        self.assertNotIn(core_constants.LIST_EOY, types)
-        self.assertEqual(types - set(dict(core_constants.LIST_TYPES)), set())
+    def test_an_unknown_type_fails_with_its_row_number(self):
+        # Games' importer would store "F" for this; nobody chose that.
+        with self.assertRaises(ValueError) as ctx:
+            self._types("Decade", "Fortnightly")
+        self.assertIn("Lists row 2", str(ctx.exception))
+        self.assertIn("'Fortnightly'", str(ctx.exception))
+
+    def test_a_file_without_the_type_column_is_named_as_such(self):
+        with self.assertRaises(ValueError) as ctx:
+            import_handler.parse_lists_file(
+                StringIO("Mojo\t1995\tThe 100 Greatest Albums\thttps://m.example\n")
+            )
+        self.assertIn("before list types", str(ctx.exception))
+
+    def test_the_title_no_longer_decides_the_type(self):
+        # The title inference this replaced filed this as all-time.
+        rows = import_handler.parse_lists_file(
+            StringIO("AllMusic\t2019\tDecade\tThe AllMusic Decade in Review\t\n")
+        )
+        self.assertEqual(rows[0].type, core_constants.LIST_DECADE)
+        self.assertEqual(rows[0].name, "The AllMusic Decade in Review")
+
+    def test_every_real_list_names_a_known_type(self):
+        with (FIXTURE_DIR / "ListData.txt").open(encoding="utf-8-sig", newline="") as f:
+            rows = import_handler.parse_lists_file(f)
+        self.assertEqual(len(rows), len(_read_fixture_rows("ListData.txt")))
+        self.assertEqual(
+            {row.type for row in rows} - set(dict(core_constants.LIST_TYPES)), set()
+        )
 
 
 class NormalizeArtistNameTests(TestCase):
@@ -411,7 +390,7 @@ class ImportArtistsTests(TestCase):
 
 
 class ImportListsTests(TestCase):
-    def test_creates_publications_and_lists_with_inferred_types(self):
+    def test_creates_publications_and_lists_with_their_types(self):
         success, message = import_handler.import_lists(StringIO(LISTS_TSV))
         self.assertTrue(success)
         self.assertIn("Lists: 3 created", message)
@@ -445,7 +424,9 @@ class ImportListsTests(TestCase):
         self.assertIsNone(models.MusicList.objects.get(order=3).url)
 
     def test_a_missing_url_column_is_tolerated(self):
-        import_handler.import_lists(StringIO("Mojo\t1995\tThe 100 Greatest Albums\n"))
+        import_handler.import_lists(
+            StringIO("Mojo\t1995\tAll Time\tThe 100 Greatest Albums\n")
+        )
         self.assertIsNone(models.MusicList.objects.get(order=1).url)
 
     def test_reimporting_replaces_the_previous_lists(self):
@@ -457,8 +438,8 @@ class ImportListsTests(TestCase):
 
     def test_one_publication_is_reused_across_its_lists(self):
         tsv = (
-            "Pitchfork\t2022\tThe 150 Best Albums of the 1990s\t\n"
-            "Pitchfork\t2019\tThe 200 Best Albums of the 2010s\t\n"
+            "Pitchfork\t2022\tDecade\tThe 150 Best Albums of the 1990s\t\n"
+            "Pitchfork\t2019\tDecade\tThe 200 Best Albums of the 2010s\t\n"
         )
         import_handler.import_lists(StringIO(tsv))
         self.assertEqual(models.MusicPublication.objects.count(), 1)
@@ -470,8 +451,8 @@ class ImportListsTests(TestCase):
 
     def test_a_short_row_is_rejected(self):
         with self.assertRaises(ValueError) as ctx:
-            import_handler.import_lists(StringIO("Mojo\t1995\n"))
-        self.assertIn("expected at least 3", str(ctx.exception))
+            import_handler.import_lists(StringIO("Mojo\t1995\tDecade\n"))
+        self.assertIn("expected at least 4", str(ctx.exception))
 
     def test_progress_callback_receives_each_stage(self):
         events = []
@@ -482,7 +463,7 @@ class ImportListsTests(TestCase):
         self.assertEqual(names[0], "start")
         self.assertEqual(names[-1], "complete")
         self.assertEqual(names.count("progress"), 3)
-        self.assertEqual(len(dict(events)["complete"]["inferred"]), 3)
+        self.assertEqual(len(dict(events)["complete"]["types"]), 3)
 
 
 class ImportAlbumsTests(TestCase):
@@ -874,6 +855,13 @@ class ImportMusicDataCommandTests(TestCase):
         out = StringIO()
         call_command("import_music_data", stdout=out, **self.paths, **options)
         return out.getvalue()
+
+    def test_a_dry_run_names_a_bad_lists_file_without_a_traceback(self):
+        (self.dir / "ListData.txt").write_text(
+            "Mojo\t1995\tThe 100 Greatest Albums\t\n", encoding="utf-8"
+        )
+        with self.assertRaisesMessage(CommandError, "before list types"):
+            self.run_command(dry_run=True)
 
     def test_a_dry_run_reports_kept_added_and_removed(self):
         before = list(models.Album.objects.values_list("pk", "name", "rank"))

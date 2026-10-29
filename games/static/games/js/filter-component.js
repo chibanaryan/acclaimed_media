@@ -929,24 +929,21 @@ document.addEventListener('alpine:init', () => {
             if (this.initialized) this.debouncedFilterUpdate();
         },
 
-        resetPlayed() {
-            this.filters.played = [];
+        /**
+         * Add or remove one value of a multi-select status filter, and
+         * clear one. The method names core/includes/_status_filter.html
+         * calls, shared with music's mediaListControls; `key` is 'played'.
+         */
+        toggleStatusValue(key, value) {
+            const current = Array.isArray(this.filters[key]) ? this.filters[key] : [];
+            this.filters[key] = current.includes(value)
+                ? current.filter(s => s !== value)
+                : [...current, value];
             if (this.initialized) this.debouncedFilterUpdate();
         },
 
-        togglePlayedStatus(status) {
-            // Ensure filters.played is an array
-            if (!Array.isArray(this.filters.played)) {
-                this.filters.played = [];
-            }
-            const index = this.filters.played.indexOf(status);
-            if (index === -1) {
-                // Add status to array
-                this.filters.played = [...this.filters.played, status];
-            } else {
-                // Remove status from array
-                this.filters.played = this.filters.played.filter(s => s !== status);
-            }
+        resetStatus(key) {
+            this.filters[key] = [];
             if (this.initialized) this.debouncedFilterUpdate();
         },
 

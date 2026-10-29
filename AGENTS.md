@@ -306,7 +306,16 @@ Music API endpoints (public once `MUSIC_ENABLED` is on, staff-only until then):
 - `/api/music/meta/` - Counts and year/decade distributions
 - `/api/music/all/` - Every album in one payload, for client-side filtering
 - `/api/music/unified-search/` - Albums and artists together, for the sidebar
-  and mobile search boxes
+  and mobile search boxes. `order` puts the group with the better match on
+  top - exact name, then a word starting with the query, then a substring,
+  and last an album found only through its credit line - with artists
+  winning a tie (`core/services/search_ranking.py`, which games'
+  `/api/unified-search/` uses too). Artists are ordered by
+  match, then album count; albums by rank, except an exact title, which
+  comes first (by match alone, "Beatles" put Meet the Beatles! at #820 above
+  Abbey Road at #4). Albums always came first until 2026-10-29, and an album
+  matches on its credit, so "Beatles" filled the five album rows and the
+  band sat below the dropdown's fold
 - `/api/music/saved-filters/` and `/api/music/saved-filters/<pk>/` - a
   reader's saved filter combinations. The only endpoints in `music/api/`
   that **write**, so the only ones CSRF applies to
@@ -346,7 +355,7 @@ the hover.
 | `core/includes/_rank_distribution.html` | where the filtered items sit across the ranking |
 | `core/includes/_search_box.html` | the standard search input, with its clear button |
 | `core/includes/_tracking_button.html` | the three-state tracking dropdown, and `_tracking_button_template.html`, its clone twin |
-| `core/includes/_status_filter.html`, `_mobile_filter_status.html` | the tracking status filter |
+| `core/includes/_status_filter.html`, `_mobile_filter_status.html` | the tracking status filter, games and music alike since 2026-10-29: each option shows its button's mark in its colours (`GAME_STATUS_OPTIONS`, `LISTEN_STATUS_OPTIONS`) |
 | `core/includes/_saved_filters_dropdown.html`, `_saved_filter_modals.html`, `_mobile_saved_filters.html` | saved filter combinations, in the sidebar and the sheet |
 | `core/services/titles.py` | the heading's wording: `join_names`, `build_time_window` |
 | `core/services/ranking.py` | `rank_distribution`, the chart's binning |
@@ -509,9 +518,15 @@ everywhere: `is_owned_by_user` and `is_listened_by_user` annotate
 albums out, and the page renders three disjoint Sets (`ownedAlbumIds`,
 `listenedAlbumIds`, `wantToListenAlbumIds`), which `media-tracking.js` keeps
 current through a status-to-Set map. The reconnection merge keeps `owned` if
-any merged row had it. The Have icon, `mdi-album-jacket`, is not an MDI glyph:
-it is the `mdi-album` record knocked out of a filled square in `styles.css`,
-so it differs from Heard by shape and not only colour.
+any merged row had it. Have and Heard are illustrations, as games' Played is
+its Mario Star: a gold record for Heard, and for Have that record sliding out
+of its sleeve, so they differ by shape and not only colour
+(`music/static/music/images/`). The shared button, its clone twin, the status
+filter and the quick-mark picker take a static `image` in place of an icon
+class. Untracked is `mdi-record-circle-outline`, and Want that empty record
+with a plus, as games' Want is `mdi-star-plus-outline`: MDI has no record
+with a plus, so `mdi-record-plus` is an SVG mask in `styles.css`, filled
+with the text colour.
 
 **Quick-mark mode.** A "Mark" button opens a menu of Have, Heard, Want,
 Clear and Off (games: Played, Want to Play, Clear, Off). With a mode picked,
@@ -972,7 +987,7 @@ release):
 | File | Columns |
 |---|---|
 | `ArtistInfo.txt` | id, wikidata_ids, name, then any further name variants |
-| `ListData.txt` | publisher, year, name, url |
+| `ListData.txt` | publisher, year, type, name, url |
 | `WebRankings.txt` | rank, name, credits, year, wikidata_ids |
 | `ListPositions.txt` | tab-separated `listIndex:position` pairs, one row per album in rank order |
 
@@ -986,10 +1001,13 @@ The import runs in one transaction, artists first. Lists, list positions and
 credits are replaced; artists and albums are updated in place. Four details
 differ from the games files:
 
-- **No list type column.** `infer_list_type()` derives A/D/E/M from each title.
-  Decade and era wording is matched before all-time wording, and an unqualified
-  title falls back to all-time, since every list in this corpus is retrospective.
-  Check the printed classification and correct any list in the admin.
+- **The list type is validated.** Column 3 is All Time, Decade, EOY or Misc,
+  as in the games file, but an unknown word fails the import with its row
+  number where games stores whatever letter it starts with
+  (`parse_lists_file`). Until the 2026-10-29 release the file had no type
+  column and the types were guessed from the titles, which filed "The
+  AllMusic Decade in Review" as all-time; a file in that layout now fails
+  with a message saying so.
 - **Artists are the provider's, by id.** `ArtistInfo.txt` lists every act
   under a permanent index (sparse), then its Wikidata ids (comma-separated,
   optional, read with or without the `Q`), then its names. `WebRankings.txt`

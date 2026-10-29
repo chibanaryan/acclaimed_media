@@ -70,6 +70,7 @@ class DeveloperListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
         sort = self._sort()
         direction = self.request.GET.get("dir", "asc")
         context["sort"] = sort
+        context["sort_options"] = config.DEVELOPER_SORT_OPTIONS
 
         # Get cached hierarchy data (precomputed counts, game IDs, etc.)
         from games.services.developer_service import get_developer_hierarchy
@@ -112,7 +113,14 @@ class DeveloperListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
                     g.id: g
                     for g in models.Game.objects.filter(id__in=top_game_ids)
                     .select_related("primary_igdb_game_data")
-                    .only("id", "name", "slug", "rank", "primary_igdb_game_data")
+                    .only(
+                        "id",
+                        "name",
+                        "slug",
+                        "rank",
+                        "year_of_release",
+                        "primary_igdb_game_data",
+                    )
                 }
                 for dev in developers:
                     top_game_id = hierarchy["top_game_id"].get(dev.id)
@@ -196,7 +204,14 @@ class DeveloperListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
                     g.id: g
                     for g in models.Game.objects.filter(id__in=top_game_ids)
                     .select_related("primary_igdb_game_data")
-                    .only("id", "name", "slug", "rank", "primary_igdb_game_data")
+                    .only(
+                        "id",
+                        "name",
+                        "slug",
+                        "rank",
+                        "year_of_release",
+                        "primary_igdb_game_data",
+                    )
                 }
                 for dev in devs_needing_top_game:
                     top_game_id = hierarchy["top_game_id"].get(dev.id)

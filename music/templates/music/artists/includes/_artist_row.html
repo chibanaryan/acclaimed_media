@@ -12,16 +12,13 @@
         <div class="text-xs text-base-content/70">Also credited as {{ artist.variant_names|join:", " }}</div>
         {% endif %}
     </td>
-    {% with best=artist.top_album %}
     <td class="text-center align-middle">
-        {% if best %}
-        <span class="text-accent font-bold text-xl tabular-nums">#{{ best.rank }}</span>
-        {% else %}
-        <span class="text-base-content/30 text-lg">&mdash;</span>
-        {% endif %}
+        <span class="text-lg tabular-nums">{{ artist.albums_count }}</span>
     </td>
+    {% with best=artist.top_album %}
     <td class="py-2">
         {% if best %}
+        {# The rank is the album's, so it sits under the album's title: in a column of its own it read as a ranking of the artists, and as a large figure beside the count it read as a pair of numbers. #}
         <a href="{{ best.get_absolute_url }}" class="flex items-center gap-3 group py-1 -ml-1 pl-1 rounded transition-colors hover:bg-base-content/5">
             {# `thumbnail`, not `cover_image_url`: the latter is the remote #}
             {# Cover Art Archive URL, which 500s on roughly one request in #}
@@ -38,9 +35,7 @@
             {% endif %}
             <span class="min-w-0">
                 <span class="block truncate group-hover:underline">{{ best.name }}</span>
-                {% if best.year_released %}
-                <span class="block text-xs text-base-content/70">{{ best.year_released }}</span>
-                {% endif %}
+                <span class="block text-xs text-base-content/70"><span class="text-accent font-semibold tabular-nums">#{{ best.rank }}</span>{% if best.year_released %} &middot; {{ best.year_released }}{% endif %}</span>
             </span>
         </a>
         {% else %}
@@ -48,7 +43,4 @@
         {% endif %}
     </td>
     {% endwith %}
-    <td class="text-right align-middle">
-        <span class="font-semibold tabular-nums">{{ artist.albums_count }}</span>
-    </td>
 </tr>

@@ -551,6 +551,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         # (core/includes/_media_list_controls.html)
         context["sort_options"] = config.SORT_OPTIONS
         context["quick_mark_options"] = config.QUICK_MARK_OPTIONS
+        context["game_status_options"] = config.GAME_STATUS_OPTIONS
 
         # Add played/want-to-play game IDs for client-side rendering (cached per-user)
         if self.request.user.is_authenticated:

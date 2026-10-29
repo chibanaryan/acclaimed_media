@@ -3,4 +3,4 @@
 {# The same constants _listen_button.html passes, over the core clone twin. #}
 {# Rendered with no context at all, inside a <template> in music/home.html. #}
 {# Keep every template comment on a single line. #}
-{% include 'core/includes/_tracking_button_template.html' with tracking_scope='album' owned_icon='mdi-album-jacket' owned_icon_class='text-accent' owned_label='Have' tracked_icon='mdi-album' tracked_icon_class='text-accent' wanted_icon='mdi-record-circle' wanted_icon_class='text-warning' untracked_icon='mdi-record-circle-outline' untracked_icon_class='text-base-content/30' tracked_label='Heard' wanted_label='Want' untracked_label='Untracked' %}
+{% include 'core/includes/_tracking_button_template.html' with tracking_scope='album' owned_image='music/images/record-sleeve.svg' owned_label='Have' tracked_image='music/images/gold-record.svg' wanted_icon='mdi-record-plus' wanted_icon_class='text-warning' untracked_icon='mdi-record-circle-outline' untracked_icon_class='text-base-content/30' tracked_label='Heard' wanted_label='Want' untracked_label='Untracked' %}

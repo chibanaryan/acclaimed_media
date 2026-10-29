@@ -1418,6 +1418,31 @@ class GameSearchLoadMoreTest(TestCase):
         self.assertIn(game_50.id, game_ids)
 
 
+class GameStatusFilterTests(TestCase):
+    """The rankings page's status filter is the shared one music uses."""
+
+    def setUp(self):
+        clear_all_caches()
+        Game.objects.create(name="Game 1", rank=1, year_of_release=2020)
+        self.user = User.objects.create_user(username="statusfilter", password="pw")
+
+    def test_each_option_shows_its_mark_in_its_colours(self):
+        self.client.login(username="statusfilter", password="pw")
+        html = self.client.get(reverse("home")).content.decode()
+        for value in ("no", "want", "yes"):
+            with self.subTest(value=value):
+                self.assertIn(f"toggleStatusValue('played', '{value}')", html)
+        # In the sidebar and the mobile sheet.
+        self.assertEqual(html.count("mdi mdi-star-outline opacity-60"), 2)
+        self.assertEqual(html.count("mdi mdi-star-plus-outline text-warning"), 2)
+        self.assertNotIn("\u2605+ Want", html)
+
+    def test_signed_out_the_options_are_shown_disabled(self):
+        html = self.client.get(reverse("home")).content.decode()
+        self.assertIn('title="Sign in to track games"', html)
+        self.assertNotIn("toggleStatusValue('played'", html)
+
+
 class DeveloperListViewTest(TestCase):
     """Test the developer list view."""
 
@@ -1464,6 +1489,40 @@ class DeveloperListViewTest(TestCase):
         self.assertTemplateUsed(
             response, "developers/includes/_developer_list_content.html"
         )
+
+    def test_sort_is_the_shared_control_beside_the_search_box(self):
+        html = self.client.get(reverse("developers-list")).content.decode()
+        for value in ("games", "studios", "rank", "name"):
+            with self.subTest(sort=value):
+                self.assertIn(f"updateSort('{value}')", html)
+        # One row: the search box, a divider, then the sort.
+        self.assertRegex(
+            html,
+            r'(?s)<div class="flex flex-wrap items-center gap-2 min-h-\[2\.5rem\]">'
+            r'(?:(?!</label>).)*id="developer-search".*?</label>\s*'
+            r"(?:\{#[^#]*#\}\s*)?"
+            r'<div class="hidden desktop:block w-px h-6 bg-base-content/20"></div>\s*'
+            r'<div class="flex items-center gap-3">',
+        )
+
+    def test_columns_put_the_counts_before_the_top_game(self):
+        """The rank sits in the Top Game cell: as a column it read as the
+        developer's own rank."""
+        html = self.client.get(reverse("developers-list")).content.decode()
+        self.assertEqual(
+            re.findall(r'<th class="font-semibold[^"]*">([^<]+)</th>', html),
+            ["Name", "Games", "Subsidiaries", "Top Game"],
+        )
+
+    def test_the_rank_is_inside_the_top_game_link(self):
+        for query in ("", "?append=true"):
+            with self.subTest(query=query or "first page"):
+                html = self.client.get(reverse("developers-list") + query).content
+                self.assertRegex(
+                    html.decode(),
+                    r'(?s)<a href="/game/[^"]*"'
+                    r"(?:(?!</a>).)*>#1</span>(?:(?!</a>).)*</a>",
+                )
 
     def test_append_mode_uses_append_template(self):
         """Test append mode uses the append template."""

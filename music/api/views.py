@@ -21,9 +21,11 @@ from rest_framework import status
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView, Response
+from unidecode import unidecode
 
 from core import constants as core_constants
 from core.services import genre_tree
+from core.services import search_ranking
 from core.services.query_params import parse_limit
 
 from .. import config, models
@@ -201,6 +203,10 @@ class AlbumAllDataView(MusicReadAPIMixin, APIView):
         )
 
 
+#: The unified search's groups, in the order a tie between them falls.
+SEARCH_GROUPS = ("artists", "albums")
+
+
 class MusicUnifiedSearchView(MusicReadAPIMixin, APIView):
     """Albums and artists in one response, for the sidebar search box.
 
@@ -208,6 +214,12 @@ class MusicUnifiedSearchView(MusicReadAPIMixin, APIView):
     same search box in the same chrome; music had no endpoint at all, which
     is why the sidebar's search input was gated on ``media_type == 'games'``
     and the section had no search anywhere.
+
+    ``order`` names the groups in the order the dropdown shows them: the one
+    holding the better match (``core.services.search_ranking``) leads, and
+    on a tie the artist, since "The Beatles" names the band and the White
+    Album equally well and is after the band. Artists are ordered best match
+    first, then by album count; albums by rank, but for an exact title.
     """
 
     def get(self, request):
@@ -216,19 +228,51 @@ class MusicUnifiedSearchView(MusicReadAPIMixin, APIView):
         artist_limit = parse_limit(request.query_params.get("artist_limit"), 3)
 
         if len(q) < 2:
-            return Response({"albums": [], "artists": []})
+            return Response({"albums": [], "artists": [], "order": list(SEARCH_GROUPS)})
 
-        albums = (
-            models.Album.objects.filter(
-                Q(name__icontains=q)
-                | Q(name_normalized__icontains=q)
-                | Q(artist_credit__icontains=q)
-            )
-            .distinct()
-            .order_by("rank")[:album_limit]
+        # Ranked, with an exact title first, in one bounded query; thumbnail
+        # reads the MusicBrainz row, so it is joined, as /api/music/all/ does.
+        albums = list(
+            search_ranking.exact_first(
+                models.Album.objects.filter(
+                    Q(name__icontains=q)
+                    | Q(name_normalized__icontains=q)
+                    | Q(artist_credit__icontains=q)
+                ),
+                "rank",
+                name=q,
+                name_normalized=unidecode(q),
+            ).select_related("primary_musicbrainz_album_data")[:album_limit]
         )
 
-        artists = _artists_with_albums(artists_matching(q))[:artist_limit]
+        # Already most albums first; a stable sort puts the best match above that.
+        artists = _artists_with_albums(artists_matching(q), with_variant_names=True)
+        artist_scores = {
+            artist.id: search_ranking.quality_or(
+                q, [artist.name, *artist.variant_names], search_ranking.SUBSTRING
+            )
+            for artist in artists
+        }
+        artists.sort(key=lambda artist: artist_scores[artist.id])
+        artists = artists[:artist_limit]
+
+        order = search_ranking.group_order(
+            {
+                "albums": min(
+                    (
+                        search_ranking.quality_or(
+                            q,
+                            (album.name, album.name_normalized),
+                            search_ranking.INDIRECT,
+                        )
+                        for album in albums
+                    ),
+                    default=None,
+                ),
+                "artists": artist_scores[artists[0].id] if artists else None,
+            },
+            SEARCH_GROUPS,
+        )
 
         return Response(
             {
@@ -253,6 +297,7 @@ class MusicUnifiedSearchView(MusicReadAPIMixin, APIView):
                     }
                     for artist in artists
                 ],
+                "order": order,
             }
         )
 
@@ -326,8 +371,8 @@ def _artists_with_albums(queryset, with_variant_names=False):
     """``queryset``'s artists with a ranked album, most albums first.
 
     A list with ``albums_count`` set on each artist, and ``variant_names``
-    too when asked for - the unified search shows none, so it skips the
-    query.
+    too when asked for: the unified search shows none, but scores a match on
+    a credited name ("Revolution" finds Prince) by them.
     """
     album_ids = album_ids_by_artist()
     artists = list(queryset.filter(id__in=list(album_ids)))

@@ -353,8 +353,8 @@ function mediaListControlsData(config) {
         /**
          * Add or remove one value of a multi-select status filter.
          *
-         * Games' `togglePlayedStatus` with the key supplied, so the shared
-         * status control can drive whichever parameter a section uses.
+         * The shared status control drives whichever parameter a section
+         * uses through this; games' filterComponent has the same pair.
          */
         toggleStatusValue(key, value) {
             const current = this.filters[key] || [];

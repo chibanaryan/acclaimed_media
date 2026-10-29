@@ -1,13 +1,17 @@
 import importlib
+import re
+from pathlib import Path
 from unittest import mock
 
 from django.contrib.flatpages.models import FlatPage
+from django.conf import settings
 from django.test import TestCase
 from rest_framework.test import APIClient
 
+from core.services import search_ranking
 from core.tests.utils import clear_all_caches
 from .. import models
-from ..api import serializers
+from ..api import serializers, views
 from ..api.views import GameListView
 
 
@@ -582,6 +586,112 @@ class UnifiedSearchViewTests(TestCase):
         data = response.json()
         self.assertEqual(len(data["series"]), 1)
         self.assertIn("Quest", data["series"][0]["name"])
+
+    def _game(self, name, rank, developer=None, series=None):
+        game = models.Game.objects.create(
+            name=name, rank=rank, year_of_release=2000, slug=f"game-{rank}"
+        )
+        if developer:
+            game.developers.add(developer)
+        if series:
+            game.series.add(series)
+        return game
+
+    def test_the_group_holding_the_best_match_leads(self):
+        # Nothing in the games group is called Nintendo; the developer is.
+        data = self.client.get("/api/unified-search/", {"q": "nintendo"}).json()
+        self.assertEqual(data["order"][0], "developers")
+        # A title, and nothing else, leads with the games.
+        data = self.client.get("/api/unified-search/", {"q": "zelda"}).json()
+        self.assertEqual(data["order"], ["games", "series", "developers"])
+
+    def test_a_series_named_exactly_leads(self):
+        fighters = models.Series.objects.create(
+            name="Street Fighter", slug="street-fighter", igdb_id=7000
+        )
+        self.game3.series.add(fighters)
+        self._game("Street Fighter Alpha", 90, series=fighters)
+        data = self.client.get("/api/unified-search/", {"q": "street fighter"}).json()
+        self.assertEqual(data["order"][0], "series")
+
+    def test_games_keep_rank_order_but_for_an_exact_title(self):
+        self._game("Street Fighter Alpha", 90)
+        self._game("Street Fighter", 900)
+        games = self.client.get("/api/unified-search/", {"q": "street fighter"}).json()[
+            "games"
+        ]
+        self.assertEqual(
+            [game["name"] for game in games],
+            ["Street Fighter", "Street Fighter II", "Street Fighter Alpha"],
+        )
+
+    def test_a_tie_between_a_game_and_a_series_goes_to_the_game(self):
+        zelda = models.Series.objects.create(
+            name="The Legend of Zelda", slug="zelda-series", igdb_id=7001
+        )
+        self.game1.series.add(zelda)
+        self._game("Zelda II", 40, series=zelda)
+        data = self.client.get("/api/unified-search/", {"q": "legend of zelda"}).json()
+        self.assertEqual(data["order"][:2], ["games", "series"])
+
+    def test_developers_are_best_match_first_then_most_games(self):
+        self._game("Resident Evil", 60, developer=self.capcom)
+        for rank in (61, 62):
+            self._game(f"Devil May Cry {rank}", rank, developer=self.capcom_studio)
+        developers = self.client.get("/api/unified-search/", {"q": "capcom"}).json()[
+            "developers"
+        ]
+        self.assertEqual(
+            [(dev["name"], dev["games_count"]) for dev in developers],
+            [("Capcom", 1), ("Capcom Production Studio 4", 3)],
+        )
+
+    def test_an_exact_title_is_found_past_the_bounded_read(self):
+        # Only the best-ranked few are read, so the exact title, ranked last,
+        # comes in through its own query.
+        self._game("Street Fighter", 900)
+        games = self.client.get(
+            "/api/unified-search/", {"q": "street fighter", "game_limit": 1}
+        ).json()["games"]
+        self.assertEqual([game["name"] for game in games], ["Street Fighter"])
+
+    def test_an_exact_developer_is_found_past_the_bounded_read(self):
+        self._game("Resident Evil", 60, developer=self.capcom)
+        for rank in (61, 62):
+            self._game(f"Devil May Cry {rank}", rank, developer=self.capcom_studio)
+        with mock.patch.object(search_ranking, "CANDIDATES", 1):
+            developers = self.client.get(
+                "/api/unified-search/", {"q": "capcom"}
+            ).json()["developers"]
+        self.assertEqual(developers[0]["name"], "Capcom")
+
+    def test_a_row_gone_between_the_two_reads_is_dropped(self):
+        # An import can replace a developer or series after its id is read.
+        with mock.patch(
+            "games.api.views._best_first", return_value=[(0, -1, "gone", 999999, 1)]
+        ):
+            data = self.client.get("/api/unified-search/", {"q": "zelda"}).json()
+        self.assertEqual(data["developers"], [])
+        self.assertEqual(data["series"], [])
+        self.assertEqual(data["order"][0], "games")
+
+    def test_the_client_default_order_is_the_server_tie_order(self):
+        source = (
+            Path(settings.BASE_DIR)
+            / "games"
+            / "static"
+            / "games"
+            / "js"
+            / "utils-base.js"
+        ).read_text()
+        groups = re.search(r"var SEARCH_GROUPS_GAMES = \[([^\]]*)\];", source)
+        self.assertEqual(
+            tuple(re.findall(r"'(\w+)'", groups.group(1))), views.SEARCH_GROUPS
+        )
+
+    def test_a_short_query_still_names_the_groups(self):
+        data = self.client.get("/api/unified-search/", {"q": "z"}).json()
+        self.assertEqual(data["order"], ["games", "series", "developers"])
 
 
 class GameDataVersionViewTests(TestCase):

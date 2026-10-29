@@ -28,7 +28,7 @@
             {# Search dropdown - albums and artists, in the games box's shape #}
             <div class="relative shrink-0 nav-item" data-nav-item="search" x-data="{
                      showSearchDropdown: false,
-                     ...createMediaSearchData('{% url 'music-api:unified-search' %}', { albums: 5, artists: 3 })
+                     ...createMediaSearchData('{% url 'music-api:unified-search' %}', { artists: 3, albums: 5 })
                  }"
                  x-init="window.addEventListener('reset-search-state', () => { reset(); showSearchDropdown = false; })"
                  @click.away="showSearchDropdown = false; reset()">
@@ -84,39 +84,53 @@
                                 <template x-if="q && q.trim().length >= 2 && !loading && !hasResults()">
                                     <li class="disabled"><span class="text-base-content/85 text-sm">No results found</span></li>
                                 </template>
-                                <template x-if="has('albums')">
-                                    <li class="menu-title text-xs uppercase tracking-wider text-base-content/70 pt-1 pb-0">Albums</li>
-                                </template>
-                                <template x-for="album in results.albums" :key="'album-' + album.id">
-                                    <li>
-                                        <a :href="'/music/' + album.slug + '/'" class="flex items-center gap-3">
-                                            <img :src="album.thumbnail" :alt="album.name" width="32" height="32" class="w-8 h-8 rounded object-cover">
-                                            <div>
-                                                <div class="font-semibold text-sm" x-text="album.name + (album.year_released ? ' (' + album.year_released + ')' : '')"></div>
-                                                <div class="text-xs text-base-content/85" x-text="'All time rank: ' + album.rank"></div>
-                                            </div>
-                                        </a>
-                                    </li>
-                                </template>
-                                <template x-if="q && q.trim().length >= 2 && !loading && has('albums')">
-                                    <li>
-                                        <a :href="'{% url 'music:home' %}?q=' + encodeURIComponent(q.trim())" class="link link-accent text-sm">
-                                            See all album results &hellip;
-                                        </a>
-                                    </li>
-                                </template>
-                                <template x-if="has('artists')">
-                                    <li class="menu-title text-xs uppercase tracking-wider text-base-content/70 pt-2 pb-0">Artists</li>
-                                </template>
-                                <template x-for="artist in results.artists" :key="'artist-' + artist.slug">
-                                    <li>
-                                        <a :href="'/music/artists/' + artist.slug + '/'" class="flex items-center gap-3">
-                                            <span class="mdi mdi-account-music text-xl text-accent" aria-hidden="true"></span>
-                                            <div>
-                                                <div class="font-semibold text-sm" x-text="artist.name"></div>
-                                                <div class="text-xs text-base-content/85" x-text="artist.summary"></div>
-                                            </div>
-                                        </a>
+                                {# One nested list per group, in the order the response gives: the group holding the better match leads (core/services/search_ranking.py). Searching an artist also matches every album credited to them, so with albums always first, five of those filled the box and hid the artist below the fold. #}
+                                <template x-for="group in order" :key="group">
+                                    <li class="search-group">
+                                        <ul class="w-full flex-nowrap [&>li>*]:w-full [&>li>*]:min-w-0">
+                                        <template x-if="group === 'artists' && has('artists')">
+                                            <li class="menu-title text-xs uppercase tracking-wider text-base-content/70 pb-0" :class="group === order[0] ? 'pt-1' : 'pt-2'">Artists</li>
+                                        </template>
+                                        <template x-for="artist in (group === 'artists' ? results.artists : [])" :key="'artist-' + artist.slug">
+                                            <li>
+                                                <a :href="'/music/artists/' + artist.slug + '/'" class="flex items-center gap-3">
+                                                    <span class="mdi mdi-account-music text-xl text-accent" aria-hidden="true"></span>
+                                                    <div>
+                                                        <div class="font-semibold text-sm" x-text="artist.name"></div>
+                                                        <div class="text-xs text-base-content/85" x-text="artist.summary"></div>
+                                                    </div>
+                                                </a>
+                                            </li>
+                                        </template>
+                                        <template x-if="group === 'artists' && q && q.trim().length >= 2 && !loading && has('artists')">
+                                            <li>
+                                                <a :href="'{% url 'music:artist-list' %}?q=' + encodeURIComponent(q.trim())" class="link link-accent text-sm">
+                                                    See all artist results &hellip;
+                                                </a>
+                                            </li>
+                                        </template>
+                                        <template x-if="group === 'albums' && has('albums')">
+                                            <li class="menu-title text-xs uppercase tracking-wider text-base-content/70 pb-0" :class="group === order[0] ? 'pt-1' : 'pt-2'">Albums</li>
+                                        </template>
+                                        <template x-for="album in (group === 'albums' ? results.albums : [])" :key="'album-' + album.id">
+                                            <li>
+                                                <a :href="'/music/' + album.slug + '/'" class="flex items-center gap-3">
+                                                    <img :src="album.thumbnail" :alt="album.name" width="32" height="32" class="w-8 h-8 rounded object-cover">
+                                                    <div>
+                                                        <div class="font-semibold text-sm" x-text="album.name + (album.year_released ? ' (' + album.year_released + ')' : '')"></div>
+                                                        <div class="text-xs text-base-content/85" x-text="'All time rank: ' + album.rank"></div>
+                                                    </div>
+                                                </a>
+                                            </li>
+                                        </template>
+                                        <template x-if="group === 'albums' && q && q.trim().length >= 2 && !loading && has('albums')">
+                                            <li>
+                                                <a :href="'{% url 'music:home' %}?q=' + encodeURIComponent(q.trim())" class="link link-accent text-sm">
+                                                    See all album results &hellip;
+                                                </a>
+                                            </li>
+                                        </template>
+                                        </ul>
                                     </li>
                                 </template>
                             </ul>
@@ -208,63 +222,70 @@
                                 <template x-if="q && q.trim().length >= 2 && !loading && !hasResults()">
                                     <li class="disabled"><span class="text-base-content/85 text-sm">No results found</span></li>
                                 </template>
-                                {# Games section #}
-                                <template x-if="hasGameResults()">
-                                    <li class="menu-title text-xs uppercase tracking-wider text-base-content/70 pt-1 pb-0">Games</li>
-                                </template>
-                                <template x-for="result in games" :key="'game-' + result.id">
-                                    <li>
-                                        <a :href="'/game/' + result.slug + '/'" class="flex items-center gap-3">
-                                            <img :src="result.thumbnail" :alt="result.name" width="32" height="32" class="w-8 h-8 rounded">
-                                            <div>
-                                                <div class="font-semibold text-sm" x-text="result.name + ' (' + result.year_of_release + ')'"></div>
-                                                <div class="text-xs text-base-content/85" x-text="'All time rank: ' + result.rank"></div>
-                                            </div>
-                                        </a>
-                                    </li>
-                                </template>
-                                <template x-if="q && q.trim().length >= 2 && !loading && hasGameResults()">
-                                    <li>
-                                        <a :href="'{% url 'home' %}?q=' + encodeURIComponent(q.trim())" class="link link-accent text-sm">
-                                            See all game results &hellip;
-                                        </a>
-                                    </li>
-                                </template>
-                                {# Developers section #}
-                                <template x-if="hasDeveloperResults()">
-                                    <li class="menu-title text-xs uppercase tracking-wider text-base-content/70 pt-2 pb-0">Developers</li>
-                                </template>
-                                <template x-for="dev in developers" :key="'dev-' + dev.id">
-                                    <li>
-                                        <a :href="'/developers/' + dev.root_slug + '/' + (dev.id !== dev.root_id ? '#developer-' + dev.id : '')" class="flex items-center gap-3">
-                                            <span class="mdi mdi-account-group text-xl text-accent" aria-hidden="true"></span>
-                                            <div>
-                                                <div class="font-semibold text-sm" x-text="dev.name"></div>
-                                                <div class="text-xs text-base-content/85" x-text="dev.games_count + ' games'"></div>
-                                            </div>
-                                        </a>
-                                    </li>
-                                </template>
-                                <template x-if="q && q.trim().length >= 2 && !loading && hasDeveloperResults()">
-                                    <li>
-                                        <a :href="'{% url 'developers-list' %}?q=' + encodeURIComponent(q.trim())" class="link link-accent text-sm">
-                                            See all developer results &hellip;
-                                        </a>
-                                    </li>
-                                </template>
-                                {# Series section #}
-                                <template x-if="hasSeriesResults()">
-                                    <li class="menu-title text-xs uppercase tracking-wider text-base-content/70 pt-2 pb-0">Series</li>
-                                </template>
-                                <template x-for="s in series" :key="'series-' + s.id">
-                                    <li>
-                                        <a :href="'{% url 'home' %}?series=' + s.id" class="flex items-center gap-3">
-                                            <span class="mdi mdi-mushroom text-xl text-accent" aria-hidden="true"></span>
-                                            <div>
-                                                <div class="font-semibold text-sm" x-text="s.name"></div>
-                                                <div class="text-xs text-base-content/85" x-text="s.games_count + ' games'"></div>
-                                            </div>
-                                        </a>
+                                {# One nested list per group, in the order the response gives: the group holding the better match leads (core/services/search_ranking.py), so "Nintendo" leads with the developer and "Halo" with the series. #}
+                                <template x-for="group in order" :key="group">
+                                    <li class="search-group">
+                                        <ul class="w-full flex-nowrap [&>li>*]:w-full [&>li>*]:min-w-0">
+                                        {# Games section #}
+                                        <template x-if="group === 'games' && hasGameResults()">
+                                            <li class="menu-title text-xs uppercase tracking-wider text-base-content/70 pb-0" :class="group === order[0] ? 'pt-1' : 'pt-2'">Games</li>
+                                        </template>
+                                        <template x-for="result in (group === 'games' ? games : [])" :key="'game-' + result.id">
+                                            <li>
+                                                <a :href="'/game/' + result.slug + '/'" class="flex items-center gap-3">
+                                                    <img :src="result.thumbnail" :alt="result.name" width="32" height="32" class="w-8 h-8 rounded">
+                                                    <div>
+                                                        <div class="font-semibold text-sm" x-text="result.name + ' (' + result.year_of_release + ')'"></div>
+                                                        <div class="text-xs text-base-content/85" x-text="'All time rank: ' + result.rank"></div>
+                                                    </div>
+                                                </a>
+                                            </li>
+                                        </template>
+                                        <template x-if="group === 'games' && q && q.trim().length >= 2 && !loading && hasGameResults()">
+                                            <li>
+                                                <a :href="'{% url 'home' %}?q=' + encodeURIComponent(q.trim())" class="link link-accent text-sm">
+                                                    See all game results &hellip;
+                                                </a>
+                                            </li>
+                                        </template>
+                                        {# Developers section #}
+                                        <template x-if="group === 'developers' && hasDeveloperResults()">
+                                            <li class="menu-title text-xs uppercase tracking-wider text-base-content/70 pb-0" :class="group === order[0] ? 'pt-1' : 'pt-2'">Developers</li>
+                                        </template>
+                                        <template x-for="dev in (group === 'developers' ? developers : [])" :key="'dev-' + dev.id">
+                                            <li>
+                                                <a :href="'/developers/' + dev.root_slug + '/' + (dev.id !== dev.root_id ? '#developer-' + dev.id : '')" class="flex items-center gap-3">
+                                                    <span class="mdi mdi-account-group text-xl text-accent" aria-hidden="true"></span>
+                                                    <div>
+                                                        <div class="font-semibold text-sm" x-text="dev.name"></div>
+                                                        <div class="text-xs text-base-content/85" x-text="dev.games_count + ' games'"></div>
+                                                    </div>
+                                                </a>
+                                            </li>
+                                        </template>
+                                        <template x-if="group === 'developers' && q && q.trim().length >= 2 && !loading && hasDeveloperResults()">
+                                            <li>
+                                                <a :href="'{% url 'developers-list' %}?q=' + encodeURIComponent(q.trim())" class="link link-accent text-sm">
+                                                    See all developer results &hellip;
+                                                </a>
+                                            </li>
+                                        </template>
+                                        {# Series section #}
+                                        <template x-if="group === 'series' && hasSeriesResults()">
+                                            <li class="menu-title text-xs uppercase tracking-wider text-base-content/70 pb-0" :class="group === order[0] ? 'pt-1' : 'pt-2'">Series</li>
+                                        </template>
+                                        <template x-for="s in (group === 'series' ? series : [])" :key="'series-' + s.id">
+                                            <li>
+                                                <a :href="'{% url 'home' %}?series=' + s.id" class="flex items-center gap-3">
+                                                    <span class="mdi mdi-mushroom text-xl text-accent" aria-hidden="true"></span>
+                                                    <div>
+                                                        <div class="font-semibold text-sm" x-text="s.name"></div>
+                                                        <div class="text-xs text-base-content/85" x-text="s.games_count + ' games'"></div>
+                                                    </div>
+                                                </a>
+                                            </li>
+                                        </template>
+                                        </ul>
                                     </li>
                                 </template>
                             </ul>

@@ -103,8 +103,12 @@ CACHE_TIMEOUT_TRACKING = CACHE_TIMEOUT_5_MINUTES
 # The states are exclusive: Have, Heard, Want or Untracked. "Heard" kept the
 # `listened` / `yes` spelling it had when it was labelled "Listened", so old
 # links, saved filters and `mark_albums_listened` still mean the same thing.
-# "Have" is a ListenedAlbum row with owned=True. `mdi-album-jacket` is not an
-# MDI glyph but the record drawn in a filled sleeve, in styles.css: the record
+# Every option carries the mark its button shows, in its colours, as games'
+# GAME_STATUS_OPTIONS do: Untracked dimmed by opacity (so it stays visible on
+# a selected option), Want in the warning colour.
+# "Have" is a ListenedAlbum row with owned=True. Have and Heard show an
+# illustration (`image`, a static path) where the others show a glyph: a gold
+# record, and for Have that record sliding out of its sleeve - the record
 # family again, told apart from Heard by its shape and not only its colour.
 LISTEN_STATUS_OPTIONS = (
     {
@@ -113,27 +117,29 @@ LISTEN_STATUS_OPTIONS = (
         "label": "Untracked",
         "title": "Untracked",
         "icon": "mdi-record-circle-outline",
+        "icon_class": "opacity-60",
     },
     {
         "value": "want",
         "status": "want",
         "label": "Want",
         "title": "Want to Listen",
-        "icon": "mdi-record-circle",
+        "icon": "mdi-record-plus",
+        "icon_class": "text-warning",
     },
     {
         "value": "yes",
         "status": "listened",
         "label": "Heard",
         "title": "Heard",
-        "icon": "mdi-album",
+        "image": "music/images/gold-record.svg",
     },
     {
         "value": "own",
         "status": "own",
         "label": "Have",
         "title": "Owned",
-        "icon": "mdi-album-jacket",
+        "image": "music/images/record-sleeve.svg",
     },
 )
 
@@ -144,19 +150,17 @@ QUICK_MARK_OPTIONS = (
     {
         "status": "own",
         "label": "Have",
-        "icon": "mdi-album-jacket",
-        "icon_class": "text-accent",
+        "image": "music/images/record-sleeve.svg",
     },
     {
         "status": "listened",
         "label": "Heard",
-        "icon": "mdi-album",
-        "icon_class": "text-accent",
+        "image": "music/images/gold-record.svg",
     },
     {
         "status": "want",
         "label": "Want",
-        "icon": "mdi-record-circle",
+        "icon": "mdi-record-plus",
         "icon_class": "text-warning",
     },
     {

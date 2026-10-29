@@ -8,12 +8,20 @@ import re
 from pathlib import Path
 
 from django.conf import settings
+from django.contrib.staticfiles import finders
 from django.core.cache import cache
+from django.template.loader import render_to_string
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from core.models import User
 from music import config, models
+
+# The button's own image, not the menu's smaller copy of another state's:
+# the row-size classes come only on the button.
+BUTTON_IMAGE = (
+    r'music/images/{}[^"]*\.svg" alt="" width="40" height="40" class="w-6 h-6 '
+)
 
 
 class ToggleListenedAlbumViewTests(TestCase):
@@ -133,7 +141,7 @@ class ToggleListenedAlbumViewTests(TestCase):
         self.assertIn('data-status="listened"', html)
         self.assertIn(f'data-item-id="{self.album.pk}"', html)
         self.assertIn('data-tracking-scope="album"', html)
-        self.assertIn("mdi-album", html)
+        self.assertRegex(html, BUTTON_IMAGE.format("gold-record"))
         self.assertIn("You have heard this album!", html)
 
     def test_the_menu_buttons_inherit_the_csrf_header_from_body(self):
@@ -144,19 +152,17 @@ class ToggleListenedAlbumViewTests(TestCase):
         self.assertNotIn("hx-headers", html)
 
     def test_the_untracked_response_shows_the_outline_record(self):
-        # Untracked and listened differ in shape, not only in colour.
+        # Untracked and heard differ in shape, not only in colour.
         html = self._post("none").content.decode()
         self.assertIn("mdi-record-circle-outline", html)
         self.assertIn('data-status="none"', html)
 
-    def test_the_want_response_shows_the_filled_record(self):
-        # The three states are one record at three fills; the backlog is the
-        # solid disc between the hollow ring and the labelled record.
-        # The full class string, because "mdi-record-circle" is a prefix of
-        # "mdi-record-circle-outline" - which the dropdown also renders, so a
-        # substring check here would pass on the wrong icon.
+    def test_the_want_response_shows_the_record_with_a_plus(self):
+        # The states are one record throughout; the backlog is the empty
+        # record with a plus, as games' is the star with one. A solid orange
+        # disc read as plain beside games' star-plus-outline.
         html = self._post("want").content.decode()
-        self.assertIn("mdi mdi-record-circle text-2xl text-warning", html)
+        self.assertIn("mdi mdi-record-plus text-2xl text-warning", html)
         self.assertIn('data-status="want"', html)
 
     def test_the_response_animates_the_new_state(self):
@@ -267,10 +273,10 @@ class ToggleListenedAlbumViewTests(TestCase):
         self._post("none")
         self.assertFalse(models.ListenedAlbum.objects.exists())
 
-    def test_the_owned_response_shows_the_jacket(self):
+    def test_the_owned_response_shows_the_record_in_its_sleeve(self):
         html = self._post("own").content.decode()
         self.assertIn('data-status="own"', html)
-        self.assertIn("mdi mdi-album-jacket text-2xl text-accent", html)
+        self.assertRegex(html, BUTTON_IMAGE.format("record-sleeve"))
         self.assertIn("You have this album!", html)
         self.assertIn('aria-label="Have - click to change"', html)
         self.assertIn("star-appear", html)
@@ -397,3 +403,35 @@ class FilterSuppressorSourceTests(SimpleTestCase):
         ).read_text()
         self.assertIn("hx-post=", button)
         self.assertNotIn("hx-get=", button)
+
+
+class TrackingMarkImagesTests(SimpleTestCase):
+    """Have and Heard are illustrations, named by static path in four places."""
+
+    IMAGES = ("music/images/gold-record.svg", "music/images/record-sleeve.svg")
+
+    def test_every_named_image_exists(self):
+        named = {
+            option["image"]
+            for option in (*config.LISTEN_STATUS_OPTIONS, *config.QUICK_MARK_OPTIONS)
+            if "image" in option
+        }
+        self.assertEqual(named, set(self.IMAGES))
+        for path in self.IMAGES:
+            with self.subTest(path=path):
+                self.assertIsNotNone(finders.find(path))
+
+    def test_the_clone_template_puts_each_image_in_its_slot(self):
+        # The renderer only shows and hides slots, so the illustration has to
+        # be in the clone already, with the same row-size classes.
+        html = render_to_string("music/includes/_listen_button_template.html")
+        for slot, image in (
+            ("owned-icon", "record-sleeve"),
+            ("tracked-icon", "gold-record"),
+        ):
+            with self.subTest(slot=slot):
+                self.assertRegex(
+                    html,
+                    rf'data-slot="{slot}">\s*<img src="[^"]*{image}[^"]*\.svg" alt=""'
+                    r' width="24" height="24" class="w-6 h-6 ',
+                )

@@ -214,42 +214,8 @@
                     </div>
                 </div>
 
-                {# Game Status filter - Multi-select toggle buttons #}
-                <div class="mb-4 pb-3 border-b border-base-100">
-                    <div class="flex items-center gap-2 mb-2">
-                        <span class="mdi mdi-star-outline text-xl text-accent" aria-hidden="true"></span>
-                        <span class="font-bold text-base">Game Status</span>
-                        <button type="button" class="btn btn-ghost btn-xs ml-auto text-base-content/70 hover:text-error" @click="resetPlayed()" title="Clear status filter" x-cloak x-show="filters.played && filters.played.length > 0">
-                            <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
-                            <span class="text-xs">Clear</span>
-                        </button>
-                    </div>
-                    <div class="flex justify-center">
-                        <div class="join" title="Filter by game status (multi-select)">
-                            <button type="button" class="join-item btn btn-sm"
-                                   :class="{ 'btn-primary': !filters.played || filters.played.length === 0 }"
-                                   @click="filters.played = []; debouncedFilterUpdate()">All</button>
-                            {% if user.is_authenticated %}
-                            <button type="button" class="join-item btn btn-sm"
-                                   :class="{ 'btn-primary': filters.played && filters.played.includes('no') }"
-                                   @click="togglePlayedStatus('no')">☆ Untracked</button>
-                            <button type="button" class="join-item btn btn-sm"
-                                   :class="{ 'btn-primary': filters.played && filters.played.includes('want') }"
-                                   @click="togglePlayedStatus('want')">★+ Want</button>
-                            <button type="button" class="join-item btn btn-sm"
-                                   :class="{ 'btn-primary': filters.played && filters.played.includes('yes') }"
-                                   @click="togglePlayedStatus('yes')">★ Played</button>
-                            {% else %}
-                            <button type="button" class="join-item btn btn-sm opacity-40 cursor-not-allowed" aria-disabled="true"
-                                   title="Sign in to track games" aria-label="Sign in to filter by untracked games">☆ Untracked</button>
-                            <button type="button" class="join-item btn btn-sm opacity-40 cursor-not-allowed" aria-disabled="true"
-                                   title="Sign in to track games" aria-label="Sign in to filter by want to play games">★+ Want</button>
-                            <button type="button" class="join-item btn btn-sm opacity-40 cursor-not-allowed" aria-disabled="true"
-                                   title="Sign in to track games" aria-label="Sign in to filter by played games">★ Played</button>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
+                {# Game status - the shared control, as music's sidebar has #}
+                {% include 'core/includes/_status_filter.html' with status_param='played' status_label='Game Status' status_icon='mdi-star-outline' status_options=game_status_options signed_out_hint='Sign in to track games' %}
 
                 {# Search input #}
                 <div class="mb-4 pb-3 border-b border-base-100">

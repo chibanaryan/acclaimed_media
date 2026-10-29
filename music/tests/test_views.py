@@ -4,6 +4,7 @@ Every music view is staff-only, so the tests authenticate as staff and each
 suite also asserts that an anonymous visitor gets 404 rather than 403.
 """
 
+import re
 from unittest import mock
 
 from django.core.cache import cache
@@ -17,6 +18,7 @@ from core.models import User
 from core.tests.utils import clear_all_caches
 from games.models import SiteMetadata
 from music import config, models, views
+from music.api import views as music_api_views
 from music.services import landing_pages
 from music.views import _filter_title, group_list_appearances
 
@@ -640,6 +642,35 @@ class GroupListAppearancesTests(MusicDataMixin, TestCase):
         self.assertEqual(group_list_appearances([]), [])
 
 
+class SearchDropdownTests(MusicDataMixin, TestCase):
+    """The sidebar and navbar search boxes place their groups by `order`."""
+
+    def test_the_default_group_order_is_the_server_tie_order(self):
+        # createMediaSearchData orders the groups by its limits' keys until a
+        # response says otherwise.
+        html = self.client.get(reverse("music:home")).content.decode()
+        limits = re.findall(r"createMediaSearchData\('[^']*', \{([^}]*)\}\)", html)
+        self.assertEqual(len(limits), 2)
+        for keys in limits:
+            with self.subTest(keys=keys):
+                self.assertEqual(
+                    tuple(re.findall(r"(\w+):", keys)), music_api_views.SEARCH_GROUPS
+                )
+
+    def test_the_groups_are_rendered_in_the_order_the_response_gives(self):
+        html = self.client.get(reverse("music:home")).content.decode()
+        # Sidebar and mobile navbar each loop over `order` once...
+        self.assertEqual(
+            html.count('<template x-for="group in order" :key="group">'), 2
+        )
+        # ...with each group's rows gated on its name.
+        for group in ("artists", "albums"):
+            with self.subTest(group=group):
+                self.assertEqual(
+                    html.count(f"x-if=\"group === '{group}' && has('{group}')\""), 2
+                )
+
+
 class ArtistListViewTests(MusicDataMixin, TestCase):
     def test_lists_only_artists_with_albums(self):
         models.Artist.objects.create(name="No Albums", slug="no-albums")
@@ -694,6 +725,27 @@ class ArtistListViewTests(MusicDataMixin, TestCase):
         )
         # A name no ranked album carries is not offered.
         self.assertNotContains(response, "Stray Gators")
+
+    def test_columns_put_the_album_count_second(self):
+        # A Rank column of its own read as a ranking of the artists.
+        html = self.client.get(reverse("music:artist-list")).content.decode()
+        self.assertEqual(
+            re.findall(r'<th class="font-semibold[^"]*">([^<]+)</th>', html),
+            ["Name", "Albums", "Top Album"],
+        )
+
+    def test_the_rank_is_inside_the_top_album_link(self):
+        for params in ({}, {"append": "true"}):
+            with self.subTest(params=params):
+                html = self.client.get(
+                    reverse("music:artist-list"), params
+                ).content.decode()
+                # Inside the top album's own link, not a cell of its own.
+                self.assertRegex(
+                    html,
+                    rf'(?s)<a href="{self.rust.get_absolute_url()}"'
+                    r"(?:(?!</a>).)*>#2</span>(?:(?!</a>).)*</a>",
+                )
 
     def test_sort_by_top_rank_and_by_name_descending(self):
         response = self.client.get(reverse("music:artist-list"), {"sort": "rank"})
@@ -1538,6 +1590,19 @@ class ListenStatusPageTests(MusicDataMixin, TestCase):
         values = [o["value"] for o in response.context["listen_status_options"]]
         self.assertEqual(values, ["no", "want", "yes", "own"])
 
+    def test_every_status_option_shows_its_mark_in_its_colours(self):
+        # The filter showed the two gold records in colour and the other two
+        # in the text colour; games' showed plain Unicode stars.
+        html = self.client.get(self.url).content.decode()
+        for mark in (
+            "mdi mdi-record-circle-outline opacity-60",
+            "mdi mdi-record-plus text-warning",
+            "music/images/gold-record",
+            "music/images/record-sleeve",
+        ):
+            with self.subTest(mark=mark):
+                self.assertIn(mark, html)
+
     def test_the_page_renders_the_tracking_id_sets(self):
         # The client-side predicate reads these, which is why they are album
         # pks and not Wikidata ids.
@@ -1645,7 +1710,7 @@ class ListenStatusPageTests(MusicDataMixin, TestCase):
         self._own_kid_a()
         html = self.client.get(self.url).content.decode()
         self.assertIn('data-status="own"', html)
-        self.assertIn("mdi-album-jacket", html)
+        self.assertIn("music/images/record-sleeve", html)
 
     def test_the_sync_listener_is_given_every_set(self):
         html = self.client.get(self.url).content.decode()

@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <radialGradient id="disc" cx="38%" cy="32%" r="75%">
+      <stop offset="0" stop-color="#fff6c4"/>
+      <stop offset=".3" stop-color="#ffd84d"/>
+      <stop offset=".7" stop-color="#f0a800"/>
+      <stop offset="1" stop-color="#a86400"/>
+    </radialGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+      <stop offset=".5" stop-color="#fff" stop-opacity=".75"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="sleeve" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9a7dff"/>
+      <stop offset=".55" stop-color="#5b3fe0"/>
+      <stop offset="1" stop-color="#36209c"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".5"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="edge"><circle cx="40" cy="32" r="22.5"/></clipPath>
+  </defs>
+  <circle cx="40" cy="32" r="22.5" fill="url(#disc)"/>
+  <g fill="none" stroke="#9a6200" stroke-opacity=".4" stroke-width="1">
+    <circle cx="40" cy="32" r="18.5"/>
+    <circle cx="40" cy="32" r="14.5"/>
+  </g>
+  <path d="M54 6 L64 15 L40 32 Z" fill="url(#sheen)" clip-path="url(#edge)"/>
+  <circle cx="40" cy="32" r="22.5" fill="none" stroke="#8a5200" stroke-width="2"/>
+  <circle cx="40" cy="32" r="8" fill="#e53222" stroke="#7d1008" stroke-width="1.2"/>
+  <rect x="2" y="12" width="40" height="40" rx="3.5" fill="url(#sleeve)" stroke="#24127a" stroke-width="2"/>
+  <rect x="4" y="14" width="36" height="16" rx="2.5" fill="url(#gloss)"/>
+  <circle cx="22" cy="32" r="11" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="2"/>
+  <circle cx="22" cy="32" r="3.5" fill="#fff" fill-opacity=".55"/>
+</svg>

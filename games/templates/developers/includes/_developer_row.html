@@ -1,0 +1,47 @@
+{# One developer row in the desktop table, for the first page and Load More alike. Props: dev #}
+{# Name, then the counts, then the top game with its rank under its title: in a column of its own the rank read as a ranking of the developers, and as a large figure beside the counts it read as one more of them. #}
+{# Keep every template comment on a single line. #}
+<tr class="developer-row">
+    <td class="py-3">
+        {% with root=dev.display_root_developer %}
+        {% if root.slug %}
+            <a href="{% url 'developer-detail' slug=root.slug %}{% if dev.id != root.id %}#developer-{{ dev.id }}{% endif %}" class="link link-accent text-lg font-semibold hover:underline">
+                {{ dev.name }}
+            </a>
+        {% elif dev.slug %}
+            <a href="{% url 'developer-detail' slug=dev.slug %}" class="link link-accent text-lg font-semibold hover:underline">
+                {{ dev.name }}
+            </a>
+        {% else %}
+            <span class="text-lg font-semibold">{{ dev.name }}</span>
+        {% endif %}
+        {% endwith %}
+    </td>
+    <td class="text-lg text-center tabular-nums">{{ dev.recursive_games_count|default:dev.games_count }}</td>
+    <td class="text-lg text-center tabular-nums">{{ dev.recursive_studios_count|default:0 }}</td>
+    <td class="py-2">
+        {% if dev.top_game %}
+        <a href="{% url 'game-detail' slug=dev.top_game.slug %}" class="flex items-center gap-3 group py-1 -ml-1 pl-1 rounded transition-colors hover:bg-base-content/5">
+            {% if dev.top_game.thumbnail %}
+            <div class="w-10 h-14 flex-shrink-0 overflow-hidden rounded shadow-sm group-hover:shadow-md transition-shadow">
+                <img src="{{ dev.top_game.thumbnail }}"
+                     alt=""
+                     width="40" height="56"
+                     class="w-full h-full object-cover"
+                     loading="lazy">
+            </div>
+            {% else %}
+            <div class="w-10 h-14 bg-base-100 rounded flex items-center justify-center flex-shrink-0">
+                <span class="mdi mdi-gamepad-variant text-base-content/30" aria-hidden="true"></span>
+            </div>
+            {% endif %}
+            <span class="min-w-0">
+                <span class="block text-sm font-medium truncate group-hover:text-accent transition-colors">{{ dev.top_game.name }}</span>
+                <span class="block text-xs text-base-content/70"><span class="text-accent font-semibold tabular-nums">#{{ dev.top_game.rank }}</span>{% if dev.top_game.year_of_release %} &middot; {{ dev.top_game.year_of_release }}{% endif %}</span>
+            </span>
+        </a>
+        {% else %}
+        <span class="text-base-content/40 text-sm italic">No ranked games</span>
+        {% endif %}
+    </td>
+</tr>

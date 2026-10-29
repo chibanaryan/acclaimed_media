@@ -38,6 +38,15 @@ DEFAULT_PAGE_SIZE = 100
 SEARCH_PAGE_SIZE = 100
 POST_PAGE_SIZE = 5
 
+# The developer list's sort choices, rendered by
+# core/includes/_entity_sort_controls.html as the artist list's are.
+DEVELOPER_SORT_OPTIONS = (
+    {"value": "games", "label": "# Games"},
+    {"value": "studios", "label": "# Subsidiaries"},
+    {"value": "rank", "label": "Top Rank"},
+    {"value": "name", "label": "Name (A-Z)"},
+)
+
 # =============================================================================
 # Visualization Settings
 # =============================================================================
@@ -177,6 +186,34 @@ QUICK_MARK_OPTIONS = (
         "label": "Clear",
         "icon": "mdi-star-outline",
         "icon_class": "text-base-content/50",
+    },
+)
+
+# The status filter's choices (core/includes/_status_filter.html), each with
+# the mark its button shows, in that mark's colours: the filter used to be
+# Unicode stars in the text colour, while music's showed its marks.
+# Untracked is the dim outline the button shows, dimmed by opacity rather
+# than colour so it stays visible on a selected (btn-primary) option.
+GAME_STATUS_OPTIONS = (
+    {
+        "value": "no",
+        "label": "Untracked",
+        "title": "Untracked",
+        "icon": "mdi-star-outline",
+        "icon_class": "opacity-60",
+    },
+    {
+        "value": "want",
+        "label": "Want",
+        "title": "Want to Play",
+        "icon": "mdi-star-plus-outline",
+        "icon_class": "text-warning",
+    },
+    {
+        "value": "yes",
+        "label": "Played",
+        "title": "Played",
+        "image": "games/images/mario-star.png",
     },
 )
 
