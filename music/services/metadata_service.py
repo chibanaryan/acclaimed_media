@@ -41,6 +41,7 @@ from music.musicbrainz import (
     CoverArtArchiveClient,
     MusicBrainzClient,
 )
+from music.services.credits import credit_text
 from music.wikidata import WikidataClient
 
 logger = logging.getLogger(__name__)
@@ -379,11 +380,12 @@ class AlbumMetadataService:
 
     def _resolve_missing_mbid(self, album, result) -> None:
         """Search MusicBrainz for a release group this album has no ID for."""
-        # "Various Artists" is our wording for a compilation, not a credit
-        # MusicBrainz would match, so a compilation searches by title alone.
-        credit = album.artist_credit or ""
-        if credit == config.VARIOUS_ARTISTS:
-            credit = ""
+        # The names as credited, which is what MusicBrainz's credit holds.
+        # Not `artist_credit`: "Various Artists" is our wording, not a credit
+        # it would match, so a compilation searches by title alone and a
+        # soundtrack by its named artists.
+        credited = [credit.name for credit in album.credits.select_related("artist")]
+        credit = credit_text(credited) if credited else ""
         mbid = self._musicbrainz().search_release_group(
             album.name, credit, album.year_released
         )

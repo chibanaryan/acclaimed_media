@@ -20,58 +20,14 @@ class ArtistTests(TestCase):
     def test_get_absolute_url(self):
         self.assertEqual(self.young.get_absolute_url(), "/music/artists/neil-young/")
 
-    def test_a_derived_act_keeps_its_slug(self):
-        # Under the old parent tree a sub-act lost its slug, and its page.
-        act = models.Artist.objects.create(
-            name="Neil Young & Crazy Horse", slug="neil-young-crazy-horse"
-        )
-        models.ArtistRelation.objects.create(
-            artist=act, related=self.young, kind=models.ArtistRelation.PROJECT
-        )
-        act.refresh_from_db()
-        self.assertEqual(act.slug, "neil-young-crazy-horse")
+    def test_name_variants_and_ids_default_empty(self):
+        self.assertEqual(self.young.name_variants, [])
+        self.assertEqual(self.young.all_wikidata_ids, [])
 
     def test_source_id_is_unique(self):
         models.Artist.objects.create(name="A", source_id=7)
         with self.assertRaises(IntegrityError), transaction.atomic():
             models.Artist.objects.create(name="B", source_id=7)
-
-
-class ArtistRelationTests(TestCase):
-    def setUp(self):
-        self.prince = models.Artist.objects.create(name="Prince", slug="prince")
-        self.act = models.Artist.objects.create(
-            name="Prince and the Revolution", slug="prince-and-the-revolution"
-        )
-
-    def test_str_reads_as_the_tag(self):
-        relation = models.ArtistRelation.objects.create(
-            artist=self.act, related=self.prince, kind="P"
-        )
-        self.assertEqual(str(relation), f"{self.act.id} P:{self.prince.id}")
-
-    def test_principal_and_supporting_kinds(self):
-        for kind, principal in (
-            ("A", True),
-            ("P", True),
-            ("C", True),
-            ("F", False),
-            ("B", False),
-        ):
-            with self.subTest(kind=kind):
-                relation = models.ArtistRelation(
-                    artist=self.act, related=self.prince, kind=kind
-                )
-                self.assertIs(relation.is_principal, principal)
-
-    def test_a_tag_is_unique_per_pair_and_kind(self):
-        models.ArtistRelation.objects.create(
-            artist=self.act, related=self.prince, kind="P"
-        )
-        with self.assertRaises(IntegrityError), transaction.atomic():
-            models.ArtistRelation.objects.create(
-                artist=self.act, related=self.prince, kind="P"
-            )
 
 
 class MusicGenreTests(TestCase):

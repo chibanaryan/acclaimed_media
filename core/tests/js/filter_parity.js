@@ -7,6 +7,8 @@
  * input.json: {"music": {"payload": ..., "queries": ["q=x&sort=year", ...]},
  *              "games": {"payload": ..., "queries": [...]}}
  * Prints {"music": {query: [ids in order]}, "games": {...}} to stdout.
+ * With "credits": true under "music", it also prints "musicCredits": {album
+ * id: the renderer's credit-line HTML}, to compare with `artist_links`.
  *
  * The real engine files are loaded, not copies, and so is the real mapping
  * from the page's state to the engine's filters: music's `readFilters`
@@ -58,6 +60,22 @@ if (input.music) {
     for (const query of input.music.queries) {
         const filters = readFilters.call(null, new URLSearchParams(query));
         output.music[query] = engine.apply(filters).albums.map(album => album.id);
+    }
+    if (input.music.credits) {
+        load('core/static/core/js/base-renderer.js');
+        load('music/static/music/js/album-list-renderer.js');
+        // What `div.textContent = text; div.innerHTML` gives in a browser.
+        const escaper = {
+            _escapeHtml: text => String(text || '')
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),
+        };
+        const creditHtml = AlbumListRenderer.prototype._artistCreditHtml;
+        output.musicCredits = {};
+        for (const album of input.music.payload.albums) {
+            output.musicCredits[album.id] = creditHtml.call(
+                escaper, engine.expandAlbum(album)
+            );
+        }
     }
 }
 

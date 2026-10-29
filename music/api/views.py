@@ -14,7 +14,7 @@ now applies to this module, where before no unsafe method existed to trigger
 it.
 """
 
-from django.db.models import Count, Max, Min, Prefetch, Q
+from django.db.models import Count, Max, Min, Q
 from django.db.models.functions import Lower
 from django.shortcuts import get_object_or_404
 from rest_framework import status
@@ -28,7 +28,13 @@ from core.services.query_params import parse_limit
 
 from .. import config, models
 from ..access import MusicAPIGateMixin
-from ..services.artist_graph import ArtistGraph, artist_summary
+from ..services.credits import (
+    album_ids_by_artist,
+    artist_summary,
+    artists_matching,
+    variant_names_by_artist,
+    variant_names_of,
+)
 from ..services.data_version import compute_album_data_version
 from . import serializers
 
@@ -87,9 +93,10 @@ class AlbumAllDataView(MusicReadAPIMixin, APIView):
 
     Artists and genres are sent as lookup tables rather than repeated inline,
     since the renderer has to reproduce the ``artist_links`` template tag and
-    the genre filter has to resolve a root genre to its styles - and the
-    artist filter an artist to the projects and aliases that roll up into
-    it, which each artist's ``"d"`` lists (see ``music.services.artist_graph``).
+    the genre filter has to resolve a root genre to its styles. An album
+    credited under another of an artist's names carries those names in
+    ``"cv"``, beside its ``"ar"`` ids; the few that need it are cheaper than
+    a name per credit on every album.
     """
 
     def get(self, request):
@@ -121,38 +128,43 @@ class AlbumAllDataView(MusicReadAPIMixin, APIView):
         artists = {}
 
         for album in albums:
-            artist_ids = []
+            artist_ids, credited_names = [], []
             # In credit order, which the renderer's credit line follows.
-            for artist in album.credited_artists:
+            for credit in album.credits.all():
+                artist = credit.artist
                 artist_ids.append(artist.id)
+                credited_names.append(credit.name)
                 if artist.id not in artists:
                     artists[artist.id] = {"n": artist.name, "s": artist.slug}
 
-            albums_data.append(
-                {
-                    "id": album.id,
-                    "n": album.name,
-                    # The server's text search is `name OR name_normalized OR
-                    # artist_credit`, all three case-insensitive and none of
-                    # them accent-folded. `name_normalized` is `unidecode(name)`
-                    # and is stored only when it differs, so it is sent as it
-                    # is: reimplementing unidecode in the browser would be a
-                    # second, drifting copy of the rule.
-                    "nn": album.name_normalized or "",
-                    "s": album.slug,
-                    "r": album.rank,
-                    "y": album.year_released,
-                    # The release date orders a year's albums. ISO, so the
-                    # client compares it as a string; null when undated.
-                    "rd": album.release_date and album.release_date.isoformat(),
-                    "c": album.artist_credit,  # credit line, names joined
-                    "t": album.thumbnail,  # 250px cover, local copy preferred
-                    "ar": artist_ids,
-                    "g": [genre.id for genre in album.genres.all()],
-                    "lc": album.list_count,
-                    "ni": name_order[album.id],  # alphabetical position
-                }
-            )
+            entry = {
+                "id": album.id,
+                "n": album.name,
+                # The server's text search is `name OR name_normalized OR
+                # artist_credit`, all three case-insensitive and none of
+                # them accent-folded. `name_normalized` is `unidecode(name)`
+                # and is stored only when it differs, so it is sent as it
+                # is: reimplementing unidecode in the browser would be a
+                # second, drifting copy of the rule.
+                "nn": album.name_normalized or "",
+                "s": album.slug,
+                "r": album.rank,
+                "y": album.year_released,
+                # The release date orders a year's albums. ISO, so the
+                # client compares it as a string; null when undated.
+                "rd": album.release_date and album.release_date.isoformat(),
+                "c": album.artist_credit,  # credit line, names joined
+                "t": album.thumbnail,  # 250px cover, local copy preferred
+                "ar": artist_ids,
+                "g": [genre.id for genre in album.genres.all()],
+                "lc": album.list_count,
+                "ni": name_order[album.id],  # alphabetical position
+            }
+            if credited_names != [artists[i]["n"] for i in artist_ids]:
+                entry["cv"] = credited_names  # credited as another name
+            if album.various_artists:
+                entry["va"] = 1  # the credit ends in "Various Artists"
+            albums_data.append(entry)
 
         # One fetch for the table, one in-memory walk for the descendants.
         # Recursing through `children` instead cost a query per genre, and
@@ -175,19 +187,6 @@ class AlbumAllDataView(MusicReadAPIMixin, APIView):
             }
             for row in genre_rows
         ]
-
-        # An artist the filter can pick is one who owns albums, which
-        # includes one credited only through a project (Jason Molina, via
-        # Songs: Ohia), so those join the lookup too, with what rolls up
-        # into them under "d".
-        derived = ArtistGraph.load(with_credits=False).derived_map()
-        missing = [artist_id for artist_id in derived if artist_id not in artists]
-        for artist in models.Artist.objects.filter(id__in=missing).values(
-            "id", "name", "slug"
-        ):
-            artists[artist["id"]] = {"n": artist["name"], "s": artist["slug"]}
-        for artist_id, derived_ids in derived.items():
-            artists[artist_id]["d"] = derived_ids
 
         return Response(
             {
@@ -226,9 +225,7 @@ class MusicUnifiedSearchView(MusicReadAPIMixin, APIView):
             .order_by("rank")[:album_limit]
         )
 
-        artists = _artists_with_albums(
-            models.Artist.objects.filter(name__icontains=q), include_appearances=True
-        )[:artist_limit]
+        artists = _artists_with_albums(artists_matching(q))[:artist_limit]
 
         return Response(
             {
@@ -250,12 +247,7 @@ class MusicUnifiedSearchView(MusicReadAPIMixin, APIView):
                         "name": artist.name,
                         "slug": artist.slug,
                         "albums_count": artist.albums_count,
-                        "appears_on_count": artist.appears_on_count,
-                        # "5 albums", or "appears on 3 albums" for an act
-                        # that owns none - what the dropdown shows.
-                        "summary": artist_summary(
-                            artist.albums_count, artist.appears_on_count
-                        ),
+                        "summary": artist_summary(artist.albums_count),
                     }
                     for artist in artists
                 ],
@@ -283,12 +275,8 @@ class AlbumListView(MusicReadAPIMixin, ListAPIView):
 
         artist = params.get("artist")
         if artist:
-            # The artist's own albums, rolled-up projects and aliases included.
-            artist_ids = models.Artist.objects.filter(slug=artist).values_list(
-                "id", flat=True
-            )
-            graph = ArtistGraph.load(with_credits=False)
-            qs = qs.filter(artists__id__in=graph.expand(artist_ids))
+            # Every album credited to them, under whichever of their names.
+            qs = qs.filter(artists__slug=artist)
 
         genres = params.get("genres")
         if genres:
@@ -332,79 +320,55 @@ class AlbumSearchAPIView(MusicReadAPIMixin, ListAPIView):
         )
 
 
-def _artists_with_albums(queryset, include_appearances=False):
-    """``queryset``'s artists that own an album, most albums first.
+def _artists_with_albums(queryset, with_variant_names=False):
+    """``queryset``'s artists with a ranked album, most albums first.
 
-    "Own" includes albums rolled up from projects and aliases, which no join
-    counts, so this is a list with ``albums_count`` set on each artist.
-
-    ``include_appearances`` adds the acts that only feature on or back other
-    records (Crazy Horse), after every owner, with ``appears_on_count`` set:
-    a search for one by name should find its page, though a browse of the
-    rankings' artists should not list it.
+    A list with ``albums_count`` set on each artist, and ``variant_names``
+    too when asked for - the unified search shows none, so it skips the
+    query.
     """
-    graph = ArtistGraph.load()
-    album_ids = graph.album_ids_by_artist()
-    appears_on = graph.appears_on_by_artist() if include_appearances else {}
-    artists = list(
-        queryset.filter(id__in=list(set(album_ids) | set(appears_on))).prefetch_related(
-            Prefetch(
-                "relations",
-                queryset=models.ArtistRelation.objects.select_related("related"),
-            )
-        )
+    album_ids = album_ids_by_artist()
+    artists = list(queryset.filter(id__in=list(album_ids)))
+    variant_names = (
+        variant_names_by_artist([artist.id for artist in artists])
+        if with_variant_names
+        else {}
     )
     for artist in artists:
-        artist.albums_count = len(album_ids.get(artist.id, ()))
-        artist.appears_on_count = len(appears_on.get(artist.id, ()))
-    artists.sort(
-        key=lambda artist: (
-            -artist.albums_count,
-            -artist.appears_on_count,
-            artist.name.lower(),
-        )
-    )
+        artist.albums_count = len(album_ids[artist.id])
+        artist.variant_names = variant_names.get(artist.id, [])
+    artists.sort(key=lambda artist: (-artist.albums_count, artist.name.lower()))
     return artists
 
 
 class ArtistListView(MusicReadAPIMixin, ListAPIView):
-    """Artists with at least one ranked album of their own."""
+    """Artists with at least one ranked album."""
 
     serializer_class = serializers.ArtistSerializer
 
     def get_queryset(self):
-        qs = models.Artist.objects.all()
         q = self.request.query_params.get("q")
-        if q:
-            qs = qs.filter(name__icontains=q)
-        return _artists_with_albums(qs)
+        qs = artists_matching(q) if q else models.Artist.objects.all()
+        return _artists_with_albums(qs, with_variant_names=True)
 
 
 class ArtistDetailView(MusicReadAPIMixin, RetrieveAPIView):
-    """One artist with their ranked albums and the ones they appear on."""
+    """One artist with every ranked album credited to them."""
 
     serializer_class = serializers.ArtistDetailSerializer
     lookup_field = "slug"
-
-    def get_queryset(self):
-        return models.Artist.objects.prefetch_related(
-            Prefetch(
-                "relations",
-                queryset=models.ArtistRelation.objects.select_related("related"),
-            )
-        )
+    queryset = models.Artist.objects.all()
 
     def get_object(self):
         artist = super().get_object()
-        graph = ArtistGraph.load()
-        albums = models.Album.objects.with_relations().with_list_count()
-        artist.own_albums = albums.filter(id__in=graph.album_ids(artist.id)).order_by(
-            "rank"
+        artist.own_albums = (
+            models.Album.objects.with_relations()
+            .with_list_count()
+            .filter(artists=artist)
+            .order_by("rank")
         )
-        artist.appears_on_albums = albums.filter(
-            id__in=graph.appears_on_ids(artist.id)
-        ).order_by("rank")
         artist.albums_count = len(artist.own_albums)
+        artist.variant_names = variant_names_of(artist.id)
         return artist
 
 
@@ -465,9 +429,7 @@ class MusicMetaView(MusicReadAPIMixin, APIView):
                         for decade, count in sorted(decade_counts.items())
                     ],
                 },
-                "artists": {
-                    "total_count": len(ArtistGraph.load().album_ids_by_artist())
-                },
+                "artists": {"total_count": len(album_ids_by_artist())},
                 "lists": {
                     "total_count": music_lists.count(),
                     "by_type": [

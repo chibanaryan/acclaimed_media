@@ -146,15 +146,20 @@ class AdminChangelistTests(TestCase):
 
 
 class AdminInlineTests(TestCase):
-    def test_the_artist_relation_inline_is_read_only(self):
-        inline = music_admin.ArtistRelationInline(models.Artist, site)
-        self.assertEqual(inline.fk_name, "artist")
-        self.assertFalse(inline.has_add_permission(None))
-        self.assertFalse(inline.can_delete)
-        self.assertEqual(list(inline.readonly_fields), list(inline.fields))
+    def test_the_artist_names_and_ids_are_read_only(self):
+        # The import rewrites them from ArtistInfo.txt every time.
+        for field in ("source_id", "name_variants", "all_wikidata_ids"):
+            self.assertIn(field, music_admin.ArtistAdmin.readonly_fields)
 
     def test_the_album_credit_inline_edits_the_through_rows(self):
         self.assertEqual(music_admin.AlbumCreditInline.model, models.AlbumCredit)
+        self.assertIn("credited_name", music_admin.AlbumCreditInline.fields)
+        # The import owns the names; nothing re-derives the credit line on edit.
+        for admin_class in (
+            music_admin.AlbumCreditInline,
+            music_admin.AlbumCreditAdmin,
+        ):
+            self.assertEqual(admin_class.readonly_fields, ["variant", "credited_name"])
 
     def test_genre_child_inline_points_at_the_parent_fk(self):
         inline = music_admin.MusicGenreChildInline

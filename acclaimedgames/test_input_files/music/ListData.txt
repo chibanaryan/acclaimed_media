@@ -65,3 +65,4 @@ Treble	2024	The 150 Best Albums of the 1990s	https://www.treblezine.com/150-best
 Treble	2023	The 150 Best Albums of the 1960s	https://www.treblezine.com/the-150-best-albums-of-the-1960s/
 Treble	2010	The Best Albums of the ’00s	https://www.treblezine.com/the-best-albums-of-the-00s/
 Treble	2020	Top 150 Albums of the 2010s	https://www.treblezine.com/top-150-albums-of-the-2010s/
+AllMusic	2019	The AllMusic Decade in Review	https://www.allmusic.com/decade-in-review#year2010

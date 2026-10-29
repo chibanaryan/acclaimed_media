@@ -24,7 +24,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--artists",
             default=str(DEFAULT_DIR / "ArtistInfo.txt"),
-            help="TSV of id/name/tags/wikidata_id, one artist per row",
+            help="TSV of id/wikidata_ids/name/variants..., one artist per row",
         )
         parser.add_argument(
             "--lists",
@@ -34,7 +34,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--albums",
             default=str(DEFAULT_DIR / "WebRankings.txt"),
-            help="TSV of rank/name/artist_ids/year/wikidata_ids, in rank order",
+            help="TSV of rank/name/credits/year/wikidata_ids, in rank order",
         )
         parser.add_argument(
             "--positions",
@@ -75,12 +75,12 @@ class Command(BaseCommand):
         self._print_inferred_types()
         self.stdout.write(self.style.SUCCESS(message))
         self.stdout.write(
-            "Albums: {albums} | Artists: {artists} ({relations} relations) | "
+            "Albums: {albums} | Artists: {artists} ({credits} credits) | "
             "Lists: {lists} | Publications: {pubs} | "
             "Memberships: {members}".format(
                 albums=models.Album.objects.count(),
                 artists=models.Artist.objects.count(),
-                relations=models.ArtistRelation.objects.count(),
+                credits=models.AlbumCredit.objects.count(),
                 lists=models.MusicList.objects.count(),
                 pubs=models.MusicPublication.objects.count(),
                 members=models.AlbumListMembership.objects.count(),
@@ -91,13 +91,22 @@ class Command(BaseCommand):
         """Show what would be imported without touching the database."""
         with paths["artists"].open(encoding="utf-8-sig", newline="") as f:
             artists = import_handler.parse_artists_file(f)
-        tagged = [row for row in artists if row[2]]
+        varied = [row for row in artists if len(row.names) > 1]
         self.stdout.write(
-            f"Artists file: {len(artists)} artists, {len(tagged)} with relations"
+            f"Artists file: {len(artists)} artists, {len(varied)} with name variants"
         )
-        for source_id, name, tags, _ in tagged:
-            described = ", ".join(f"{kind}:{target}" for kind, target in tags)
-            self.stdout.write(f"  {source_id:>5} {name} [{described}]")
+        for row in varied:
+            variants = " | ".join(
+                f"{index}: {name}" for index, name in enumerate(row.names)
+            )
+            self.stdout.write(f"  {row.source_id:>5} {variants}")
+        listed = {row.source_id for row in artists}
+        # Rows without a provider id are left out: the import adopts what it
+        # can of them by Wikidata id or name, so they are not known losses.
+        stored = models.Artist.objects.filter(source_id__isnull=False)
+        for artist in stored.order_by("source_id"):
+            if artist.source_id not in listed:
+                self.stdout.write(f"  - {artist.source_id} {artist.name} (removed)")
 
         with paths["lists"].open(encoding="utf-8-sig", newline="") as f:
             rows = [line.rstrip("\r\n").split("\t") for line in f if line.strip()]
@@ -109,6 +118,11 @@ class Command(BaseCommand):
 
         with paths["albums"].open(encoding="utf-8-sig", newline="") as f:
             albums = import_handler.parse_albums_file(f)
+        errors = import_handler.credit_errors(
+            albums, {row.source_id: row.names for row in artists}
+        )
+        for error in errors:
+            self.stdout.write(self.style.ERROR(f"  ! {error}"))
         match = import_handler.match_albums(albums, list(models.Album.objects.all()))
         self.stdout.write(
             f"Albums file: {len(albums)} rows - {len(match.kept)} kept, "

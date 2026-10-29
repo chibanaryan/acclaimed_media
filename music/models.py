@@ -29,15 +29,16 @@ from music import config
 
 class Artist(models.Model):
     """
-    A recording artist: a band, a solo performer, an alias or a joint act.
+    A recording artist: a band, a solo performer or an alias.
 
     Every artist comes from the release's ``ArtistInfo.txt`` under the data
     provider's own permanent index, ``source_id``, which is what an import
     upserts on - so an artist keeps its pk and slug across imports, and
-    ``?artists=`` links keep working. How an artist is made up (Prince and
-    the Revolution is a project of Prince; CSNY a collaboration of CSN and
-    Neil Young) lives in ``ArtistRelation``, not in a parent FK: one act can
-    belong to several others, which a single-parent tree cannot say.
+    ``?artists=`` links keep working. An artist can be credited under several
+    names, ``name_variants``: Prince is also "Prince and the Revolution", Frank
+    Zappa "The Mothers of Invention". A credit names the artist and the
+    variant (``AlbumCredit.variant``), so every album credited under any of
+    an artist's names is theirs, and the credit line still reads as printed.
 
     Unlike ``CreatorBase`` creators, every artist has a slug and a page.
     """
@@ -70,6 +71,19 @@ class Artist(models.Model):
         db_index=True,
         help_text="Wikidata entity ID (e.g., 'Q1299')",
     )
+    all_wikidata_ids = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Every Wikidata ID for this artist; the first is primary",
+    )
+    name_variants = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Every name the release credits this artist under, in file order; "
+            "the first is the name. Some are unused by the ranked albums"
+        ),
+    )
 
     class Meta:
         db_table = "music_artist"
@@ -86,62 +100,6 @@ class Artist(models.Model):
 
     def get_absolute_url(self) -> str:
         return reverse("music:artist-detail", kwargs={"slug": self.slug})
-
-
-class ArtistRelation(models.Model):
-    """
-    One tag from ``ArtistInfo.txt``: ``artist`` is ``kind`` of ``related``.
-
-    "Prince and the Revolution" carries ``P:8``, so it is a project of
-    Prince: ``ArtistRelation(artist=<P&tR>, related=<Prince>, kind="P")``.
-    The principal kinds (alias, project, collaboration) make the artist's
-    albums count as ``related``'s too; the supporting kinds (featuring,
-    backed by) only credit ``related`` as appearing on them. See
-    ``music.services.artist_graph``.
-
-    Rebuilt from the file on every import, so the admin shows it read-only.
-    """
-
-    ALIAS = "A"
-    PROJECT = "P"
-    COLLABORATION = "C"
-    FEATURING = "F"
-    BACKED_BY = "B"
-    KIND_CHOICES = [
-        (ALIAS, "Alias of"),
-        (PROJECT, "Project of"),
-        (COLLABORATION, "Collaboration with"),
-        (FEATURING, "Featuring"),
-        (BACKED_BY, "Backed by"),
-    ]
-
-    artist = models.ForeignKey(
-        Artist, on_delete=models.CASCADE, related_name="relations"
-    )
-    related = models.ForeignKey(
-        Artist, on_delete=models.CASCADE, related_name="inbound_relations"
-    )
-    kind = models.CharField(max_length=1, choices=KIND_CHOICES)
-    position = models.PositiveSmallIntegerField(
-        default=0, help_text="Order of the tag in the file"
-    )
-
-    class Meta:
-        db_table = "music_artistrelation"
-        ordering = ["artist", "position"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["artist", "related", "kind"],
-                name="unique_artist_relation",
-            ),
-        ]
-
-    def __str__(self) -> str:
-        return f"{self.artist_id} {self.kind}:{self.related_id}"
-
-    @property
-    def is_principal(self) -> bool:
-        return self.kind in config.PRINCIPAL_RELATION_KINDS
 
 
 class MusicGenre(models.Model):
@@ -334,9 +292,17 @@ class Album(MediaItemBase):
         max_length=300,
         blank=True,
         help_text=(
-            "The credited artists' names as one line, e.g. 'Paul McCartney & "
-            "Wings', or 'Various Artists'. Derived on import from the artist "
-            "ids; kept as text for search, slugs, meta tags and the CSV export."
+            "The credited names as one line, e.g. 'Paul McCartney and Wings', "
+            "'Jimmy Cliff & Various Artists' or 'Various Artists'. Derived on "
+            "import from the credits; kept as text for search, slugs, meta tags "
+            "and the CSV export."
+        ),
+    )
+    various_artists = models.BooleanField(
+        default=False,
+        help_text=(
+            "The credit ends in 'Various Artists': a compilation, or a "
+            "soundtrack credited to an artist and others"
         ),
     )
     artists = models.ManyToManyField(
@@ -519,13 +485,28 @@ class Album(MediaItemBase):
 
 
 class AlbumCredit(models.Model):
-    """An album's credited artist, in the order ``WebRankings.txt`` gives."""
+    """An album's credited artist, in the order ``WebRankings.txt`` gives.
+
+    ``variant`` is the index into the artist's ``name_variants`` the release
+    credits, and ``credited_name`` that name as of the import: Purple Rain is
+    credited to Prince as "Prince and the Revolution". Stored, as
+    ``Album.artist_credit`` is, so the credit line and a search by the name
+    need no lookup into the artist's list.
+    """
 
     album = models.ForeignKey(Album, on_delete=models.CASCADE, related_name="credits")
     artist = models.ForeignKey(
         Artist, on_delete=models.CASCADE, related_name="album_credits"
     )
     position = models.PositiveSmallIntegerField(default=0)
+    variant = models.PositiveSmallIntegerField(
+        default=0, help_text="Index into the artist's name variants; 0 is the name"
+    )
+    credited_name = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="The name the album is credited under; blank is the artist's own",
+    )
 
     class Meta:
         db_table = "music_albumcredit"
@@ -538,6 +519,19 @@ class AlbumCredit(models.Model):
 
     def __str__(self) -> str:
         return f"{self.album_id} #{self.position}: {self.artist_id}"
+
+    @property
+    def name(self) -> str:
+        """The name to print: the credited one, else the artist's own.
+
+        A credit written by ``album.artists.set()`` or the admin has none.
+        """
+        return self.credited_name or self.artist.name
+
+    @property
+    def uses_variant(self) -> bool:
+        """Whether the album credits the artist under another of their names."""
+        return self.name != self.artist.name
 
 
 class MusicPublication(PublicationBase):

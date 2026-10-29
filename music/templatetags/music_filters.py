@@ -21,8 +21,8 @@ from core.templatetags.core_filters import (
     pagination_url,
     tojson,
 )
-from music import models
-from music.services.artist_graph import artist_summary, credit_separator
+from music import config
+from music.services.credits import artist_summary, credit_separator
 
 register = template.Library()
 
@@ -107,93 +107,69 @@ def music_genre_icon(genre):
     return MUSIC_GENRE_CATEGORY_ICONS.get(root_name, DEFAULT_GENRE_ICON)
 
 
-def _artist_link(artist, link_class):
-    """One artist's name, linked to their page when they have one."""
+def _artist_link(artist, link_class, name=None):
+    """One artist's name, linked to their page when they have one.
+
+    ``name`` is the name an album credits them under, when that is not their
+    own: "Prince and the Revolution" links to Prince's page, titled "Prince".
+    """
+    text = name or artist.name
     if not artist.slug:
-        return format_html("{}", artist.name)
+        return format_html("{}", text)
+    title = format_html(' title="{}"', artist.name) if text != artist.name else ""
     return format_html(
-        '<a href="{}" class="{}">{}</a>',
-        reverse("music:artist-detail", kwargs={"slug": artist.slug}),
+        '<a href="{}" class="{}"{}>{}</a>',
+        artist.get_absolute_url(),
         link_class,
-        artist.name,
+        title,
+        text,
     )
 
 
-def _joined_links(artists, link_class):
-    """Artists linked and joined in the credit style: "A, B & C"."""
-    parts = []
-    for index, artist in enumerate(artists):
-        separator = credit_separator(index, len(artists))
+def _joined(parts):
+    """Rendered names joined in the credit style: "A, B & C"."""
+    joined = []
+    for index, part in enumerate(parts):
+        separator = credit_separator(index, len(parts))
         if separator:
-            parts.append(
+            joined.append(
                 format_html('<span class="text-base-content/30">{}</span>', separator)
             )
-        parts.append(_artist_link(artist, link_class))
-    return mark_safe("".join(parts))
+        joined.append(part)
+    return mark_safe("".join(joined))
 
 
 @register.simple_tag
 def artist_links(album, link_class="link link-hover"):
-    """Render an album's credited artists as links, in credit order.
+    """Render an album's credit line, each name linked, in credit order.
 
-    Joined the way ``artist_credit`` is ("Paul McCartney & Wings"), with the
-    separators dimmed. An album with no credited artist - a compilation -
-    shows its ``artist_credit`` text, "Various Artists", unlinked. Mirrored
-    by the client renderer's ``_artistCreditHtml``.
+    Each credit shows the name the album is credited under and links to the
+    artist's page, so "Prince and the Revolution" goes to Prince. Joined the
+    way ``artist_credit`` is, with the separators dimmed, and a various-artists
+    credit ends in "Various Artists", unlinked: alone on a compilation, after
+    the names on a soundtrack ("Jimmy Cliff & Various Artists"). Mirrored by
+    the client renderer's ``_artistCreditHtml``.
 
     ``link_class`` follows the games templates' split: rows use the quiet
     ``link link-hover``, as a game row's developers do, and the detail page's
     properties table uses ``link link-accent``, as its developer row does.
     """
-    artists = album.credited_artists
-    if not artists:
+    credits = album.credits.all()
+    if not credits:
         return album.artist_credit
-    return _joined_links(artists, link_class)
-
-
-register.simple_tag(artist_summary, name="artist_summary")
+    parts = [_artist_link(credit.artist, link_class, credit.name) for credit in credits]
+    if album.various_artists:
+        parts.append(format_html("{}", config.VARIOUS_ARTISTS))
+    return _joined(parts)
 
 
 @register.simple_tag
-def artist_relations(artist, link_class="link link-hover"):
-    """How an artist is made up, as one linked line.
+def artist_names(artists, link_class="link link-hover"):
+    """Artists by their own names, linked and joined in the credit style."""
+    return _joined([_artist_link(artist, link_class) for artist in artists])
 
-    "Project of Prince", "Project of The Velvet Underground, featuring
-    Nico", "Collaboration between Bob Dylan & The Band". Reads the
-    ``relations`` the view prefetched with their related artists; empty for
-    an artist with none.
-    """
-    by_kind = {}
-    for relation in artist.relations.all():
-        by_kind.setdefault(relation.kind, []).append(relation.related)
-    if not by_kind:
-        return ""
 
-    Relation = models.ArtistRelation
-    segments = []
-    for kind, label in (
-        (Relation.ALIAS, "alias of"),
-        (Relation.PROJECT, "project of"),
-        (Relation.COLLABORATION, None),
-        (Relation.FEATURING, "featuring"),
-        (Relation.BACKED_BY, "backed by"),
-    ):
-        related = by_kind.get(kind)
-        if not related:
-            continue
-        if label is None:
-            # Beside a "project of" it reads as an addition - CSNY is CSN's
-            # project with Neil Young - and alone as the act itself.
-            if Relation.PROJECT in by_kind:
-                label = "with"
-            elif len(related) > 1:
-                label = "collaboration between"
-            else:
-                label = "collaboration with"
-        segments.append(format_html("{} {}", label, _joined_links(related, link_class)))
-
-    line = mark_safe(", ".join(segments))
-    return mark_safe(line[:1].upper() + line[1:])
+register.simple_tag(artist_summary, name="artist_summary")
 
 
 @register.simple_tag

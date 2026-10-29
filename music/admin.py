@@ -7,31 +7,16 @@ from django.utils.html import format_html
 from music import models
 
 
-class ArtistRelationInline(admin.TabularInline):
-    """An artist's tags from ArtistInfo.txt, read-only.
-
-    Every import rebuilds them from the file, so an edit here would last only
-    until the next one; the fix belongs in the provider's file.
-    """
-
-    model = models.ArtistRelation
-    fk_name = "artist"
-    extra = 0
-    fields = ["kind", "related", "position"]
-    readonly_fields = fields
-    can_delete = False
-    verbose_name_plural = "Relations (from ArtistInfo.txt; rebuilt on import)"
-
-    def has_add_permission(self, request, obj=None):
-        return False
-
-
 class AlbumCreditInline(admin.TabularInline):
     """An album's credited artists, in credit order."""
 
     model = models.AlbumCredit
     extra = 0
-    fields = ["position", "artist"]
+    fields = ["position", "artist", "variant", "credited_name"]
+    # Written by the import from the release's names, and read back by the
+    # credit line and search; `artist_credit` and the client payload are not
+    # re-derived from an edit here, so they are not editable.
+    readonly_fields = ["variant", "credited_name"]
     raw_id_fields = ["artist"]
 
 
@@ -55,8 +40,9 @@ class ArtistAdmin(admin.ModelAdmin):
         "album_count",
     ]
     search_fields = ["name", "slug", "musicbrainz_id", "wikidata_id", "=source_id"]
-    inlines = [ArtistRelationInline]
-    readonly_fields = ["source_id"]
+    # The names and ids come from ArtistInfo.txt and every import rewrites
+    # them, so an edit here would last only until the next one.
+    readonly_fields = ["source_id", "name_variants", "all_wikidata_ids"]
     prepopulated_fields = {"slug": ("name",)}
 
     def get_queryset(self, request):
@@ -67,21 +53,11 @@ class ArtistAdmin(admin.ModelAdmin):
         return obj._album_count
 
 
-@admin.register(models.ArtistRelation)
-class ArtistRelationAdmin(admin.ModelAdmin):
-    """Every tag in ArtistInfo.txt, for browsing; the import owns the rows."""
-
-    list_display = ["artist", "kind", "related", "position"]
-    list_filter = ["kind"]
-    search_fields = ["artist__name", "related__name"]
-    list_select_related = ["artist", "related"]
-    raw_id_fields = ["artist", "related"]
-
-
 @admin.register(models.AlbumCredit)
 class AlbumCreditAdmin(admin.ModelAdmin):
-    list_display = ["album", "position", "artist"]
-    search_fields = ["album__name", "artist__name"]
+    list_display = ["album", "position", "artist", "credited_name"]
+    search_fields = ["album__name", "artist__name", "credited_name"]
+    readonly_fields = ["variant", "credited_name"]
     list_select_related = ["album", "artist"]
     raw_id_fields = ["album", "artist"]
 

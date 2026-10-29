@@ -30,6 +30,7 @@ album_fields = [
     "year_released",
     "artist_credit",
     "artists",
+    "various_artists",
     "genres",
     "cover_image_url",
     "thumbnail_url",
@@ -42,8 +43,10 @@ album_fields = [
 class AlbumSummarySerializer(serializers.ModelSerializer):
     """Album fields needed by list and grid displays."""
 
-    # In credit order: "artists" is Paul McCartney then Wings.
-    artists = IdSlugNameSerializer(source="credited_artists", many=True)
+    # In credit order, each with the name the album credits them under:
+    # Purple Rain's one artist is Prince, credited as "Prince and the
+    # Revolution".
+    artists = serializers.SerializerMethodField()
     genres = IdSlugNameSerializer(many=True)
     list_count = serializers.SerializerMethodField()
     thumbnail_url = serializers.SerializerMethodField()
@@ -51,6 +54,15 @@ class AlbumSummarySerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Album
         fields = album_fields + ["list_count"]
+
+    def get_artists(self, obj):
+        return [
+            {
+                **IdSlugNameSerializer(credit.artist).data,
+                "credited_name": credit.name,
+            }
+            for credit in obj.credits.all()
+        ]
 
     def get_thumbnail_url(self, obj):
         """The URL a client should render, which may be our local copy.
@@ -89,16 +101,17 @@ class AlbumDetailSerializer(AlbumSummarySerializer):
 
 
 class ArtistSerializer(serializers.ModelSerializer):
-    """Artist fields, their relation tags and an album count.
+    """Artist fields, an album count, and the other names they are credited as.
 
-    ``albums_count`` counts the albums that are the artist's own, including
-    those rolled up from projects and aliases; the views set it from
-    ``music.services.artist_graph``. ``relations`` reads "Prince and the
-    Revolution" as ``[{"kind": "P", "artist": <Prince>}]``.
+    The views set ``albums_count`` and ``variant_names`` from
+    ``music.services.credits``: ``also_credited_as`` holds only the names a
+    ranked album's credit uses, not every variant the release lists.
     """
 
     albums_count = serializers.IntegerField(read_only=True)
-    relations = serializers.SerializerMethodField()
+    also_credited_as = serializers.ListField(
+        child=serializers.CharField(), read_only=True, source="variant_names"
+    )
 
     class Meta:
         model = models.Artist
@@ -109,30 +122,18 @@ class ArtistSerializer(serializers.ModelSerializer):
             "musicbrainz_id",
             "wikidata_id",
             "albums_count",
-            "relations",
-        ]
-
-    def get_relations(self, obj):
-        return [
-            {
-                "kind": relation.kind,
-                "artist": IdSlugNameSerializer(relation.related).data,
-            }
-            for relation in obj.relations.all()
+            "also_credited_as",
         ]
 
 
 class ArtistDetailSerializer(ArtistSerializer):
-    """Artist fields plus their ranked albums, and the ones they appear on."""
+    """Artist fields plus every ranked album credited to them."""
 
     albums = AlbumSummarySerializer(many=True, read_only=True, source="own_albums")
-    appears_on = AlbumSummarySerializer(
-        many=True, read_only=True, source="appears_on_albums"
-    )
 
     class Meta:
         model = models.Artist
-        fields = ArtistSerializer.Meta.fields + ["albums", "appears_on"]
+        fields = ArtistSerializer.Meta.fields + ["albums"]
 
 
 class MusicGenreSerializer(serializers.ModelSerializer):

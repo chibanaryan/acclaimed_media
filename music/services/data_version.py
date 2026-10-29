@@ -16,7 +16,8 @@ from .. import models
 # Bumped when the shape of the ``all/`` payload changes, so a client holding
 # a copy of it discards that copy rather than reading fields that moved.
 # 4: "ar" in credit order, and artists carry "d", their rolled-up acts.
-SCHEMA_VERSION = 4
+# 5: no "d"; albums carry "cv" (credited names) and "va" (Various Artists).
+SCHEMA_VERSION = 5
 
 
 def compute_album_data_version():

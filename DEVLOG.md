@@ -1,5 +1,21 @@
 # Developer Log
 
+## 2026-10-28
+
+- **Music artists have name variants instead of relation tags.** The
+  provider's new release lists each artist with every name it is credited
+  under, and credits an album to `artist,variant` (`8,1`: Prince, as "Prince
+  and the Revolution"), with `VA` last for various artists. Five days after
+  the tag system shipped, `ArtistRelation`, the `ArtistGraph` roll-up and
+  "Appears on" are gone: an album is simply its credited artists'. The
+  credit line reads as credited and links to the artist; "Also credited as"
+  lists only the names a ranked album uses, since some variants are
+  leftovers. 18 artists that became variants or dropped out (Prince and the
+  Revolution, Neil Young & Crazy Horse, Wings, Crazy Horse...) were deleted,
+  and their pages 404. Soundtracks credit an artist and others ("Jimmy Cliff
+  & Various Artists"). The release itself: 996 albums kept, 4 added, 4
+  removed, one new list (AllMusic's 2010s)
+
 ## 2026-10-26
 
 - **Sentry's gzip-less uptime check gets a 2-byte 200.** Two Sentry uptime

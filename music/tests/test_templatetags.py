@@ -202,7 +202,43 @@ class ArtistLinksTests(TestCase):
 
     def test_a_compilation_shows_its_credit_text_unlinked(self):
         self.album.artist_credit = "Various Artists"
+        self.album.various_artists = True
         self.assertEqual(music_filters.artist_links(self.album), "Various Artists")
+
+    def test_a_credit_under_another_name_links_to_the_artist(self):
+        prince = models.Artist.objects.create(name="Prince", slug="prince")
+        models.AlbumCredit.objects.create(
+            album=self.album,
+            artist=prince,
+            variant=1,
+            credited_name="Prince and the Revolution",
+        )
+        self.assertEqual(
+            str(music_filters.artist_links(self.album)),
+            '<a href="/music/artists/prince/" class="link link-hover" '
+            'title="Prince">Prince and the Revolution</a>',
+        )
+
+    def test_various_artists_follows_the_named_artists_unlinked(self):
+        self._credit("Jimmy Cliff")
+        self.album.various_artists = True
+        rendered = str(music_filters.artist_links(self.album))
+        self.assertTrue(
+            rendered.endswith(
+                '<span class="text-base-content/30"> &amp; </span>Various Artists'
+            )
+        )
+        self.assertEqual(rendered.count("<a "), 1)
+
+    def test_artist_names_uses_their_own_names(self):
+        prince = models.Artist.objects.create(name="Prince", slug="prince")
+        nico = models.Artist.objects.create(name="Nico")
+        rendered = str(music_filters.artist_names([prince, nico], "link"))
+        self.assertEqual(
+            rendered,
+            '<a href="/music/artists/prince/" class="link">Prince</a>'
+            '<span class="text-base-content/30"> &amp; </span>Nico',
+        )
 
     def test_an_artist_without_a_slug_is_plain_text(self):
         artist = models.Artist.objects.create(name="Unslugged")
@@ -216,66 +252,6 @@ class ArtistLinksTests(TestCase):
         rendered = music_filters.artist_links(self.album)
         self.assertIn("A &amp; B &lt;x&gt;", rendered)
         self.assertNotIn("<x>", rendered)
-
-
-class ArtistRelationsTagTests(TestCase):
-    def setUp(self):
-        self.act = models.Artist.objects.create(name="The Act", slug="the-act")
-
-    def _relate(self, kind, *names):
-        for name in names:
-            related = models.Artist.objects.create(
-                name=name, slug=name.lower().replace(" ", "-")
-            )
-            models.ArtistRelation.objects.create(
-                artist=self.act,
-                related=related,
-                kind=kind,
-                position=self.act.relations.count(),
-            )
-
-    def _render(self):
-        return str(music_filters.artist_relations(self.act))
-
-    def test_an_artist_with_no_relations_renders_nothing(self):
-        self.assertEqual(self._render(), "")
-
-    def test_a_project_links_its_owner(self):
-        self._relate("P", "Prince")
-        rendered = self._render()
-        self.assertTrue(rendered.startswith("Project of <a "))
-        self.assertIn('href="/music/artists/prince/"', rendered)
-
-    def test_an_alias(self):
-        self._relate("A", "Dan Snaith")
-        self.assertTrue(self._render().startswith("Alias of "))
-
-    def test_a_project_featuring_a_guest(self):
-        self._relate("P", "The Velvet Underground")
-        self._relate("F", "Nico")
-        rendered = self._render()
-        self.assertTrue(rendered.startswith("Project of "))
-        self.assertIn(", featuring <a ", rendered)
-
-    def test_a_backing_band(self):
-        self._relate("B", "The Attractions")
-        self.assertTrue(self._render().startswith("Backed by "))
-
-    def test_a_collaboration_beside_a_project_reads_as_with(self):
-        # CSNY: CSN's project, with Neil Young.
-        self._relate("P", "CSN")
-        self._relate("C", "Neil Young")
-        self.assertIn(", with <a ", self._render())
-
-    def test_a_collaboration_of_two_reads_as_between(self):
-        self._relate("C", "Bob Dylan", "The Band")
-        rendered = self._render()
-        self.assertTrue(rendered.startswith("Collaboration between "))
-        self.assertIn(" &amp; </span>", rendered)
-
-    def test_a_collaboration_with_one(self):
-        self._relate("C", "Bob Dylan")
-        self.assertTrue(self._render().startswith("Collaboration with "))
 
 
 class AlbumUrlTagTests(TestCase):

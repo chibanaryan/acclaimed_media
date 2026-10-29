@@ -18,9 +18,9 @@ FIXTURE_DIR = Path(settings.BASE_DIR) / "acclaimedgames" / "test_input_files" / 
 LISTS_TSV = (
     b"Rolling Stone\t2023\tThe 500 Greatest Albums of All Time\thttps://rs.example\n"
 )
-ALBUMS_TSV = b"1\tPet Sounds\t3\t1966\tQ212863\n"
+ALBUMS_TSV = b"1\tPet Sounds\t3,0\t1966\tQ212863\n"
 POSITIONS_TSV = b"0:1\n"
-ARTISTS_TSV = b"3\tThe Beach Boys\t\tQ183048\n"
+ARTISTS_TSV = b"3\t183048\tThe Beach Boys\n"
 
 
 def _upload(name, content):

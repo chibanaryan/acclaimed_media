@@ -8,6 +8,7 @@ the two orders must match. Skipped where Node is not installed.
 """
 
 import datetime
+import html
 import json
 import re
 import shutil
@@ -22,6 +23,7 @@ from core.models import User
 from core.tests.utils import clear_all_caches
 from games.models import Game, HLTBGameData, Platform, Series, WikipediaGenre
 from music import models as music
+from music.templatetags.music_filters import artist_links
 
 HARNESS = Path(settings.BASE_DIR) / "core" / "tests" / "js" / "filter_parity.js"
 
@@ -216,6 +218,48 @@ class MusicParityTests(ParityTestCase):
                 music.AlbumListMembership.objects.create(
                     album=album, list=game_list, rank=rank
                 )
+        # Credited under another of an artist's names, and with others: the
+        # artist filter finds it by the artist, the search by the name.
+        cls.artist.name_variants = ["Björk", "The Sugarcubes"]
+        cls.artist.save()
+        variant = music.Album.objects.create(
+            name="Life's Too Good",
+            rank=len(names) + 1,
+            artist_credit="The Sugarcubes & Various Artists",
+            various_artists=True,
+            year_released=1988,
+        )
+        music.AlbumCredit.objects.create(
+            album=variant,
+            artist=cls.artist,
+            variant=1,
+            credited_name="The Sugarcubes",
+        )
+        variant.genres.set([rock])
+        # An artist whose own name has quotes, credited as another: the
+        # link's title must keep them inside the attribute.
+        cls.quoted = music.Artist.objects.create(
+            name='Bonnie "Prince" Billy',
+            slug="parity-bpb",
+            name_variants=['Bonnie "Prince" Billy', "Palace Brothers"],
+        )
+        cls.quoted_album = music.Album.objects.create(
+            name="There Is No-One What Will Take Care of You",
+            rank=len(names) + 2,
+            artist_credit="Palace Brothers",
+            year_released=1993,
+        )
+        music.AlbumCredit.objects.create(
+            album=cls.quoted_album,
+            artist=cls.quoted,
+            variant=1,
+            credited_name="Palace Brothers",
+        )
+        cls.quoted_album.genres.set([rock])
+        music.AlbumListMembership.objects.create(
+            album=cls.quoted_album, list=lists[0], rank=2
+        )
+        music.AlbumListMembership.objects.create(album=variant, list=lists[0], rank=1)
 
     def setUp(self):
         super().setUp()
@@ -232,6 +276,8 @@ class MusicParityTests(ParityTestCase):
             "q=abbey",
             "q=agaetis",
             "q=bjork",
+            "q=sugarcubes",
+            "q=various",
             "sort=name",
             "sort=name&dir=desc",
             "sort=year",
@@ -251,3 +297,25 @@ class MusicParityTests(ParityTestCase):
             r'id="music-(\d+)"',
             payload,
         )
+
+    def test_the_renderer_writes_the_servers_credit_line(self):
+        # Each credit under its credited name, linked to the artist, and
+        # "Various Artists" last - `artist_links` and `_artistCreditHtml`.
+        # Compared unescaped: Django escapes quotes and the DOM does not.
+        payload = self.client.get("/api/music/all/").json()
+        payload = payload.get("data", payload)
+        client = run_engines(
+            {"music": {"payload": payload, "queries": [], "credits": True}}
+        )["musicCredits"]
+        # Unescaping cannot tell `&quot;` from a raw quote, so the attribute
+        # is checked as written.
+        self.assertIn(
+            'title="Bonnie &quot;Prince&quot; Billy">Palace Brothers</a>',
+            client[str(self.quoted_album.id)],
+        )
+        for album in music.Album.objects.with_relations():
+            with self.subTest(album=album.name):
+                self.assertEqual(
+                    html.unescape(client[str(album.id)]),
+                    html.unescape(str(artist_links(album))),
+                )

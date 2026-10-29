@@ -9,8 +9,8 @@
             {% else %}
             <span class="font-semibold truncate">{{ artist.name }}</span>
             {% endif %}
-            {% if artist.relations.all %}
-            <div class="text-xs text-base-content/70 truncate">{% artist_relations artist %}</div>
+            {% if artist.variant_names %}
+            <div class="text-xs text-base-content/70 truncate">Also credited as {{ artist.variant_names|join:", " }}</div>
             {% endif %}
             {% with best=artist.top_album %}
             {% if best %}
@@ -21,7 +21,7 @@
             {% endwith %}
         </div>
         <span class="tabular-nums text-sm whitespace-nowrap shrink-0">
-            {% artist_summary artist.albums_count artist.appears_on_count %}
+            {% artist_summary artist.albums_count %}
         </span>
     </div>
 </div>

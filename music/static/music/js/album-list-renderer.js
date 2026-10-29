@@ -278,9 +278,12 @@ class AlbumListRenderer extends BaseMediaListRenderer {
      * The credit line as links, in credit order: "A", "A & B", "A, B & C".
      *
      * Mirrors the `artist_links` template tag and
-     * `music.services.artist_graph.credit_separator`. An album with no
-     * credited artist (a compilation) shows its credit text - "Various
-     * Artists" - unlinked; an artist without a slug shows as plain text.
+     * `music.services.credits.credit_separator`. Each credit shows the name
+     * the album is credited under and links to the artist's page, titled
+     * with the artist's own name when the two differ. A various-artists
+     * credit ends in "Various Artists", unlinked - after the names on a
+     * soundtrack, alone on a compilation. With no credits at all the
+     * album's credit text is shown; an artist without a slug is plain text.
      * @private
      * @returns {string} HTML
      */
@@ -289,10 +292,24 @@ class AlbumListRenderer extends BaseMediaListRenderer {
         if (!artists.length) {
             return this._escapeHtml(album.artistCredit || '');
         }
-        return artists
-            .map((artist, index) => {
+        const parts = artists.map(artist => {
+            const name = this._escapeHtml(artist.n);
+            if (!artist.s) return name;
+            // `_escapeHtml` leaves quotes alone, which an attribute cannot:
+            // Bonnie "Prince" Billy would end the title early.
+            const title = artist.a && artist.a !== artist.n
+                ? ` title="${this._escapeHtml(artist.a).replace(/"/g, '&quot;')}"`
+                : '';
+            return `<a href="/music/artists/${encodeURIComponent(artist.s)}/" ` +
+                `class="link link-hover"${title}>${name}</a>`;
+        });
+        if (album.variousArtists) {
+            parts.push(AlbumListRenderer.VARIOUS_ARTISTS);
+        }
+        return parts
+            .map((part, index) => {
                 let separator = '';
-                if (index === artists.length - 1 && index > 0) {
+                if (index === parts.length - 1 && index > 0) {
                     separator = ' & ';
                 } else if (index > 0) {
                     separator = ', ';
@@ -300,11 +317,7 @@ class AlbumListRenderer extends BaseMediaListRenderer {
                 const prefix = separator
                     ? `<span class="text-base-content/30">${this._escapeHtml(separator)}</span>`
                     : '';
-                const name = this._escapeHtml(artist.n);
-                if (!artist.s) return prefix + name;
-                return prefix +
-                    `<a href="/music/artists/${encodeURIComponent(artist.s)}/" ` +
-                    `class="link link-hover">${name}</a>`;
+                return prefix + part;
             })
             .join('');
     }
@@ -532,6 +545,9 @@ class AlbumListRenderer extends BaseMediaListRenderer {
         );
     }
 }
+
+// The tail of a various-artists credit: `music.config.VARIOUS_ARTISTS`.
+AlbumListRenderer.VARIOUS_ARTISTS = 'Various Artists';
 
 /**
  * The data-slot hooks this renderer fills in a cloned row, declared rather

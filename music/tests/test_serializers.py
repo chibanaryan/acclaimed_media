@@ -28,12 +28,20 @@ class AlbumSummarySerializerTests(TestCase):
         data = serializers.AlbumSummarySerializer(annotated).data
         self.assertEqual(data["list_count"], 1)
 
-    def test_artists_are_serialized_with_id_slug_and_name(self):
+    def test_artists_are_serialized_with_id_slug_name_and_credited_name(self):
         data = serializers.AlbumSummarySerializer(self.album).data
         self.assertEqual(
             data["artists"],
-            [{"id": self.artist.id, "name": "Radiohead", "slug": "radiohead"}],
+            [
+                {
+                    "id": self.artist.id,
+                    "name": "Radiohead",
+                    "slug": "radiohead",
+                    "credited_name": "Radiohead",
+                }
+            ],
         )
+        self.assertFalse(data["various_artists"])
 
     def test_genres_are_empty_when_none_are_set(self):
         data = serializers.AlbumSummarySerializer(self.album).data

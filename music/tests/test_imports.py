@@ -19,7 +19,6 @@ from core import constants as core_constants
 from core.models import User
 from music import config, models
 from music.services import import_handler
-from music.services.artist_graph import ArtistGraph
 from django.core.cache import cache
 from django.urls import reverse
 from games.models import SiteMetadata
@@ -33,21 +32,23 @@ LISTS_TSV = (
     "Spin\t2010\t125 Best Albums of the Past 25 Years\t\n"
 )
 
-# Shaped like the real ArtistInfo.txt: sparse provider ids, a blank tags
-# column for a plain act, and a joint act tagged with what makes it up.
+# Shaped like the real ArtistInfo.txt: sparse provider ids, Wikidata ids
+# without their "Q" (as the 2026-10-28 release has them; the next is to
+# carry it, and both are read), an artist with none, and artists with
+# several names - Neil Young's third used by no album here.
 ARTISTS_TSV = (
-    "3\tThe Beach Boys\t\tQ183048\n"
-    "56\tNeil Young\t\tQ633\n"
-    "113\tCrosby, Stills & Nash\t\tQ214567\n"
-    "192\tCrazy Horse\t\t\n"
-    "2145\tCrosby, Stills, Nash & Young\tP:113,C:56\tQ10461933\n"
-    "2153\tNeil Young & Crazy Horse\tP:56,F:192\t\n"
+    "3\t183048\tThe Beach Boys\n"
+    "56\t633,951532\tNeil Young\tNeil Young & Crazy Horse\t"
+    "Neil Young & the Stray Gators\n"
+    "113\tQ214567,Q10461933\tCrosby, Stills & Nash\tCrosby, Stills, Nash & Young\n"
+    "192\t\tCrazy Horse\n"
 )
 
+# Credits are `artist,variant` pairs separated by ";", VA last.
 ALBUMS_TSV = (
-    "1\tPet Sounds\t3\t1966\tQ212863\n"
-    "2\tDéjà Vu\t2145\t1970\tQ1136782\n"
-    "3\tRust Never Sleeps\t2153\t1979\tQ1140313,Q999999\n"
+    "1\tPet Sounds\t3,0\t1966\tQ212863\n"
+    "2\tDéjà Vu\t113,1\t1970\tQ1136782\n"
+    "3\tRust Never Sleeps\t56,1\t1979\tQ1140313,Q999999\n"
 )
 
 POSITIONS_TSV = "0:2\t1:5\n0:1\t2:9\n0:3\n"
@@ -175,19 +176,46 @@ class ImportArtistsTests(TestCase):
     def test_creates_every_artist_under_its_provider_id(self):
         success, message = import_artists()
         self.assertTrue(success)
-        self.assertIn("Artists: 6 (6 new, 0 removed), 4 relations", message)
+        self.assertIn("Artists: 4 (4 new, 0 removed), 3 name variants", message)
         young = models.Artist.objects.get(source_id=56)
         self.assertEqual(young.name, "Neil Young")
         self.assertEqual(young.slug, "neil-young")
-        self.assertEqual(young.wikidata_id, "Q633")
         self.assertIsNone(models.Artist.objects.get(source_id=192).wikidata_id)
 
-    def test_tags_become_relations_in_file_order(self):
+    def test_wikidata_ids_are_read_with_or_without_their_q(self):
         import_artists()
-        act = models.Artist.objects.get(source_id=2153)
+        young = models.Artist.objects.get(source_id=56)
+        self.assertEqual(young.wikidata_id, "Q633")
+        self.assertEqual(young.all_wikidata_ids, ["Q633", "Q951532"])
+        csn = models.Artist.objects.get(source_id=113)
+        self.assertEqual(csn.all_wikidata_ids, ["Q214567", "Q10461933"])
+        self.assertEqual(models.Artist.objects.get(source_id=192).all_wikidata_ids, [])
+
+    def test_a_repeated_or_lowercase_qid_is_kept_once(self):
+        import_artists("1\tq5, Q5 ,7\tA\n")
         self.assertEqual(
-            [(r.kind, r.related.name, r.position) for r in act.relations.all()],
-            [("P", "Neil Young", 0), ("F", "Crazy Horse", 1)],
+            models.Artist.objects.get(source_id=1).all_wikidata_ids, ["Q5", "Q7"]
+        )
+
+    def test_every_name_is_kept_in_file_order(self):
+        import_artists()
+        self.assertEqual(
+            models.Artist.objects.get(source_id=56).name_variants,
+            [
+                "Neil Young",
+                "Neil Young & Crazy Horse",
+                "Neil Young & the Stray Gators",
+            ],
+        )
+        self.assertEqual(
+            models.Artist.objects.get(source_id=3).name_variants, ["The Beach Boys"]
+        )
+
+    def test_trailing_blank_names_are_dropped_and_inner_ones_keep_their_place(self):
+        # A variant is an index, so a blank inside the list must hold it.
+        import_artists("1\t5\tA\t\tC\t\t\n")
+        self.assertEqual(
+            models.Artist.objects.get(source_id=1).name_variants, ["A", "", "C"]
         )
 
     def test_a_reimport_keeps_every_pk_and_slug(self):
@@ -201,7 +229,7 @@ class ImportArtistsTests(TestCase):
 
     def test_a_renamed_artist_keeps_its_slug(self):
         import_artists()
-        import_artists(ARTISTS_TSV.replace("Crazy Horse\t", "Crazy Horse (band)\t"))
+        import_artists(ARTISTS_TSV.replace("\tCrazy Horse\n", "\tCrazy Horse (band)\n"))
         horse = models.Artist.objects.get(source_id=192)
         self.assertEqual(horse.name, "Crazy Horse (band)")
         self.assertEqual(horse.slug, "crazy-horse")
@@ -209,30 +237,15 @@ class ImportArtistsTests(TestCase):
     def test_a_changed_qid_drops_the_old_musicbrainz_id(self):
         import_artists()
         models.Artist.objects.filter(source_id__in=[56, 3]).update(musicbrainz_id="mb")
-        import_artists(ARTISTS_TSV.replace("Q633", "Q634"))
+        import_artists(ARTISTS_TSV.replace("633,", "634,"))
         self.assertIsNone(models.Artist.objects.get(source_id=56).musicbrainz_id)
         self.assertEqual(models.Artist.objects.get(source_id=3).musicbrainz_id, "mb")
 
-    def test_relations_are_rebuilt_from_the_file(self):
-        import_artists()
-        import_artists(ARTISTS_TSV.replace("P:56,F:192", "P:56"))
-        act = models.Artist.objects.get(source_id=2153)
-        self.assertEqual([r.kind for r in act.relations.all()], ["P"])
-
-    def test_a_repeated_tag_is_stored_once(self):
-        import_artists(ARTISTS_TSV.replace("P:56,F:192", "P:56,P:56"))
-        self.assertEqual(models.Artist.objects.get(source_id=2153).relations.count(), 1)
-
-    def test_kinds_and_whitespace_are_forgiven(self):
-        import_artists(ARTISTS_TSV.replace("P:56,F:192", " p : 56 , f:192 "))
-        act = models.Artist.objects.get(source_id=2153)
-        self.assertEqual([r.kind for r in act.relations.all()], ["P", "F"])
-
-    def test_an_existing_artist_is_adopted_by_qid(self):
+    def test_an_existing_artist_is_adopted_by_any_of_its_qids(self):
         # Rows from the credit-guessing imports carry no source id; matching
         # them keeps their pk, so links and filters keep working.
         old = models.Artist.objects.create(
-            name="Neil Young (old spelling)", slug="neil-young", wikidata_id="Q633"
+            name="Neil Young (old spelling)", slug="neil-young", wikidata_id="Q951532"
         )
         import_artists()
         adopted = models.Artist.objects.get(source_id=56)
@@ -240,17 +253,25 @@ class ImportArtistsTests(TestCase):
         self.assertEqual(adopted.name, "Neil Young")
         self.assertEqual(adopted.slug, "neil-young")
 
+    def test_an_existing_artist_is_adopted_by_a_secondary_qid(self):
+        old = models.Artist.objects.create(
+            name="CSN (renamed)",
+            slug="csn",
+            wikidata_id="Q999",
+            all_wikidata_ids=["Q999", "Q10461933"],
+        )
+        import_artists()
+        self.assertEqual(models.Artist.objects.get(source_id=113).pk, old.pk)
+
     def test_an_existing_artist_is_adopted_by_name(self):
         old = models.Artist.objects.create(name="Crazy Horse", slug="horse")
         import_artists()
         self.assertEqual(models.Artist.objects.get(source_id=192).pk, old.pk)
 
     def test_an_existing_artist_is_adopted_by_a_normalized_name(self):
-        old = models.Artist.objects.create(
-            name="Neil Young and Crazy Horse", slug="nyach"
-        )
+        old = models.Artist.objects.create(name="Crosby Stills and Nash", slug="csn")
         import_artists()
-        self.assertEqual(models.Artist.objects.get(source_id=2153).pk, old.pk)
+        self.assertEqual(models.Artist.objects.get(source_id=113).pk, old.pk)
 
     def test_an_adopted_artist_without_a_slug_gets_one(self):
         models.Artist.objects.create(name="Crazy Horse", slug="")
@@ -260,9 +281,7 @@ class ImportArtistsTests(TestCase):
     def test_artists_the_file_does_not_list_are_removed(self):
         models.Artist.objects.create(name="Guessed From A Credit", slug="guessed")
         import_artists()
-        _, message = import_artists(
-            ARTISTS_TSV.replace("192\tCrazy Horse\t\t\n", "").replace(",F:192", "")
-        )
+        _, message = import_artists(ARTISTS_TSV.replace("192\t\tCrazy Horse\n", ""))
         self.assertIn("1 removed", message)
         self.assertFalse(
             models.Artist.objects.filter(name="Guessed From A Credit").exists()
@@ -271,7 +290,7 @@ class ImportArtistsTests(TestCase):
 
     def test_a_colliding_slug_gets_a_numeric_tail(self):
         models.Artist.objects.create(name="Nico (singer)", slug="nico", source_id=1)
-        import_artists(ARTISTS_TSV + "22\tNico\t\t\n")
+        import_artists(ARTISTS_TSV + "22\t44634\tNico\n")
         self.assertEqual(models.Artist.objects.get(source_id=22).slug, "nico-2")
 
     def test_progress_callback_receives_each_stage(self):
@@ -282,19 +301,18 @@ class ImportArtistsTests(TestCase):
         names = [name for name, _ in events]
         self.assertEqual(names[0], "start")
         self.assertEqual(names[-1], "complete")
-        self.assertEqual(names.count("progress"), 6)
-        self.assertEqual(dict(events)["complete"]["relations"], 4)
+        self.assertEqual(names.count("progress"), 4)
+        self.assertEqual(dict(events)["complete"]["variants"], 3)
 
     def test_a_bad_file_is_rejected_before_anything_is_written(self):
         for tsv, expected in (
-            ("1\n", "expected at least 2"),
-            ("x\tNobody\n", "is not a number"),
-            ("1\tA\n1\tB\n", "appears twice"),
-            ("1\t \n", "has no name"),
-            ("1\tA\tQ:2\n2\tB\n", "is not KIND:id"),
-            ("1\tA\tP:two\n", "is not KIND:id"),
-            ("1\tA\tP:1\n", "related to itself"),
-            ("1\tA\tP:9\n", "no artist with that id"),
+            ("1\t5\n", "expected at least 3"),
+            ("x\t5\tNobody\n", "is not a number"),
+            ("1\t5\tA\n1\t6\tB\n", "appears twice"),
+            ("1\t5\t \n", "has no name"),
+            # The pre-2026-10-28 layout: name second, then tags, then the QID.
+            ("1\tThe Beatles\t\tQ1299\n", "pre-2026-10-28"),
+            ("1\t5;6\tA\n", "column 2 should be Wikidata ids"),
         ):
             with self.subTest(tsv=tsv):
                 with self.assertRaises(ValueError) as ctx:
@@ -399,16 +417,41 @@ class ImportAlbumsTests(TestCase):
         self.assertEqual(album.year_rank, 1)
         self.assertEqual(album.decade_rank, 1)
 
-    def test_an_album_is_credited_to_the_joint_act_itself(self):
+    def test_a_credit_under_another_name_belongs_to_the_artist(self):
         import_handler.import_albums(StringIO(ALBUMS_TSV))
         album = models.Album.objects.get(rank=2)
         self.assertEqual(
-            [a.name for a in album.credited_artists], ["Crosby, Stills, Nash & Young"]
+            [a.name for a in album.credited_artists], ["Crosby, Stills & Nash"]
         )
+        credit = album.credits.get()
+        self.assertEqual(credit.variant, 1)
+        self.assertEqual(credit.credited_name, "Crosby, Stills, Nash & Young")
         self.assertEqual(album.artist_credit, "Crosby, Stills, Nash & Young")
+        self.assertFalse(album.various_artists)
+
+    def test_a_default_credit_leaves_the_name_to_the_artist(self):
+        # Blank, so an artist renamed in the admin is credited by the new
+        # name rather than keeping a stale copy of the old one.
+        import_handler.import_albums(StringIO(ALBUMS_TSV))
+        credit = models.Album.objects.get(rank=1).credits.get()
+        self.assertEqual((credit.variant, credit.credited_name), (0, ""))
+        self.assertEqual(credit.name, "The Beach Boys")
+        models.Artist.objects.filter(source_id=3).update(name="Beach Boys")
+        credit = models.Album.objects.get(rank=1).credits.get()
+        self.assertEqual(credit.name, "Beach Boys")
+        self.assertFalse(credit.uses_variant)
+
+    def test_various_artists_after_a_named_artist(self):
+        import_handler.import_albums(
+            StringIO("1\tThe Harder They Come\t56,0;VA\t1972\tQ937034\n")
+        )
+        album = models.Album.objects.get(rank=1)
+        self.assertEqual(album.artist_credit, "Neil Young & Various Artists")
+        self.assertTrue(album.various_artists)
+        self.assertEqual([a.source_id for a in album.credited_artists], [56])
 
     def test_several_artists_keep_the_files_order_in_the_credit(self):
-        import_handler.import_albums(StringIO("1\tTogether\t192,56,3\t1990\n"))
+        import_handler.import_albums(StringIO("1\tTogether\t192,0;56,0;3,0\t1990\n"))
         album = models.Album.objects.get(rank=1)
         self.assertEqual(
             [a.name for a in album.credited_artists],
@@ -419,31 +462,63 @@ class ImportAlbumsTests(TestCase):
         )
 
     def test_two_artists_are_joined_with_an_ampersand(self):
-        import_handler.import_albums(StringIO("1\tTogether\t56, 192\t1990\n"))
+        import_handler.import_albums(StringIO("1\tTogether\t56,0;192,0\t1990\n"))
         self.assertEqual(
             models.Album.objects.get(rank=1).artist_credit, "Neil Young & Crazy Horse"
         )
 
     def test_a_repeated_id_is_credited_once(self):
-        import_handler.import_albums(StringIO("1\tTwice\t56,56\t1990\n"))
+        import_handler.import_albums(StringIO("1\tTwice\t56,0;56,0\t1990\n"))
         self.assertEqual(models.AlbumCredit.objects.count(), 1)
 
-    def test_a_blank_credit_is_various_artists(self):
-        import_handler.import_albums(StringIO("1\tNuggets\t\t1972\tQ744572\n"))
+    def test_va_must_be_the_last_credit(self):
+        for credits in ("VA;56,0", "56,0;VA;3,0"):
+            with self.subTest(credits=credits):
+                with self.assertRaises(ValueError) as ctx:
+                    import_handler.import_albums(StringIO(f"1\tX\t{credits}\t1972\n"))
+                self.assertIn("VA must be the last credit", str(ctx.exception))
+
+    def test_va_alone_is_a_compilation(self):
+        import_handler.import_albums(StringIO("1\tNuggets\tva\t1972\tQ744572\n"))
         album = models.Album.objects.get(rank=1)
         self.assertEqual(album.artist_credit, "Various Artists")
+        self.assertTrue(album.various_artists)
         self.assertEqual(album.credited_artists, [])
 
-    def test_an_old_format_credit_is_rejected_by_name(self):
+    def test_a_blank_credit_is_rejected(self):
+        # The old encoding of a compilation; the new one says VA.
         with self.assertRaises(ValueError) as ctx:
-            import_handler.import_albums(
-                StringIO("1\tPet Sounds\tThe Beach Boys\t1966\tQ212863\n")
-            )
-        self.assertIn("column 3 should be artist ids", str(ctx.exception))
+            import_handler.import_albums(StringIO("1\tNuggets\t\t1972\tQ744572\n"))
+        self.assertIn("credits nobody", str(ctx.exception))
+
+    def test_a_quoted_title_keeps_its_quotes(self):
+        import_handler.import_albums(StringIO('1\t"Heroes"\t3,0\t1977\tQ595352\n'))
+        self.assertEqual(models.Album.objects.get(rank=1).name, '"Heroes"')
+
+    def test_an_old_format_credit_is_rejected_by_name(self):
+        for credits in ("The Beach Boys", "3"):
+            with self.subTest(credits=credits):
+                with self.assertRaises(ValueError) as ctx:
+                    import_handler.import_albums(
+                        StringIO(f"1\tPet Sounds\t{credits}\t1966\tQ212863\n")
+                    )
+                self.assertIn("pre-2026-10-28", str(ctx.exception))
+
+    def test_a_variant_the_artist_does_not_have_is_rejected(self):
+        with self.assertRaises(ValueError) as ctx:
+            import_handler.import_albums(StringIO("1\tPet Sounds\t3,1\t1966\n"))
+        self.assertIn("as name 1", str(ctx.exception))
+        self.assertIn("gives it 1 name(s)", str(ctx.exception))
+
+    def test_a_blank_variant_is_rejected(self):
+        import_artists("1\t5\tA\t\tC\n")
+        with self.assertRaises(ValueError) as ctx:
+            import_handler.import_albums(StringIO("1\tX\t1,1\t1966\n"))
+        self.assertIn("as name 1", str(ctx.exception))
 
     def test_an_unknown_artist_id_is_rejected(self):
         with self.assertRaises(ValueError) as ctx:
-            import_handler.import_albums(StringIO("1\tPet Sounds\t999\t1966\n"))
+            import_handler.import_albums(StringIO("1\tPet Sounds\t999,0\t1966\n"))
         self.assertIn("credits artist 999", str(ctx.exception))
 
     def test_the_first_wikidata_id_is_primary_and_the_rest_are_kept(self):
@@ -453,18 +528,18 @@ class ImportAlbumsTests(TestCase):
         self.assertEqual(album.all_wikidata_ids, ["Q1140313", "Q999999"])
 
     def test_a_missing_wikidata_column_is_tolerated(self):
-        import_handler.import_albums(StringIO("1\tUntitled\t3\t1999\n"))
+        import_handler.import_albums(StringIO("1\tUntitled\t3,0\t1999\n"))
         album = models.Album.objects.get(rank=1)
         self.assertIsNone(album.wikidata_id)
         self.assertEqual(album.all_wikidata_ids, [])
 
     def test_a_blank_year_is_stored_as_null(self):
-        import_handler.import_albums(StringIO("1\tUndated\t3\t\tQ1\n"))
+        import_handler.import_albums(StringIO("1\tUndated\t3,0\t\tQ1\n"))
         self.assertIsNone(models.Album.objects.get(rank=1).year_released)
 
     def test_a_title_collision_is_disambiguated_by_the_credit(self):
         import_handler.import_albums(
-            StringIO("1\tHarvest\t56\t1972\n2\tHarvest\t3\t1980\n")
+            StringIO("1\tHarvest\t56,0\t1972\n2\tHarvest\t3,0\t1980\n")
         )
         self.assertEqual(
             models.Album.objects.get(rank=2).slug, "harvest-the-beach-boys"
@@ -568,9 +643,9 @@ class ImportAlbumsInPlaceTests(TestCase):
 
     def test_the_file_updates_rank_name_year_and_credits(self):
         self.reimport(
-            "1\tRust Never Sleeps\t2153\t1979\tQ1140313\n"
-            "2\tPet Sounds (Mono)\t56,3\t1970\tQ212863\n"
-            "3\tDéjà Vu\t2145\t1970\tQ1136782\n"
+            "1\tRust Never Sleeps\t56,1\t1979\tQ1140313\n"
+            "2\tPet Sounds (Mono)\t56,0;3,0\t1970\tQ212863\n"
+            "3\tDéjà Vu\t113,1\t1970\tQ1136782\n"
         )
         album = models.Album.objects.get(pk=self.pet_sounds.pk)
         self.assertEqual(album.rank, 2)
@@ -578,6 +653,8 @@ class ImportAlbumsInPlaceTests(TestCase):
         self.assertEqual(album.year_released, 1970)
         self.assertEqual(album.artist_credit, "Neil Young & The Beach Boys")
         self.assertEqual([a.source_id for a in album.credited_artists], [56, 3])
+        rust = models.Album.objects.get(wikidata_id="Q1140313")
+        self.assertEqual(rust.artist_credit, "Neil Young & Crazy Horse")
         # Recomputed from the new ranks and years: second in the 1970s behind
         # Rust Never Sleeps, first in 1970 ahead of Deja Vu.
         self.assertEqual(album.year_rank, 1)
@@ -613,7 +690,7 @@ class ImportAlbumsInPlaceTests(TestCase):
 
     def test_dropped_albums_are_removed_and_new_ones_added(self):
         _, message = self.reimport(
-            "1\tPet Sounds\t3\t1966\tQ212863\n" "2\tHarvest\t56\t1972\tQ1191683\n"
+            "1\tPet Sounds\t3,0\t1966\tQ212863\n" "2\tHarvest\t56,0\t1972\tQ1191683\n"
         )
         self.assertIn("Albums: 2 (1 kept, 1 added, 2 removed)", message)
         self.assertEqual(
@@ -626,13 +703,13 @@ class ImportAlbumsInPlaceTests(TestCase):
     def test_a_removed_albums_slug_is_free_for_a_new_one(self):
         # Same title, a different album: the old row goes before the new one
         # is slugged, so it takes the plain slug rather than a numeric tail.
-        self.reimport("1\tPet Sounds\t56\t1990\tQ1\n")
+        self.reimport("1\tPet Sounds\t56,0\t1990\tQ1\n")
         self.assertEqual(models.Album.objects.get().slug, "pet-sounds")
 
     def test_one_album_is_claimed_by_one_row(self):
         _, message = self.reimport(
-            "1\tPet Sounds\t3\t1966\tQ212863\n"
-            "2\tPet Sounds (Stereo)\t3\t1966\tQ212863\n"
+            "1\tPet Sounds\t3,0\t1966\tQ212863\n"
+            "2\tPet Sounds (Stereo)\t3,0\t1966\tQ212863\n"
         )
         self.assertIn("(1 kept, 1 added, 2 removed)", message)
         self.assertEqual(
@@ -641,9 +718,9 @@ class ImportAlbumsInPlaceTests(TestCase):
         self.assertEqual(models.Album.objects.count(), 2)
 
     def test_a_row_without_a_wikidata_id_is_always_new(self):
-        self.reimport("1\tUntitled\t3\t1999\n")
+        self.reimport("1\tUntitled\t3,0\t1999\n")
         album = models.Album.objects.get()
-        _, message = self.reimport("1\tUntitled\t3\t1999\n")
+        _, message = self.reimport("1\tUntitled\t3,0\t1999\n")
         self.assertIn("(0 kept, 1 added, 1 removed)", message)
         self.assertNotEqual(models.Album.objects.get().pk, album.pk)
 
@@ -653,7 +730,12 @@ class MatchAlbumsTests(TestCase):
 
     def row(self, *wikidata_ids, name="X"):
         return import_handler.AlbumRow(
-            rank=1, name=name, artist_ids=[], year=None, wikidata_ids=list(wikidata_ids)
+            rank=1,
+            name=name,
+            credits=[],
+            various_artists=False,
+            year=None,
+            wikidata_ids=list(wikidata_ids),
         )
 
     def test_the_primary_id_is_tried_first(self):
@@ -690,9 +772,9 @@ class ImportMusicDataCommandTests(TestCase):
             (
                 "albums",
                 "WebRankings.txt",
-                "1\tPet Sounds\t3\t1966\tQ212863\n"
-                "2\tHarvest\t56\t1972\tQ1191683\n"
-                "3\tDéjà Vu\t2145\t1970\tQ1136782\n",
+                "1\tPet Sounds\t3,0\t1966\tQ212863\n"
+                "2\tHarvest\t56,0\t1972\tQ1191683\n"
+                "3\tDéjà Vu\t113,1\t1970\tQ1136782\n",
             ),
             ("positions", "ListPositions.txt", POSITIONS_TSV),
         ):
@@ -713,6 +795,26 @@ class ImportMusicDataCommandTests(TestCase):
         self.assertEqual(
             list(models.Album.objects.values_list("pk", "name", "rank")), before
         )
+
+    def test_a_dry_run_lists_name_variants_and_artists_the_file_drops(self):
+        models.Artist.objects.create(name="Dropped", slug="dropped", source_id=999)
+        models.Artist.objects.create(name="Crazy Horse (legacy)", slug="legacy")
+        output = self.run_command(dry_run=True)
+        self.assertIn("4 artists, 2 with name variants", output)
+        self.assertIn("56 0: Neil Young | 1: Neil Young & Crazy Horse", output)
+        self.assertIn("- 999 Dropped (removed)", output)
+        self.assertNotIn("!", output)
+        # A row without a provider id may yet be adopted, so is not listed.
+        self.assertNotIn("legacy", output)
+
+    def test_a_dry_run_lists_every_bad_credit(self):
+        Path(self.paths["albums"]).write_text(
+            "1\tPet Sounds\t3,1\t1966\tQ212863\n2\tHarvest\t999,0\t1972\tQ1\n",
+            encoding="utf-8",
+        )
+        output = self.run_command(dry_run=True)
+        self.assertIn("! Albums row 1 (Pet Sounds) credits artist 3", output)
+        self.assertIn("! Albums row 2 (Harvest) credits artist 999", output)
 
     def test_the_import_reports_kept_added_and_removed(self):
         output = self.run_command()
@@ -800,11 +902,11 @@ class ImportBatchTests(TestCase):
     def test_runs_all_four_importers_in_order(self):
         success, message = import_release()
         self.assertTrue(success)
-        self.assertTrue(message.startswith("Artists: 6"))
+        self.assertTrue(message.startswith("Artists: 4"))
         self.assertIn("Lists: 3 created", message)
         self.assertIn("Albums: 3 (0 kept, 3 added, 0 removed)", message)
         self.assertIn("memberships: 5 created", message)
-        self.assertEqual(models.Artist.objects.count(), 6)
+        self.assertEqual(models.Artist.objects.count(), 4)
         self.assertEqual(models.MusicList.objects.count(), 3)
         self.assertEqual(models.Album.objects.count(), 3)
         self.assertEqual(models.AlbumListMembership.objects.count(), 5)
@@ -821,7 +923,7 @@ class ImportBatchTests(TestCase):
 
     def test_albums_cannot_credit_artists_the_release_lacks(self):
         with self.assertRaises(ValueError) as ctx:
-            import_release(artists_file="3\tThe Beach Boys\n")
+            import_release(artists_file="3\t183048\tThe Beach Boys\n")
         self.assertIn("not in the artists file", str(ctx.exception))
 
     def test_a_failure_rolls_the_whole_batch_back(self):
@@ -866,47 +968,53 @@ class RealReleaseFilesTests(TestCase):
         artist_rows = _read_fixture_rows("ArtistInfo.txt")
         self.assertEqual(models.Artist.objects.count(), len(artist_rows))
         self.assertFalse(models.Artist.objects.filter(source_id__isnull=True).exists())
-        tags = sum(len([t for t in row[2].split(",") if t]) for row in artist_rows)
-        self.assertEqual(models.ArtistRelation.objects.count(), tags)
+        variants = sum(len([n for n in row[2:] if n]) for row in artist_rows)
+        self.assertEqual(
+            sum(len(a.name_variants) for a in models.Artist.objects.all()), variants
+        )
         slugs = list(models.Artist.objects.values_list("slug", flat=True))
         self.assertEqual(len(set(slugs)), len(slugs))
         self.assertNotIn("", slugs)
 
     def test_the_credits_read_as_the_artist_system_intends(self):
-        # The cases the artist system was designed around, from the
-        # 2026-10 discussion with the data provider.
+        # The cases the name-variant system was designed around, from the
+        # 2026-10-28 release and the data provider's notes on it.
         import_real_release()
-        graph = ArtistGraph.load()
 
         def credit(name):
             return models.Album.objects.get(name=name).artist_credit
 
+        def artists(name):
+            return [
+                artist.name
+                for artist in models.Album.objects.get(name=name).credited_artists
+            ]
+
         def owns(artist_name, album_name):
-            artist = models.Artist.objects.get(name=artist_name)
-            album = models.Album.objects.get(name=album_name)
-            return album.id in graph.album_ids(artist.id)
+            return models.Album.objects.filter(
+                name=album_name, artists__name=artist_name
+            ).exists()
 
-        def appears_on(artist_name):
-            artist = models.Artist.objects.get(name=artist_name)
-            return set(
-                models.Album.objects.filter(
-                    id__in=graph.appears_on_ids(artist.id)
-                ).values_list("name", flat=True)
-            )
-
-        self.assertEqual(credit("Band on the Run"), "Paul McCartney & Wings")
-        self.assertEqual(credit("The Harder They Come"), "Various Artists")
+        self.assertEqual(credit("Purple Rain"), "Prince and the Revolution")
+        self.assertEqual(artists("Purple Rain"), ["Prince"])
+        self.assertTrue(owns("Prince", "Sign o' the Times"))
+        self.assertEqual(credit("Band on the Run"), "Paul McCartney and Wings")
         self.assertEqual(credit("Déjà Vu"), "Crosby, Stills, Nash & Young")
-        self.assertTrue(owns("Prince", "Purple Rain"))
         self.assertTrue(owns("Crosby, Stills & Nash", "Déjà Vu"))
-        self.assertTrue(owns("Neil Young", "Déjà Vu"))
-        self.assertTrue(owns("The Velvet Underground", "The Velvet Underground & Nico"))
-        self.assertFalse(owns("Nico", "The Velvet Underground & Nico"))
-        self.assertEqual(appears_on("Nico"), {"The Velvet Underground & Nico"})
+        # Credited to each artist separately; "The Velvet Underground &
+        # Nico" is a leftover variant no credit uses.
         self.assertEqual(
-            appears_on("Crazy Horse"),
-            {"Everybody Knows This Is Nowhere", "Rust Never Sleeps", "Ragged Glory"},
+            artists("The Velvet Underground & Nico"),
+            ["The Velvet Underground", "Nico"],
         )
+        self.assertEqual(
+            credit("The Harder They Come"), "Jimmy Cliff & Various Artists"
+        )
+        self.assertEqual(credit("Saturday Night Fever"), "Bee Gees & Various Artists")
+        nuggets = models.Album.objects.get(name__startswith="Nuggets")
+        self.assertEqual(nuggets.artist_credit, "Various Artists")
+        self.assertTrue(nuggets.various_artists)
+        self.assertEqual(nuggets.credited_artists, [])
 
     def test_every_album_appears_on_at_least_one_list(self):
         self._import_release()
