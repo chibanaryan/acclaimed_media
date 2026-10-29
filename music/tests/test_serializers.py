@@ -34,7 +34,6 @@ class AlbumSummarySerializerTests(TestCase):
             data["artists"],
             [
                 {
-                    "id": self.artist.id,
                     "name": "Radiohead",
                     "slug": "radiohead",
                     "credited_name": "Radiohead",

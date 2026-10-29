@@ -8,6 +8,7 @@ from music.services.credits import (
     artist_summary,
     credit_separator,
     credit_text,
+    split_by_credit,
     variant_names_by_artist,
 )
 
@@ -110,3 +111,18 @@ class CreditQueryTests(TestCase):
         nico = models.AlbumCredit.objects.get(artist=self.nico)
         self.assertEqual(nico.name, "Nico")
         self.assertFalse(nico.uses_variant)
+
+
+class SplitByCreditTests(TestCase):
+    def test_solo_and_joint_albums_keep_their_order(self):
+        a = models.Artist.objects.create(name="A", slug="a")
+        b = models.Artist.objects.create(name="B", slug="b")
+        solo = models.Album.objects.create(name="Solo", rank=1, various_artists=True)
+        joint = models.Album.objects.create(name="Joint", rank=2)
+        later = models.Album.objects.create(name="Later", rank=3)
+        for album in (solo, joint, later):
+            models.AlbumCredit.objects.create(album=album, artist=a)
+        models.AlbumCredit.objects.create(album=joint, artist=b, position=1)
+        albums = list(models.Album.objects.with_relations().order_by("rank"))
+        with self.assertNumQueries(0):
+            self.assertEqual(split_by_credit(albums, a.id), ([solo, later], [joint]))

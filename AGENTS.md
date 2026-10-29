@@ -1000,14 +1000,23 @@ differ from the games files:
   Either file in its pre-2026-10-28 layout fails with a message saying so.
 - **Artists are upserted, not replaced.** Matched on `source_id`; a row that
   predates the ids is adopted by Wikidata id, exact name, then normalized name,
-  so pks and `?artists=` links survive. **Slugs are not kept**: every import
-  rebuilds them from the current names (`plan_artist_slugs`), so a renamed
-  act's URL follows its name and an admin edit lasts until the next import.
-  Same-named acts are numbered by provider id - the lowest has the plain
-  slug - so a file always gives the same slugs. That is safe only while
-  music is the staff beta with nothing linking in; before launch, add a
-  redirect from a replaced slug. `--dry-run` lists the slugs that would
-  change. An artist the file does not list is deleted, with its page.
+  so pks survive. **Slugs are not kept**: they follow the current names
+  (`music.services.artist_slugs`), rebuilt by every import and again after
+  every Wikidata pass, and the admin cannot edit them. Same-named acts are
+  told apart the way Wikipedia does it: the one whose English Wikipedia
+  title (`Artist.wikipedia_title`, from the enwiki sitelink) is the bare
+  name keeps the plain slug, the others take their titles
+  ("nirvana-british-band"); with no bare-name title the lowest provider id
+  keeps the plain slug, and only an act with no usable title is numbered. Names go through unidecode ("royksopp"). That
+  is safe only while music is the staff beta with nothing linking in;
+  before launch, add a redirect from a replaced slug. `--dry-run` lists the
+  slugs that would change. An artist the file does not list is deleted,
+  with its page.
+- **A provider id is permanent.** The import trusts that: a row updates
+  whichever artist holds its id. One that shares no Wikidata id and no
+  normalised name with what is stored is reported - "may have been reused"
+  in the import message, `!` in `--dry-run` - but still imported, since a
+  rename can do that too.
 - **Albums are upserted, not replaced.** `match_albums` pairs each row with
   the stored album carrying any of its Wikidata ids (`Album.wikidata_qids`,
   the primary and every id in `all_wikidata_ids`), primary id first; an album
@@ -1087,6 +1096,17 @@ import, and their pages 404 (music was still the staff beta).
 - The release's Wikidata ids describe the artist, not its names, so there is
   not one per name. The first is `Artist.wikidata_id`, which the Wikidata
   pass reads for the MusicBrainz id.
+- **Albums credited with other artists are listed apart**, under "With
+  other artists" on the artist page and `with_other_artists` in the API
+  (`credits.split_by_credit`): Getz/Gilberto on Stan Getz's. A `VA` tail
+  names nobody else. They still count, in the total and the chart.
+- **No artist pk is public.** The pks were handed out in the provider's
+  entry order, which he does not want visible. `?artists=` takes slugs
+  only - a pk would let anyone read the order back one link at a time - and
+  a hidden form field carries it through later filter changes;
+  `/api/music/all/` keys its artists table by slug and lists slugs in
+  `"ar"`; no artist serializer has an `id`. A slug rebuild touches its
+  albums' `modified`, so the payload version moves with it.
 - The provider mentions a members list per artist for a future "See also";
   no file carries it yet.
 
@@ -1095,7 +1115,8 @@ The credit line's separators are `credit_separator` on both sides;
 and requires them equal.
 
 The Wikidata pass no longer touches album credits. It reads each artist's
-MusicBrainz id (P434) off the artist's own QID and stores only that.
+MusicBrainz id (P434) and English Wikipedia title off the artist's own QID
+and stores only those.
 
 ## Music Metadata Pipeline
 

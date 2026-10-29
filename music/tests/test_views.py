@@ -164,17 +164,47 @@ class AlbumHomePageViewTests(MusicDataMixin, TestCase):
         self.assertEqual(len(response.context["albums"]), 3)
 
     def test_artist_filter(self):
+        response = self.client.get(reverse("music:home"), {"artists": "the-beatles"})
+        self.assertEqual([a.name for a in response.context["albums"]], ["Revolver"])
+        self.assertEqual(response.context["current_artists"], "the-beatles")
+        self.assertContains(
+            response,
+            '<input type="hidden" name="artists" value="the-beatles" '
+            'data-label="The Beatles">',
+        )
+
+    def test_a_numeric_artist_value_is_not_read_as_a_pk(self):
+        # Pks would give away the provider's entry order, one link at a time.
         response = self.client.get(
             reverse("music:home"), {"artists": str(self.beatles.id)}
         )
+        self.assertEqual(list(response.context["albums"]), [])
+        self.assertNotContains(response, "by The Beatles")
+
+    def test_an_unknown_artist_filters_to_nothing(self):
+        response = self.client.get(reverse("music:home"), {"artists": "nobody"})
+        self.assertEqual(list(response.context["albums"]), [])
+        self.assertEqual(response.context["current_artists"], "nobody")
+
+    def test_a_slug_is_read_in_any_case(self):
+        response = self.client.get(reverse("music:home"), {"artists": "The-Beatles"})
         self.assertEqual([a.name for a in response.context["albums"]], ["Revolver"])
+
+    def test_a_value_that_is_no_slug_leaves_the_page_unfiltered(self):
+        response = self.client.get(reverse("music:home"), {"artists": "<b>"})
+        self.assertFalse(response.context["is_filtered"])
+        self.assertEqual(response.context["show_rank"], "alltime")
+
+    def test_only_slug_shaped_values_are_kept(self):
+        response = self.client.get(
+            reverse("music:home"), {"artists": "the-beatles,<b>,the-beatles"}
+        )
+        self.assertEqual(response.context["current_artists"], "the-beatles")
 
     def test_the_artist_filter_finds_albums_under_any_of_their_names(self):
         # Rust Never Sleeps is credited to "Neil Young & Crazy Horse", one of
         # Neil Young's names, so filtering by him finds it.
-        response = self.client.get(
-            reverse("music:home"), {"artists": str(self.young.id)}
-        )
+        response = self.client.get(reverse("music:home"), {"artists": "neil-young"})
         self.assertEqual(
             [a.name for a in response.context["albums"]], ["Rust Never Sleeps"]
         )
@@ -183,9 +213,9 @@ class AlbumHomePageViewTests(MusicDataMixin, TestCase):
         response = self.client.get(reverse("music:home"), {"genres": str(self.rock.id)})
         self.assertEqual([a.name for a in response.context["albums"]], ["Revolver"])
 
-    def test_a_non_numeric_id_filter_is_ignored(self):
+    def test_a_malformed_filter_is_ignored(self):
         response = self.client.get(
-            reverse("music:home"), {"artists": "abc", "genres": " , "}
+            reverse("music:home"), {"artists": "<a b>", "genres": " , "}
         )
         self.assertEqual(len(response.context["albums"]), 3)
 
@@ -357,7 +387,7 @@ class FilterTitleTests(TestCase):
 
     BOUNDS = {"min_year": 1955, "max_year": 2019}
     GENRES = [{"id": 1, "name": "Rock"}, {"id": 2, "name": "Soul"}]
-    ARTISTS = [{"id": 7, "name": "The Beatles"}]
+    ARTISTS = [{"id": 7, "name": "The Beatles", "slug": "the-beatles"}]
 
     def test_unfiltered(self):
         self.assertEqual(
@@ -416,8 +446,11 @@ class FilterTitleTests(TestCase):
         )
 
     def test_an_artist_reads_as_a_credit(self):
+        models.Artist.objects.create(name="The Beatles", slug="the-beatles")
         self.assertEqual(
-            _filter_title({"artists": "7"}, artists=self.ARTISTS, **self.BOUNDS),
+            _filter_title(
+                {"artists": "the-beatles"}, artists=self.ARTISTS, **self.BOUNDS
+            ),
             "Most Acclaimed Albums by The Beatles of All Time",
         )
 
@@ -814,6 +847,38 @@ class ArtistDetailViewTests(MusicDataMixin, TestCase):
         self.assertContains(response, "Also credited as")
         # Only the names a ranked album uses.
         self.assertNotContains(response, "Stray Gators")
+
+    def test_albums_with_other_artists_are_listed_apart_and_still_count(self):
+        together = models.Album.objects.create(
+            name="Together", rank=4, artist_credit="Neil Young & The Beatles"
+        )
+        models.AlbumCredit.objects.create(album=together, artist=self.young)
+        models.AlbumCredit.objects.create(
+            album=together, artist=self.beatles, position=1
+        )
+        response = self.client.get(self.young.get_absolute_url())
+        self.assertEqual(response.context["artist_albums"], [self.rust])
+        self.assertEqual(response.context["joint_albums"], [together])
+        self.assertEqual(response.context["albums_count"], 2)
+        self.assertContains(response, "With other artists")
+        self.assertEqual(
+            sum(bin["count"] for bin in response.context["rank_distribution"]), 2
+        )
+
+    def test_a_various_artists_tail_is_not_another_artist(self):
+        self.rust.various_artists = True
+        self.rust.save()
+        response = self.client.get(self.young.get_absolute_url())
+        self.assertEqual(response.context["artist_albums"], [self.rust])
+        self.assertEqual(response.context["joint_albums"], [])
+        self.assertNotContains(response, "With other artists")
+
+    def test_an_artist_only_credited_with_others_has_no_empty_notice(self):
+        nico = models.Artist.objects.create(name="Nico", slug="nico")
+        models.AlbumCredit.objects.create(album=self.rust, artist=nico, position=1)
+        response = self.client.get(nico.get_absolute_url())
+        self.assertEqual(response.context["joint_albums"], [self.rust])
+        self.assertNotContains(response, "No ranked albums")
 
     def test_an_artist_credited_only_as_themselves_lists_no_other_names(self):
         response = self.client.get(self.beatles.get_absolute_url())

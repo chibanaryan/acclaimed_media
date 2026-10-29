@@ -48,11 +48,12 @@ class AlbumMetadata:
 
 @dataclass
 class ArtistMetadata:
-    """A performer entity: its label and its MusicBrainz artist id."""
+    """A performer entity: its label, MusicBrainz id and Wikipedia title."""
 
     wikidata_id: str
     name: str = ""
     musicbrainz_id: Optional[str] = None
+    wikipedia_title: str = ""
 
 
 def _claim_values(claims: Dict[str, Any], prop: str) -> List[Any]:
@@ -256,12 +257,15 @@ class WikidataClient(RateLimitedClient):
         return labels
 
     def fetch_artists(self, qids: Iterable[str]) -> Dict[str, ArtistMetadata]:
-        """Resolve performer QIDs to names and MusicBrainz artist ids.
+        """Resolve performer QIDs to names, MusicBrainz ids and Wikipedia titles.
 
         Taking P434 from the same request is what lets ``Artist.musicbrainz_id``
-        be filled without a single MusicBrainz call.
+        be filled without a single MusicBrainz call; the enwiki sitelink is
+        what tells same-named artists' slugs apart.
         """
-        entities = self.fetch_entities(qids, props="labels|claims")
+        entities = self.fetch_entities(
+            qids, props="labels|claims|sitelinks", extra_params={"sitefilter": "enwiki"}
+        )
 
         artists: Dict[str, ArtistMetadata] = {}
         for qid, entity in entities.items():
@@ -275,6 +279,9 @@ class WikidataClient(RateLimitedClient):
                 musicbrainz_id=_first_claim_value(
                     entity.get("claims", {}),
                     config.WIKIDATA_ARTIST_MUSICBRAINZ_PROPERTY,
+                ),
+                wikipedia_title=(
+                    entity.get("sitelinks", {}).get("enwiki", {}).get("title", "")
                 ),
             )
         return artists

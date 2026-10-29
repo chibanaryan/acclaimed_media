@@ -100,7 +100,14 @@ class Command(BaseCommand):
                 f"{index}: {name}" for index, name in enumerate(row.names)
             )
             self.stdout.write(f"  {row.source_id:>5} {variants}")
-        slugs = import_handler.plan_artist_slugs(artists)
+        for source_id, old, new in import_handler.suspected_reuses(artists):
+            self.stdout.write(
+                self.style.WARNING(
+                    f"  ! {source_id} was {old!r}, now {new!r}: no shared "
+                    "Wikidata id or name - a reused id?"
+                )
+            )
+        slugs = import_handler.plan_import_slugs(artists)
         # Rows without a provider id are left out: the import adopts what it
         # can of them by Wikidata id or name, so they are not known losses.
         stored = models.Artist.objects.filter(source_id__isnull=False).order_by(

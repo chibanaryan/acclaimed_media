@@ -42,6 +42,7 @@ from core.services.monitoring import weekly_job_monitor
 from music import views as music_views
 from music.management.commands.rebuild_album_genres import write_report
 from music.models import Album
+from music.services.artist_slugs import rebuild_artist_slugs
 from music.services.genre_rebuild import rebuild_album_genres
 from music.services.release_dates import refresh_release_dates
 from music.services.metadata_service import AlbumMetadataService
@@ -184,6 +185,12 @@ class Command(BaseCommand):
         if DATE_SOURCE_PASSES.intersection(passes):
             changed = refresh_release_dates()
             self.stdout.write(f"Release dates: {changed} updated")
+
+        # New artists get their Wikipedia titles in that pass, and a title is
+        # what tells same-named artists' slugs apart.
+        if "wikidata" in passes:
+            for source_id, old, new in rebuild_artist_slugs():
+                self.stdout.write(f"Artist {source_id} slug: {old} -> {new}")
 
         music_views._invalidate_music_caches()
         self._print_summary(results, time.time() - start)

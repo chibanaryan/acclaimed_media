@@ -19,6 +19,7 @@ like one site.
 from collections import defaultdict
 import csv
 import math
+import re
 from contextlib import ExitStack
 from io import TextIOWrapper
 from pathlib import Path
@@ -52,6 +53,7 @@ from music.services import caching, import_handler, landing_pages
 from music.services.credits import (
     album_ids_by_artist,
     artists_matching,
+    split_by_credit,
     variant_names_by_artist,
     variant_names_of,
 )
@@ -124,6 +126,31 @@ ARTIST_ALBUM_SORTS = {
 }
 
 
+_SLUG_TOKEN = re.compile(r"^[-\w]+$")
+
+
+def parse_artist_param(raw):
+    """``?artists=``'s artist slugs, in the order given, each once.
+
+    Slugs only: the pks were handed out in the order the provider entered
+    the artists, and accepting them here would let anyone read that order
+    back off the page, one ``?artists=N`` at a time. Nothing public linked
+    to the pks before the switch. A slug that names nobody filters to
+    nothing, honestly, rather than being dropped into an unfiltered page.
+    """
+    tokens = (part.strip().lower() for part in (raw or "").split(","))
+    return list(dict.fromkeys(token for token in tokens if _SLUG_TOKEN.match(token)))
+
+
+def _artist_names(raw, artists):
+    """``?artists=``'s artists by name, joined: "Prince & Nico"; else ""."""
+    if not artists:
+        return ""
+    names = {artist["slug"]: artist["name"] for artist in artists}
+    chosen = [names[slug] for slug in parse_artist_param(raw) if slug in names]
+    return titles.join_names(chosen) if chosen else ""
+
+
 def _filter_title(params, min_year=None, max_year=None, genres=None, artists=None):
     """A natural page title describing the current filter state.
 
@@ -147,15 +174,8 @@ def _filter_title(params, min_year=None, max_year=None, genres=None, artists=Non
         if chosen:
             genre_label = f" {titles.join_names(chosen)}"
 
-    artist_label = ""
-    selected_artists = parse_id_list(params.get("artists"))
-    if selected_artists and artists:
-        names = {artist["id"]: artist["name"] for artist in artists}
-        chosen = [
-            names[artist_id] for artist_id in selected_artists if artist_id in names
-        ]
-        if chosen:
-            artist_label = f" by {titles.join_names(chosen)}"
+    artist_names = _artist_names(params.get("artists"), artists)
+    artist_label = f" by {artist_names}" if artist_names else ""
 
     start = parse_int(params.get("start"))
     end = parse_int(params.get("end"))
@@ -351,11 +371,11 @@ def apply_album_filters(queryset, params, skip=(), user=None, descendants=None):
             queryset = queryset.filter(year_released__lte=end)
 
     if "artists" not in skip:
-        artist_ids = parse_id_list(params.get("artists"))
-        if artist_ids:
+        artist_slugs = parse_artist_param(params.get("artists"))
+        if artist_slugs:
             # Prince's credits as Prince and the Revolution are Prince's
             # credits, so a plain join finds every name's records.
-            queryset = queryset.filter(artists__id__in=artist_ids).distinct()
+            queryset = queryset.filter(artists__slug__in=artist_slugs).distinct()
 
     if "genres" not in skip:
         genre_ids = parse_id_list(params.get("genres"))
@@ -771,7 +791,10 @@ class AlbumHomePageView(MusicVisibleMixin, RobustPaginationMixin, ListView):
         context["current_q"] = self.request.GET.get("q", "")
         context["current_start"] = self.request.GET.get("start", "")
         context["current_end"] = self.request.GET.get("end", "")
-        context["current_artists"] = self.request.GET.get("artists", "")
+        # Carried by the form, so the filter survives the next change.
+        context["current_artists"] = ",".join(
+            parse_artist_param(self.request.GET.get("artists"))
+        )
         context["current_genres"] = self.request.GET.get("genres", "")
         context["current_listened"] = self.request.GET.get("listened", "")
         context["listen_status_options"] = config.LISTEN_STATUS_OPTIONS
@@ -781,9 +804,11 @@ class AlbumHomePageView(MusicVisibleMixin, RobustPaginationMixin, ListView):
         context["max_saved_filters"] = config.MAX_SAVED_FILTERS
         context["current_sort"] = self.request.GET.get("sort", "rank")
         context["current_dir"] = self.request.GET.get("dir", "asc")
-        context["is_filtered"] = any(
+        # The artists as parsed, so a value that names nothing a slug could
+        # does not leave a page "filtered" that the client calls all-time.
+        context["is_filtered"] = bool(context["current_artists"]) or any(
             self.request.GET.get(param)
-            for param in ("q", "start", "end", "artists", "genres", "listened")
+            for param in ("q", "start", "end", "genres", "listened")
         )
         context["filter_title"] = _filter_title(
             self.request.GET,
@@ -791,6 +816,11 @@ class AlbumHomePageView(MusicVisibleMixin, RobustPaginationMixin, ListView):
             max_year=max_year,
             genres=genres,
             artists=context["artists"],
+        )
+        # What the heading says of them, for the client to keep saying it
+        # once it composes the heading itself.
+        context["current_artist_label"] = _artist_names(
+            self.request.GET.get("artists"), context["artists"]
         )
 
         # The state the shared Alpine filter component starts from. Years
@@ -1309,7 +1339,11 @@ class ArtistDetailView(MusicVisibleMixin, HTMXPartialMixin, DetailView):
         albums = self._albums(
             artist.album_credits.values("album_id"), self.album_sort, self.album_dir
         )
-        context["artist_albums"] = albums
+        # Solo and joint credits apart, as the provider asked; both count,
+        # and the chart covers both.
+        context["artist_albums"], context["joint_albums"] = split_by_credit(
+            albums, artist.id
+        )
         context["albums_count"] = len(albums)
         context["also_credited_as"] = variant_names_of(artist.id)
         # The best album whatever order the rows are in.

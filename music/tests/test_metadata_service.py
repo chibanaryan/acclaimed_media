@@ -193,6 +193,20 @@ class WikidataPassTests(ServiceTestCase):
             self.service.run_wikidata([self.album])
         self.assertEqual(client.fetch_artists.call_args.args[0], {"Q42"})
 
+    def test_artists_get_their_wikipedia_title(self):
+        nirvana = models.Artist.objects.create(
+            name="Nirvana", slug="nirvana", wikidata_id="Q1299"
+        )
+        self.run_pass(
+            artists={
+                "Q1299": ArtistMetadata(
+                    wikidata_id="Q1299", name="x", wikipedia_title="Nirvana (band)"
+                )
+            }
+        )
+        nirvana.refresh_from_db()
+        self.assertEqual(nirvana.wikipedia_title, "Nirvana (band)")
+
     def test_an_unchanged_or_missing_mbid_is_left_alone(self):
         artist = models.Artist.objects.create(
             name="The Beatles",

@@ -295,6 +295,8 @@ var listenStatusOptions = JSON.parse(
             {# Sort state. The controls that set these sit in the results #}
             {# header, where the games rankings page has them; the form still #}
             {# carries the values so one HTMX request sends the whole state. #}
+            {# No control sets it - the artist dropdown was dropped - but a ?artists= link must survive the next filter change. Slugs, never pks. #}
+            <input type="hidden" name="artists" value="{{ current_artists }}" data-label="{{ current_artist_label }}">
             <input type="hidden" name="sort" value="{{ current_sort }}">
             <input type="hidden" name="dir" value="{{ current_dir }}">
         </form>

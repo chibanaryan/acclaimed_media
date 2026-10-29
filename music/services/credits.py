@@ -9,7 +9,7 @@ thousand rows, so nothing here is cached.
 """
 
 from collections import defaultdict
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 
 from django.db.models import F, Q
 
@@ -69,6 +69,20 @@ def album_ids_by_artist() -> Dict[int, Set[int]]:
     ):
         result[artist_id].add(album_id)
     return dict(result)
+
+
+def split_by_credit(albums, artist_id: int) -> Tuple[list, list]:
+    """``albums``, in their order, as credited to ``artist_id`` alone or with others.
+
+    What the artist page lists apart under "With other artists": Getz/Gilberto
+    on Stan Getz's. A various-artists tail names nobody else, so Jimmy Cliff's
+    soundtrack is his alone. Reads the prefetched credits; no query.
+    """
+    solo, joint = [], []
+    for album in albums:
+        alone = all(credit.artist_id == artist_id for credit in album.credits.all())
+        (solo if alone else joint).append(album)
+    return solo, joint
 
 
 def variant_names_by_artist(

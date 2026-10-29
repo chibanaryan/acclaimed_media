@@ -284,16 +284,28 @@ class AlbumMetadataService:
 
     @staticmethod
     def _save_artist_ids(artists) -> None:
-        """Store each artist's MusicBrainz id, read from its Wikidata entity.
+        """Store each artist's MusicBrainz id and Wikipedia title.
 
-        Only the id: the name is the release's, and an album's artists are
-        whoever ``WebRankings.txt`` credits, never Wikidata's P175.
+        Not the name: that is the release's, and an album's artists are
+        whoever ``WebRankings.txt`` credits, never Wikidata's P175. The
+        title only tells same-named artists' slugs apart, which the command
+        rebuilds once the pass is done.
         """
         for artist in models.Artist.objects.filter(wikidata_id__in=list(artists)):
-            mbid = artists[artist.wikidata_id].musicbrainz_id
-            if mbid and artist.musicbrainz_id != mbid:
-                artist.musicbrainz_id = mbid
-                artist.save(update_fields=["musicbrainz_id"])
+            fetched = artists[artist.wikidata_id]
+            changed = []
+            if (
+                fetched.musicbrainz_id
+                and artist.musicbrainz_id != fetched.musicbrainz_id
+            ):
+                artist.musicbrainz_id = fetched.musicbrainz_id
+                changed.append("musicbrainz_id")
+            title = fit(models.Artist, "wikipedia_title", fetched.wikipedia_title)
+            if artist.wikipedia_title != title:
+                artist.wikipedia_title = title
+                changed.append("wikipedia_title")
+            if changed:
+                artist.save(update_fields=changed)
 
     # ----------------------------------------------------------- covers pass
 

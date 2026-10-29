@@ -32,6 +32,7 @@ from ..services.credits import (
     album_ids_by_artist,
     artist_summary,
     artists_matching,
+    split_by_credit,
     variant_names_by_artist,
     variant_names_of,
 )
@@ -95,7 +96,7 @@ class AlbumAllDataView(MusicReadAPIMixin, APIView):
     since the renderer has to reproduce the ``artist_links`` template tag and
     the genre filter has to resolve a root genre to its styles. An album
     credited under another of an artist's names carries those names in
-    ``"cv"``, beside its ``"ar"`` ids; the few that need it are cheaper than
+    ``"cv"``, beside its ``"ar"`` slugs; the few that need it are cheaper than
     a name per credit on every album.
     """
 
@@ -128,14 +129,16 @@ class AlbumAllDataView(MusicReadAPIMixin, APIView):
         artists = {}
 
         for album in albums:
-            artist_ids, credited_names = [], []
+            artist_slugs, credited_names = [], []
             # In credit order, which the renderer's credit line follows.
             for credit in album.credits.all():
                 artist = credit.artist
-                artist_ids.append(artist.id)
+                # By slug, not pk: the pks were handed out in the order the
+                # provider entered the artists, which the payload must not show.
+                artist_slugs.append(artist.slug)
                 credited_names.append(credit.name)
-                if artist.id not in artists:
-                    artists[artist.id] = {"n": artist.name, "s": artist.slug}
+                if artist.slug not in artists:
+                    artists[artist.slug] = {"n": artist.name}
 
             entry = {
                 "id": album.id,
@@ -155,12 +158,12 @@ class AlbumAllDataView(MusicReadAPIMixin, APIView):
                 "rd": album.release_date and album.release_date.isoformat(),
                 "c": album.artist_credit,  # credit line, names joined
                 "t": album.thumbnail,  # 250px cover, local copy preferred
-                "ar": artist_ids,
+                "ar": artist_slugs,
                 "g": [genre.id for genre in album.genres.all()],
                 "lc": album.list_count,
                 "ni": name_order[album.id],  # alphabetical position
             }
-            if credited_names != [artists[i]["n"] for i in artist_ids]:
+            if credited_names != [artists[slug]["n"] for slug in artist_slugs]:
                 entry["cv"] = credited_names  # credited as another name
             if album.various_artists:
                 entry["va"] = 1  # the credit ends in "Various Artists"
@@ -243,7 +246,6 @@ class MusicUnifiedSearchView(MusicReadAPIMixin, APIView):
                 ],
                 "artists": [
                     {
-                        "id": artist.id,
                         "name": artist.name,
                         "slug": artist.slug,
                         "albums_count": artist.albums_count,
@@ -361,13 +363,14 @@ class ArtistDetailView(MusicReadAPIMixin, RetrieveAPIView):
 
     def get_object(self):
         artist = super().get_object()
-        artist.own_albums = (
+        albums = list(
             models.Album.objects.with_relations()
             .with_list_count()
             .filter(artists=artist)
             .order_by("rank")
         )
-        artist.albums_count = len(artist.own_albums)
+        artist.own_albums, artist.joint_albums = split_by_credit(albums, artist.id)
+        artist.albums_count = len(albums)
         artist.variant_names = variant_names_of(artist.id)
         return artist
 

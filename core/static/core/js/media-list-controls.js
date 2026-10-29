@@ -482,6 +482,11 @@ function mediaListControlsData(config) {
             // Games saved this and never restored it, so a saved filter
             // silently lost its direction. Both halves round-trip here.
             this.filters.sortDirection = saved.sortDirection || 'asc';
+            // A saved combination has no artist, so a `?artists=` the page
+            // was opened with must not narrow it - as Clear All drops it.
+            const form = this._form();
+            const artists = form && form.querySelector('[name="artists"]');
+            if (artists) artists.value = '';
 
             this.savedFiltersOpen = false;
             // Deliberately *not* announcing `year-reset` / `genres-reset`
@@ -800,8 +805,16 @@ function mediaListControlsData(config) {
                 .map(option => option.title);
             const statusSuffix = labels.length ? ': ' + joinNames(labels) : '';
 
+            // No control picks artists, so their names come with the field
+            // the page rendered them into (`_filter_title`'s "by ...").
+            const form = this._form();
+            const artists = form && form.querySelector('[name="artists"]');
+            const artistLabel = artists && artists.value && artists.dataset.label
+                ? ' by ' + artists.dataset.label
+                : '';
+
             const noun = settings.titleNoun || 'Items';
-            return `Most Acclaimed${genreLabel} ${noun}` +
+            return `Most Acclaimed${genreLabel} ${noun}${artistLabel}` +
                 `${timeSuffix}${statusSuffix}`;
         },
 

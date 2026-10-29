@@ -294,10 +294,32 @@ class ArtistAPITests(MusicAPITestMixin, TestCase):
         self.assertEqual(side["artists"][0]["slug"], "radiohead")
         self.assertEqual(side["artists"][0]["credited_name"], "Radiohead Project")
 
+    def test_detail_lists_albums_with_other_artists_apart(self):
+        guest = models.Artist.objects.create(name="Guest", slug="guest")
+        models.AlbumCredit.objects.create(album=self.kid_a, artist=guest, position=1)
+        data = self.payload(
+            reverse("music-api:artist-detail", kwargs={"slug": "radiohead"})
+        )
+        self.assertEqual([a["name"] for a in data["albums"]], ["OK Computer"])
+        self.assertEqual([a["name"] for a in data["with_other_artists"]], ["Kid A"])
+        self.assertEqual(data["albums_count"], 2)
+
     def test_the_album_list_artist_filter_finds_every_name(self):
         self._variant()
         data = self.payload(reverse("music-api:album-list"), artist="radiohead")
         self.assertIn("Side Album", [a["name"] for a in data["results"]])
+
+
+def _artist_dicts_with_an_id(value, slug="radiohead"):
+    """Every dict in a payload naming the artist ``slug`` that carries an id."""
+    if isinstance(value, dict):
+        if value.get("slug") == slug and "id" in value:
+            yield value
+        for item in value.values():
+            yield from _artist_dicts_with_an_id(item, slug)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _artist_dicts_with_an_id(item, slug)
 
 
 class MusicListAPITests(MusicAPITestMixin, TestCase):
@@ -429,7 +451,7 @@ class AlbumAllDataAPITests(MusicAPITestMixin, TestCase):
         self.assertEqual(album["y"], 2000)
         self.assertIsNone(album["rd"])  # undated until the metadata pass
         self.assertEqual(album["c"], "Radiohead")
-        self.assertEqual(album["ar"], [self.artist.id])
+        self.assertEqual(album["ar"], ["radiohead"])
         self.assertEqual(album["g"], [self.genre.id])
         self.assertEqual(album["lc"], 1)
 
@@ -500,7 +522,7 @@ class AlbumAllDataAPITests(MusicAPITestMixin, TestCase):
             various_artists=True,
         )
         sent = {entry["id"]: entry for entry in self.payload(self.url())["albums"]}
-        self.assertEqual(sent[album.id]["ar"], [self.artist.id])
+        self.assertEqual(sent[album.id]["ar"], ["radiohead"])
         self.assertEqual(sent[album.id]["cv"], ["On a Friday"])
         self.assertEqual(sent[album.id]["va"], 1)
         self.assertEqual(sent[compilation.id]["ar"], [])
@@ -509,12 +531,22 @@ class AlbumAllDataAPITests(MusicAPITestMixin, TestCase):
         self.assertNotIn("cv", sent[self.kid_a.id])
         self.assertNotIn("va", sent[self.kid_a.id])
 
-    def test_artists_are_a_lookup_table(self):
+    def test_artists_are_a_lookup_table_keyed_by_slug(self):
+        # Never by pk: those were handed out in the provider's entry order.
         data = self.payload(self.url())
-        self.assertEqual(
-            data["artists"][str(self.artist.id)],
-            {"n": "Radiohead", "s": "radiohead"},
-        )
+        self.assertEqual(data["artists"], {"radiohead": {"n": "Radiohead"}})
+
+    def test_no_artist_endpoint_exposes_an_artist_pk(self):
+        for url, params in (
+            (reverse("music-api:artist-list"), {}),
+            (reverse("music-api:artist-detail", kwargs={"slug": "radiohead"}), {}),
+            (reverse("music-api:unified-search"), {"q": "radiohead"}),
+            (reverse("music-api:album-list"), {}),
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(
+                    list(_artist_dicts_with_an_id(self.payload(url, **params))), []
+                )
 
     def test_genres_carry_their_descendants(self):
         data = self.payload(self.url())

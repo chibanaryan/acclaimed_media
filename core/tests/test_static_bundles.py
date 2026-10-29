@@ -335,6 +335,25 @@ class ApplyingASavedFilterMustNotAnnounceAResetTests(SimpleTestCase):
         self.assertIn('@year-reset.window="filters.start', time_sheet)
         self.assertIn('@genres-reset.window="filters.genres = []', genre_sheet)
 
+    def test_applying_drops_an_artist_the_page_was_opened_with(self):
+        # A saved combination has no artist; a ?artists= the page carried in
+        # its hidden field would otherwise narrow it.
+        body = self._apply_body("core/static/core/js/media-list-controls.js")
+        self.assertIn("""querySelector('[name="artists"]')""", body)
+        self.assertIn("artists.value = ''", body)
+
+    def test_the_client_heading_keeps_the_artist(self):
+        # No control sets the artist, so its name rides on the hidden field;
+        # without it the heading lost "by Prince" on the first client change.
+        for relative_path in (
+            "core/static/core/js/media-list-controls.js",
+            "core/static/core/js/media-list-controls.min.js",
+        ):
+            with self.subTest(path=relative_path):
+                source = (Path(settings.BASE_DIR) / relative_path).read_text()
+                self.assertIn("dataset.label", source)
+                self.assertIn(" by ", source)
+
     def test_neither_component_dispatches_a_reset_while_applying(self):
         for relative_path in (
             "core/static/core/js/media-list-controls.js",

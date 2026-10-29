@@ -33,9 +33,10 @@ class Artist(models.Model):
 
     Every artist comes from the release's ``ArtistInfo.txt`` under the data
     provider's own permanent index, ``source_id``, which is what an import
-    upserts on - so an artist keeps its pk across imports, and ``?artists=``
-    links keep working. Its slug follows its current name: every import
-    rebuilds it, in ``import_handler.plan_artist_slugs``.
+    upserts on - so an artist keeps its pk across imports. Its slug follows
+    its current name, disambiguated by its Wikipedia title (see
+    ``music.services.artist_slugs``), so a slug - and a ``?artists=`` link,
+    which takes slugs - lasts only as long as the name.
 
     An artist can be credited under several names, ``name_variants``:
     Prince is also "Prince and the Revolution", Frank Zappa "The Mothers of
@@ -78,6 +79,14 @@ class Artist(models.Model):
         default=list,
         blank=True,
         help_text="Every Wikidata ID for this artist; the first is primary",
+    )
+    wikipedia_title = models.CharField(
+        max_length=300,
+        blank=True,
+        help_text=(
+            "English Wikipedia title of the primary Wikidata ID, from the "
+            "Wikidata pass; tells same-named artists' slugs apart"
+        ),
     )
     name_variants = models.JSONField(
         default=list,

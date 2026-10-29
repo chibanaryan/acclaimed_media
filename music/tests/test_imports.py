@@ -242,12 +242,42 @@ class ImportArtistsTests(TestCase):
         import_artists()
         self.assertEqual(models.Artist.objects.get(source_id=3).slug, "the-beach-boys")
 
-    def test_a_changed_qid_drops_the_old_musicbrainz_id(self):
+    def test_a_re_keyed_artist_is_not_slugged_by_its_old_title(self):
+        import_artists("1\t5\tNirvana\n2\t7\tNirvana\n")
+        models.Artist.objects.filter(source_id=2).update(wikipedia_title="Nirvana")
+        models.Artist.objects.filter(source_id=1).update(
+            wikipedia_title="Nirvana (British band)"
+        )
+        self.assertEqual(
+            import_handler.plan_import_slugs(
+                import_handler.parse_artists_file(
+                    StringIO("1\t5\tNirvana\n2\t7\tNirvana\n")
+                )
+            ),
+            {2: "nirvana", 1: "nirvana-british-band"},
+        )
+        # Artist 2 now points at another entity, so the bare-name title is
+        # not its own; with no primary topic the lowest id keeps "nirvana".
+        rekeyed = "1\t5\tNirvana\n2\t8\tNirvana\n"
+        self.assertEqual(
+            import_handler.plan_import_slugs(
+                import_handler.parse_artists_file(StringIO(rekeyed))
+            ),
+            {1: "nirvana", 2: "nirvana-2"},
+        )
+
+    def test_a_changed_qid_drops_the_old_musicbrainz_id_and_title(self):
         import_artists()
-        models.Artist.objects.filter(source_id__in=[56, 3]).update(musicbrainz_id="mb")
+        models.Artist.objects.filter(source_id__in=[56, 3]).update(
+            musicbrainz_id="mb", wikipedia_title="Old title"
+        )
         import_artists(ARTISTS_TSV.replace("633,", "634,"))
-        self.assertIsNone(models.Artist.objects.get(source_id=56).musicbrainz_id)
-        self.assertEqual(models.Artist.objects.get(source_id=3).musicbrainz_id, "mb")
+        changed = models.Artist.objects.get(source_id=56)
+        self.assertEqual((changed.musicbrainz_id, changed.wikipedia_title), (None, ""))
+        kept = models.Artist.objects.get(source_id=3)
+        self.assertEqual(
+            (kept.musicbrainz_id, kept.wikipedia_title), ("mb", "Old title")
+        )
 
     def test_an_existing_artist_is_adopted_by_any_of_its_qids(self):
         # Rows from the credit-guessing imports carry no source id; matching
@@ -340,6 +370,28 @@ class ImportArtistsTests(TestCase):
         self.assertEqual(names[-1], "complete")
         self.assertEqual(names.count("progress"), 4)
         self.assertEqual(dict(events)["complete"]["variants"], 3)
+
+    def test_an_id_given_to_a_different_act_is_flagged(self):
+        import_artists()
+        _, message = import_artists(
+            ARTISTS_TSV.replace("192\t\tCrazy Horse\n", "192\t999\tSun Ra\n")
+        )
+        self.assertIn("WARNING: 1 artist id(s) may have been reused", message)
+        self.assertIn("192 'Crazy Horse' -> 'Sun Ra'", message)
+
+    def test_a_rename_that_keeps_an_id_or_a_name_is_not_flagged(self):
+        import_artists()
+        renamed = ARTISTS_TSV.replace("633,951532\tNeil Young", "633\tShakey").replace(
+            "\tCrazy Horse\n", "\tThe Crazy Horse\n"
+        )
+        _, message = import_artists(renamed)
+        self.assertNotIn("WARNING", message)
+        self.assertEqual(
+            import_handler.suspected_reuses(
+                import_handler.parse_artists_file(StringIO(renamed))
+            ),
+            [],
+        )
 
     def test_a_bad_file_is_rejected_before_anything_is_written(self):
         for tsv, expected in (
@@ -844,6 +896,11 @@ class ImportMusicDataCommandTests(TestCase):
         self.assertNotIn("!", output)
         # A row without a provider id may yet be adopted, so is not listed.
         self.assertNotIn("legacy", output)
+
+    def test_a_dry_run_warns_of_a_reused_id(self):
+        models.Artist.objects.filter(source_id=192).update(name="Sun Ra")
+        output = self.run_command(dry_run=True)
+        self.assertIn("! 192 was 'Sun Ra', now 'Crazy Horse'", output)
 
     def test_a_dry_run_lists_slug_changes(self):
         models.Artist.objects.filter(source_id=56).update(slug="neil-young-old")

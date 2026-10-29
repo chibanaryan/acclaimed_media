@@ -7,11 +7,20 @@
 </div>
 {% endif %}
 {# The rows show each album's genres, whose base is Discogs' styles. #}
-{% if artist_albums %}{% include 'core/includes/_data_credit.html' with credit_text='Genres use data provided by Discogs' credit_url='https://www.discogs.com/' extra_class='mb-3' %}{% endif %}
+{% if artist_albums or joint_albums %}{% include 'core/includes/_data_credit.html' with credit_text='Genres use data provided by Discogs' credit_url='https://www.discogs.com/' extra_class='mb-3' %}{% endif %}
 <div>
     {% for album in artist_albums %}
         {% include 'music/includes/_album_row.html' with item=album show_rank='alltime' year_text=album|release_date_label %}
     {% empty %}
-        <div class="alert"><span>No ranked albums for this artist.</span></div>
+        {% if not joint_albums %}<div class="alert"><span>No ranked albums for this artist.</span></div>{% endif %}
     {% endfor %}
 </div>
+{# Albums credited to this artist and others (Getz/Gilberto), in the same order. #}
+{% if joint_albums %}
+<h3 class="text-xl font-bold mt-6 mb-4">With other artists</h3>
+<div>
+    {% for album in joint_albums %}
+        {% include 'music/includes/_album_row.html' with item=album show_rank='alltime' year_text=album|release_date_label %}
+    {% endfor %}
+</div>
+{% endif %}

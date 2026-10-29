@@ -199,9 +199,7 @@ class ApplyAlbumFiltersTests(MusicDataMixin, TestCase):
             ["Revolver"],
         )
         self.assertEqual(
-            self._names(
-                views.apply_album_filters(base, {"artists": str(self.young.id)})
-            ),
+            self._names(views.apply_album_filters(base, {"artists": self.young.slug})),
             ["Rust Never Sleeps"],
         )
 

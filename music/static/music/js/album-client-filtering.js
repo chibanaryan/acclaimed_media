@@ -223,7 +223,8 @@ class AlbumClientSideFiltering {
             q: text('q'),
             start: number('start'),
             end: number('end'),
-            artists: ids('artists'),
+            // Slugs: the page never carries an artist pk.
+            artists: words('artists'),
             genres: ids('genres'),
             listened: words('listened'),
             sort: text('sort') || 'rank',

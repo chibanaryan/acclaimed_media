@@ -56,9 +56,11 @@ class AlbumSummarySerializer(serializers.ModelSerializer):
         fields = album_fields + ["list_count"]
 
     def get_artists(self, obj):
+        # No artist pk: they were handed out in the provider's entry order.
         return [
             {
-                **IdSlugNameSerializer(credit.artist).data,
+                "name": credit.artist.name,
+                "slug": credit.artist.slug,
                 "credited_name": credit.name,
             }
             for credit in obj.credits.all()
@@ -115,8 +117,9 @@ class ArtistSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Artist
+        # No pk: artist pks were handed out in the order the provider entered
+        # the artists, which nothing public should reveal. The slug is the id.
         fields = [
-            "id",
             "name",
             "slug",
             "musicbrainz_id",
@@ -127,13 +130,19 @@ class ArtistSerializer(serializers.ModelSerializer):
 
 
 class ArtistDetailSerializer(ArtistSerializer):
-    """Artist fields plus every ranked album credited to them."""
+    """Artist fields plus their ranked albums, solo and with other artists.
+
+    ``albums_count`` counts both lists, as the artist page does.
+    """
 
     albums = AlbumSummarySerializer(many=True, read_only=True, source="own_albums")
+    with_other_artists = AlbumSummarySerializer(
+        many=True, read_only=True, source="joint_albums"
+    )
 
     class Meta:
         model = models.Artist
-        fields = ArtistSerializer.Meta.fields + ["albums"]
+        fields = ArtistSerializer.Meta.fields + ["albums", "with_other_artists"]
 
 
 class MusicGenreSerializer(serializers.ModelSerializer):

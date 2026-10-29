@@ -323,6 +323,25 @@ class FetchArtistsTests(WikidataClientTestCase):
             ),
         )
 
+    def test_the_english_wikipedia_title_is_read_from_the_sitelink(self):
+        client = self.build()
+        entities = {
+            "Q11649": {
+                "labels": {"en": {"value": "Nirvana"}},
+                "claims": {},
+                "sitelinks": {"enwiki": {"title": "Nirvana (band)"}},
+            }
+        }
+        with mock.patch.object(
+            client, "fetch_entities", return_value=entities
+        ) as fetch:
+            artist = client.fetch_artists(["Q11649"])["Q11649"]
+        self.assertEqual(artist.wikipedia_title, "Nirvana (band)")
+        self.assertIn("sitelinks", fetch.call_args.kwargs["props"])
+        self.assertEqual(
+            fetch.call_args.kwargs["extra_params"], {"sitefilter": "enwiki"}
+        )
+
     def test_an_artist_without_a_musicbrainz_id_still_resolves(self):
         client = self.build()
         entities = {"Q1": {"labels": {"en": {"value": "Someone"}}, "claims": {}}}

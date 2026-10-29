@@ -24,7 +24,14 @@
 - **Artist slugs follow the current names.** Every import rebuilds them,
   numbering same-named acts by provider id, so 2Pac is no longer
   `tupac-shakur` and John Mayall no longer `john-mayall-the-bluesbreakers`.
-  Fine while music is a staff beta; add old-slug redirects before launch
+  Fine while music is a staff beta; add old-slug redirects before launch.
+  Same-named acts are told apart by their Wikipedia titles
+  ("nirvana-british-band"), fetched with the Wikidata pass
+- **Artist pages list "With other artists" apart** (Getz/Gilberto on Stan
+  Getz's), still counted; **no artist pk is public** any more - `?artists=`
+  takes slugs and `/api/music/all/` is keyed by slug - since the pks gave
+  away the provider's entry order; and the import **warns when an artist
+  id seems reused** for a different act
 
 ## 2026-10-26
 

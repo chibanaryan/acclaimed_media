@@ -37,14 +37,12 @@ import re
 from typing import Callable, Dict, List, NamedTuple, Optional, Tuple
 
 from django.db import transaction
-from django.utils.text import slugify
-from unidecode import unidecode
 
 from core import constants as core_constants
 from core.services.ranking import update_year_decade_ranks
 from games.models import SiteMetadata
 from music import config, models
-from music.services import user_tracking_service
+from music.services import artist_slugs, user_tracking_service
 from music.services.credits import credit_text
 from music.services.caching import invalidate_listen_caches, invalidate_music_caches
 
@@ -276,39 +274,67 @@ def parse_artists_file(file_obj) -> List[ArtistRow]:
     return parsed
 
 
-def plan_artist_slugs(rows: List[ArtistRow]) -> Dict[int, str]:
-    """Each artist's slug, from its current name, by provider id.
+def plan_import_slugs(
+    rows: List[ArtistRow], stored: Optional[Dict[int, models.Artist]] = None
+) -> Dict[int, str]:
+    """The slugs an import of ``rows`` gives, by provider id.
 
-    Rebuilt on every import, so an artist's URL follows its name: a stored
-    slug from an older name ("john-mayall-the-bluesbreakers") is corrected
-    by the next import. Music is a staff-only beta with nothing linking in;
-    once it is public, a rename will want a redirect from the old slug.
-
-    Artists whose names slugify alike are numbered in provider-id order -
-    the lowest id takes the plain slug, the next "-2" - so the same file
-    always gives the same slugs, whichever order its rows are in. A tail
-    never takes a slug another artist's own name gives.
+    A kept artist's stored Wikipedia title still disambiguates it, but only
+    while its primary Wikidata id is the one the title was read for; a new
+    or re-keyed one has none until the next metadata run, which rebuilds
+    the slugs again. ``stored`` is the artists by provider id, when the
+    caller has them loaded.
     """
-    # Through unidecode, as `name_normalized` is: "Røyksopp" is "royksopp"
-    # rather than "rykssopp", and a name in another script reads as itself
-    # instead of every one of them being "artist".
-    # Trimmed with room for a "-N" tail: transliteration can make a slug
-    # several times longer than the name, past Artist.slug's 210 characters.
-    bases = {
-        row.source_id: slugify(unidecode(row.names[0]))[:200].strip("-") or "artist"
-        for row in rows
-    }
-    natural = set(bases.values())
-    taken = set()
-    slugs = {}
-    for source_id in sorted(bases):
-        slug, suffix = bases[source_id], 2
-        while slug in taken or (slug != bases[source_id] and slug in natural):
-            slug = f"{bases[source_id]}-{suffix}"
-            suffix += 1
-        taken.add(slug)
-        slugs[source_id] = slug
-    return slugs
+    if stored is None:
+        stored = {
+            artist.source_id: artist
+            for artist in models.Artist.objects.filter(source_id__isnull=False)
+        }
+
+    def title(row):
+        artist = stored.get(row.source_id)
+        primary = row.wikidata_ids[0] if row.wikidata_ids else None
+        if artist is None or artist.wikidata_id != primary:
+            return ""
+        return artist.wikipedia_title
+
+    return artist_slugs.plan_artist_slugs(
+        artist_slugs.SlugSource(row.source_id, row.names[0], title(row)) for row in rows
+    )
+
+
+def suspected_reuses(
+    rows: List[ArtistRow], stored: Optional[Dict[int, models.Artist]] = None
+) -> List[Tuple[int, str, str]]:
+    """Provider ids that seem to have been given to a different act.
+
+    The provider keeps an id for good, and the import trusts that: a row
+    updates whichever artist holds its id, page and all. A row that shares
+    no Wikidata id with the stored artist, and none of its names normalises
+    to the stored name, is flagged - ``(source_id, stored name, new name)``.
+    A rename that keeps a Wikidata id (Tupac Shakur to 2Pac) is not.
+    """
+    if stored is None:
+        stored = {
+            artist.source_id: artist
+            for artist in models.Artist.objects.filter(
+                source_id__in=[row.source_id for row in rows]
+            )
+        }
+    suspects = []
+    for row in rows:
+        artist = stored.get(row.source_id)
+        if artist is None:
+            continue
+        stored_ids = set(artist.all_wikidata_ids or [artist.wikidata_id]) - {None}
+        if stored_ids & set(row.wikidata_ids):
+            continue
+        if normalize_artist_name(artist.name) in {
+            normalize_artist_name(name) for name in row.names
+        }:
+            continue
+        suspects.append((row.source_id, artist.name, row.names[0]))
+    return suspects
 
 
 def import_artists(
@@ -324,8 +350,8 @@ def import_artists(
     separately and this one folds into another's variants, such as Prince
     and the Revolution.
 
-    Slugs follow the current names (:func:`plan_artist_slugs`), so a slug
-    edited in the admin lasts only until the next import.
+    Slugs follow the current names (``music.services.artist_slugs``), with
+    the Wikipedia titles already stored telling same-named acts apart.
     """
     parsed = parse_artists_file(file_obj)
     total = len(parsed)
@@ -333,9 +359,12 @@ def import_artists(
     if progress_callback:
         progress_callback("start", {"total": total, "file": "Artists"})
 
-    slugs = plan_artist_slugs(parsed)
     existing = list(models.Artist.objects.all())
     by_source = {a.source_id: a for a in existing if a.source_id is not None}
+    # Both before the rows are written, while the stored names and ids are
+    # the old ones.
+    slugs = plan_import_slugs(parsed, by_source)
+    reused = suspected_reuses(parsed, by_source)
     unclaimed = [a for a in existing if a.source_id is None]
 
     def adopt(name: str, wikidata_ids: List[str]) -> Optional[models.Artist]:
@@ -361,9 +390,11 @@ def import_artists(
             created += 1
         primary = row.wikidata_ids[0] if row.wikidata_ids else None
         if artist.wikidata_id != primary:
-            # A different entity's MusicBrainz id would be wrong, not stale;
-            # the next Wikidata pass reads the right one.
+            # A different entity's MusicBrainz id and Wikipedia title would
+            # be wrong, not stale - the title would even pick its slug; the
+            # next Wikidata pass reads the right ones.
             artist.musicbrainz_id = None
+            artist.wikipedia_title = ""
         artist.source_id = row.source_id
         artist.name = name
         artist.name_variants = row.names
@@ -389,14 +420,25 @@ def import_artists(
     if progress_callback:
         progress_callback(
             "complete",
-            {"count": total, "created": created, "variants": variants},
+            {
+                "count": total,
+                "created": created,
+                "variants": variants,
+                "reused": reused,
+            },
         )
 
-    return (
-        True,
+    message = (
         f"Artists: {total} ({created} new, {removed} removed), "
-        f"{variants} name variants",
+        f"{variants} name variants"
     )
+    if reused:
+        message += (
+            f"; WARNING: {len(reused)} artist id(s) may have been reused for a "
+            "different act: "
+            + ", ".join(f"{sid} {old!r} -> {new!r}" for sid, old, new in reused)
+        )
+    return True, message
 
 
 def _parse_credits(cell: str, row_number: int) -> Tuple[List[Tuple[int, int]], bool]:

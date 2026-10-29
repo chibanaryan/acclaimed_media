@@ -168,7 +168,7 @@ class AlbumFilterEngine {
      * @param {string} [filters.q]
      * @param {number} [filters.start] - inclusive release-year floor
      * @param {number} [filters.end] - inclusive release-year ceiling
-     * @param {number[]} [filters.artists] - artist ids, OR-ed
+     * @param {string[]} [filters.artists] - artist slugs, OR-ed
      * @param {number[]} [filters.genres] - genre ids, OR-ed
      * @param {string[]} [filters.listened] - 'own' | 'yes' | 'want' | 'no', OR-ed
      * @returns {Array} Matching albums
@@ -206,8 +206,8 @@ class AlbumFilterEngine {
         const start = Number.isFinite(filters.start) ? filters.start : null;
         const end = Number.isFinite(filters.end) ? filters.end : null;
         // An album credited under any of an artist's names carries that
-        // artist's id, so the ids need no expansion, unlike genres.
-        const artistIds = (filters.artists || []).map(Number);
+        // artist's slug, so the slugs need no expansion, unlike genres.
+        const artistIds = (filters.artists || []).map(String);
         const genreIds = this._expandGenres(filters.genres || []);
 
         return this.albums.filter(album => {
@@ -358,11 +358,11 @@ class AlbumFilterEngine {
             // Each credit under the name it is credited as ("cv", sent only
             // when one differs), linking to the artist's own page.
             artists: (album.ar || [])
-                .map((id, index) => {
-                    const artist = this.artists[id];
+                .map((slug, index) => {
+                    const artist = this.artists[slug];
                     if (!artist) return null;
                     const credited = album.cv ? album.cv[index] : artist.n;
-                    return { n: credited, s: artist.s, a: artist.n };
+                    return { n: credited, s: slug, a: artist.n };
                 })
                 .filter(Boolean),
             variousArtists: Boolean(album.va),

@@ -277,7 +277,7 @@ class MusicParityTests(ParityTestCase):
             "start=1970&end=1989",
             f"genres={self.rock.id}",
             f"genres={self.punk.id}",
-            f"artists={self.artist.id}",
+            f"artists={self.artist.slug}",
             f"genres={self.rock.id}&sort=year&dir=desc",
         ]
         self.assertSameOrder(

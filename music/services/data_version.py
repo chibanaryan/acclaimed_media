@@ -17,7 +17,8 @@ from .. import models
 # a copy of it discards that copy rather than reading fields that moved.
 # 4: "ar" in credit order, and artists carry "d", their rolled-up acts.
 # 5: no "d"; albums carry "cv" (credited names) and "va" (Various Artists).
-SCHEMA_VERSION = 5
+# 6: artists keyed by slug, and "ar" lists slugs - no artist pks.
+SCHEMA_VERSION = 6
 
 
 def compute_album_data_version():
