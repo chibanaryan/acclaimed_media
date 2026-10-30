@@ -88,9 +88,7 @@ class PercentileServiceTests(TestCase):
             )
             PlayedGame.objects.create(user=user, game=game, igdb_id=game.igdb_id)
 
-        self.assertEqual(
-            calculate_percentile(1)["message"], "You're #1 of 3 players!"
-        )
+        self.assertEqual(calculate_percentile(1)["message"], "You're #1 of 3 players!")
 
     def test_top_one_percent_message(self):
         """Users in top 1% get special message."""
