@@ -52,6 +52,10 @@ class RateLimitedClient:
     initial_retry_delay: float = 1.0
     timeout: int = 30
 
+    #: How loudly ``get_json`` reports running out of retries. Error reaches
+    #: Sentry, so a client whose caller has a fallback lowers it.
+    give_up_level: int = logging.ERROR
+
     def __init__(
         self,
         delay: Optional[float] = None,
@@ -117,8 +121,12 @@ class RateLimitedClient:
                 )
             except self.RETRYABLE_ERRORS as exc:
                 if last_attempt:
-                    logger.error(
-                        "%s failed after %d attempts: %s", url, self.max_retries, exc
+                    logger.log(
+                        self.give_up_level,
+                        "%s failed after %d attempts: %s",
+                        url,
+                        self.max_retries,
+                        exc,
                     )
                     return None
                 logger.warning(
@@ -146,7 +154,8 @@ class RateLimitedClient:
                 throttled = response.status_code in self.THROTTLE_STATUSES
                 reason = "throttled" if throttled else "server error"
                 if last_attempt:
-                    logger.error(
+                    logger.log(
+                        self.give_up_level,
                         "%s still returning %s (%s) after %d attempts",
                         url,
                         response.status_code,
@@ -195,7 +204,7 @@ class RateLimitedClient:
                 response = self.session.get(url, timeout=self.timeout)
             except self.RETRYABLE_ERRORS as exc:
                 if last_attempt:
-                    logger.error("%s failed to download: %s", url, exc)
+                    logger.warning("%s failed to download: %s", url, exc)
                     return None
                 time.sleep(retry_delay)
                 retry_delay *= 2

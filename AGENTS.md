@@ -1632,6 +1632,11 @@ It reports and blocks nothing; enforcing it means moving the dict to
   the report names the old URL. The policy is stored with the page, so no
   change to ours reaches it. No template or asset references the old host,
   though some posts link to it. A real browser's report still counts.
+- A FlatPage body cannot carry a nonce, so it cannot hold an inline script,
+  and a third-party widget in one means widening the policy for the whole
+  site. The Donate page's Ko-fi button was Ko-fi's script until 2026-10-30
+  and is now a plain link. Its PayPal buttons are forms, hence
+  `form-action https://www.paypal.com/donate`.
 
 `core/tests/test_csp.py` pins the nonces and the handler rule. When adding
 an inline script, give it the nonce; when adding a click behaviour, use a
@@ -1804,7 +1809,10 @@ Environment variables are managed via django-environ (`.env` file):
 - `SENTRY_ENVIRONMENT` - Sentry's environment tag. Defaults to `production`
   when `DYNO` is set (any Heroku dyno) and `development` everywhere else.
   `development` sends nothing, neither errors nor CSP reports, even with
-  `SENTRY_DSN` in the local `.env`; set any other value to opt a machine in
+  `SENTRY_DSN` in the local `.env`; set any other value to opt a machine in.
+  `manage.py shell` never reports, on a dyno either: whoever ran it reads the
+  traceback, and each typo in a one-off query filed an issue and an alert.
+  That includes `heroku run:detached`, so unwatched work belongs in a command
 
 ### Configuration Files
 

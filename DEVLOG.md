@@ -18,6 +18,14 @@
 - **Sharper game covers on the landing page**: a 2x `srcset`, as the rows
   have, for a cover shown at ~84px. Midwest Emo is classified, as an alias
   of Post-Hardcore: one album, too few for a leaf of its own
+- **Sentry triage after the move.** `manage.py shell` no longer reports, on
+  a dyno either, since each typo in a one-off query filed an issue and fired
+  the alert. A Cover Art Archive request that keeps failing is a warning,
+  because the cover pass falls back to the group's releases (all 1000 albums
+  have covers). The uptime monitor moved from the landing page to `games.`
+- **The Donate page is ready for an enforced CSP.** Ko-fi's script widget is
+  now a plain link in the FlatPage, and `form-action` allows PayPal, whose
+  buttons enforcement would have stopped
 
 - **Music's rankings pages batch their cache reads too**, as games' did
   the day before: `/music/` and its genre and decade landing pages make

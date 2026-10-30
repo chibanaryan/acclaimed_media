@@ -81,6 +81,15 @@ class ConnectSrcTests(TestCase):
         self.assertNotIn("https://www.google.com", connect_src)
 
 
+class FormActionTests(TestCase):
+    def test_the_served_policy_lets_the_donate_page_post_to_paypal(self):
+        """The Donate FlatPage's PayPal buttons are forms, and enforcing
+        `form-action 'self'` would stop them submitting."""
+        policy = self.client.get("/lists/")[HEADER]
+        form_action = re.search(r"form-action ([^;]*)", policy).group(1).split()
+        self.assertEqual(form_action, ["'self'", "https://www.paypal.com/donate"])
+
+
 class SentryEnabledTests(SimpleTestCase):
     DSN = "https://abc123@o42.ingest.us.sentry.io/7"
 
@@ -102,6 +111,14 @@ class SentryEnabledTests(SimpleTestCase):
 
     def test_a_test_run_does_not_report(self):
         self.assertIs(sentry_enabled(self.DSN, "production", test_mode=True), False)
+
+    def test_a_shell_does_not_report(self):
+        argv = ["manage.py", "shell", "-c", "1/0"]
+        self.assertIs(sentry_enabled(self.DSN, "production", argv=argv), False)
+
+    def test_only_the_shell_subcommand_counts_as_a_shell(self):
+        argv = ["manage.py", "fetch_album_metadata", "--slug", "shell"]
+        self.assertIs(sentry_enabled(self.DSN, "production", argv=argv), True)
 
 
 class ReportUriTests(SimpleTestCase):

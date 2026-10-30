@@ -254,6 +254,13 @@ class CoverArtArchiveClient(RateLimitedClient):
 
     default_delay = config.COVER_ART_REQUEST_DELAY
 
+    # A few archive.org items 500 for good and the cover pass goes on to the
+    # group's releases, so one failed listing is not an error: eleven of them
+    # filed one by 2026-10-30, with every album's cover stored at the end
+    # (ACCLAIMED-VIDEO-GAMES-7H). An album the pass misses stays in its errors
+    # and is tried again next run.
+    give_up_level = logging.WARNING
+
     def fetch_front_cover(self, release_group_mbid: str) -> Optional[CoverArt]:
         """Return the front-cover identifiers for a release group, or None.
 

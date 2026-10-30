@@ -31,7 +31,9 @@ SENTRY_DSN = env("SENTRY_DSN", default=None)
 SENTRY_ENVIRONMENT = env("SENTRY_ENVIRONMENT", default="") or (
     "production" if "DYNO" in os.environ else "development"
 )
-SENTRY_ENABLED = sentry_enabled(SENTRY_DSN, SENTRY_ENVIRONMENT, test_mode=TEST_MODE)
+SENTRY_ENABLED = sentry_enabled(
+    SENTRY_DSN, SENTRY_ENVIRONMENT, test_mode=TEST_MODE, argv=sys.argv
+)
 if SENTRY_ENABLED:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
@@ -490,6 +492,7 @@ LOGGING = {
 # - Connections: the hosts gtag.js sends its hits to. www.google.com is
 #   scoped to /g/collect, the one path it posts to there, so the rest of
 #   google.com stays out.
+# - Forms: the Donate page's PayPal buttons, by path, as for www.google.com.
 # Reports go to Sentry's CSP endpoint, derived from the DSN.
 _CSP_STOP_PROPAGATION = handler_hash("event.stopPropagation()")
 SECURE_CSP_REPORT_ONLY = {
@@ -520,7 +523,7 @@ SECURE_CSP_REPORT_ONLY = {
     "frame-src": ["https://upload-widget.cloudinary.com"],
     "object-src": [CSP.NONE],
     "base-uri": [CSP.SELF],
-    "form-action": [CSP.SELF],
+    "form-action": [CSP.SELF, "https://www.paypal.com/donate"],
     "frame-ancestors": [CSP.NONE],
 }
 _csp_report_uri = sentry_report_uri(SENTRY_DSN) if SENTRY_ENABLED else None

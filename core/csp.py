@@ -11,15 +11,25 @@ def handler_hash(source):
     return f"'sha256-{base64.b64encode(digest).decode()}'"
 
 
-def sentry_enabled(dsn, environment, test_mode=False):
+def sentry_enabled(dsn, environment, test_mode=False, argv=()):
     """Whether this process reports to Sentry, CSP reports included.
 
     Sentry is production's: the local ``.env`` carries the DSN, so every
     runserver, shell and agent script on a laptop filed issues and fired the
     alert emails. Test runs never report. Any environment but "development"
     does, which is how a machine opts in.
+
+    ``manage.py shell`` never reports either, even on a dyno: whoever ran it
+    reads the traceback, and each mistyped field name in a one-off query filed
+    an issue and fired the same emails. That includes a detached shell, so
+    work nobody is watching belongs in a management command.
     """
-    return bool(dsn) and not test_mode and environment.lower() != "development"
+    return (
+        bool(dsn)
+        and not test_mode
+        and environment.lower() != "development"
+        and "shell" not in argv[1:2]
+    )
 
 
 def sentry_report_uri(dsn):

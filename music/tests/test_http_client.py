@@ -170,6 +170,18 @@ class GetJsonTests(ClientTestCase):
         self.assertIsNone(client.get_json("https://example.test/"))
         self.assertEqual(session.get.call_count, 1)
 
+    def test_giving_up_is_an_error_by_default(self):
+        """Error is the level that reaches Sentry."""
+        for failure in (
+            {"side_effect": requests.ConnectionError("boom")},
+            {"return_value": fake_response(status_code=500)},
+        ):
+            with self.subTest(failure=failure):
+                client, session = self.build()
+                session.get.configure_mock(**failure)
+                with self.assertLogs("music.services.http_client", "ERROR"):
+                    client.get_json("https://example.test/")
+
     def test_a_throttle_is_retried_with_doubling_backoff(self):
         client, session = self.build(delay=0)
         session.get.side_effect = [

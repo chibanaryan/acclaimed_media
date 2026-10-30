@@ -1,7 +1,9 @@
 """Tests for the MusicBrainz and Cover Art Archive clients."""
 
+import logging
 from unittest import mock
 
+import requests
 from django.test import SimpleTestCase
 
 from music import config
@@ -345,6 +347,35 @@ class CoverArtArchiveTests(ClientTestCase):
     def image(self, image_id, types):
         url = f"http://coverartarchive.org/release/{RELEASE_MBID}/{image_id}.jpg"
         return {"id": image_id, "front": True, "types": types, "image": url}
+
+    def assert_gives_up_with_a_warning(self, fetch):
+        with (
+            mock.patch("music.services.http_client.time.sleep"),
+            self.assertLogs("music.services.http_client", "WARNING") as logs,
+        ):
+            self.assertIsNone(fetch())
+        self.assertEqual({record.levelno for record in logs.records}, {logging.WARNING})
+
+    def test_a_listing_that_keeps_failing_is_a_warning_not_an_error(self):
+        """The cover pass falls back to the group's releases, so this must
+        not reach Sentry, which files anything at error."""
+        for failure in (
+            {"return_value": mock.Mock(status_code=500)},
+            {"side_effect": requests.ConnectionError("boom")},
+        ):
+            with self.subTest(failure=failure):
+                client = self.build()
+                client.session.get.configure_mock(**failure)
+                self.assert_gives_up_with_a_warning(
+                    lambda: client.fetch_front_cover(RG_MBID)
+                )
+
+    def test_a_download_that_cannot_connect_is_a_warning_not_an_error(self):
+        client = self.build()
+        client.session.get.side_effect = requests.ConnectionError("boom")
+        self.assert_gives_up_with_a_warning(
+            lambda: client.get_bytes("https://example.test/x.jpg")
+        )
 
     def test_a_clean_front_beats_a_package_photo(self):
         client = self.build()
