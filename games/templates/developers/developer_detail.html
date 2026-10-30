@@ -8,7 +8,7 @@
 {% block meta_description %}{{ developer.name }} has {{ total_games }} game{{ total_games|pluralize }} among the most critically acclaimed video games of all time{% with top=all_games.0 %}{% if top %}, led by {{ top.name }} (#{{ top.rank }}){% endif %}{% endwith %}.{% endblock %}
 {% block og_title %}{{ developer.name }} | Acclaimed Media{% endblock %}
 {% block og_description %}{{ developer.name }}: {{ total_games }} game{{ total_games|pluralize }} among the most critically acclaimed of all time.{% endblock %}
-{% block og_image %}{% with top=all_games.0 %}{% if top.image_og %}{{ top.image_og }}{% else %}{{ block.super }}{% endif %}{% endwith %}{% endblock %}
+{% block og_image %}{% with top=all_games.0 %}{% if top.image_og %}<meta property="og:image" content="{{ top.image_og }}">{% endif %}{% endwith %}{% endblock %}
 
 {% block extra_head %}
 <script nonce="{{ csp_nonce }}">

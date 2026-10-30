@@ -1427,8 +1427,9 @@ Three sites, one app, since 2026-10-30:
 
 There is one name for all of it, **Acclaimed Media**: every title suffix,
 `og:site_name`, the JSON-LD, the emails and `Site.name` (migration `0123`).
-Neither site names itself. The `og:image` and the favicons are still the old
-Acclaimed Video Games artwork until a new one is drawn. Mail still goes to
+Neither site names itself. The favicons are still the old Acclaimed Video
+Games artwork until a new one is drawn, and a page without artwork of its
+own has no `og:image`: the old default was removed. Mail still goes to
 and from `contact@acclaimedvideogames.com`, the address Titan and Brevo have
 verified.
 

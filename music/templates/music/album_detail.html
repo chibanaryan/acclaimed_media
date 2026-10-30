@@ -2,15 +2,15 @@
 {% load humanize music_filters static %}
 
 {# Head blocks follow the games detail page's conventions: the same #}
-{# "<name> | Acclaimed Media" title shape, an og:image of the artwork #}
-{# rather than the site default, and structured data for the item itself. #}
+{# "<name> | Acclaimed Media" title shape, an og:image of the artwork, #}
+{# and structured data for the item itself. #}
 {% block title %}{{ album.name }} | Acclaimed Media{% endblock %}
 
 {% block meta_description %}{{ album.name }} ({{ album.year_released }}) by {{ album.artist_credit }} - ranked #{{ album.rank }} among the most critically acclaimed albums of all time. View critic list appearances and rankings.{% endblock %}
 
 {% block og_title %}{{ album.name }} | Acclaimed Media{% endblock %}
 {% block og_description %}{{ album.name }} ({{ album.year_released }}) by {{ album.artist_credit }} is ranked #{{ album.rank }} among the most critically acclaimed albums of all time.{% endblock %}
-{% block og_image %}{{ album.image_og|default:block.super }}{% endblock %}
+{% block og_image %}{% if album.image_og %}<meta property="og:image" content="{{ album.image_og }}">{% endif %}{% endblock %}
 
 {% block structured_data %}{
     "@context": "https://schema.org",

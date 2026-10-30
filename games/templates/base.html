@@ -29,7 +29,9 @@
     <meta property="og:title" content="{% block og_title %}Acclaimed Media{% endblock %}">
     <meta property="og:description" content="{% block og_description %}{% if site_key == 'music' %}Discover the most critically acclaimed albums of all time, ranked by aggregating critic lists.{% elif site_key == 'root' %}The most critically acclaimed video games and albums of all time, ranked by aggregating critic lists.{% else %}Discover the most critically acclaimed video games of all time, ranked by aggregating hundreds of critic lists.{% endif %}{% endblock %}">
     <meta property="og:url" content="{% block og_url %}{{ canonical_origin }}{{ request.path }}{% endblock %}">
-    <meta property="og:image" content="{% block og_image %}{{ canonical_origin }}{% static 'games/brand/og-image.png' %}{% endblock %}">
+    {# No site-wide image until new brand art is drawn: a page with its own #}
+    {# artwork fills this block with the whole og:image tag. #}
+    {% block og_image %}{% endblock %}
     <meta property="og:site_name" content="Acclaimed Media">
 
     {# Twitter Card Tags #}

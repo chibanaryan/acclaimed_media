@@ -19,9 +19,12 @@ landing page at the apex (2026-10-30; AGENTS.md, "Domain"). Launching it is
    and landing pages use `AnonymousResponseCacheMixin`; music's have none.
    It must sit after `MusicVisibleMixin` in the MRO, and every cached page
    spends from the 512 MB budget, so measure before adding it.
-3. **New brand artwork.** The `og:image` and favicons still read "Acclaimed
-   Video Games" (`games/static/games/brand/`); every page title already
-   says Acclaimed Media.
+3. **New brand artwork.** The favicons still read "Acclaimed Video Games"
+   (`games/static/games/brand/`), and a page without artwork of its own has
+   no `og:image` since the old one was removed; every page title already
+   says Acclaimed Media. A new default goes in `base.html`'s `og_image` block,
+   and the five templates overriding that block need a `{{ block.super }}`
+   branch for items with no art.
 
 ## Production memory
 

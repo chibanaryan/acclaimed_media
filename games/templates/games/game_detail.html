@@ -7,7 +7,7 @@
 
 {% block og_title %}{{ game.name }} | Acclaimed Media{% endblock %}
 {% block og_description %}{{ game.name }} ({{ game.year_of_release }}) is ranked #{{ game.rank }} among the most critically acclaimed games of all time.{% endblock %}
-{% block og_image %}{{ game.image_og }}{% endblock %}
+{% block og_image %}{% if game.image_og %}<meta property="og:image" content="{{ game.image_og }}">{% endif %}{% endblock %}
 
 {% block structured_data %}{{ structured_data_json|safe }}{% endblock %}
 

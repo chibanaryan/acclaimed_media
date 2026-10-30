@@ -7,7 +7,7 @@
 
 {% block og_title %}{{ book.name }} | Acclaimed Books{% endblock %}
 {% block og_description %}{{ book.name }} ({{ book.year_published }}) is ranked #{{ book.rank }} among the most critically acclaimed books of all time.{% endblock %}
-{% block og_image %}{{ book.image }}{% endblock %}
+{% block og_image %}{% if book.image %}<meta property="og:image" content="{{ book.image }}">{% endif %}{% endblock %}
 
 {% block structured_data %}{
     "@context": "https://schema.org",

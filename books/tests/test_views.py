@@ -409,6 +409,25 @@ class BookDetailViewTests(StaffUserTestMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Test Book")
 
+    def test_og_image_is_the_cover_when_there_is_one(self):
+        models.Book.objects.filter(slug="test-book").update(
+            cover_image_url="https://img.test/cover.jpg"
+        )
+        response = self.client.get(
+            reverse("books:book-detail", kwargs={"slug": "test-book"})
+        )
+        self.assertContains(
+            response,
+            '<meta property="og:image" content="https://img.test/cover.jpg">',
+        )
+
+    def test_a_book_without_a_cover_has_no_preview_image(self):
+        models.Book.objects.filter(slug="test-book").update(cover_image_url=None)
+        response = self.client.get(
+            reverse("books:book-detail", kwargs={"slug": "test-book"})
+        )
+        self.assertNotContains(response, "og:image")
+
     def test_context_includes_book(self):
         """Test context includes book object."""
         response = self.client.get(

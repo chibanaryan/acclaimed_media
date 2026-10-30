@@ -587,16 +587,12 @@ class AlbumDetailViewTests(MusicDataMixin, TestCase):
             response, '"image": "https://music.acclaimedmedia.org/cover/abc/1-500.jpg"'
         )
 
-    def test_an_album_without_a_cover_falls_back_to_the_site_image(self):
+    def test_an_album_without_a_cover_has_no_preview_image(self):
         with mock.patch.object(
             models.Album, "image", new_callable=mock.PropertyMock, return_value=None
         ):
             response = self.client.get(self.revolver.get_absolute_url())
-        self.assertContains(
-            response,
-            '<meta property="og:image" content="https://music.acclaimedmedia.org'
-            '/static/games/brand/og-image.png">',
-        )
+        self.assertNotContains(response, "og:image")
         self.assertNotContains(response, '"image":')
 
     def test_og_image_keeps_a_remote_cover_url(self):

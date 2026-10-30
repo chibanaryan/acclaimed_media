@@ -7,7 +7,7 @@ from django.contrib.sites.models import Site
 from django.test import TestCase
 
 from core.tests.utils import clear_all_caches
-from games.models import Developer, Game
+from games.models import Article, Developer, Game, IGDBGameData
 
 META = re.compile(r'<meta (?:name|property)="([^"]+)" content="([^"]*)"')
 
@@ -68,7 +68,51 @@ class PageMetadataTests(TestCase):
                 self.assertEqual(meta["twitter:card"], "summary_large_image")
                 for tag in ("twitter:title", "twitter:description", "twitter:image"):
                     self.assertNotIn(tag, meta)
-                self.assertIn("og:image", meta)
+
+    def test_a_page_without_artwork_has_no_preview_image(self):
+        """Not the old brand image, and not content="None" for a coverless game."""
+        developer = Developer.objects.create(name="Valve", slug="valve", igdb_id=1)
+        game = Game.objects.create(
+            name="Doom", slug="doom", rank=1, year_of_release=1993
+        )
+        game.developers.add(developer)
+
+        for url in ("/", "/game/doom/", "/developers/valve/"):
+            with self.subTest(url=url):
+                self.assertNotIn("og:image", metadata(self.client.get(url)))
+
+    def test_a_game_with_artwork_previews_its_cover(self):
+        developer = Developer.objects.create(name="Valve", slug="valve", igdb_id=1)
+        game = Game.objects.create(
+            name="Doom", slug="doom", rank=1, year_of_release=1993
+        )
+        game.developers.add(developer)
+        game.primary_igdb_game_data = IGDBGameData.objects.create(
+            game=game, igdb_id=123, artwork_id="doom_art", is_primary=True
+        )
+        game.save(update_fields=["primary_igdb_game_data"])
+
+        for url in ("/game/doom/", "/developers/valve/"):
+            with self.subTest(url=url):
+                self.assertTrue(
+                    metadata(self.client.get(url))["og:image"].endswith("doom_art.jpg")
+                )
+
+    def test_an_article_previews_only_its_featured_image(self):
+        for slug, image in (("plain", ""), ("pictured", "https://img.test/a.jpg")):
+            Article.objects.create(
+                title=slug,
+                slug=slug,
+                content="Body",
+                featured_image=image,
+                status=Article.Status.PUBLISHED,
+            )
+
+        self.assertNotIn("og:image", metadata(self.client.get("/blog/plain/")))
+        self.assertEqual(
+            metadata(self.client.get("/blog/pictured/"))["og:image"],
+            "https://img.test/a.jpg",
+        )
 
 
 class ErrorPageTests(TestCase):

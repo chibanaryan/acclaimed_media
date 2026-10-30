@@ -12,6 +12,9 @@
   once. The contact pages go neutral; the Zelda 404 stays on games
 - **The sidebar's toggle becomes a site menu**, the music Import links go,
   and music says it is in beta on every page and every way in (`MUSIC_BETA`)
+- **The old default `og:image` is gone.** Pages without artwork of their own
+  now have none until new art is drawn; game and album pages keep their
+  covers, and a game with no cover no longer sends `None`
 
 - **Music's rankings pages batch their cache reads too**, as games' did
   the day before: `/music/` and its genre and decade landing pages make
