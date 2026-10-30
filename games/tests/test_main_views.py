@@ -4003,6 +4003,9 @@ class HLTBFilteringTests(TestCase):
     """Test HLTB (HowLongToBeat) filtering functionality."""
 
     def setUp(self):
+        # Several tests read a bare `/`, which an earlier test in the same
+        # Django-runner process may have left in the per-process page cache
+        clear_all_caches()
         # Create games with HLTB data
         self.game1 = Game.objects.create(
             name="Short Game", rank=1, igdb_id=1, year_of_release=2020
