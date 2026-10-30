@@ -49,6 +49,7 @@ from core.cache_helpers import (
 )
 from core.mixins import HTMXPartialMixin, RobustPaginationMixin, StaffOnlyMixin
 from core.models import User
+from core import sites
 from core.services import genre_tree, seo
 from core.services.query_params import parse_id_list, parse_int
 from music import config, models
@@ -967,6 +968,7 @@ class MusicLandingPageView(AlbumHomePageView):
                 (album.name, album.get_absolute_url())
                 for album in list(context["albums"])[: landing_pages.TOP_N]
             ),
+            sites.MUSIC,
         )
         # The client pushes every filter change to /music/?..., so history
         # entries that land back on this path carry no query string; these

@@ -201,6 +201,10 @@ class CachedPageCsrfTests(TestCase):
         self.assertIn("harmless", serialized)
 
 
+# The key a page is stored under: the view's own, behind the host
+STORED_KEY = "testserver:example_page"
+
+
 class AnonymousResponseCacheAliasTests(TestCase):
     """Whole pages belong on the per-process alias, not the shared cache.
 
@@ -212,23 +216,23 @@ class AnonymousResponseCacheAliasTests(TestCase):
         self.factory = RequestFactory()
         clear_all_caches()
 
-    def _get(self):
-        request = self.factory.get("/anything/")
+    def _get(self, host="testserver"):
+        request = self.factory.get("/anything/", HTTP_HOST=host)
         request.user = AnonymousUser()
         return CachedPage.as_view()(request)
 
     def test_the_rendered_page_is_stored_on_the_local_alias(self):
         self._get()
-        self.assertIsNotNone(caches["local"].get("example_page"))
+        self.assertIsNotNone(caches["local"].get(STORED_KEY))
 
     def test_the_shared_cache_is_left_alone(self):
         self._get()
-        self.assertIsNone(caches["default"].get("example_page"))
+        self.assertIsNone(caches["default"].get(STORED_KEY))
 
     def test_a_cached_page_is_served_back(self):
         self._get()
         caches["local"].set(
-            "example_page",
+            STORED_KEY,
             {
                 "body": zlib.compress(b"from the cache"),
                 "status": 200,
@@ -242,6 +246,16 @@ class AnonymousResponseCacheAliasTests(TestCase):
         # Uncompressed, ~50 cacheable URLs at ~1.4 MB each would be 60-70 MB
         # in every worker.
         self._get()
-        payload = caches["local"].get("example_page")
+        payload = caches["local"].get(STORED_KEY)
         self.assertNotIn("content", payload)
         self.assertEqual(zlib.decompress(payload["body"]), self._get().content)
+
+    def test_each_host_keeps_its_own_copy(self):
+        # A page links to the other sites by absolute URL, built from the
+        # host it was rendered for, so a copy must not cross hosts
+        self._get()
+        self._get(host="games.acclaimedmedia.org")
+        self.assertIsNotNone(
+            caches["local"].get("games.acclaimedmedia.org:example_page")
+        )
+        self.assertIsNotNone(caches["local"].get(STORED_KEY))

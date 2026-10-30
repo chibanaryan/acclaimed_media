@@ -7,6 +7,7 @@ from django.urls import reverse
 from core.models import User
 from music import admin as music_admin
 from music import models
+from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 
 
 class AdminRegistrationTests(TestCase):
@@ -243,7 +244,34 @@ class MetadataAdminTests(TestCase):
             album=self.album, release_mbid="rel", image_id="img", size=250, data=b"x"
         )
         model_admin = site._registry[models.AlbumCover]
-        self.assertIn("/music/cover/", model_admin.preview(cover))
+        # Absolute, since the admin is served on every host
+        self.assertIn(
+            'src="https://music.acclaimedmedia.org/cover/rel/img-250.jpg"',
+            model_admin.preview(cover),
+        )
+
+    def test_a_remote_cover_keeps_its_own_address_in_the_preview(self):
+        self.album.cover_image_url = "https://coverartarchive.org/x/1.jpg"
+        self.album.save()
+        cover = models.AlbumCover.objects.create(
+            album=self.album, release_mbid="rel", image_id="img", size=250, data=b"x"
+        )
+        self.assertIn(
+            'src="https://coverartarchive.org/x/1.jpg"',
+            site._registry[models.AlbumCover].preview(cover),
+        )
+
+    def test_view_on_site_is_the_music_host(self):
+        artist = models.Artist.objects.create(name="Prince", slug="prince")
+        for model, obj, path in (
+            (models.Artist, artist, "/artists/prince/"),
+            (models.Album, self.album, self.album.get_absolute_url()),
+        ):
+            with self.subTest(model=model.__name__):
+                self.assertEqual(
+                    site._registry[model].view_on_site(obj),
+                    "https://music.acclaimedmedia.org" + path,
+                )
 
     def test_an_unsaved_cover_has_no_preview(self):
         model_admin = site._registry[models.AlbumCover]

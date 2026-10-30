@@ -16,6 +16,7 @@ from django.urls import reverse
 
 from core.models import User
 from music import config, models
+from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 
 # The button's own image, not the menu's smaller copy of another state's:
 # the row-size classes come only on the button.

@@ -12,6 +12,7 @@ from django.utils.text import Truncator
 from django.urls import reverse_lazy
 from django.views.generic import ListView, DetailView, TemplateView, FormView
 
+from core import sites
 from core.mixins import HTMXPartialMixin, RobustPaginationMixin
 from core.models import User
 from core.services.client_ip import get_client_ip
@@ -47,7 +48,9 @@ class ContactFormView(FormView):
             return redirect(self.success_url)
 
         # Send the email
-        email_sent = utils.send_contact_email(name, email, category, message)
+        email_sent = utils.send_contact_email(
+            name, email, category, message, site=sites.request_site(self.request)
+        )
 
         if not email_sent:
             form.add_error(
@@ -113,6 +116,11 @@ class PageDetailView(TemplateView):
         ).chars(155)
 
         context["flatpage"] = flatpage
+        # One copy of each page, served on every site so a visitor keeps
+        # their own sidebar; the apex's is the one search engines index
+        context["page_canonical_url"] = sites.canonical_url(
+            sites.ROOT, self.request.path
+        )
         return context
 
 
@@ -186,59 +194,58 @@ def custom_404_view(request, exception):
     return NotFoundView.as_view()(request, exception=exception)
 
 
-def robots_txt(request):
-    """
-    Serve robots.txt for search engine crawlers.
+# Crawlers that cost more than they bring, blocked on every site
+ROBOTS_BLOCKED_AGENTS = (
+    "AhrefsBot",
+    "SemrushBot",
+    "MJ12bot",
+    "DotBot",
+    "BLEXBot",
+    "PetalBot",
+    "BaiduSpider",
+)
 
-    Blocks aggressive/low-value crawlers and disallows expensive filtered
-    query patterns that can overwhelm the server.
-
-    The music rules appear only once ``MUSIC_ENABLED`` is on: robots.txt is
-    public, so naming the hidden section's paths would advertise it.
-    """
-    music_rules = (
-        "Disallow: /music/import/\nDisallow: /music/download/\n"
-        if settings.MUSIC_ENABLED
-        else ""
-    )
-    content = f"""\
-# Aggressive/low-value crawlers - block entirely
-User-agent: AhrefsBot
-Disallow: /
-
-User-agent: SemrushBot
-Disallow: /
-
-User-agent: MJ12bot
-Disallow: /
-
-User-agent: DotBot
-Disallow: /
-
-User-agent: BLEXBot
-Disallow: /
-
-User-agent: PetalBot
-Disallow: /
-
-User-agent: BaiduSpider
-Disallow: /
-
-# All other crawlers
-User-agent: *
-Allow: /
-Crawl-delay: 10
-Disallow: /admin/
-Disallow: /import/
-Disallow: /api/
-Disallow: /download/
-{music_rules}Disallow: /*?*start=
+# Filtered query patterns that can overwhelm the server, on both rankings sites
+ROBOTS_QUERY_RULES = """\
+Disallow: /*?*start=
 Disallow: /*?*end=
 Disallow: /*?*highlight=
 Disallow: /*?*page=
-
-Sitemap: {settings.CANONICAL_ORIGIN}/sitemap.xml
 """
+
+
+def robots_txt(request):
+    """
+    Serve the current site's robots.txt.
+
+    Each host has its own: it blocks aggressive/low-value crawlers, disallows
+    expensive filtered query patterns that can overwhelm the server, and
+    names that host's own sitemap.
+
+    The music site's rules appear only once ``MUSIC_ENABLED`` is on; until
+    then it disallows everything, since every page 404s for crawlers.
+    """
+    site = sites.request_site(request)
+    blocked = "".join(
+        f"User-agent: {agent}\nDisallow: /\n\n" for agent in ROBOTS_BLOCKED_AGENTS
+    )
+    if site == sites.MUSIC and not settings.MUSIC_ENABLED:
+        rules = "Disallow: /\n"
+    elif site == sites.ROOT:
+        rules = "Allow: /\nDisallow: /admin/\n"
+    else:
+        rules = (
+            "Allow: /\nCrawl-delay: 10\nDisallow: /admin/\nDisallow: /import/\n"
+            "Disallow: /api/\nDisallow: /download/\n" + ROBOTS_QUERY_RULES
+        )
+    content = (
+        "# Aggressive/low-value crawlers - block entirely\n"
+        f"{blocked}"
+        "# All other crawlers\n"
+        "User-agent: *\n"
+        f"{rules}\n"
+        f"Sitemap: {sites.canonical_origin(site)}/sitemap.xml\n"
+    )
     return HttpResponse(content, content_type="text/plain")
 
 

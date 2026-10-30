@@ -15,6 +15,7 @@ from django.urls import reverse
 from core.models import User
 from music import models, views
 from music.tests.test_views import MusicDataMixin
+from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 
 
 class GenreTreeDataTests(MusicDataMixin, TestCase):

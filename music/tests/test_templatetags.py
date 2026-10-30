@@ -8,6 +8,7 @@ from django.test import TestCase
 from core import constants as core_constants
 from music import models
 from music.templatetags import music_filters
+from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 
 
 class SharedFilterReExportTests(TestCase):
@@ -181,8 +182,8 @@ class ArtistLinksTests(TestCase):
     def test_links_every_credited_artist(self):
         self._credit("Neil Young", "Crazy Horse")
         rendered = music_filters.artist_links(self.album)
-        self.assertIn('href="/music/artists/neil-young/"', rendered)
-        self.assertIn('href="/music/artists/crazy-horse/"', rendered)
+        self.assertIn('href="/artists/neil-young/"', rendered)
+        self.assertIn('href="/artists/crazy-horse/"', rendered)
 
     def test_the_credit_style_and_order(self):
         # Credit order, not alphabetical, joined "A, B & C" with the
@@ -215,7 +216,7 @@ class ArtistLinksTests(TestCase):
         )
         self.assertEqual(
             str(music_filters.artist_links(self.album)),
-            '<a href="/music/artists/prince/" class="link link-hover" '
+            '<a href="/artists/prince/" class="link link-hover" '
             'title="Prince">Prince and the Revolution</a>',
         )
 
@@ -236,7 +237,7 @@ class ArtistLinksTests(TestCase):
         rendered = str(music_filters.artist_names([prince, nico], "link"))
         self.assertEqual(
             rendered,
-            '<a href="/music/artists/prince/" class="link">Prince</a>'
+            '<a href="/artists/prince/" class="link">Prince</a>'
             '<span class="text-base-content/30"> &amp; </span>Nico',
         )
 
@@ -266,15 +267,15 @@ class AlbumUrlTagTests(TestCase):
     def test_rank_url_highlights_the_album(self):
         self.assertEqual(
             music_filters.album_rank_url(self.album),
-            f"/music/?highlight={self.album.id}",
+            f"/?highlight={self.album.id}",
         )
 
     def test_year_url_filters_to_the_release_year(self):
         self.assertEqual(
             music_filters.album_year_url(self.album),
-            f"/music/?start=1966&end=1966&highlight={self.album.id}",
+            f"/?start=1966&end=1966&highlight={self.album.id}",
         )
 
     def test_year_url_falls_back_to_the_bare_rankings_without_a_year(self):
         album = models.Album.objects.create(name="Undated", rank=2)
-        self.assertEqual(music_filters.album_year_url(album), "/music/")
+        self.assertEqual(music_filters.album_year_url(album), "/")

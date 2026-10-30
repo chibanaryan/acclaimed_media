@@ -24,6 +24,7 @@ from django.core.cache import cache
 from django.urls import reverse
 from games.models import SiteMetadata
 from music.tests.test_views import StaffUserTestMixin
+from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 
 FIXTURE_DIR = Path(settings.BASE_DIR) / "acclaimedgames" / "test_input_files" / "music"
 

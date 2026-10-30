@@ -149,12 +149,12 @@ class LandingPageViewTests(LandingPageDataMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
         self.assertIn(
-            "<title>Most Acclaimed Action Games of All Time " "| Acclaimed Video Games",
+            "<title>Most Acclaimed Action Games of All Time " "| Acclaimed Media",
             html,
         )
         self.assertIn("Most Acclaimed Action Games of All Time</h1>", html)
         self.assertIn(
-            'rel="canonical" href="https://acclaimedmedia.org/games/action/"',
+            'rel="canonical" href="https://games.acclaimedmedia.org/games/action/"',
             html,
         )
         # The interactive filter component is seeded with the path-implied
@@ -175,7 +175,7 @@ class LandingPageViewTests(LandingPageDataMixin, TestCase):
         first = data["itemListElement"][0]
         self.assertEqual(first["position"], 1)
         self.assertEqual(first["name"], "Test Game 1")
-        self.assertIn("https://acclaimedmedia.org/game/", first["url"])
+        self.assertIn("https://games.acclaimedmedia.org/game/", first["url"])
 
     def test_genre_page_uses_natural_filter_title(self):
         response = self.client.get("/games/role-playing/")
@@ -240,7 +240,7 @@ class LandingPageViewTests(LandingPageDataMixin, TestCase):
 
     def test_anonymous_responses_are_cached(self):
         self.client.get("/games/action/")
-        cache_key = f"landing_page:{config.CACHE_VERSION}:/games/action/"
+        cache_key = f"testserver:landing_page:{config.CACHE_VERSION}:/games/action/"
         payload = caches["local"].get(cache_key)
         self.assertIsNotNone(payload)
         # Prove the second request is served from the cache
@@ -258,26 +258,30 @@ class LandingPageViewTests(LandingPageDataMixin, TestCase):
         self.client.force_login(user)
         response = self.client.get("/games/action/")
         self.assertEqual(response.status_code, 200)
-        cache_key = f"landing_page:{config.CACHE_VERSION}:/games/action/"
+        cache_key = f"testserver:landing_page:{config.CACHE_VERSION}:/games/action/"
         self.assertIsNone(caches["local"].get(cache_key))
 
     def test_query_strings_bypass_the_cache(self):
         response = self.client.get("/games/action/?utm_source=x")
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(
-            caches["local"].get(f"landing_page:{config.CACHE_VERSION}:/games/action/")
+            caches["local"].get(
+                f"testserver:landing_page:{config.CACHE_VERSION}:/games/action/"
+            )
         )
 
     def test_top_index_is_cached_for_anonymous_users(self):
         self.client.get("/games/browse/")
-        cache_key = f"landing_page:{config.CACHE_VERSION}:/games/browse/"
+        cache_key = f"testserver:landing_page:{config.CACHE_VERSION}:/games/browse/"
         self.assertIsNotNone(caches["local"].get(cache_key))
 
     def test_top_index_query_strings_bypass_the_cache(self):
         response = self.client.get("/games/browse/?utm_source=x")
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(
-            caches["local"].get(f"landing_page:{config.CACHE_VERSION}:/games/browse/")
+            caches["local"].get(
+                f"testserver:landing_page:{config.CACHE_VERSION}:/games/browse/"
+            )
         )
 
     def test_seo_url_map_is_embedded_for_client_side_filtering(self):
@@ -599,3 +603,37 @@ class AcclaimedMediaSiteDomainMigrationTests(TestCase):
         Site.objects.update_or_create(pk=1, defaults={"domain": "acclaimedmedia.org"})
         self.migration.backwards(self._Apps(), None)
         self.assertEqual(Site.objects.get(pk=1).domain, "www.acclaimedvideogames.com")
+
+
+class AcclaimedMediaSiteNameMigrationTests(TestCase):
+    """Migration 0123 names the Site "Acclaimed Media", as every page does."""
+
+    _Apps = SiteDomainMigrationTests._Apps
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.migration = importlib.import_module(
+            "games.migrations.0123_site_name_acclaimed_media"
+        )
+
+    def test_forwards_renames_the_old_name(self):
+        from django.contrib.sites.models import Site
+
+        Site.objects.update_or_create(pk=1, defaults={"name": "Acclaimed Video Games"})
+        self.migration.forwards(self._Apps(), None)
+        self.assertEqual(Site.objects.get(pk=1).name, "Acclaimed Media")
+
+    def test_forwards_leaves_a_name_staff_chose_alone(self):
+        from django.contrib.sites.models import Site
+
+        Site.objects.update_or_create(pk=1, defaults={"name": "Something Else"})
+        self.migration.forwards(self._Apps(), None)
+        self.assertEqual(Site.objects.get(pk=1).name, "Something Else")
+
+    def test_backwards_restores_the_old_name(self):
+        from django.contrib.sites.models import Site
+
+        Site.objects.update_or_create(pk=1, defaults={"name": "Acclaimed Media"})
+        self.migration.backwards(self._Apps(), None)
+        self.assertEqual(Site.objects.get(pk=1).name, "Acclaimed Video Games")

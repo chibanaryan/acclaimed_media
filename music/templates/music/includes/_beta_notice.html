@@ -1,0 +1,7 @@
+{# The soft warning background with the body text colour: warning-yellow text on it was too faint to read. Rendered by base.html at the top of every page on the music host while music.config.MUSIC_BETA is on: the rankings, shared pages and 404s alike, so no way into the site misses it. #}
+{% if MUSIC_BETA %}
+<div role="note" class="music-beta-notice alert alert-warning alert-soft text-base-content mb-4 py-2 text-sm flex flex-wrap items-center gap-x-2 gap-y-1">
+    <span><strong>The music site is in beta.</strong> Its rankings, album data and features may still change.</span>
+    <button type="button" class="contact-modal-trigger link font-semibold" data-category="general" data-message="Feedback on the music beta: ">Send feedback</button>
+</div>
+{% endif %}

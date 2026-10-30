@@ -17,6 +17,7 @@ from django.urls import reverse
 from core import constants as core_constants
 from core.models import User
 from music import models
+from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 
 
 class MusicAPITestMixin:

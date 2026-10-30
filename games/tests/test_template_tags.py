@@ -1042,5 +1042,5 @@ class CanonicalOriginTagTest(TestCase):
             "account/email/password_reset_key_message.txt",
             {"password_reset_url": "https://acclaimedmedia.org/reset/x/"},
         )
-        self.assertTrue(body.startswith("Acclaimed Video Games"))
+        self.assertTrue(body.startswith("Acclaimed Media"))
         self.assertIn("\nhttps://acclaimedmedia.org\n", body)

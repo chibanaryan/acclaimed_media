@@ -19,6 +19,7 @@ from games.models import (
     Publication,
     Series,
 )
+from music.tests.site import music_site
 
 
 class QueryBudgetTestCase(TestCase):
@@ -153,6 +154,7 @@ class LandingPageQueryBudgetTests(QueryBudgetTestCase):
 
 
 @override_settings(MUSIC_ENABLED=True)
+@music_site
 class MusicListsQueryBudgetTests(QueryBudgetTestCase):
     def test_more_lists_cost_nothing_more(self):
         from music.models import MusicList, MusicPublication
@@ -166,7 +168,7 @@ class MusicListsQueryBudgetTests(QueryBudgetTestCase):
             start[0] += 3
 
         add()
-        self.assertDoesNotGrow("/music/lists/", add)
+        self.assertDoesNotGrow("/lists/", add)
 
 
 class GenreTreeQueryBudgetTests(QueryBudgetTestCase):

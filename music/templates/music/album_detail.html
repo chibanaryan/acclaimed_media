@@ -2,13 +2,13 @@
 {% load humanize music_filters static %}
 
 {# Head blocks follow the games detail page's conventions: the same #}
-{# "<name> | Acclaimed Video Games" title shape, an og:image of the artwork #}
+{# "<name> | Acclaimed Media" title shape, an og:image of the artwork #}
 {# rather than the site default, and structured data for the item itself. #}
-{% block title %}{{ album.name }} | Acclaimed Video Games{% endblock %}
+{% block title %}{{ album.name }} | Acclaimed Media{% endblock %}
 
 {% block meta_description %}{{ album.name }} ({{ album.year_released }}) by {{ album.artist_credit }} - ranked #{{ album.rank }} among the most critically acclaimed albums of all time. View critic list appearances and rankings.{% endblock %}
 
-{% block og_title %}{{ album.name }} | Acclaimed Video Games{% endblock %}
+{% block og_title %}{{ album.name }} | Acclaimed Media{% endblock %}
 {% block og_description %}{{ album.name }} ({{ album.year_released }}) by {{ album.artist_credit }} is ranked #{{ album.rank }} among the most critically acclaimed albums of all time.{% endblock %}
 {% block og_image %}{{ album.image_og|default:block.super }}{% endblock %}
 
@@ -33,7 +33,7 @@
     {# The large listen button, where the games detail page puts its own #}
     {% include 'music/includes/_listen_button.html' with is_owned=is_owned is_tracked=is_listened is_wanted=is_want_to_listen size='large' %}
     <span>{{ album.name }}{% if album.year_released %} ({{ album.year_released }}){% endif %}</span>
-    {% if not MUSIC_ENABLED %}<span class="badge badge-warning badge-sm">Beta</span>{% endif %}
+    {% include 'music/includes/_beta_badge.html' %}
 </h1>
 {# The artist is half of an album's identity - more than a developer is to #}
 {# a game - so the credit reads as a subtitle under the title rather than #}

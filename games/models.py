@@ -1859,6 +1859,6 @@ class Article(models.Model):
         )
 
     def get_absolute_url(self):
-        from django.urls import reverse
+        from core.sites import GAMES, site_reverse
 
-        return reverse("article-detail", kwargs={"slug": self.slug})
+        return site_reverse(GAMES, "article-detail", kwargs={"slug": self.slug})

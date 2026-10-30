@@ -14,18 +14,33 @@ from django.conf import settings
 from django.utils import timezone
 from django.utils.safestring import mark_safe
 
+from core import sites
+
 register = template.Library()
 
 
 @register.simple_tag
 def canonical_origin():
-    """The site's public origin, for templates rendered without a request.
+    """The apex's public origin, for templates rendered without a request.
 
     allauth renders its emails with the request when there is one and
     without it otherwise, when the ``canonical_origin`` context processor
     does not run.
     """
     return settings.CANONICAL_ORIGIN
+
+
+@register.simple_tag(takes_context=True)
+def site_url(context, site, viewname, *args, **kwargs):
+    """``{% site_url 'music' 'music:home' %}``: an absolute link to another site.
+
+    ``{% url %}`` reverses in the current host's URLconf and gives a path on
+    this host; a link to the landing page, games or music from another of
+    them needs that site's URLconf and origin (``core.sites.site_url``).
+    """
+    return sites.site_url(
+        site, viewname, *args, request=context.get("request"), **kwargs
+    )
 
 
 @register.simple_tag

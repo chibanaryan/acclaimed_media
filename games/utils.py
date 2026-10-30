@@ -63,7 +63,13 @@ from games.services.query_filters import (  # noqa: F401
 # =============================================================================
 
 
-def send_contact_email(name: str, email: str, category: str, message: str) -> bool:
+# How the contact email's subject names the site a message came from
+CONTACT_SITE_LABELS = {"root": "Landing page", "games": "Games", "music": "Music"}
+
+
+def send_contact_email(
+    name: str, email: str, category: str, message: str, site: str = "games"
+) -> bool:
     """
     Send a contact form email to the site administrators.
 
@@ -72,6 +78,9 @@ def send_contact_email(name: str, email: str, category: str, message: str) -> bo
         email: Email address of the sender
         category: Category of the message (feature, bug, data, general, etc.)
         message: The message content
+        site: The site the form was sent from (core/sites.py): "root",
+            "games" or "music". One form serves all three, so the subject
+            says which.
 
     Returns:
         True if the email was sent successfully, False otherwise
@@ -80,7 +89,8 @@ def send_contact_email(name: str, email: str, category: str, message: str) -> bo
     from django.core.mail import send_mail
 
     category_label = constants.get_contact_category_label(category)
-    subject = f"[{category_label}] Contact Form Submission from {name}"
+    site_label = CONTACT_SITE_LABELS.get(site, site)
+    subject = f"[{site_label}] [{category_label}] Contact Form Submission from {name}"
 
     # Use category-based email alias for better filtering
     # e.g., contact+feature@acclaimedvideogames.com
@@ -98,6 +108,7 @@ New contact form submission:
 
 From: {name}
 Email: {email}
+Site: {site_label}
 Category: {category_label}
 
 Message:
@@ -165,9 +176,9 @@ def send_post_notification_email(post, user) -> bool:
 
 ---
 You're receiving this because you subscribed to updates from
-Acclaimed Video Games. To unsubscribe, visit: {unsubscribe_url}
+Acclaimed Media. To unsubscribe, visit: {unsubscribe_url}
 
-Acclaimed Video Games
+Acclaimed Media
 {site_url}
 """
 
@@ -193,7 +204,7 @@ Acclaimed Video Games
 </head>
 <body style="{body_style}">
     <p style="{header_style}">
-        <a href="{site_url}" style="{header_link_style}">Acclaimed Video Games</a>
+        <a href="{site_url}" style="{header_link_style}">Acclaimed Media</a>
     </p>
     <h2 style="margin-top: 0; margin-bottom: 4px;">{title}</h2>
     <p style="font-size: 14px; color: #666; margin-top: 0; margin-bottom: 20px;">
@@ -206,7 +217,7 @@ Acclaimed Video Games
 
     <p style="{footer_style}">
         You're receiving this because you subscribed to updates from
-        Acclaimed Video Games.<br>
+        Acclaimed Media.<br>
         <a href="{unsubscribe_url}">Unsubscribe</a>
     </p>
 </body>

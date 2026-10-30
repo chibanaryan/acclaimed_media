@@ -2,6 +2,7 @@ import importlib.util
 import os
 from pathlib import Path
 import sys
+from urllib.parse import urlsplit
 
 import environ
 from django.utils.csp import CSP
@@ -66,17 +67,37 @@ SECRET_KEY = env(
         "django-insecure-dev-key-change-in-production" if (DEBUG or TEST_MODE) else None
     ),
 )  # Required - no default for security in production
-# The site's one public origin: canonical links, structured data, robots.txt,
-# emails. Unlike SITE_URL it does not follow DEBUG, so a local render carries
-# the same canonical tags as production. www.acclaimedmedia.org and the old
-# acclaimedvideogames.com hosts are 301'd to it by Cloudflare redirect rules
-# and never reach Django (see "Domain" in AGENTS.md).
+# The apex's public origin: the landing page, emails, the fetchers'
+# User-Agent. Unlike SITE_URL it does not follow DEBUG, so a local render
+# carries the same canonical tags as production. www.acclaimedmedia.org is
+# 301'd to it, and the old acclaimedvideogames.com hosts to the games site,
+# by Cloudflare redirect rules that never reach Django (see "Domain" in
+# AGENTS.md).
 CANONICAL_ORIGIN = "https://acclaimedmedia.org"
+# The three sites the one app serves, by host (core/sites.py): the landing
+# page at the apex, games and music on their own subdomains. Each origin is
+# what that site's canonical links, sitemap and structured data name.
+SITE_ORIGINS = {
+    "root": CANONICAL_ORIGIN,
+    "games": "https://games.acclaimedmedia.org",
+    "music": "https://music.acclaimedmedia.org",
+}
+SITE_URLCONFS = {
+    "root": "acclaimedgames.urls_root",
+    "games": "acclaimedgames.urls_games",
+    "music": "acclaimedgames.urls_music",
+}
 ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",
     "acclaimedmedia.org",
+    "games.acclaimedmedia.org",
+    "music.acclaimedmedia.org",
 ]
+if DEBUG:
+    # games.localhost:8000 and music.localhost:8000, which browsers resolve
+    # to loopback, are how the subdomains are reached in development
+    ALLOWED_HOSTS.append(".localhost")
 if TEST_MODE:
     # The test client's host; it was listed unconditionally, so production
     # answered requests that named it
@@ -87,7 +108,10 @@ TIME_ZONE = "UTC"
 USE_I18N = False
 USE_TZ = False
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-ROOT_URLCONF = "acclaimedgames.urls"
+# A request to a known host gets that site's URLconf from
+# core.middleware.SiteHostMiddleware; any other host (the test client's
+# "testserver", 127.0.0.1) gets this one, the games site.
+ROOT_URLCONF = SITE_URLCONFS["games"]
 WSGI_APPLICATION = "acclaimedgames.wsgi.application"
 APPEND_SLASH = True  # Automatically redirect URLs without trailing slashes
 
@@ -133,6 +157,8 @@ TAILWIND_APP_NAME = "theme"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Picks the site (landing, games, music) and its URLconf from the host
+    "core.middleware.SiteHostMiddleware",
     "django.middleware.csp.ContentSecurityPolicyMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",  # Must be after SecurityMiddleware
     # Tiny 200 for Sentry's uptime monitor that refuses gzip (667 KB a minute)
@@ -399,7 +425,7 @@ else:
         }
     }
 
-DEFAULT_FROM_EMAIL = "Acclaimed Video Games <contact@acclaimedvideogames.com>"
+DEFAULT_FROM_EMAIL = "Acclaimed Media <contact@acclaimedvideogames.com>"
 CONTACT_EMAIL = "contact@acclaimedvideogames.com"
 SITE_URL = env(
     "SITE_URL",
@@ -501,6 +527,14 @@ _csp_report_uri = sentry_report_uri(SENTRY_DSN) if SENTRY_ENABLED else None
 if _csp_report_uri:
     SECURE_CSP_REPORT_ONLY["report-uri"] = [_csp_report_uri]
 
+# Renamed when the cookies moved to the whole acclaimedmedia.org domain (see
+# the production block below): a host-only cookie of the old name, left on
+# the apex by an earlier visit, would otherwise be sent beside the new one,
+# and Django keeps whichever the browser lists last. JavaScript that reads
+# the CSRF cookie reads this name.
+SESSION_COOKIE_NAME = "am_sessionid"
+CSRF_COOKIE_NAME = "am_csrftoken"
+
 # Security settings
 # These headers help protect against common web vulnerabilities
 SECURE_CONTENT_TYPE_NOSNIFF = True  # Prevent MIME type sniffing
@@ -516,4 +550,8 @@ if not DEBUG and not TEST_MODE and not RUNNING_DEVSERVER:
     ACCOUNT_DEFAULT_HTTP_PROTOCOL = "https"
     SESSION_COOKIE_SECURE = True  # Only send session cookie over HTTPS
     CSRF_COOKIE_SECURE = True  # Only send CSRF cookie over HTTPS
+    # One sign-in across the games and music subdomains and the apex
+    SESSION_COOKIE_DOMAIN = CSRF_COOKIE_DOMAIN = (
+        "." + urlsplit(CANONICAL_ORIGIN).hostname
+    )
     SECURE_SSL_REDIRECT = True  # Redirect HTTP to HTTPS

@@ -1,0 +1,52 @@
+{# The top of the sidebar: the shared name, the site you are on, and a menu of the others. Each site is its own host, so the menu's links are absolute ({% site_url %}). #}
+{# A <details>, not an Alpine component: it works before Alpine loads and costs nothing at init. It opens in place, pushing the nav down, rather than as an overlay. base.html closes it on an outside click or Escape. #}
+{# The current site is aria-current="true", not "page": it is the site, not the page. Music appears once it is public (MUSIC_ENABLED), Books under its own flag; both carry their state with them, so a link into music is always marked beta. #}
+{% load core_filters %}
+<details class="site-menu w-full mb-3 group">
+    <summary class="flex items-center justify-between gap-1 cursor-pointer list-none rounded-lg px-1 py-1 hover:bg-base-300 [&::-webkit-details-marker]:hidden" aria-label="Acclaimed Media: switch site">
+        <span class="min-w-0">
+            <span class="block font-bold text-base leading-tight tracking-tight whitespace-nowrap">Acclaimed Media</span>
+            <span class="flex items-center gap-1 text-sm text-base-content/70">
+                {% if media_type == 'music' %}
+                <span class="mdi mdi-album" aria-hidden="true"></span>Music {% include 'music/includes/_beta_badge.html' with size='badge-xs' %}
+                {% elif media_type == 'books' %}
+                <span class="mdi mdi-book-open-page-variant" aria-hidden="true"></span>Books
+                {% else %}
+                <span class="mdi mdi-gamepad-variant" aria-hidden="true"></span>Games
+                {% endif %}
+            </span>
+        </span>
+        <span class="mdi mdi-chevron-down shrink-0 transition-transform group-open:rotate-180" aria-hidden="true"></span>
+    </summary>
+    <ul class="menu bg-base-100 rounded-box w-full p-2 mt-1">
+        <li>
+            <a href="{% site_url 'games' 'home' %}"{% if media_type == 'games' %} class="active" aria-current="true"{% endif %}>
+                <span class="mdi mdi-gamepad-variant" aria-hidden="true"></span>
+                Games
+            </a>
+        </li>
+        {% if MUSIC_ENABLED %}
+        <li>
+            <a href="{% site_url 'music' 'music:home' %}"{% if media_type == 'music' %} class="active" aria-current="true"{% endif %}>
+                <span class="mdi mdi-album" aria-hidden="true"></span>
+                Music
+                {% include 'music/includes/_beta_badge.html' with size='badge-xs' %}
+            </a>
+        </li>
+        {% endif %}
+        {% if BOOKS_ENABLED %}
+        <li>
+            <a href="{% site_url 'games' 'books:home' %}"{% if media_type == 'books' %} class="active" aria-current="true"{% endif %}>
+                <span class="mdi mdi-book-open-page-variant" aria-hidden="true"></span>
+                Books
+            </a>
+        </li>
+        {% endif %}
+        <li class="mt-1 pt-1 border-t border-base-content/10">
+            <a href="{% site_url 'root' 'landing' %}">
+                <span class="mdi mdi-home" aria-hidden="true"></span>
+                All sites
+            </a>
+        </li>
+    </ul>
+</details>

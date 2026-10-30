@@ -5,16 +5,23 @@ What is left, why it matters, and what it costs. Ordered within each group.
 
 ## Music: launch
 
-1. **Set `MUSIC_ENABLED=true` on Heroku.** That is the launch: reads go
-   public, the media switcher and mobile nav gain a Music entry, and the
-   sitemap gains the albums, artists and the `/music/genres/<slug>/` and
-   `/music/<decade>s/` landing pages. Everything it needs is built, including
-   Discogs' attribution (AGENTS.md, "Discogs API terms"). Unsetting it hides
-   the section again.
+The section moved to `music.acclaimedmedia.org`, beside the games site and a
+landing page at the apex (2026-10-30; AGENTS.md, "Domain"). Launching it is
+`heroku config:set MUSIC_ENABLED=true`; the pages keep a "Beta" badge while
+`music.config.MUSIC_BETA` is on.
+
+1. **Redirects for renamed artist slugs.** Every import and Wikidata pass
+   rebuilds artist slugs from the current names, and nothing redirects the
+   old ones, so once the section is public a renamed act's inbound links
+   404. Launched without them by decision; an `ArtistSlugHistory` written by
+   `rebuild_artist_slugs` and read by `ArtistDetailView` would fix it.
 2. **An anonymous page cache for music**, once it is public. Games' rankings
    and landing pages use `AnonymousResponseCacheMixin`; music's have none.
    It must sit after `MusicVisibleMixin` in the MRO, and every cached page
    spends from the 512 MB budget, so measure before adding it.
+3. **New brand artwork.** The `og:image` and favicons still read "Acclaimed
+   Video Games" (`games/static/games/brand/`); every page title already
+   says Acclaimed Media.
 
 ## Production memory
 
@@ -22,13 +29,13 @@ The rankings page is 690 KB anonymous and 833 KB logged in, and the dyno
 runs gthread with two threads per worker (AGENTS.md, "Production memory
 budget").
 
-3. **Measure gthread on the dyno.** `memory.rss.bytes.max` and swap over a
+4. **Measure gthread on the dyno.** `memory.rss.bytes.max` and swap over a
    day of traffic decide whether `--threads 3` fits, or whether the next
    step is Standard-2X (1 GB, $50/mo vs Basic's $7).
 
 ## Housekeeping
 
-4. `BOOKS_ENABLED` is two flags that never meet: the setting is read by
+5. `BOOKS_ENABLED` is two flags that never meet: the setting is read by
    nothing, and `games.context_processors.feature_flags` reads the raw env
    var instead. `MUSIC_ENABLED` is the working pattern to copy.
 

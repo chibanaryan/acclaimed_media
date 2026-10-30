@@ -1,9 +1,9 @@
 {% extends 'base.html' %}
 {% load humanize static music_filters %}
 
-{% block title %}{{ artist.name }} | Acclaimed Video Games{% endblock %}
+{% block title %}{{ artist.name }} | Acclaimed Media{% endblock %}
 {% block meta_description %}{{ artist.name }} has {{ albums_count }} album{{ albums_count|pluralize }} in the acclaimed album rankings.{% endblock %}
-{% block og_title %}{{ artist.name }} | Acclaimed Video Games{% endblock %}
+{% block og_title %}{{ artist.name }} | Acclaimed Media{% endblock %}
 {% block og_description %}{{ artist.name }} has {{ albums_count }} album{{ albums_count|pluralize }} in the acclaimed album rankings{% if best_album %}, the most acclaimed being {{ best_album.name }} at #{{ best_album.rank }}{% endif %}.{% endblock %}
 
 {% block pre_alpine %}
@@ -18,7 +18,7 @@
 <div class="flex-1 min-w-0">
 <h1 class="text-3xl font-bold mb-2 flex items-center gap-3 flex-wrap">
     <span>{{ artist.name }}</span>
-    {% if not MUSIC_ENABLED %}<span class="badge badge-warning badge-sm">Beta</span>{% endif %}
+    {% include 'music/includes/_beta_badge.html' %}
 </h1>
 <p class="text-base-content/70 mb-4">
     {{ albums_count }} ranked album{{ albums_count|pluralize }}

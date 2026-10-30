@@ -36,6 +36,11 @@ DEFAULT_MIN_YEAR = 1950  # The supplied rankings start at 1955
 # Cache Keys
 # =============================================================================
 
+# Whether music pages carry a "Beta" badge. Separate from MUSIC_ENABLED,
+# which makes the section public: the public launch is itself a beta, so
+# the badge outlives the flag until this is turned off.
+MUSIC_BETA = True
+
 # Every key carries CACHE_VERSION, so one bump invalidates the whole set, and
 # every *global* key appears in CACHE_KEYS, which
 # `music.views._invalidate_music_caches` iterates - a new cached option cannot
@@ -61,13 +66,37 @@ CACHE_KEYS = (
     CACHE_KEY_YEAR_BASELINE,
 )
 
-# Album detail is the catch-all `/music/<slug>/`, so every fixed first
-# segment in music/urls.py would shadow an album that slugified to it, and
-# `/music/1970s/` is a decade landing page. `Album._build_unique_slug` treats
-# these as taken; `test_every_static_route_segment_is_reserved` keeps the set
-# in step with the URLconf.
+# Album detail is the catch-all `/<slug>/` at the root of the music host, so
+# every fixed first segment there would shadow an album that slugified to it:
+# music/urls.py's own, and the routes every site shares
+# (acclaimedgames/urls_common.py, urls_music.py). `/1970s/` is a decade
+# landing page. `Album._build_unique_slug` treats these as taken;
+# `test_every_static_route_segment_is_reserved` keeps the set in step with
+# the URLconf.
 RESERVED_ALBUM_SLUGS = frozenset(
-    {"artists", "browse", "cover", "download", "genres", "import", "lists", "search"}
+    {
+        # music/urls.py
+        "artists",
+        "browse",
+        "cover",
+        "download",
+        "genres",
+        "import",
+        "lists",
+        "search",
+        # Shared with every site, and the music API's mount point
+        "accounts",
+        "admin",
+        "api",
+        "auth",
+        "contact",
+        "healthz",
+        "page",
+        "static",
+        "unsubscribe",
+        "test-404",
+        "__debug__",
+    }
 )
 RESERVED_ALBUM_SLUG_PATTERN = r"^\d{3}0s$"
 

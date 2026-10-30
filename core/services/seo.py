@@ -7,7 +7,7 @@ games still carries its own copy and can move onto this one unchanged.
 
 import json
 
-from django.conf import settings
+from core import sites
 
 
 def json_ld(payload):
@@ -21,18 +21,19 @@ def json_ld(payload):
     return json.dumps(payload).replace("<", "\\u003c")
 
 
-def itemlist_json(name, entries):
+def itemlist_json(name, entries, site):
     """A schema.org ItemList for ``entries``, an iterable of ``(name, path)``.
 
-    Positions follow the iteration order. "<" is escaped so the JSON can
-    never close the ``<script>`` tag it is rendered into.
+    The paths are on ``site`` (core/sites.py), whose public origin makes
+    them absolute. Positions follow the iteration order. "<" is escaped so
+    the JSON can never close the ``<script>`` tag it is rendered into.
     """
     elements = [
         {
             "@type": "ListItem",
             "position": position,
             "name": item_name,
-            "url": settings.CANONICAL_ORIGIN + path,
+            "url": sites.canonical_url(site, path),
         }
         for position, (item_name, path) in enumerate(entries, start=1)
     ]

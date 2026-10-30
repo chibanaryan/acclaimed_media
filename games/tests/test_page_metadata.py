@@ -38,7 +38,7 @@ class PageMetadataTests(TestCase):
             "Valve has 2 games among the most critically acclaimed video games "
             "of all time, led by Half-Life 2 (#5).",
         )
-        self.assertEqual(meta["og:title"], "Valve | Acclaimed Video Games")
+        self.assertEqual(meta["og:title"], "Valve | Acclaimed Media")
         self.assertIn("Valve: 2 games", meta["og:description"])
 
     def test_list_pages_and_flat_pages_have_their_own_descriptions(self):

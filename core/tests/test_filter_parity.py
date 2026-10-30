@@ -22,6 +22,7 @@ from core.tests.utils import clear_all_caches
 from games.models import Game, HLTBGameData, Platform, Series, WikipediaGenre
 from music import models as music
 from music.templatetags.music_filters import artist_links
+from music.tests.site import music_site
 
 
 def run_engines(payloads):
@@ -151,6 +152,7 @@ class GamesParityTests(ParityTestCase):
 
 
 @override_settings(MUSIC_ENABLED=True)
+@music_site
 class MusicParityTests(ParityTestCase):
     @classmethod
     def setUpTestData(cls):
@@ -259,7 +261,7 @@ class MusicParityTests(ParityTestCase):
         self.client.force_login(staff)
 
     def test_the_engine_matches_the_server(self):
-        payload = self.client.get("/api/music/all/").json()
+        payload = self.client.get("/api/all/").json()
         payload = payload.get("data", payload)
         queries = [
             "",
@@ -283,7 +285,7 @@ class MusicParityTests(ParityTestCase):
         self.assertSameOrder(
             "music",
             queries,
-            "/music/?{query}&partial=true",
+            "/?{query}&partial=true",
             r'id="music-(\d+)"',
             payload,
         )
@@ -292,7 +294,7 @@ class MusicParityTests(ParityTestCase):
         # Each credit under its credited name, linked to the artist, and
         # "Various Artists" last - `artist_links` and `_artistCreditHtml`.
         # Compared unescaped: Django escapes quotes and the DOM does not.
-        payload = self.client.get("/api/music/all/").json()
+        payload = self.client.get("/api/all/").json()
         payload = payload.get("data", payload)
         client = run_engines(
             {"music": {"payload": payload, "queries": [], "credits": True}}

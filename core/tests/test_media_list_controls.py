@@ -17,9 +17,12 @@ from bs4 import BeautifulSoup
 
 from core.models import User
 from games import config as games_config
+from core import sites
+from core.tests.utils import get_on_site
 from games import models as game_models
 from music import config as music_config
 from music import models as music_models
+from music.tests.site import music_site
 
 
 def render_controls(**context):
@@ -114,7 +117,9 @@ class BothRankingPagesRenderTheControlsTests(TestCase):
         )
 
     def _controls(self, url_name):
-        page = self.client.get(reverse(url_name)).content.decode()
+        # Each rankings page is on its own site's host
+        site = sites.MUSIC if url_name.startswith("music:") else sites.GAMES
+        page = get_on_site(self.client, site, url_name).content.decode()
         return BeautifulSoup(page, "html.parser")
 
     def test_each_page_renders_the_same_controls(self):
@@ -253,6 +258,7 @@ class SavedFilterPartialTests(TestCase):
         self.assertIn("e.g., Jazz of the 1960s", rendered)
 
 
+@music_site
 class MusicRendersTheSavedFilterUiTests(TestCase):
     """Music is the section wired to the partials; games keeps its own copy."""
 

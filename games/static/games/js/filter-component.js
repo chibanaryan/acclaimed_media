@@ -91,7 +91,7 @@ document.addEventListener('alpine:init', () => {
         deleteFilterDeleting: false,
 
         _getCsrfToken() {
-            const name = 'csrftoken';
+            const name = 'am_csrftoken'; // settings.CSRF_COOKIE_NAME
             let cookieValue = null;
             if (document.cookie && document.cookie !== '') {
                 const cookies = document.cookie.split(';');

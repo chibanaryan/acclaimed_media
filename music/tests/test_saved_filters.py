@@ -16,12 +16,14 @@ this module for the first time - every other music endpoint is read-only.
 
 import json
 
+from django.conf import settings
 from django.test import Client, TestCase
 from django.urls import reverse
 
 from core.models import User
 from core.tests.utils import clear_all_caches
 from music import config, models
+from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 
 SAMPLE_FILTERS = {
     "q": "",
@@ -424,7 +426,7 @@ class SavedAlbumFilterCsrfTests(TestCase):
         # The token the browser would have, obtained the way the browser
         # obtains it: by loading a music page.
         client.get(reverse("music:home"))
-        token = client.cookies["csrftoken"].value
+        token = client.cookies[settings.CSRF_COOKIE_NAME].value
         response = client.post(
             self.list_url,
             json.dumps({"name": "With token", "filters": {}}),

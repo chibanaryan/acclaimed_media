@@ -42,14 +42,14 @@ function storePreference(key, value) {
 }
 
 /**
- * The CSRF token from the cookie.
+ * The CSRF token from the cookie (settings.CSRF_COOKIE_NAME).
  *
  * `BaseMediaListRenderer` has one of these too, but it is a method on a
  * class in the deferred filtering bundle, while this file has to load
  * before Alpine - so it is not reachable from here.
  */
 function readCsrfToken() {
-    const match = document.cookie.match(/csrftoken=([^;]+)/);
+    const match = document.cookie.match(/(?:^|;\s*)am_csrftoken=([^;]+)/);
     return match ? decodeURIComponent(match[1]) : '';
 }
 

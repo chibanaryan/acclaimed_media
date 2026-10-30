@@ -12,6 +12,7 @@ from django.urls import reverse
 
 from core.tests.utils import clear_all_caches
 from games.models import Article, Developer, Game
+from core.sitemaps import root_sitemaps
 from games.sitemaps import (
     ArticleSitemap,
     DeveloperSitemap,
@@ -150,7 +151,10 @@ class SitemapsConfigurationTests(TestCase):
         self.assertEqual(sitemaps["games"], GameSitemap)
         self.assertEqual(sitemaps["developers"], DeveloperSitemap)
         self.assertEqual(sitemaps["articles"], ArticleSitemap)
-        self.assertEqual(sitemaps["pages"], PageSitemap)
+        # The shared pages are listed once, on the apex their canonical
+        # links name, not on every site that serves them
+        self.assertNotIn("pages", sitemaps)
+        self.assertTrue(issubclass(root_sitemaps["pages"], PageSitemap))
 
 
 class ArticleSitemapTests(TestCase):

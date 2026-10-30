@@ -1,5 +1,5 @@
 """
-Sitemap configuration for Acclaimed Games.
+Sitemap configuration for the games site.
 
 Generates XML sitemaps for search engines to index the site efficiently.
 """
@@ -158,5 +158,4 @@ sitemaps = {
     "games": GameSitemap,
     "developers": DeveloperSitemap,
     "articles": ArticleSitemap,
-    "pages": PageSitemap,
 }

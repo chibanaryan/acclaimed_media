@@ -8,6 +8,7 @@ import re
 import zlib
 from unittest import mock
 
+from django.conf import settings
 from django.contrib.flatpages.models import FlatPage
 from django.contrib.sites.models import Site
 from django.core.cache import caches
@@ -297,7 +298,7 @@ class HomePageViewTest(TestCase):
         self.assertIn("Sign Up", content)
 
     def test_home_page_cache_payload_preserves_headers_and_cookies(self):
-        cache_key = f"home_page:{config.CACHE_VERSION}:default"
+        cache_key = f"testserver:home_page:{config.CACHE_VERSION}:default"
         caches["local"].set(
             cache_key,
             {
@@ -361,7 +362,7 @@ class HomePageViewTest(TestCase):
 
         visitor = Client(enforce_csrf_checks=True)
         page = visitor.get(reverse("home"), secure=True)
-        self.assertIn("csrftoken", page.cookies)
+        self.assertIn(settings.CSRF_COOKIE_NAME, page.cookies)
         token = re.search(
             r'name="csrfmiddlewaretoken" value="([^"]+)"', page.content.decode()
         ).group(1)
@@ -382,7 +383,7 @@ class HomePageViewTest(TestCase):
         self.assertEqual(response.status_code, 302)
 
     def test_home_page_legacy_cache_payload_is_evicted(self):
-        cache_key = f"home_page:{config.CACHE_VERSION}:default"
+        cache_key = f"testserver:home_page:{config.CACHE_VERSION}:default"
         caches["local"].set(cache_key, "legacy", 60)
         response = self.client.get(reverse("home"))
         self.assertEqual(response.status_code, 200)
@@ -391,7 +392,7 @@ class HomePageViewTest(TestCase):
         self.assertIn("body", cached)
 
     def test_home_page_streaming_response_not_cached(self):
-        cache_key = f"home_page:{config.CACHE_VERSION}:default"
+        cache_key = f"testserver:home_page:{config.CACHE_VERSION}:default"
         with mock.patch.object(
             HomePageView,
             "get",
@@ -402,7 +403,7 @@ class HomePageViewTest(TestCase):
         self.assertIsNone(caches["local"].get(cache_key))
 
     def test_home_page_query_string_not_cached(self):
-        cache_key = f"home_page:{config.CACHE_VERSION}:default"
+        cache_key = f"testserver:home_page:{config.CACHE_VERSION}:default"
         response = self.client.get(reverse("home") + "?q=test")
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(caches["local"].get(cache_key))
@@ -2814,7 +2815,7 @@ class RobotsTxtViewTest(TestCase):
         """Test that robots.txt contains sitemap URL."""
         response = self.client.get(reverse("robots-txt"))
         content = response.content.decode("utf-8")
-        self.assertIn("Sitemap: https://acclaimedmedia.org/sitemap.xml", content)
+        self.assertIn("Sitemap: https://games.acclaimedmedia.org/sitemap.xml", content)
         self.assertIn("sitemap.xml", content)
 
     def test_robots_txt_keeps_crawlers_off_the_csv_download(self):
@@ -4584,14 +4585,14 @@ class HomePageDocumentTitleTest(TestCase):
         for url in ("/", f"/?genres={self.genre.id}", "/?start=1990&end=1999"):
             with self.subTest(url=url):
                 clear_all_caches()
-                self.assertTrue(self._title(url).endswith("| Acclaimed Video Games"))
+                self.assertTrue(self._title(url).endswith("| Acclaimed Media"))
 
     def test_the_client_side_suffix_is_published_for_the_filter_components(self):
         # Both filter components rebuild the title as `heading + suffix` when
         # filtering happens in the browser, so the suffix has to be on the
         # page for them to read.
         html = self.client.get("/").content.decode()
-        self.assertIn("window.documentTitleSuffix = ' | Acclaimed Video Games';", html)
+        self.assertIn("window.documentTitleSuffix = ' | Acclaimed Media';", html)
 
 
 class GamesHomeGenreQueryBudgetTests(TestCase):
@@ -4858,10 +4859,14 @@ class LighthouseFindingsTests(TestCase):
         self.assertEqual(preloads, [self.game.image])
         self.assertLess(html.index('as="image"'), html.index("</head>"))
 
-    def test_contact_modal_icon_is_self_hosted_and_lazy(self):
+    def test_the_contact_modal_is_the_neutral_one_every_site_shares(self):
+        # It was Navi's "Hey! Listen!", a hotlinked image and a sound, on
+        # the music site as much as the games one
         html = self._html(reverse("home"))
         self.assertNotIn("nocookie.net", html)
-        self.assertRegex(html, r'<img src="[^"]*navi[^"]*\.png"[^>]*loading="lazy"')
+        self.assertNotIn("Hey! Listen!", html)
+        self.assertNotIn("naviSound", html)
+        self.assertIn('<p class="text-lg font-bold mb-4">Contact Us</p>', html)
 
     def test_igdb_preconnect_is_on_games_pages_only(self):
         self.assertIn(
@@ -4870,9 +4875,12 @@ class LighthouseFindingsTests(TestCase):
         )
         from django.template import Context, Template
 
-        music_head = Template(
-            "{% extends 'base.html' %}{% block content %}{% endblock %}"
-        ).render(Context({"media_type": "music"}))
+        # The music chrome reverses music's URL names, which only its own
+        # site's URLconf has
+        with self.settings(ROOT_URLCONF=settings.SITE_URLCONFS["music"]):
+            music_head = Template(
+                "{% extends 'base.html' %}{% block content %}{% endblock %}"
+            ).render(Context({"media_type": "music"}))
         self.assertNotIn("images.igdb.com", music_head)
 
     def test_every_select_has_an_accessible_name(self):

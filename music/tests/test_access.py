@@ -8,15 +8,18 @@ saved-filter API was answered with DRF's CSRF 403, not the section's 404.
 """
 
 import json
+from unittest import mock
 
+from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from core.models import User
 from core.tests.utils import clear_all_caches
-from music import models
+from music import config, models
 from music.access import music_visible_to
+from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 
 
 class MusicVisibleToTests(TestCase):
@@ -177,7 +180,7 @@ class PublicSectionTests(AccessFixtureMixin, TestCase):
             reverse("music-api:saved-filter-list"),
             json.dumps({"name": "Mine", "filters": {"genres": ["1"]}}),
             content_type="application/json",
-            HTTP_X_CSRFTOKEN=client.cookies["csrftoken"].value,
+            HTTP_X_CSRFTOKEN=client.cookies[settings.CSRF_COOKIE_NAME].value,
         )
         self.assertEqual(response.status_code, 201)
         self.assertEqual(
@@ -189,7 +192,14 @@ class PublicSectionTests(AccessFixtureMixin, TestCase):
         response = client.post(reverse("music:home"))
         self.assertEqual(response.status_code, 403)
 
-    def test_an_anonymous_rankings_page_has_no_tracking_state_or_beta_badge(self):
+    def test_an_anonymous_rankings_page_has_no_tracking_state(self):
         response = self.client.get(reverse("music:home"))
         self.assertContains(response, "window.isAuthenticated = false;")
+
+    def test_the_public_launch_keeps_the_beta_badge(self):
+        # MUSIC_BETA, not MUSIC_ENABLED, decides the badge: the launch is a beta
+        response = self.client.get(reverse("music:home"))
+        self.assertContains(response, "Beta</span>")
+        with mock.patch.object(config, "MUSIC_BETA", False):
+            response = self.client.get(reverse("music:home"))
         self.assertNotContains(response, "Beta</span>")

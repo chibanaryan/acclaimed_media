@@ -1,6 +1,5 @@
 """A game's detail page and its played / want-to-play toggle."""
 
-from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.cache import cache
 from django.db import transaction
@@ -10,6 +9,7 @@ from django.urls import reverse
 from django.views import View
 from django.views.generic import DetailView
 
+from core import sites
 from core.models import User
 from core.services import seo
 from games import config, constants, models
@@ -144,8 +144,9 @@ def _game_json_ld(game):
         "@context": "https://schema.org",
         "@type": "VideoGame",
         "name": game.name,
-        "url": settings.CANONICAL_ORIGIN
-        + reverse("game-detail", kwargs={"slug": game.slug}),
+        "url": sites.canonical_url(
+            sites.GAMES, reverse("game-detail", kwargs={"slug": game.slug})
+        ),
         "description": game.description
         or "One of the most critically acclaimed video games of all time.",
     }

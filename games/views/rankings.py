@@ -4,7 +4,6 @@ import re
 from functools import cached_property
 from urllib.parse import urlencode
 
-from django.conf import settings
 from django.db.models import Count, Max, Q
 from django.db.models.functions import Lower
 from django.http import Http404
@@ -13,6 +12,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.vary import vary_on_headers
 from django.views.generic import ListView, TemplateView
 
+from core import sites
 from core.cache_helpers import batched_cache_reads, cache_get, cache_set
 from core.mixins import AnonymousResponseCacheMixin, RobustPaginationMixin
 from core.services import ranking, seo
@@ -616,8 +616,9 @@ def _landing_itemlist_json(name, games):
                 "@type": "ListItem",
                 "position": position,
                 "name": game.name,
-                "url": settings.CANONICAL_ORIGIN
-                + reverse("game-detail", kwargs={"slug": game.slug}),
+                "url": sites.canonical_url(
+                    sites.GAMES, reverse("game-detail", kwargs={"slug": game.slug})
+                ),
             }
             for position, game in enumerate(games, start=1)
         ],

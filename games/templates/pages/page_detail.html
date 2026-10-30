@@ -1,8 +1,10 @@
 {% extends 'base.html' %}
 
-{% block title %}{{ flatpage.title }} | Acclaimed Video Games{% endblock %}
+{% block title %}{{ flatpage.title }} | Acclaimed Media{% endblock %}
 {% block meta_description %}{{ flatpage.meta_description }}{% endblock %}
-{% block og_title %}{{ flatpage.title }} | Acclaimed Video Games{% endblock %}
+{% block canonical_url %}{{ page_canonical_url }}{% endblock %}
+{% block og_url %}{{ page_canonical_url }}{% endblock %}
+{% block og_title %}{{ flatpage.title }} | Acclaimed Media{% endblock %}
 
 {% block content %}
 <div class="max-w-3xl mx-auto">

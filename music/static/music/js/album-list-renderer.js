@@ -19,6 +19,16 @@ class AlbumListRenderer extends BaseMediaListRenderer {
     }
 
     /**
+     * A path on the music site. Every URL here starts from the rankings
+     * page's own address, which the page renders with {% url %} - music is
+     * the root of its own host now, and was /music/ before that.
+     * @protected
+     */
+    _musicPath(rest) {
+        return (window.albumRankingsUrl || '/') + rest;
+    }
+
+    /**
      * Grab the row templates on first render.
      * @protected
      */
@@ -84,7 +94,7 @@ class AlbumListRenderer extends BaseMediaListRenderer {
         if (!wrapper) return null;
 
         const status = this._albumStatus(album.id);
-        const toggleUrl = `/music/${album.id}/toggle-listened/`;
+        const toggleUrl = this._musicPath(`${album.id}/toggle-listened/`);
         wrapper.dataset.itemId = String(album.id);
         wrapper.dataset.toggleUrl = toggleUrl;
         wrapper.dataset.status = status;
@@ -186,7 +196,7 @@ class AlbumListRenderer extends BaseMediaListRenderer {
         if (!card) return null;
 
         const album = this.engine.expandAlbum(compactAlbum);
-        const url = `/music/${encodeURIComponent(album.slug)}/`;
+        const url = this._musicPath(`${encodeURIComponent(album.slug)}/`);
 
         card.id = `music-${album.id}-grid`;
         if (this.highlightId && album.id === this.highlightId) {
@@ -300,7 +310,7 @@ class AlbumListRenderer extends BaseMediaListRenderer {
             const title = artist.a && artist.a !== artist.n
                 ? ` title="${this._escapeHtml(artist.a).replace(/"/g, '&quot;')}"`
                 : '';
-            return `<a href="/music/artists/${encodeURIComponent(artist.s)}/" ` +
+            return `<a href="${this._musicPath(`artists/${encodeURIComponent(artist.s)}/`)}" ` +
                 `class="link link-hover"${title}>${name}</a>`;
         });
         if (album.variousArtists) {
@@ -395,7 +405,7 @@ class AlbumListRenderer extends BaseMediaListRenderer {
         if (!row) return null;
 
         const album = this.engine.expandAlbum(compactAlbum);
-        const url = `/music/${encodeURIComponent(album.slug)}/`;
+        const url = this._musicPath(`${encodeURIComponent(album.slug)}/`);
 
         // The server renders `music-<id>` here (media_type + id, from the
         // shared row template), and `?highlight=` deep links and the
@@ -422,7 +432,7 @@ class AlbumListRenderer extends BaseMediaListRenderer {
         const yearLink = row.querySelector('[data-slot="year-link"]');
         if (yearLink && album.year !== null) {
             yearLink.href =
-                `/music/?start=${album.year}&end=${album.year}` +
+                this._musicPath(`?start=${album.year}&end=${album.year}`) +
                 `&highlight=${album.id}`;
         } else if (yearLink) {
             yearLink.removeAttribute('href');
@@ -453,7 +463,7 @@ class AlbumListRenderer extends BaseMediaListRenderer {
         if (!row) return null;
 
         const album = this.engine.expandAlbum(compactAlbum);
-        const url = `/music/${encodeURIComponent(album.slug)}/`;
+        const url = this._musicPath(`${encodeURIComponent(album.slug)}/`);
 
         row.id = `music-${album.id}-mobile`;
         // Navigated by base.html's [data-href] listener: an onclick string

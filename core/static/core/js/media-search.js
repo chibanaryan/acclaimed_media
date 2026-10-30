@@ -8,7 +8,7 @@
  * near-copy of that function per section.
  *
  * Usage, from a template:
- *   x-data="createMediaSearchData('/api/music/unified-search/',
+ *   x-data="createMediaSearchData('{% url 'music-api:unified-search' %}',
  *                                 { artists: 3, albums: 5 })"
  * The keys' order is the groups' order until a response gives one, so it
  * should be the endpoint's tie order (music.api.views.SEARCH_GROUPS).

@@ -1,13 +1,13 @@
 {% extends 'base.html' %}
 {% load humanize %}
 
-{% block title %}Most Acclaimed Albums by Genre and Decade | Acclaimed Video Games{% endblock %}
+{% block title %}Most Acclaimed Albums by Genre and Decade | Acclaimed Media{% endblock %}
 {% block meta_description %}Browse rankings of the most critically acclaimed albums by genre and decade, built by aggregating {{ list_count }} critic lists.{% endblock %}
-{% block og_title %}Most Acclaimed Albums by Genre and Decade | Acclaimed Video Games{% endblock %}
+{% block og_title %}Most Acclaimed Albums by Genre and Decade | Acclaimed Media{% endblock %}
 {% block og_description %}Browse rankings of the most critically acclaimed albums by genre and decade.{% endblock %}
 
 {% block content %}
-<h1 class="text-3xl font-bold mb-3">Most Acclaimed Albums by Genre and Decade</h1>
+<h1 class="text-3xl font-bold mb-3">Most Acclaimed Albums by Genre and Decade <span class="ml-1">{% include 'music/includes/_beta_badge.html' %}</span></h1>
 <p class="text-base-content/80 mb-8 max-w-3xl">
     Rankings of the {{ album_count|intcomma }} most critically acclaimed albums
     by genre and decade, built by aggregating {{ list_count }} critic lists from

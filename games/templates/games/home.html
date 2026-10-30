@@ -6,10 +6,10 @@
 {# `seo_title` is set only by the SEO landing views; `filter_title` is #}
 {# the heading this page composes from the filter state, so the tab #}
 {# title tracks the filters as the album page's does. #}
-{% block title %}{% firstof seo_title filter_title as page_title %}{% if page_title %}{{ page_title }} | Acclaimed Video Games{% else %}Acclaimed Video Games{% endif %}{% endblock %}
+{% block title %}{% firstof seo_title filter_title as page_title %}{% if page_title %}{{ page_title }} | Acclaimed Media{% else %}Most Acclaimed Video Games of All Time | Acclaimed Media{% endif %}{% endblock %}
 
 {% block meta_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}{{ block.super }}{% endif %}{% endblock %}
-{% block og_title %}{% firstof seo_title filter_title as page_title %}{% if page_title %}{{ page_title }} | Acclaimed Video Games{% else %}{{ block.super }}{% endif %}{% endblock %}
+{% block og_title %}{% firstof seo_title filter_title as page_title %}{% if page_title %}{{ page_title }} | Acclaimed Media{% else %}{{ block.super }}{% endif %}{% endblock %}
 {% block og_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}{{ block.super }}{% endif %}{% endblock %}
 {% block structured_data %}{% if itemlist_json %}{{ itemlist_json|safe }}{% else %}{{ block.super }}{% endif %}{% endblock %}
 
@@ -155,13 +155,13 @@
             {# Left: Logo + Site Title #}
             <div class="flex items-center gap-4">
                 <img src="{% static 'games/brand/logo-site.svg' %}"
-                     alt="Acclaimed Video Games"
+                     alt=""
                      class="w-20 h-20 sm:w-[135px] sm:h-[135px]"
                      fetchpriority="high">
                 {# Branding, not the page's heading: the filter title below is the h1 #}
                 <p class="site-title text-base-content text-center md:text-center text-2xl sm:text-3xl leading-tight select-none">
                     <span class="block select-none">Acclaimed</span>
-                    <span class="block select-none">Video Games</span>
+                    <span class="block select-none">Media</span>
                 </p>
             </div>
 

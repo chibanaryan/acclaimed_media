@@ -1,0 +1,34 @@
+{% load humanize %}
+{# One site's card on the landing page: its size, its top covers, and the way in. The whole card is the link, so the covers inside are images, not links of their own. #}
+<a href="{{ card.url }}" class="card bg-base-200 shadow-md hover:shadow-xl hover:bg-base-100 transition-shadow">
+    <div class="card-body gap-4">
+        <h2 class="card-title text-2xl">
+            <span class="mdi {{ icon }} text-primary" aria-hidden="true"></span>
+            {{ title }}
+            {% if beta %}{% include 'music/includes/_beta_badge.html' %}{% endif %}
+        </h2>
+        {# flex-none: DaisyUI grows a card body's paragraphs, which pushed one card's covers below the other's #}
+        <p class="text-base-content/70 flex-none">
+            {{ card.count|intcomma }} {{ noun }} ranked from {{ card.list_count|intcomma }} critics' lists.
+        </p>
+        <ol class="grid grid-cols-5 gap-2 content-start" aria-label="The top {{ card.top|length }} {{ noun }}">
+            {% for item in card.top %}
+            <li class="{{ cover_class }} rounded overflow-hidden bg-base-300">
+                {% if item.image %}
+                <img src="{{ item.image }}" alt="#{{ forloop.counter }} {{ item.name }}" title="#{{ forloop.counter }} {{ item.name }}" decoding="async" class="w-full h-full object-cover">
+                {% else %}
+                <span class="sr-only">#{{ forloop.counter }} {{ item.name }}</span>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ol>
+        {# Below the covers, so both cards' covers stay level #}
+        {% if beta and MUSIC_BETA %}
+        <p class="flex-none text-sm"><strong>New, and in beta:</strong> the rankings and album data may still change.</p>
+        {% endif %}
+        <span class="btn btn-primary btn-sm self-start mt-auto">
+            Browse {{ noun }}
+            <span class="mdi mdi-chevron-right" aria-hidden="true"></span>
+        </span>
+    </div>
+</a>

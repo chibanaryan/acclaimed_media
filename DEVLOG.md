@@ -2,6 +2,17 @@
 
 ## 2026-10-30
 
+- **Three sites, one app: a landing page at `acclaimedmedia.org`, games at
+  `games.`, music at `music.`.** `core/sites.py` and `SiteHostMiddleware`
+  pick the URLconf by host. Music moves from `/music/` to the root of its
+  host, every old apex path redirects to its new home, and each host has
+  its own sitemap, robots.txt and canonical origin
+- **One name and one sign-in.** Acclaimed Media everywhere, and domain-wide
+  cookies renamed `am_sessionid` / `am_csrftoken`, so everyone is signed out
+  once. The contact pages go neutral; the Zelda 404 stays on games
+- **The sidebar's toggle becomes a site menu**, the music Import links go,
+  and music says it is in beta on every page and every way in (`MUSIC_BETA`)
+
 - **Music's rankings pages batch their cache reads too**, as games' did
   the day before: `/music/` and its genre and decade landing pages make
   one `get_many` and the nav's articles check, from 7-9 reads. The

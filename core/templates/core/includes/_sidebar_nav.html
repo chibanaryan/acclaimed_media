@@ -1,4 +1,4 @@
-{# Primary sidebar navigation, per media type. #}
+{# Primary sidebar navigation, per media type. Staff-only pages (the imports) are reached by URL, not from here. #}
 {# The current section is decided by `media_type` (games.context_processors). #}
 {# Keep each template comment on one line: Django's lexer only strips #}
 {# single-line ones, so a comment spanning a newline renders as page text. #}
@@ -25,24 +25,6 @@
             Source Lists
         </a>
     </li>
-    {% if user.is_staff %}
-    <li>
-        <a href="{% url 'music:import' %}"
-           class="{% if request.resolver_match.url_name == 'import' %}active{% endif %}"{% if request.resolver_match.url_name == 'import' %} aria-current="page"{% endif %}>
-            <span class="mdi mdi-database-import text-xl" aria-hidden="true"></span>
-            Import Data
-        </a>
-    </li>
-    {% endif %}
-    {# Once music is public the media switcher above leads back instead. #}
-    {% if not MUSIC_ENABLED %}
-    <li class="mt-2 pt-2 border-t border-base-100">
-        <a href="{% url 'home' %}">
-            <span class="mdi mdi-arrow-left text-xl" aria-hidden="true"></span>
-            Back to Games
-        </a>
-    </li>
-    {% endif %}
 {% elif media_type == 'books' %}
     <li>
         <a href="{% url 'books:home' %}"
@@ -65,8 +47,6 @@
         </a>
     </li>
 {% else %}
-    {# The media switcher's Games tab stands in for Rankings whenever it shows. #}
-    {% if not BOOKS_ENABLED and not MUSIC_ENABLED %}
     <li>
         <a href="{% url 'home' %}"
            class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}"{% if request.resolver_match.url_name == 'home' %} aria-current="page"{% endif %}>
@@ -74,7 +54,6 @@
             Rankings
         </a>
     </li>
-    {% endif %}
     <li>
         <a href="{% url 'developers-list' %}"
            class="{% if request.resolver_match.url_name == 'developers-list' %}active{% endif %}"{% if request.resolver_match.url_name == 'developers-list' %} aria-current="page"{% endif %}>

@@ -1,4 +1,4 @@
-{% load static tailwind_tags %}
+{% load static tailwind_tags core_filters %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,31 +6,31 @@
     {% include 'includes/_theme_script.html' %}
 
     {# Theme toggle functions - compact for faster parsing #}
-    <script nonce="{{ csp_nonce }}">function setTheme(t){localStorage.setItem('theme',t);document.documentElement.setAttribute('data-theme',t);updateThemeToggle(t)}function updateThemeToggle(t){var d=t==='forest';['theme-toggle','theme-toggle-mobile'].forEach(function(id){var e=document.getElementById(id);if(e)e.checked=d})}document.addEventListener('change',function(e){if(e.target.classList.contains('theme-controller'))setTheme(e.target.checked?'forest':'lofi')});document.addEventListener('DOMContentLoaded',function(){updateThemeToggle(localStorage.getItem('theme')||'lofi')})</script>
+    <script nonce="{{ csp_nonce }}">function setTheme(t){localStorage.setItem('theme',t);window.saveThemeCookie(t);document.documentElement.setAttribute('data-theme',t);updateThemeToggle(t)}function updateThemeToggle(t){var d=t==='forest';['theme-toggle','theme-toggle-mobile'].forEach(function(id){var e=document.getElementById(id);if(e)e.checked=d})}document.addEventListener('change',function(e){if(e.target.classList.contains('theme-controller'))setTheme(e.target.checked?'forest':'lofi')});document.addEventListener('DOMContentLoaded',function(){updateThemeToggle(localStorage.getItem('theme')||'lofi')})</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     {# htmx re-creates the scripts a swap brings in; this gives them the page's nonce, the one its CSP header allows #}
     <meta name="htmx-config" content='{"inlineScriptNonce": "{{ csp_nonce }}"}'>
-    <meta name="description" content="{% block meta_description %}Discover the most critically acclaimed video games of all time, ranked by aggregating hundreds of critic lists from major gaming publications.{% endblock %}">
+    <meta name="description" content="{% block meta_description %}{% if site_key == 'music' %}Discover the most critically acclaimed albums of all time, ranked by aggregating critic lists from music publications worldwide.{% elif site_key == 'root' %}Rankings of the most critically acclaimed video games and albums of all time, built by aggregating hundreds of critic lists.{% else %}Discover the most critically acclaimed video games of all time, ranked by aggregating hundreds of critic lists from major gaming publications.{% endif %}{% endblock %}">
     <link rel="canonical" href="{% block canonical_url %}{{ canonical_origin }}{{ request.path }}{% endblock %}">
     {# Content Security Policy is set via CSPMiddleware with nonce support #}
     {# Note: 'unsafe-eval' is required for Alpine.js x-data expressions #}
-    <title>{% block title %}Acclaimed Video Games{% endblock %}</title>
+    <title>{% block title %}Acclaimed Media{% endblock %}</title>
     {# The site suffix a filterable page appends to its heading to rebuild #}
     {# the document title client-side. One definition, so the server and #}
     {# the two filter components cannot drift on the separator. #}
-    <script nonce="{{ csp_nonce }}">window.documentTitleSuffix = ' | Acclaimed Video Games';</script>
+    <script nonce="{{ csp_nonce }}">window.documentTitleSuffix = ' | Acclaimed Media';</script>
 
     {# CRITICAL: Early preload for LCP images - must be before other resources #}
     {% block early_preload %}{% endblock %}
 
     {# Open Graph Tags for social sharing #}
     <meta property="og:type" content="{% block og_type %}website{% endblock %}">
-    <meta property="og:title" content="{% block og_title %}Acclaimed Video Games{% endblock %}">
-    <meta property="og:description" content="{% block og_description %}Discover the most critically acclaimed video games of all time, ranked by aggregating hundreds of critic lists.{% endblock %}">
+    <meta property="og:title" content="{% block og_title %}Acclaimed Media{% endblock %}">
+    <meta property="og:description" content="{% block og_description %}{% if site_key == 'music' %}Discover the most critically acclaimed albums of all time, ranked by aggregating critic lists.{% elif site_key == 'root' %}The most critically acclaimed video games and albums of all time, ranked by aggregating critic lists.{% else %}Discover the most critically acclaimed video games of all time, ranked by aggregating hundreds of critic lists.{% endif %}{% endblock %}">
     <meta property="og:url" content="{% block og_url %}{{ canonical_origin }}{{ request.path }}{% endblock %}">
     <meta property="og:image" content="{% block og_image %}{{ canonical_origin }}{% static 'games/brand/og-image.png' %}{% endblock %}">
-    <meta property="og:site_name" content="Acclaimed Video Games">
+    <meta property="og:site_name" content="Acclaimed Media">
 
     {# Twitter Card Tags #}
     <meta name="twitter:card" content="summary_large_image">
@@ -187,14 +187,14 @@
     {% block structured_data %}{
         "@context": "https://schema.org",
         "@type": "WebSite",
-        "name": "Acclaimed Video Games",
+        "name": "Acclaimed Media",
         "url": "{{ canonical_origin }}",
-        "description": "The most critically acclaimed video games of all time",
+        "description": "{% if site_key == 'music' %}The most critically acclaimed albums of all time{% elif site_key == 'root' %}The most critically acclaimed video games and albums of all time{% else %}The most critically acclaimed video games of all time{% endif %}"{% if site_key != 'root' %},
         "potentialAction": {
             "@type": "SearchAction",
-            "target": "{{ canonical_origin }}/games/?q={search_term_string}",
+            "target": "{{ canonical_origin }}/?q={search_term_string}",
             "query-input": "required name=search_term_string"
-        }
+        }{% endif %}
     }{% endblock %}
     </script>
 </head>
@@ -202,6 +202,7 @@
     {# Skip navigation link for accessibility #}
     <a href="#main-content" class="skip-link">Skip to main content</a>
 
+    {% if site_key != 'root' %}
     {# Mobile header - fixed at top, visible only below desktop: breakpoint #}
     {# Hides when filter sheet is open via body class toggle #}
     <header id="header"
@@ -216,22 +217,28 @@
     </style>
 
     {# Main layout wrapper - padding-top on mobile for fixed header space, isolate creates stacking boundary #}
+    {# The apex (the landing page, and the shared pages served there) has no header or sidebar: it is neither site, and leads to both. #}
     <style>@media (min-width: 962px) { #main-wrapper { padding-top: 0 !important; } }</style>
     <div id="main-wrapper" class="flex" style="isolation: isolate; position: relative; z-index: 1; padding-top: 60px;">
         {# Desktop sidebar - fixed position, hidden on mobile #}
         <aside class="hidden desktop:flex desktop:flex-col desktop:w-48 desktop:fixed desktop:inset-y-0 desktop:left-0 bg-base-200 border-r border-base-content/10 z-40 overflow-visible">
             {% include 'includes/_sidebar.html' %}
         </aside>
+    {% endif %}
 
         {# Main content area - offset by sidebar width on desktop #}
-        <main id="main-content" class="flex-1 desktop:ml-48 min-h-screen bg-base-300 overflow-x-hidden">
+        <main id="main-content" class="flex-1 {% if site_key != 'root' %}desktop:ml-48 {% endif %}min-h-screen bg-base-300 overflow-x-hidden">
             <div class="container mx-auto px-4 max-w-7xl py-4">
+                {% if site_key == 'root' %}{% block root_header %}<a href="{{ site_home_url }}" class="inline-block mb-6 font-bold text-lg tracking-tight hover:text-primary">Acclaimed Media</a>{% endblock %}{% endif %}
+                {% if site_key == 'music' %}{% include 'music/includes/_beta_notice.html' %}{% endif %}
                 {% block pre_content %}{% endblock %}
                 {% block content %}{% endblock %}
                 {% if media_type == 'music' %}{% include 'music/includes/_discogs_notice.html' %}{% endif %}
             </div>
         </main>
+    {% if site_key != 'root' %}
     </div>
+    {% endif %}
 
     {# Global Contact Form Modal - accessible from any page #}
     <dialog id="contactModal" class="modal">
@@ -241,13 +248,8 @@
                     <span class="mdi mdi-close" aria-hidden="true"></span>
                 </button>
             </form>
-            <p class="text-lg font-bold mb-4 flex items-center gap-2 flex-wrap">
-                {# Self-hosted and lazy: the modal is closed on almost every page view, #}
-                {# yet the 35 KB hotlinked original was fetched at high priority on all of them. #}
-                <img src="{% static 'games/images/navi.png' %}" srcset="{% static 'games/images/navi.png' %} 1x, {% static 'games/images/navi@2x.png' %} 2x" alt="" role="presentation" width="28" height="20" loading="lazy" decoding="async" class="w-7 h-auto drop-shadow-[0_0_4px_#00d4ff]">
-                <em>"Hey! Listen!"</em>
-                <span class="text-base-content/85 text-xs font-normal">~Navi, <a href="{% url 'game-detail' slug='the-legend-of-zelda-ocarina-of-time' %}" class="link link-accent link-hover">The Legend of Zelda: Ocarina of Time</a></span>
-            </p>
+            {# One form for every site; it posts to the host it is on, which tells the email the site it came from #}
+            <p class="text-lg font-bold mb-4">Contact Us</p>
             <p class="mb-4">
                 Have a question, suggestion, or found an issue? We'd love to hear from you!
                 Fill out the form below and we'll get back to you as soon as possible.
@@ -317,10 +319,6 @@
 
     {# Auth Modal - modal-based authentication flow #}
     {% include 'includes/_auth_modal.html' %}
-
-    <audio id="naviSound" preload="none">
-        <source src="{% static 'audio/navi_fly.mp3' %}" type="audio/mpeg">
-    </audio>
 
     {# Modal handlers - deferred loading for better performance #}
     <script nonce="{{ csp_nonce }}">
@@ -469,6 +467,19 @@
             if (inner && row.contains(inner)) return;
             window.location.href = row.dataset.href;
         });
+        // The sidebar's site menu is a <details>: close it on a click outside
+        // it, or on Escape, as a menu is expected to
+        document.addEventListener('click', function(e) {
+            document.querySelectorAll('details.site-menu[open]').forEach(function(menu) {
+                if (!menu.contains(e.target)) menu.removeAttribute('open');
+            });
+        });
+        document.addEventListener('keydown', function(e) {
+            if (e.key !== 'Escape') return;
+            document.querySelectorAll('details.site-menu[open]').forEach(function(menu) {
+                menu.removeAttribute('open');
+            });
+        });
         // [data-close-dialog] closes its dialog (or the one it names by id),
         // in place of inline onclick handlers, which the CSP's nonce forbids
         document.addEventListener('click', function(e) {
@@ -529,7 +540,7 @@
         <span class="mdi mdi-chevron-up text-2xl" aria-hidden="true"></span>
     </button>
 
-    {% if user.is_authenticated %}
+    {% if user.is_authenticated and site_key == 'games' %}
     {# The one game status menu every played button opens #}
     {% include 'games/includes/_played_menu.html' %}
     <script defer src="{% static 'games/js/played-menu.min.js' %}" nonce="{{ csp_nonce }}"></script>

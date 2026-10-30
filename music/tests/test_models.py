@@ -8,6 +8,7 @@ from django.test import TestCase
 from core import constants as core_constants
 from core.models import User
 from music import models
+from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 
 
 class ArtistTests(TestCase):
@@ -18,7 +19,7 @@ class ArtistTests(TestCase):
         self.assertEqual(str(self.young), "Neil Young")
 
     def test_get_absolute_url(self):
-        self.assertEqual(self.young.get_absolute_url(), "/music/artists/neil-young/")
+        self.assertEqual(self.young.get_absolute_url(), "/artists/neil-young/")
 
     def test_name_variants_and_ids_default_empty(self):
         self.assertEqual(self.young.name_variants, [])
@@ -110,7 +111,7 @@ class AlbumTests(TestCase):
         self.assertIsNone(self.album.name_normalized)
 
     def test_a_slug_a_fixed_route_would_shadow_is_never_used(self):
-        # /music/1970s/ is a decade page and /music/browse/ the landing
+        # /1970s/ is a decade page and /browse/ the landing
         # index, so an album slugified onto either could never be reached.
         cases = [
             ("1970s", "The Decade Band", "1970s-the-decade-band"),
@@ -216,7 +217,7 @@ class AlbumTests(TestCase):
         self.assertEqual(album.image, "https://example.com/cover.jpg")
 
     def test_get_absolute_url(self):
-        self.assertEqual(self.album.get_absolute_url(), "/music/pet-sounds/")
+        self.assertEqual(self.album.get_absolute_url(), "/pet-sounds/")
 
     def test_str_is_the_name(self):
         self.assertEqual(str(self.album), "Pet Sounds")
@@ -451,9 +452,7 @@ class ExternalDataModelTests(TestCase):
             cover_art_release_mbid="rel-1",
             cover_art_image_id="img-1",
         )
-        self.assertEqual(
-            record.local_cover_art_url(500), "/music/cover/rel-1/img-1-500.jpg"
-        )
+        self.assertEqual(record.local_cover_art_url(500), "/cover/rel-1/img-1-500.jpg")
 
     def test_a_cover_row_describes_itself(self):
         cover = models.AlbumCover.objects.create(
@@ -520,8 +519,8 @@ class AlbumCoverUrlTests(TestCase):
 
     def test_a_stored_cover_is_served_locally(self):
         album = self.attach(stored=True)
-        self.assertEqual(album.thumbnail, "/music/cover/rel-1/img-1-250.jpg")
-        self.assertEqual(album.image, "/music/cover/rel-1/img-1-500.jpg")
+        self.assertEqual(album.thumbnail, "/cover/rel-1/img-1-250.jpg")
+        self.assertEqual(album.image, "/cover/rel-1/img-1-500.jpg")
 
     def test_an_unstored_cover_falls_back_to_the_archive(self):
         album = self.attach(stored=False)
@@ -546,7 +545,7 @@ class AlbumCoverUrlTests(TestCase):
         with self.assertNumQueries(0):
             self.assertEqual(
                 [album.thumbnail for album in albums],
-                ["/music/cover/rel-1/img-1-250.jpg"],
+                ["/cover/rel-1/img-1-250.jpg"],
             )
 
 

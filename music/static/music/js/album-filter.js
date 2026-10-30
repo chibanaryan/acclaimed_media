@@ -15,7 +15,7 @@
  */
 class AlbumFilterEngine {
     /**
-     * @param {Object} data - The /api/music/all/ payload
+     * @param {Object} data - The music-api:album-all-data payload (/api/all/ on the music host)
      */
     constructor(data) {
         this.albums = data.albums || [];

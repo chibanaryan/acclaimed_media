@@ -15,6 +15,7 @@ from django.urls import reverse
 from core.tests.node import node_available, run_node
 from music import config, models
 from music.services.caching import invalidate_music_caches
+from music.tests.site import music_site
 from music.tests.test_views import MusicDataMixin
 
 
@@ -45,6 +46,7 @@ class YearGridScaleTests(SimpleTestCase):
 
 
 @override_settings(MUSIC_ENABLED=True)
+@music_site
 class AlbumYearBaselineTests(MusicDataMixin, TestCase):
     def baseline(self, **params):
         response = self.client.get(reverse("music:home"), params)

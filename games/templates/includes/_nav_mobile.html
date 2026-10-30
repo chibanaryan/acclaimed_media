@@ -1,4 +1,4 @@
-{% load static game_filters %}
+{% load static game_filters core_filters %}
 <nav class="navbar bg-transparent px-0" role="navigation" aria-label="main navigation"
      x-data="priorityNav()" x-init="init()">
 
@@ -18,12 +18,6 @@
             <a href="{% url 'music:list-list' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'list-list' %} btn-active{% endif %}"{% if request.resolver_match.url_name == 'list-list' %} aria-current="page"{% endif %} data-nav-item="music-lists" data-menu-label="Source Lists">
                 Lists
             </a>
-
-            {% if user.is_staff %}
-            <a href="{% url 'music:import' %}" class="btn btn-ghost btn-sm shrink-0 nav-item{% if request.resolver_match.url_name == 'import' %} btn-active{% endif %}"{% if request.resolver_match.url_name == 'import' %} aria-current="page"{% endif %} data-nav-item="music-import" data-menu-label="Import Data">
-                Import
-            </a>
-            {% endif %}
 
             {# Search dropdown - albums and artists, in the games box's shape #}
             <div class="relative shrink-0 nav-item" data-nav-item="search" x-data="{
@@ -93,7 +87,7 @@
                                         </template>
                                         <template x-for="artist in (group === 'artists' ? results.artists : [])" :key="'artist-' + artist.slug">
                                             <li>
-                                                <a :href="'/music/artists/' + artist.slug + '/'" class="flex items-center gap-3">
+                                                <a :href="'{% url 'music:artist-list' %}' + artist.slug + '/'" class="flex items-center gap-3">
                                                     <span class="mdi mdi-account-music text-xl text-accent" aria-hidden="true"></span>
                                                     <div>
                                                         <div class="font-semibold text-sm" x-text="artist.name"></div>
@@ -114,7 +108,7 @@
                                         </template>
                                         <template x-for="album in (group === 'albums' ? results.albums : [])" :key="'album-' + album.id">
                                             <li>
-                                                <a :href="'/music/' + album.slug + '/'" class="flex items-center gap-3">
+                                                <a :href="'{% url 'music:home' %}' + album.slug + '/'" class="flex items-center gap-3">
                                                     <img :src="album.thumbnail" :alt="album.name" width="32" height="32" class="w-8 h-8 rounded object-cover">
                                                     <div>
                                                         <div class="font-semibold text-sm" x-text="album.name + (album.year_released ? ' (' + album.year_released + ')' : '')"></div>
@@ -139,8 +133,9 @@
                 </div>
             </div>
 
-            <a href="{% url 'home' %}" class="btn btn-ghost btn-sm btn-square shrink-0 nav-item" data-nav-item="back-to-games" data-menu-label="Back to Games" aria-label="Back to Games">
-                <span class="mdi mdi-arrow-left text-lg" aria-hidden="true"></span>
+            {# The other site, as the games bar's Music icon is #}
+            <a href="{% site_url 'games' 'home' %}" class="btn btn-ghost btn-sm btn-square shrink-0 nav-item" data-nav-item="games" data-menu-label="Games" aria-label="Games">
+                <span class="mdi mdi-gamepad-variant text-xl" aria-hidden="true"></span>
             </a>
 
             {% else %}
@@ -155,8 +150,10 @@
             {% endif %}
 
             {% if MUSIC_ENABLED %}
-            <a href="{% url 'music:home' %}" class="btn btn-ghost btn-sm btn-square shrink-0 nav-item" data-nav-item="music" data-menu-label="Music" aria-label="Music">
+            {# The Music icon carries the beta badge beside it, as the sidebar tab does #}
+            <a href="{% site_url 'music' 'music:home' %}" class="btn btn-ghost btn-sm shrink-0 nav-item gap-1 px-2" data-nav-item="music" data-menu-label="Music{% if MUSIC_BETA %} (beta){% endif %}" aria-label="Music{% if MUSIC_BETA %} (beta){% endif %}">
                 <span class="mdi mdi-album text-xl" aria-hidden="true"></span>
+                <span aria-hidden="true">{% include 'music/includes/_beta_badge.html' with size='badge-xs' %}</span>
             </a>
             {% endif %}
 
@@ -364,6 +361,8 @@
                         <button x-show="item.isContactModal || item.isAuthModal" type="button" :class="{ 'contact-modal-trigger': item.isContactModal, 'auth-modal-trigger': item.isAuthModal }" :data-auth-screen="item.authScreen" x-text="item.label" class="w-full text-left"></button>
                     </li>
                 </template>
+                {# The shared name, leading back to the landing page #}
+                <li><a href="{% site_url 'root' 'landing' %}" class="font-bold">Acclaimed Media</a></li>
                 {# Theme and social links #}
                 <li>
                     <label class="flex cursor-pointer gap-2 items-center justify-center" for="theme-toggle-mobile" @click.stop>

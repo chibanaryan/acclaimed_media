@@ -1,6 +1,6 @@
-Acclaimed Video Games
+Acclaimed Media
 
-Thanks for creating an account with Acclaimed Video Games! To activate your account, please confirm your email address by visiting the following link:
+Thanks for creating an account with Acclaimed Media! To activate your account, please confirm your email address by visiting the following link:
 
 {{ activate_url }}
 
@@ -9,4 +9,4 @@ Once your account is active, you'll be able to mark off any games that you've pl
 If you did not request this email, you do not need to take any action. An account will not be created.
 
 Kind regards,
-Acclaimed Video Games
+Acclaimed Media

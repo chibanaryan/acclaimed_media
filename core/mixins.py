@@ -214,6 +214,10 @@ class AnonymousResponseCacheMixin:
         cache_key = self.get_page_cache_key()
         if cache_key is None:
             return super().dispatch(request, *args, **kwargs)
+        # Keyed on the host as well: a page names the other sites by absolute
+        # URL (core.sites.site_origin), and those follow the host it was
+        # rendered for, so no two hosts may share one copy.
+        cache_key = f"{request.get_host()}:{cache_key}"
 
         cache = caches[self.page_cache_alias]
 

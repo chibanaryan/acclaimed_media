@@ -1,14 +1,14 @@
 {% extends 'base.html' %}
 {% load humanize music_filters %}
 
-{% block title %}Import Album Data | Acclaimed Video Games{% endblock %}
+{% block title %}Import Album Data | Acclaimed Media{% endblock %}
 {% block meta_description %}Staff import for the album ranking release files.{% endblock %}
 
 {% block content %}
 <div class="max-w-[860px] mx-auto">
 <h1 class="text-3xl font-bold mb-2 flex items-center gap-3 flex-wrap">
     <span>Import Album Data</span>
-    {% if not MUSIC_ENABLED %}<span class="badge badge-warning badge-sm">Beta</span>{% endif %}
+    {% include 'music/includes/_beta_badge.html' %}
 </h1>
 <p class="text-base-content/70 text-sm mb-4">
     Albums are matched to the ones already here by Wikidata id and updated in

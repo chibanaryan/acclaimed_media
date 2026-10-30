@@ -21,6 +21,9 @@ from django.urls import reverse
 
 from music import models
 from music.tests.test_views import StaffUserTestMixin
+from music.tests.site import setUpModule, tearDownModule  # noqa: F401
+from core import sites
+from core.tests.utils import get_on_site
 
 NOTICE = (
     "This application uses Discogs’ API but is not affiliated with, sponsored "
@@ -62,7 +65,7 @@ class DiscogsAttributionTests(StaffUserTestMixin, TestCase):
                 self.assertContains(self.client.get(url), NOTICE)
 
     def test_games_pages_do_not(self):
-        self.assertNotContains(self.client.get(reverse("home")), NOTICE)
+        self.assertNotContains(get_on_site(self.client, sites.GAMES, "home"), NOTICE)
 
     def test_album_detail_credits_discogs_beside_the_genres(self):
         response = self.client.get(self.album.get_absolute_url())
@@ -95,4 +98,4 @@ class DiscogsAttributionTests(StaffUserTestMixin, TestCase):
         )
 
     def test_the_games_genre_filter_carries_no_credit(self):
-        self.assertEqual(_credits(self.client.get(reverse("home"))), [])
+        self.assertEqual(_credits(get_on_site(self.client, sites.GAMES, "home")), [])

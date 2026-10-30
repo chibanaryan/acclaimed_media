@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Acclaimed Games is a video game ranking and aggregation website that combines data from multiple sources to create comprehensive rankings. The application uses Django with server-side rendering, HTMX for dynamic interactions, and Alpine.js for client-side reactivity. It integrates with the IGDB (Internet Game Database) API.
+Acclaimed Media ranks the most critically acclaimed video games and albums by aggregating critics' lists. One Django app serves three hosts: a landing page at `acclaimedmedia.org`, the game rankings at `games.acclaimedmedia.org` and the album rankings at `music.acclaimedmedia.org` (see "Domain"). The application uses Django with server-side rendering, HTMX for dynamic interactions, and Alpine.js for client-side reactivity. It integrates with the IGDB (Internet Game Database) API.
 
 ## Available Skills
 
@@ -67,6 +67,8 @@ DEBUG=True python3 manage.py runserver
 
 **Note:** Always include `DEBUG=True` when running the development server locally to enable template reloading, detailed error pages, and the Django Debug Toolbar.
 
+Open `http://games.localhost:8000/` for the games site, `http://music.localhost:8000/` for music and `http://localhost:8000/` for the landing page (see "Domain"). `127.0.0.1:8000` serves the games site.
+
 **Database migrations:**
 ```bash
 python3 manage.py migrate
@@ -117,6 +119,8 @@ heroku run -- python manage.py shell
 
 - **acclaimedgames/** - Django project settings and main URL configuration
 - **core/** - Shared infrastructure for multi-media support:
+  - **sites.py**, **middleware.py** - The three sites by host, and the middleware that routes to their URLconfs (`acclaimedgames/urls_root.py`, `urls_games.py`, `urls_music.py`, with the shared routes in `urls_common.py`)
+  - **views.py** - The landing page, the apex's redirects to the two sites, `healthz`, `csrf_failure`
   - **models.py** - User model, abstract base classes (MediaItemBase, CreatorBase, ExternalDataBase, UserTrackingBase)
   - **mixins.py** - Shared view mixins (RobustPaginationMixin, HTMXPartialMixin)
   - **templatetags/core_filters.py** - Shared template filters
@@ -185,6 +189,8 @@ heroku run -- python manage.py shell
 
 **Middleware:**
 - `django.middleware.security.SecurityMiddleware` - Security headers
+- `core.middleware.SiteHostMiddleware` - Picks the site (landing, games,
+  music) and its URLconf from the host; see "Domain"
 - `whitenoise.middleware.WhiteNoiseMiddleware` - Static file serving in production
 - `games.middleware.UncompressedUptimeCheckMiddleware` - Answers a `GET`/`HEAD`
   of `/` from `SentryUptimeBot` that refuses gzip with a 2-byte 200, before
@@ -296,16 +302,18 @@ Books API endpoints (behind `BOOKS_ENABLED` feature flag):
 - `/api/books/authors/<slug>/` - Author details with book list
 - `/api/books/unified-search/` - Unified book search
 
-Music API endpoints (public once `MUSIC_ENABLED` is on, staff-only until then):
-- `/api/music/` - List and filter albums
-- `/api/music/<slug>/` - Album details with list appearances
-- `/api/music/search/` - Album search
-- `/api/music/artists/` and `/api/music/artists/<slug>/` - Artists
-- `/api/music/lists/` - Source lists
-- `/api/music/genres/` - Music genres
-- `/api/music/meta/` - Counts and year/decade distributions
-- `/api/music/all/` - Every album in one payload, for client-side filtering
-- `/api/music/unified-search/` - Albums and artists together, for the sidebar
+Music API endpoints, on `music.acclaimedmedia.org` (at `/api/` on the
+apex until 2026-10-30, which now redirects; public once `MUSIC_ENABLED` is
+on, staff-only until then):
+- `/api/` - List and filter albums
+- `/api/<slug>/` - Album details with list appearances
+- `/api/search/` - Album search
+- `/api/artists/` and `/api/artists/<slug>/` - Artists
+- `/api/lists/` - Source lists
+- `/api/genres/` - Music genres
+- `/api/meta/` - Counts and year/decade distributions
+- `/api/all/` - Every album in one payload, for client-side filtering
+- `/api/unified-search/` - Albums and artists together, for the sidebar
   and mobile search boxes. `order` puts the group with the better match on
   top - exact name, then a word starting with the query, then a substring,
   and last an album found only through its credit line - with artists
@@ -316,7 +324,7 @@ Music API endpoints (public once `MUSIC_ENABLED` is on, staff-only until then):
   Abbey Road at #4). Albums always came first until 2026-10-29, and an album
   matches on its credit, so "Beatles" filled the five album rows and the
   band sat below the dropdown's fold
-- `/api/music/saved-filters/` and `/api/music/saved-filters/<pk>/` - a
+- `/api/saved-filters/` and `/api/saved-filters/<pk>/` - a
   reader's saved filter combinations. The only endpoints in `music/api/`
   that **write**, so the only ones CSRF applies to
 
@@ -388,7 +396,8 @@ for, so neither side knows which did the counting.
 
 ### Music client-side filtering
 
-`/music/` filters in the browser. `/api/music/all/` returns the whole corpus
+The album rankings page filters in the browser. `/api/all/` on the music host
+(`music-api:album-all-data`) returns the whole corpus
 (500 albums, ~100 KB of JSON, 38 KB gzipped), the bundle holds it in
 `sessionStorage` keyed by the data version the page renders into itself, and
 `music/static/music/js/` filters, sorts and renders locally. There is no
@@ -477,7 +486,7 @@ a sort.
   double-click cannot race into an `IntegrityError` - and a row orphaned when
   a release dropped its album is re-adopted on the spot. The cache is dropped in
   `transaction.on_commit`, so a rolled-back write cannot clear it.
-- **Nothing per-user goes in `/api/music/all/`.** That payload is held in
+- **Nothing per-user goes in `/api/all/`.** That payload is held in
   `sessionStorage` keyed only on its version, so two people sharing a browser
   session share it. The client joins on the album pk, which the payload
   already carries, and the page renders `window.listenedAlbumIds` /
@@ -607,7 +616,7 @@ includes.
 | `core/includes/_saved_filter_modals.html` | save / rename / delete, one copy per page |
 | `core/includes/_mobile_saved_filters.html` | the bottom sheet's collapsible equivalent |
 | `core/js/media-list-controls.js` | the state and the eight methods, named as games' are |
-| `/api/music/saved-filters/` | list, create, rename, delete |
+| `/api/saved-filters/` (music host) | list, create, rename, delete |
 
 The partials bind to a **method contract**, not to a page:
 `loadSavedFilters`, `applySavedFilter`, `saveCurrentFilters`,
@@ -718,26 +727,32 @@ Book routes (behind `BOOKS_ENABLED` feature flag):
 - `/authors/` - Author list with book counts
 - `/authors/<slug>/` - Author detail view with books
 
-Music routes (staff-only and linked from nowhere until `MUSIC_ENABLED` is on -
-reach them by URL - and public, in the nav and in the sitemap after):
-- `/music/` - Album rankings with HTMX search, year/artist/genre filters and sorting
-- `/music/<slug>/` - Album detail with list appearances grouped by list type
-- `/music/artists/` - Artist list with album counts
-- `/music/artists/<slug>/` - Artist detail with ranked albums
-- `/music/lists/` - The published source lists behind the rankings
-- `/music/import/` - Staff import for the three release files
-- `/music/<album_id>/toggle-listened/` - POST, `?status=none|want|listened|own`,
+Music routes, on `music.acclaimedmedia.org` (they were under `/music/` at
+the apex until 2026-10-30; staff-only and linked from nowhere until
+`MUSIC_ENABLED` is on - reach them by URL - and public, in the nav and in the
+sitemap after):
+- `/` - Album rankings with HTMX search, year/artist/genre filters and sorting
+- `/<slug>/` - Album detail with list appearances grouped by list type
+- `/artists/` - Artist list with album counts
+- `/artists/<slug>/` - Artist detail with ranked albums
+- `/lists/` - The published source lists behind the rankings
+- `/import/` - Staff import for the three release files. Linked from nowhere,
+  staff included: staff type the URL
+- `/<album_id>/toggle-listened/` - POST, `?status=none|want|listened|own`,
   answering with the re-rendered button for HTMX to swap
-- `/music/cover/<release_mbid>/<image_id>-<size>.jpg` - Cover art served from our own
+- `/cover/<release_mbid>/<image_id>-<size>.jpg` - Cover art served from our own
   store, cached a year and immutable
-- `/music/genres/<slug>/` - A root genre's rankings (SEO landing page)
-- `/music/<decade>s/` - A decade's rankings (SEO landing page)
-- `/music/browse/` - Index of the landing pages
+- `/genres/<slug>/` - A root genre's rankings (SEO landing page)
+- `/<decade>s/` - A decade's rankings (SEO landing page)
+- `/browse/` - Index of the landing pages
+- `/api/...` - the music API (`music-api:`), listed under "API Architecture"
 
-Album detail is the catch-all `/music/<slug>/`, so every fixed first segment
-above is in `music.config.RESERVED_ALBUM_SLUGS` (and a decade shape in
-`RESERVED_ALBUM_SLUG_PATTERN`), which `Album._build_unique_slug` treats as
-taken. A test fails if a route is added without reserving its segment.
+Album detail is the catch-all `/<slug>/`, so every fixed first segment on the
+music host - music's own routes and the shared ones (`accounts`, `admin`,
+`api`, `page`, ...) - is in `music.config.RESERVED_ALBUM_SLUGS` (and a decade
+shape in `RESERVED_ALBUM_SLUG_PATTERN`), which `Album._build_unique_slug`
+treats as taken. A test walks `urls_music` and fails if a route is added
+without reserving its segment.
 
 **Music landing pages** are games' `/games/<genre>/` and `/games/<decade>s/`
 for albums: `MusicLandingPageView` subclasses `AlbumHomePageView` and injects
@@ -750,18 +765,27 @@ lists are cached under `CACHE_KEYS`. They are self-canonical, carry an
 ItemList (`core.services.seo`), and are discovered through the sitemap
 only - no nav, badge or footer link, as for games. No year pages: album
 slugs such as `1999` already own those paths. The client pushes every
-filter change onto `window.albumRankingsUrl` (`/music/?...`) rather than the
-current path, and both popstate readers read a landing page's bare path as
-`window.albumLandingSearch` - otherwise clearing the genre on
-`/music/genres/rock/` pushed the rock URL back.
+filter change onto `window.albumRankingsUrl` (`/?...` on the music host)
+rather than the current path, and both popstate readers read a landing
+page's bare path as `window.albumLandingSearch` - otherwise clearing the
+genre on `/genres/rock/` pushed the rock URL back. The album renderer builds
+every link from `window.albumRankingsUrl` too (`_musicPath`), so no script
+spells a music path.
 
-**Navigation:** `core/includes/_sidebar_nav.html` picks the sidebar links
-from `media_type`, so each section has its own navigation while the common
-bottom block stays shared. With `MUSIC_ENABLED` on, the media switcher gains a
-Music tab (and appears even with books off), the games mobile nav a Music
-icon, and the switcher stands in for the games "Rankings" and music's "Back
-to Games" sidebar links. The nav keys off the flag alone, never staff status,
-so staff see no links while the section is a beta.
+**Navigation:** the sidebar, top to bottom, is the site menu
+(`core/includes/_site_menu.html`: "Acclaimed Media" over the current site's
+name, opening in place to Games, Music and All sites, absolute links through
+`{% site_url %}`; a `<details>`, so it needs no Alpine, and `base.html`
+closes it on an outside click or Escape), the site's own links (`core/includes/_sidebar_nav.html`:
+Rankings, Developers, Source Lists and Blog for games; Albums, Artists and
+Source Lists for music), its search, and the shared bottom block - account,
+Donate, About / FAQ, Contact, theme, socials. `media_type` comes from the
+host (`games.context_processors.media_type`), so a shared page such as About
+keeps the sidebar of the site it was opened on. Staff pages - both import
+pages - are linked from nowhere. With `MUSIC_ENABLED` on, the site menu gains
+Music, the games mobile bar a Music icon (music's has a Games icon either
+way) and the landing page its Music card. The nav keys off the flag alone,
+never staff status, so staff see no links while the section is a beta.
 
 **Access:** `settings.MUSIC_ENABLED` (env var, default off, forced off under
 test) is the public-launch switch, and `music/access.py` holds the one
@@ -770,7 +794,7 @@ and endpoint 404s (not 403s) for anyone but staff, the section has no entry
 point in the chrome, and it is out of `sitemap.xml` and `robots.txt` - so a
 normal visitor has no way to discover it. On, reads are public; the listen
 toggle answers a signed-out visitor with games' login redirect and the
-saved-filter API with games' 403; `/music/import/` stays staff-only either
+saved-filter API with games' 403; `/import/` stays staff-only either
 way. Turning it off hides everything again.
 
 - `MusicVisibleMixin` is a plain `dispatch` check, deliberately not a
@@ -784,14 +808,22 @@ way. Turning it off hides everything again.
   403 - proof the endpoint existed - until 2026-10-18.
 - A POST to a page is hidden too: `CsrfViewMiddleware` rejects it before the
   view's mixin runs, so `CSRF_FAILURE_VIEW` points at `core.views.csrf_failure`,
-  which answers a failed check under `/music/` with 404 for anyone the
+  which answers a failed check on the music host with 404 for anyone the
   section is hidden from. Test it with `Client(enforce_csrf_checks=True)`;
   the ordinary test client skips CSRF.
 - Books still uses `core.mixins.StaffOnlyMixin` / `core.permissions.IsStaffOrHide`.
 - Flipping the flag is the launch: `heroku config:set MUSIC_ENABLED=true`.
-  **First** give artist slugs redirects: every import rebuilds them from the
-  current names (see "Music Data Import"), which is safe only while nothing
-  links in.
+  The public launch is itself a beta, and says so everywhere while
+  `music.config.MUSIC_BETA` is on, whatever the flag says: a notice with a
+  feedback link at the top of every page on the music host
+  (`music/includes/_beta_notice.html`, from `base.html`), and a "Beta" badge
+  (`music/includes/_beta_badge.html`) on every music heading and on every
+  way in - the site menu (on music, beside the site's own name), the games
+  mobile bar's Music icon, and the landing page's Music card, which also
+  says it in words. Turning `MUSIC_BETA` off removes them all. Artist slugs
+  still have no redirects, by decision (2026-10-30): every import rebuilds
+  them from the current names (see "Music Data Import"), so a renamed act's
+  old links 404 until an `ArtistSlugHistory` is built.
   The games pages are whole-page cached for anonymous visitors in the
   per-process `local` alias, nav and all; that is safe only because a config
   var change restarts every dyno and so empties it. Flipping the flag any
@@ -1098,9 +1130,9 @@ import, and their pages 404 (music was still the staff beta).
   `AlbumCredit` (`credits.album_ids_by_artist`), and "More by" is the credited
   artists. Nobody "appears on" anything any more.
 - **The credit line shows the credited name and links to the artist**:
-  "Prince and the Revolution" goes to `/music/artists/prince/`, titled
+  "Prince and the Revolution" goes to `/artists/prince/`, titled
   "Prince". `artist_links` server-side, `_artistCreditHtml` client-side, from
-  the `"cv"` names `/api/music/all/` sends for the albums that need them.
+  the `"cv"` names `/api/all/` sends for the albums that need them.
   Album detail adds an "Artist:" row naming the artist when the credit uses
   another name.
 - **`VA` is the last credit**, alone on a compilation and after the named
@@ -1123,7 +1155,7 @@ import, and their pages 404 (music was still the staff beta).
   entry order, which he does not want visible. `?artists=` takes slugs
   only - a pk would let anyone read the order back one link at a time - and
   a hidden form field carries it through later filter changes;
-  `/api/music/all/` keys its artists table by slug and lists slugs in
+  `/api/all/` keys its artists table by slug and lists slugs in
   `"ar"`; no artist serializer has an `id`. A slug rebuild touches its
   albums' `modified`, so the payload version moves with it.
 - The provider mentions a members list per artist for a future "See also";
@@ -1385,34 +1417,87 @@ one-year max-age was what made them necessary.
 
 ## Domain
 
-The site is `https://acclaimedmedia.org`, at the bare root, since 2026-10-29;
-it was `www.acclaimedvideogames.com` before. `settings.CANONICAL_ORIGIN` is
-the one place the origin is written: canonical and Open Graph links and the
-structured data (`{{ canonical_origin }}` from the context processor, and
-`{% canonical_origin %}` from `core_filters` where a template may render
-without a request, as allauth's emails can), robots.txt, the email footers
-(through `SITE_URL`, which defaults to it in production) and the User-Agent
-the metadata fetchers send. Page code reads the setting at call time, not
-into a module constant, so `override_settings` reaches it. The sitemap reads
-`Site.domain`, which migration `0122` moved. Only the address changed: the site
-is still called Acclaimed Video Games, and mail still goes to and from
-`contact@acclaimedvideogames.com`, the address Titan and Brevo have verified.
+Three sites, one app, since 2026-10-30:
+
+| Host | Site | URLconf |
+|---|---|---|
+| `acclaimedmedia.org` | the landing page: one card per site | `acclaimedgames/urls_root.py` |
+| `games.acclaimedmedia.org` | the game rankings, at the paths the apex had | `acclaimedgames/urls_games.py` (also `ROOT_URLCONF`) |
+| `music.acclaimedmedia.org` | the album rankings, at the root of the host | `acclaimedgames/urls_music.py` |
+
+There is one name for all of it, **Acclaimed Media**: every title suffix,
+`og:site_name`, the JSON-LD, the emails and `Site.name` (migration `0123`).
+Neither site names itself. The `og:image` and the favicons are still the old
+Acclaimed Video Games artwork until a new one is drawn. Mail still goes to
+and from `contact@acclaimedvideogames.com`, the address Titan and Brevo have
+verified.
+
+**`core/sites.py` is the routing.** `core.middleware.SiteHostMiddleware`
+reads the host, records `request.site_key` (`"root"`, `"games"`, `"music"`)
+and sets `request.urlconf`, which Django uses to resolve the path and as the
+default for every `reverse()` and `{% url %}` during the request. So a link
+within a site is a plain `{% url %}`; a link to *another* site needs that
+site's URLconf and origin, which is `{% site_url 'music' 'music:home' %}`
+(`core_filters`) or `sites.site_url()`. A model or a command that builds a
+URL whatever the request is uses `sites.site_reverse()` (music's
+`get_absolute_url` and cover URLs do). Any other host - the test client's
+`testserver`, `127.0.0.1` - gets `ROOT_URLCONF`, the games site's.
+
+- **Origins.** `settings.SITE_ORIGINS` holds the three public origins, used
+  for canonical links, the sitemap `<loc>`s and structured data
+  (`{{ canonical_origin }}` follows the host; `sites.canonical_url()`).
+  `CANONICAL_ORIGIN` is the apex's, for emails and the fetchers'
+  User-Agent. A cross-site *link* (`site_origin()`) keeps the request's
+  scheme and port, so `games.localhost:8000` links to `music.localhost:8000`.
+- **The shared routes** - sign-in, `accounts/`, the contact form,
+  `/page/<slug>/` (About, Donate, Privacy, Legal), unsubscribe, admin,
+  `healthz/`, `robots.txt`, `sitemap.xml` - are in every URLconf
+  (`urls_common.py`), so a visitor uses them without leaving their site.
+  The shared pages are one copy: their canonical link and sitemap entry are
+  the apex's. At the apex they render without a sidebar.
+- **The old apex paths redirect.** Everything the apex served before is in
+  links and search indexes, so `urls_root`'s catch-all
+  (`core.views.redirect_to_site`) sends `/music/<rest>` to
+  `music.…/<rest>`, `/api/music/<rest>` to `music.…/api/<rest>`, and every
+  other path to the same path on `games.`, query string kept. `/` with a
+  query is an old filter link, since the rankings lived there, and goes to
+  `games.` too; a tracking tag (`utm_...`) stays on the landing page. While
+  music is hidden, its old paths 404 for anyone it is hidden from.
+- **Each site has its own `robots.txt` and `sitemap.xml`**
+  (`core.sitemaps.for_site` puts each `<loc>` on the site's origin; the
+  `Site` row's domain stays the apex). The music host's robots.txt
+  disallows everything while `MUSIC_ENABLED` is off.
+- **One sign-in for all three.** In production the session and CSRF cookies
+  are set on `.acclaimedmedia.org`, and both were renamed (`am_sessionid`,
+  `am_csrftoken`) with the move, since a host-only cookie of the old name
+  left on the apex would otherwise be sent beside the new one. Everyone was
+  signed out once. JavaScript that reads the CSRF cookie reads
+  `am_csrftoken`. The theme choice is in `localStorage`, which is per
+  origin, so `_theme_script.html` also keeps it in a domain-wide `theme`
+  cookie.
+- **Development** uses the same names under localhost: `localhost:8000`,
+  `games.localhost:8000`, `music.localhost:8000` (Chrome resolves
+  `*.localhost` itself; `ALLOWED_HOSTS` takes `.localhost` under `DEBUG`).
+  The cookies are host-only there, so signing in on one does not sign you
+  in on the others.
 
 DNS is in Cloudflare (James's account; both zones), and the app on Heroku
-has the one custom domain:
+has three custom domains, each with Heroku's ACM certificate:
 
-- **`acclaimedmedia.org` is DNS-only** (grey cloud), a flattened CNAME to its
-  Heroku DNS target, with Heroku's ACM certificate. It must not be proxied:
+- **`acclaimedmedia.org`, `games.` and `music.` are DNS-only** (grey cloud),
+  CNAMEs to their Heroku DNS targets. They must not be proxied:
   `get_client_ip` takes the last `X-Forwarded-For` entry, Heroku's router's,
   and behind Cloudflare that would be a Cloudflare address, so every visitor
   would share a rate-limit bucket.
-- **Every other host is a 301 at Cloudflare's edge**: `www.acclaimedmedia.org`,
-  `acclaimedvideogames.com` and `www.acclaimedvideogames.com` are proxied
-  records with a placeholder address (`192.0.2.1`) and a dynamic redirect rule
-  in their zone sending the path and query string on to the root. They never
-  reach a dyno, so Django does no host redirecting of its own.
+- **Every other host is a 301 at Cloudflare's edge**: `www.acclaimedmedia.org`
+  to the apex, and `acclaimedvideogames.com` and `www.acclaimedvideogames.com`
+  to `games.acclaimedmedia.org`, path and query string kept. They are
+  proxied records with a placeholder address (`192.0.2.1`) and a dynamic
+  redirect rule in their zone, and never reach a dyno.
 - Keep the old domain registered, and leave its MX, SPF, DKIM and DMARC
   records alone: the contact address still lives there.
+- Sentry's uptime monitor should fetch `https://games.acclaimedmedia.org/`:
+  the apex is now a light page that does not exercise the rankings render.
 
 ## Caching
 
@@ -1503,9 +1588,17 @@ Music's cache keys all live in `music/config.py` as `CACHE_KEYS`, which
 be invalidated. Every key carries `CACHE_VERSION`, so bumping that string
 invalidates the whole set.
 
-`/music/cover/` is exempt from rate limiting (`RATE_LIMIT_EXEMPT_PREFIXES`): it
-is a static asset in all but the URL, and one rankings page requests up to a
-hundred of them against a 120/minute budget.
+Music's `/cover/` is exempt from rate limiting on the music host
+(`SITE_RATE_LIMIT_EXEMPT_PREFIXES`): it is a static asset in all but the URL,
+and one rankings page requests up to a hundred of them against a 120/minute
+budget.
+
+**A whole-page cache key carries the host.** `AnonymousResponseCacheMixin`
+puts `request.get_host()` in front of the view's own key, because a page
+links to the other sites by absolute URL built from the host it was
+rendered for. The landing page is cached the same way, with
+`MUSIC_ENABLED` in its key, since the flag decides whether its music card
+renders.
 
 ## Content Security Policy
 
@@ -1751,6 +1844,15 @@ none. When the guard was added on 2026-10-26 it caught four tests calling
 IGDB and HowLongToBeat for real. Locally they were also fetching a live
 Twitch token with the `.env` credentials. Patch the client where the code
 under test reads it. The Django runner has no conftest and so no guard.
+
+**Tests pick a site the way a request does.** The test client's
+`testserver` host gets `ROOT_URLCONF`, the games site, so games tests need
+nothing. A module of music tests imports the module fixtures
+(`from music.tests.site import setUpModule, tearDownModule`), which put the
+music URLconf in place for the whole module under both runners; a music
+class in a mostly-games module takes `@music_site` instead. A test that
+crosses sites names the real host: `core.tests.utils.get_on_site(client,
+sites.GAMES, "home")`, over HTTPS, so its links are the production ones.
 
 ## Database
 

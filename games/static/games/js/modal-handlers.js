@@ -86,28 +86,10 @@
         }
     });
 
-    // Setup contact modal observer and auto-open (only if modal exists at init)
+    // Auto-open the contact modal (only if it exists at init)
     var contactModal = document.getElementById('contactModal');
-    var naviSound = document.getElementById('naviSound');
 
     if (contactModal) {
-        // Create a MutationObserver to detect when dialog opens (for sound)
-        var observer = new MutationObserver(function(mutations) {
-            mutations.forEach(function(mutation) {
-                if (mutation.attributeName === 'open' && contactModal.hasAttribute('open')) {
-                    if (naviSound) {
-                        naviSound.volume = 0.3;
-                        naviSound.currentTime = 0;
-                        naviSound.play().catch(function() {
-                            // Autoplay might be blocked by browser
-                        });
-                    }
-                }
-            });
-        });
-
-        observer.observe(contactModal, { attributes: true });
-
         // Auto-open if hash is #contact
         if (window.location.hash === '#contact') {
             setTimeout(function() {

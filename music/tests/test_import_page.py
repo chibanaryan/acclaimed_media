@@ -12,6 +12,7 @@ from core.models import User
 from music import models
 from music.views import BUNDLED_RELEASE_DIR
 from music.forms import MusicImportForm
+from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 
 FIXTURE_DIR = Path(settings.BASE_DIR) / "acclaimedgames" / "test_input_files" / "music"
 

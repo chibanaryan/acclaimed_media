@@ -1,4 +1,4 @@
-"""The music SEO ranking pages: /music/genres/<slug>/, /music/<decade>s/.
+"""The music SEO ranking pages: /genres/<slug>/, /<decade>s/ on the music host.
 
 Modelled on ``games/tests/test_landing_pages.py``. They inherit the section's
 gate, so with ``MUSIC_ENABLED`` off they 404 for everyone but staff even at a
@@ -13,13 +13,14 @@ from django.core.cache import cache
 from django.db import connection
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
-from django.urls import resolve, reverse
-from django.urls.resolvers import URLPattern
+from django.urls import get_resolver, resolve, reverse
+from django.urls.resolvers import URLResolver
 
 from core.models import User
 from core.tests.utils import DatabaseCacheTestCase, clear_all_caches
-from music import config, models, urls, views
+from music import config, models, views
 from music.services import landing_pages
+from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 
 
 class LandingFixtureMixin:
@@ -121,7 +122,7 @@ class GenreLandingViewTests(LandingFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(
             response,
-            "<title>Most Acclaimed Rock Albums of All Time | Acclaimed Video Games"
+            "<title>Most Acclaimed Rock Albums of All Time | Acclaimed Media"
             "</title>",
             html=False,
         )
@@ -135,8 +136,8 @@ class GenreLandingViewTests(LandingFixtureMixin, TestCase):
         response = self.client.get(self.url)
         self.assertContains(
             response,
-            '<link rel="canonical" href="https://acclaimedmedia.org'
-            '/music/genres/rock/">',
+            '<link rel="canonical" href="https://music.acclaimedmedia.org'
+            '/genres/rock/">',
         )
 
     def test_the_page_lists_its_genre_including_the_style(self):
@@ -163,19 +164,19 @@ class GenreLandingViewTests(LandingFixtureMixin, TestCase):
         self.assertEqual(first["name"], "Rock <Record> 0")
         self.assertEqual(
             first["url"],
-            settings.CANONICAL_ORIGIN + self.rock_albums[0].get_absolute_url(),
+            settings.SITE_ORIGINS["music"] + self.rock_albums[0].get_absolute_url(),
         )
         self.assertContains(response, '"@type": "ItemList"')
 
     def test_the_page_tells_the_client_what_its_bare_path_means(self):
         response = self.client.get(self.url)
-        self.assertContains(response, 'window.albumLandingPath = "/music/genres/rock/"')
+        self.assertContains(response, 'window.albumLandingPath = "/genres/rock/"')
         self.assertEqual(response.context["landing_search"], f"genres={self.rock.id}")
         # escapejs spells "=" as \u003D, which is still "=" to the browser.
         self.assertContains(
             response, f'window.albumLandingSearch = "genres\\u003D{self.rock.id}"'
         )
-        self.assertContains(response, 'window.albumRankingsUrl = "/music/"')
+        self.assertContains(response, 'window.albumRankingsUrl = "/"')
 
     def test_an_explicit_param_wins_over_the_path(self):
         response = self.client.get(self.url, {"genres": str(self.pop.id)})
@@ -217,12 +218,12 @@ class BrowseIndexTests(LandingFixtureMixin, TestCase):
     def test_the_index_links_every_landing_page(self):
         response = self.client.get(reverse("music:browse"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'href="/music/genres/rock/"')
+        self.assertContains(response, 'href="/genres/rock/"')
         for decade in (1960, 1970, 1980):
             with self.subTest(decade=decade):
-                self.assertContains(response, f'href="/music/{decade}s/"')
+                self.assertContains(response, f'href="/{decade}s/"')
         self.assertContains(response, "Albums of the 1980s")
-        self.assertNotContains(response, "/music/genres/jazz/")
+        self.assertNotContains(response, "/genres/jazz/")
 
 
 class HiddenLandingPageTests(LandingFixtureMixin, TestCase):
@@ -271,37 +272,46 @@ class MusicCacheRoundTripTests(LandingFixtureMixin, DatabaseCacheTestCase):
     batch too, because they run inside it (`render_rankings`).
     """
 
-    # The batch, and the articles check the nav makes while rendering
-    READS = 2
+    # The batch. The articles check the nav makes is the games site's
+    READS = 1
 
     def test_rankings_page(self):
-        self.assertEqual(len(self.warm_cache_reads("/music/")), self.READS)
+        self.assertEqual(len(self.warm_cache_reads("/")), self.READS)
 
     def test_landing_pages(self):
-        for url in ("/music/1970s/", "/music/genres/rock/"):
+        for url in ("/1970s/", "/genres/rock/"):
             with self.subTest(url=url):
                 self.assertEqual(len(self.warm_cache_reads(url)), self.READS)
 
     def test_signed_in_batches_the_tracking_ids_too(self):
         User.objects.create_user(username="batched", password="pw")
         self.client.login(username="batched", password="pw")
-        self.assertEqual(len(self.warm_cache_reads("/music/")), self.READS)
+        self.assertEqual(len(self.warm_cache_reads("/")), self.READS)
 
 
 class LandingRoutingTests(TestCase):
     def test_a_decade_path_is_not_read_as_an_album_slug(self):
-        self.assertEqual(resolve("/music/1970s/").url_name, "by-decade")
-        self.assertEqual(resolve("/music/1975s/").url_name, "album-detail")
+        self.assertEqual(resolve("/1970s/").url_name, "by-decade")
+        self.assertEqual(resolve("/1975s/").url_name, "album-detail")
 
     def test_every_static_route_segment_is_reserved(self):
-        # Album detail is the catch-all /music/<slug>/, so a fixed first
-        # segment an album could slugify to would shadow that album.
+        # Album detail is the catch-all /<slug>/ at the root of the music
+        # host, so a fixed first segment an album could slugify to - music's
+        # own routes and the ones every site shares - would shadow that album.
         segments = set()
-        for pattern in urls.urlpatterns:
-            self.assertIsInstance(pattern, URLPattern)
-            first = str(pattern.pattern).lstrip("^").split("/")[0]
-            if first and not first.startswith("<") and not first.startswith("("):
-                segments.add(first)
-        self.assertTrue(segments)
+
+        def walk(patterns):
+            for pattern in patterns:
+                first = str(pattern.pattern).lstrip("^").split("/")[0]
+                if isinstance(pattern, URLResolver) and not first:
+                    walk(pattern.url_patterns)
+                elif first and not first.startswith(("<", "(", "\\")):
+                    # Segments that carry a "." (robots.txt) are no slug
+                    if "." not in first:
+                        segments.add(first.rstrip("$"))
+
+        walk(get_resolver(settings.SITE_URLCONFS["music"]).url_patterns)
+        self.assertIn("lists", segments)
+        self.assertIn("accounts", segments)
         self.assertLessEqual(segments, config.RESERVED_ALBUM_SLUGS)
         self.assertTrue(re.match(config.RESERVED_ALBUM_SLUG_PATTERN, "1970s"))

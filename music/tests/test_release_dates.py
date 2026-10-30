@@ -27,6 +27,7 @@ from music.services.release_dates import (
 )
 from music.templatetags.music_filters import release_date_label
 from music.tests.test_views import StaffUserTestMixin
+from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 
 COMMAND = "music.management.commands.fetch_album_metadata"
 

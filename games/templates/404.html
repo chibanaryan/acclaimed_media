@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}Page Not Found | Acclaimed Video Games{% endblock %}
+{% block title %}Page Not Found | Acclaimed Media{% endblock %}
 
 {% block extra_head %}
 <style nonce="{{ csp_nonce }}">
@@ -26,6 +26,20 @@
 {% endblock %}
 
 {% block content %}
+{% if site_key != 'games' %}
+{# Music and the landing page get a plain one: the Zelda page below is the games site's #}
+<div class="flex justify-center pt-4 px-4">
+    <div class="card bg-base-300 shadow-xl max-w-md w-full">
+        <div class="card-body items-center text-center">
+            <h1 class="text-error font-bold" style="font-size: clamp(4rem, 15vw, 8rem); line-height: 1.2;">404</h1>
+            <p class="text-base-content/85">This page doesn't exist, or it has moved.</p>
+            <div class="flex justify-center mt-6">
+                <a href="{{ site_home_url }}" class="btn btn-primary btn-sm px-4">Back to the rankings</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
 <div class="flex justify-center pt-4 px-4">
     <div class="card bg-base-300 shadow-xl max-w-2xl w-full">
         <div class="card-body items-center text-center">
@@ -127,4 +141,5 @@
         }
     });
 </script>
+{% endif %}
 {% endblock %}

@@ -1,120 +1,18 @@
 {% extends 'base.html' %}
 
-{% block title %}Thank You | Acclaimed Video Games{% endblock %}
-
-{% block extra_head %}
-<style>
-    .portal-scene {
-        position: relative;
-        display: inline-block;
-        width: 160px;
-        height: 100px;
-        perspective: 300px;
-    }
-    .portal-oval {
-        position: absolute;
-        top: 50%;
-        right: 20px;
-        width: 55px;
-        height: 85px;
-        transform: translateY(-50%) rotateY(-25deg);
-        border: 5px solid #00A2E8;
-        border-radius: 50%;
-        background: radial-gradient(ellipse at center,
-            rgba(0, 162, 232, 0.7) 0%,
-            rgba(0, 162, 232, 0.4) 40%,
-            rgba(0, 162, 232, 0.2) 100%);
-        box-shadow:
-            0 0 20px #00A2E8,
-            0 0 40px rgba(0, 162, 232, 0.6),
-            0 0 60px rgba(0, 162, 232, 0.4),
-            inset 0 0 25px rgba(0, 162, 232, 0.6);
-        z-index: 1;
-    }
-    .envelope-container {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        clip-path: inset(0 25px 0 0);
-        z-index: 2;
-    }
-    .portal-envelope {
-        position: absolute;
-        top: 50%;
-        transform: translateY(-50%);
-        font-size: 2.2rem;
-        color: white;
-        text-shadow: 2px 2px 6px rgba(0,0,0,0.5);
-        animation: fly-into-portal 0.9s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    }
-    @keyframes fly-into-portal {
-        0% {
-            left: 0px;
-            opacity: 0;
-            transform: translateY(-50%) scale(0.7) rotate(-15deg);
-        }
-        25% {
-            left: 30px;
-            opacity: 1;
-            transform: translateY(-55%) scale(1) rotate(-12deg);
-        }
-        50% {
-            transform: translateY(-70%) scale(1) rotate(-5deg);
-        }
-        100% {
-            left: 140px;
-            opacity: 1;
-            transform: translateY(-50%) scale(0.85) rotate(5deg);
-        }
-    }
-    .portal-blue {
-        color: #00A2E8;
-    }
-    .btn-portal {
-        background-color: #00A2E8;
-        border-color: #00A2E8;
-        color: white;
-    }
-    .btn-portal:hover {
-        background-color: #F68A25;
-        border-color: #F68A25;
-        color: white;
-    }
-</style>
-{% endblock %}
+{% block title %}Thank You | Acclaimed Media{% endblock %}
 
 {% block content %}
 <div class="flex items-center justify-center min-h-[60vh]">
     <div class="card bg-base-300 shadow-xl max-w-md w-full">
         <div class="card-body items-center text-center">
-            {# Portal Animation #}
-            <div class="portal-scene mb-4">
-                <div class="portal-oval"></div>
-                <div class="envelope-container">
-                    <span class="portal-envelope mdi mdi-email"></span>
-                </div>
-            </div>
-
-            {# GLaDOS Quote #}
-            <h1 class="text-xl font-bold">
-                <em>"This was a triumph. I'm making a note here: <span class="portal-blue">HUGE SUCCESS</span>."</em>
-            </h1>
-            <p class="text-base-content/85 text-xs">
-                ~GLaDOS, <a href="{% url 'game-detail' slug='portal' %}" class="link link-accent link-hover">Portal</a>
+            <span class="mdi mdi-email-check text-5xl text-primary" aria-hidden="true"></span>
+            <h1 class="text-xl font-bold">Thanks for your message</h1>
+            <p class="text-base-content/85 mt-2">
+                It's on its way to us. If you left an email address, we'll get back to you there.
             </p>
-
-            {# Message #}
-            <p class="text-base-content/85 mt-4">
-                The Enrichment Center acknowledges receipt of your data. A testing associate will review your file shortly.
-            </p>
-
-            {# Button #}
             <div class="card-actions mt-6">
-                <a href="{% url 'home' %}" class="btn btn-portal btn-lg">
-                    Resume Testing
-                </a>
+                <a href="{{ site_home_url }}" class="btn btn-primary">Back to the rankings</a>
             </div>
         </div>
     </div>

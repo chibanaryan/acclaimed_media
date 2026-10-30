@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load humanize static music_filters %}
 
-{% block title %}Album Source Lists | Acclaimed Video Games{% endblock %}
+{% block title %}Album Source Lists | Acclaimed Media{% endblock %}
 {% block meta_description %}The published album lists aggregated into the album rankings.{% endblock %}
 
 {% block pre_alpine %}
@@ -26,7 +26,7 @@
     <div class="flex items-center justify-between mb-2">
         <h1 class="text-3xl font-bold">
             Source Lists
-            {% if not MUSIC_ENABLED %}<span class="badge badge-warning badge-sm align-middle ml-1">Beta</span>{% endif %}
+            <span class="ml-1">{% include 'music/includes/_beta_badge.html' %}</span>
         </h1>
         <div class="flex items-center gap-4">
             <a href="#contact"
@@ -41,13 +41,6 @@ Year published: ">
                 <span class="mdi mdi-plus-circle" aria-hidden="true"></span>
                 Submit a list
             </a>
-            {% if user.is_staff %}
-            <a href="{% url 'music:import' %}"
-               class="link link-hover text-base-content/70 hover:text-accent inline-flex items-center gap-1 text-sm">
-                <span class="mdi mdi-database-import" aria-hidden="true"></span>
-                Import data
-            </a>
-            {% endif %}
         </div>
     </div>
 

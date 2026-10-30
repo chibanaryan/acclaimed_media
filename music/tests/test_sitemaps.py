@@ -4,6 +4,7 @@ from django.test import TestCase, override_settings
 
 from core.tests.utils import clear_all_caches
 from music import models, sitemaps
+from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 
 
 class MusicSitemapTests(TestCase):
@@ -26,7 +27,7 @@ class MusicSitemapTests(TestCase):
         static = sitemaps.MusicStaticSitemap()
         self.assertEqual(
             [static.location(item) for item in static.items()],
-            ["/music/", "/music/artists/", "/music/lists/", "/music/browse/"],
+            ["/", "/artists/", "/lists/", "/browse/"],
         )
         albums = sitemaps.AlbumSitemap()
         self.assertEqual(list(albums.items()), [self.album])
@@ -44,7 +45,7 @@ class MusicSitemapTests(TestCase):
         landing = sitemaps.MusicLandingPageSitemap()
         self.assertEqual(
             [landing.location(item) for item in landing.items()],
-            ["/music/genres/rock/", "/music/1970s/"],
+            ["/genres/rock/", "/1970s/"],
         )
 
     def test_the_base_section_names_no_items(self):

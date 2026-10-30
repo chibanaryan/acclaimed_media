@@ -63,3 +63,25 @@ class DatabaseCacheTestCase(TestCase):
         """`cache_reads` on a second visit, once the first has filled it."""
         self.assertEqual(self.client.get(url).status_code, 200)
         return self.cache_reads(url)
+
+
+def site_host(site):
+    """The public host of ``site`` (core/sites.py), as a test client names it."""
+    from urllib.parse import urlsplit
+
+    from django.conf import settings
+
+    return urlsplit(settings.SITE_ORIGINS[site]).netloc
+
+
+def get_on_site(client, site, viewname, *, query=None, **kwargs):
+    """GET ``viewname`` on ``site``'s own host, over HTTPS.
+
+    For a test that crosses sites: the test client's ``testserver`` host gets
+    ``ROOT_URLCONF`` alone, while a site's real host gets that site's
+    URLconf, as in production. ``kwargs`` are the URL's.
+    """
+    from core import sites
+
+    path = sites.site_reverse(site, viewname, kwargs=kwargs or None)
+    return client.get(path, query, HTTP_HOST=site_host(site), secure=True)

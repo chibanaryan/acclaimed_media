@@ -47,7 +47,7 @@ class BaseMediaListRenderer {
      */
     _getCsrfToken() {
         if (this._csrfToken) return this._csrfToken;
-        const match = document.cookie.match(/csrftoken=([^;]+)/);
+        const match = document.cookie.match(/(?:^|;\s*)am_csrftoken=([^;]+)/);
         this._csrfToken = match ? match[1] : '';
         return this._csrfToken;
     }

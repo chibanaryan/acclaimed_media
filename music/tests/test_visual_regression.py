@@ -25,6 +25,7 @@ from django.urls import reverse
 from core import constants as core_constants
 from core.models import User
 from music import models
+from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 
 RENDERER = Path(settings.BASE_DIR) / "music/static/music/js/album-list-renderer.js"
 
@@ -199,7 +200,7 @@ class ServerRenderedRowTests(TestCase):
         credit = soup.select_one('[data-slot="artist-credit-inline"]')
         self.assertIsNotNone(credit)
         link = credit.select_one("a")
-        self.assertEqual(link["href"], "/music/artists/pixies/")
+        self.assertEqual(link["href"], "/artists/pixies/")
         self.assertIn("Pixies", credit.get_text())
 
     def test_the_credit_sits_on_its_own_line_below_the_title(self):

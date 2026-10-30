@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}{% if success %}Unsubscribed{% else %}Invalid Link{% endif %} | Acclaimed Video Games{% endblock %}
+{% block title %}{% if success %}Unsubscribed{% else %}Invalid Link{% endif %} | Acclaimed Media{% endblock %}
 
 {% block content %}
 <div class="flex items-center justify-center min-h-[60vh]">
@@ -23,7 +23,7 @@
             </p>
 
             <div class="card-actions mt-4">
-                <a href="{% url 'home' %}" class="btn btn-primary">
+                <a href="{{ site_home_url }}" class="btn btn-primary">
                     <span class="mdi mdi-home mr-2" aria-hidden="true"></span>
                     Return Home
                 </a>
@@ -41,7 +41,7 @@
             </p>
 
             <div class="card-actions mt-4">
-                <a href="{% url 'home' %}" class="btn btn-outline">
+                <a href="{{ site_home_url }}" class="btn btn-outline">
                     <span class="mdi mdi-home mr-2" aria-hidden="true"></span>
                     Return Home
                 </a>

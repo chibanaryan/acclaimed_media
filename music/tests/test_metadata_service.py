@@ -19,6 +19,7 @@ from music.services.metadata_service import (
     fit,
 )
 from music.wikidata import AlbumMetadata, ArtistMetadata
+from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 
 RG_MBID = "9162580e-5df4-32de-80cc-f45a8d8a9b1d"
 RELEASE_MBID = "f04cce33-b9a0-4bed-af11-f84d649652b2"
@@ -346,8 +347,8 @@ class CoverPassTests(ServiceTestCase):
     def test_the_rendered_urls_point_at_our_own_copy(self):
         self.run_pass(self.build_client(front=self.art))
         album = models.Album.objects.get(pk=self.album.pk)
-        self.assertTrue(album.thumbnail.startswith("/music/cover/"))
-        self.assertTrue(album.image.startswith("/music/cover/"))
+        self.assertTrue(album.thumbnail.startswith("/cover/"))
+        self.assertTrue(album.image.startswith("/cover/"))
 
     def test_an_album_with_no_release_group_is_skipped(self):
         self.album.musicbrainz_release_group_id = None

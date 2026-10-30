@@ -21,6 +21,8 @@ from music import config, models, views
 from music.api import views as music_api_views
 from music.services import landing_pages
 from music.views import _filter_title, group_list_appearances
+from music.tests.site import setUpModule, tearDownModule  # noqa: F401
+from core.sites import GAMES, site_reverse
 
 
 class StaffUserTestMixin:
@@ -508,7 +510,7 @@ class AlbumDetailViewTests(MusicDataMixin, TestCase):
         self.assertNotContains(response, "Artist:")
 
     def test_unknown_slug_is_404(self):
-        self.assertEqual(self.client.get("/music/no-such-album/").status_code, 404)
+        self.assertEqual(self.client.get("/no-such-album/").status_code, 404)
 
     def test_list_appearances_are_grouped_by_type(self):
         response = self.client.get(self.revolver.get_absolute_url())
@@ -558,7 +560,7 @@ class AlbumDetailViewTests(MusicDataMixin, TestCase):
         # The credit line reads as credited and links to Neil Young's page.
         self.assertContains(
             response,
-            '<a href="/music/artists/neil-young/" class="link link-accent" '
+            '<a href="/artists/neil-young/" class="link link-accent" '
             'title="Neil Young">Neil Young &amp; Crazy Horse</a>',
         )
         self.assertContains(response, "Artist:")
@@ -573,16 +575,16 @@ class AlbumDetailViewTests(MusicDataMixin, TestCase):
             models.Album,
             "image",
             new_callable=mock.PropertyMock,
-            return_value="/music/cover/abc/1-500.jpg",
+            return_value="/cover/abc/1-500.jpg",
         ):
             response = self.client.get(self.revolver.get_absolute_url())
         self.assertContains(
             response,
             '<meta property="og:image" '
-            'content="https://acclaimedmedia.org/music/cover/abc/1-500.jpg">',
+            'content="https://music.acclaimedmedia.org/cover/abc/1-500.jpg">',
         )
         self.assertContains(
-            response, '"image": "https://acclaimedmedia.org/music/cover/abc/1-500.jpg"'
+            response, '"image": "https://music.acclaimedmedia.org/cover/abc/1-500.jpg"'
         )
 
     def test_an_album_without_a_cover_falls_back_to_the_site_image(self):
@@ -592,8 +594,8 @@ class AlbumDetailViewTests(MusicDataMixin, TestCase):
             response = self.client.get(self.revolver.get_absolute_url())
         self.assertContains(
             response,
-            '<meta property="og:image" '
-            'content="https://acclaimedmedia.org/static/games/brand/og-image.png">',
+            '<meta property="og:image" content="https://music.acclaimedmedia.org'
+            '/static/games/brand/og-image.png">',
         )
         self.assertNotContains(response, '"image":')
 
@@ -617,7 +619,7 @@ class AlbumDetailViewTests(MusicDataMixin, TestCase):
         self.assertContains(response, '"byArtist": [')
         self.assertContains(
             response,
-            '"url": "https://acclaimedmedia.org/music/artists/neil-young/"',
+            '"url": "https://music.acclaimedmedia.org/artists/neil-young/"',
         )
 
     def test_a_compilation_has_no_by_artist(self):
@@ -923,7 +925,7 @@ class ArtistDetailViewTests(MusicDataMixin, TestCase):
         )
 
     def test_unknown_slug_is_404(self):
-        self.assertEqual(self.client.get("/music/artists/nobody/").status_code, 404)
+        self.assertEqual(self.client.get("/artists/nobody/").status_code, 404)
 
     def test_an_artist_with_no_albums_renders_the_empty_state(self):
         artist = models.Artist.objects.create(name="Silent", slug="silent")
@@ -1079,7 +1081,7 @@ class CsrfFailureTests(StaffUserTestMixin, TestCase):
         self.csrf_client = Client(enforce_csrf_checks=True)
 
     def test_anonymous_post_to_a_music_path_gets_404(self):
-        for url in (reverse("music:home"), "/music/nonexistent-slug/"):
+        for url in (reverse("music:home"), "/nonexistent-slug/"):
             with self.subTest(url=url):
                 self.assertEqual(self.csrf_client.post(url).status_code, 404)
 
@@ -1094,8 +1096,13 @@ class CsrfFailureTests(StaffUserTestMixin, TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertContains(response, "CSRF", status_code=403)
 
-    def test_paths_outside_music_keep_the_403(self):
-        self.assertEqual(self.csrf_client.post(reverse("contact")).status_code, 403)
+    def test_the_other_sites_keep_the_403(self):
+        # The music host 404s a failed check while hidden; the games host,
+        # where the section was never hidden, answers as Django does
+        response = self.csrf_client.post(
+            site_reverse(GAMES, "contact"), HTTP_HOST="games.acclaimedmedia.org"
+        )
+        self.assertEqual(response.status_code, 403)
 
 
 class AlbumSearchViewTests(MusicDataMixin, TestCase):

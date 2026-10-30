@@ -146,7 +146,7 @@ class AlbumClientSideFiltering {
             }
         }
 
-        const response = await fetch(window.albumDataUrl || '/api/music/all/', {
+        const response = await fetch(window.albumDataUrl || '/api/all/', {
             headers: { 'X-Requested-With': 'XMLHttpRequest' },
             credentials: 'same-origin'
         });
@@ -425,7 +425,7 @@ class AlbumClientSideFiltering {
         if (filters.dir && filters.dir !== 'asc') params.set('dir', filters.dir);
 
         // Always onto the rankings URL, never relative to the current path:
-        // on a landing page such as /music/genres/rock/, a relative push
+        // on a landing page such as /genres/rock/, a relative push
         // kept the path - and with it the path's own genre - so clearing
         // the genre and reloading brought rock straight back.
         const query = params.toString();

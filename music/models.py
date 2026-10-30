@@ -10,10 +10,8 @@ import re
 from functools import cached_property
 from typing import Any, List, Optional
 
-from django.conf import settings
 from django.db import models
 from django.db.models import Count, Exists, OuterRef
-from django.urls import reverse
 from django.utils.text import slugify
 
 from core.models import (
@@ -25,6 +23,7 @@ from core.models import (
     SavedFilterSetBase,
     UserTrackingBase,
 )
+from core.sites import MUSIC, canonical_url, site_reverse
 from music import config
 
 
@@ -112,7 +111,7 @@ class Artist(models.Model):
         return self.name
 
     def get_absolute_url(self) -> str:
-        return reverse("music:artist-detail", kwargs={"slug": self.slug})
+        return site_reverse(MUSIC, "music:artist-detail", kwargs={"slug": self.slug})
 
 
 class MusicGenre(models.Model):
@@ -413,7 +412,7 @@ class Album(MediaItemBase):
         return f"{base}-{suffix}"
 
     def get_absolute_url(self) -> str:
-        return reverse("music:album-detail", kwargs={"slug": self.slug})
+        return site_reverse(MUSIC, "music:album-detail", kwargs={"slug": self.slug})
 
     @property
     def wikidata_qids(self) -> List[str]:
@@ -479,7 +478,7 @@ class Album(MediaItemBase):
         """
         image = self.image
         if image and image.startswith("/"):
-            return settings.CANONICAL_ORIGIN + image
+            return canonical_url(MUSIC, image)
         return image
 
     def _cover_art_url(self, size: int) -> Optional[str]:
@@ -993,7 +992,8 @@ class MusicBrainzAlbumData(ExternalDataBase):
         """
         if not (self.cover_art_release_mbid and self.cover_art_image_id):
             return None
-        return reverse(
+        return site_reverse(
+            MUSIC,
             "music:cover",
             kwargs={
                 "release_mbid": self.cover_art_release_mbid,

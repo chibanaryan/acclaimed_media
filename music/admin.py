@@ -1,9 +1,12 @@
 """Admin registrations for the music app."""
 
+from urllib.parse import urljoin
+
 from django.contrib import admin
 from django.db.models import Count
 from django.utils.html import format_html
 
+from core import sites
 from music import models
 
 
@@ -29,8 +32,20 @@ class MusicGenreChildInline(admin.TabularInline):
     show_change_link = True
 
 
+class MusicSiteAdminMixin:
+    """ "View on site" on the music host, wherever the admin is served.
+
+    The admin runs on every host, and Django's view-on-site redirect puts a
+    relative ``get_absolute_url`` on the apex's domain, which sends music
+    paths to the games site.
+    """
+
+    def view_on_site(self, obj):
+        return sites.canonical_url(sites.MUSIC, obj.get_absolute_url())
+
+
 @admin.register(models.Artist)
-class ArtistAdmin(admin.ModelAdmin):
+class ArtistAdmin(MusicSiteAdminMixin, admin.ModelAdmin):
     list_display = [
         "name",
         "source_id",
@@ -91,7 +106,7 @@ class MusicGenreAdmin(admin.ModelAdmin):
 
 
 @admin.register(models.Album)
-class AlbumAdmin(admin.ModelAdmin):
+class AlbumAdmin(MusicSiteAdminMixin, admin.ModelAdmin):
     list_display = [
         "rank",
         "name",
@@ -291,7 +306,13 @@ class AlbumCoverAdmin(admin.ModelAdmin):
             return "-"
         return format_html(
             '<img src="{}" width="200" height="200" style="object-fit:contain">',
-            obj.album.thumbnail if obj.album else "",
+            # A stored cover is a path on the music host, and the admin is
+            # served on every host; a remote one is already absolute
+            (
+                urljoin(sites.canonical_origin(sites.MUSIC), obj.album.thumbnail)
+                if obj.album and obj.album.thumbnail
+                else ""
+            ),
         )
 
 

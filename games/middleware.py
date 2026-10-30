@@ -12,6 +12,7 @@ from django.middleware.gzip import GZipMiddleware
 from django.utils.cache import patch_vary_headers
 
 from core.services.client_ip import get_client_ip
+from core.sites import request_site
 from games.config import (
     RATE_LIMIT_BLOCK_DURATION,
     RATE_LIMIT_CACHE_PREFIX,
@@ -24,14 +25,7 @@ logger = logging.getLogger(__name__)
 # UncompressedUptimeCheckMiddleware.
 uptime_logger = logging.getLogger(f"{__name__}.uptime")
 
-# Paths exempt from rate limiting.
-#
-# `/music/cover/` is here because it is a static asset in everything but the
-# URL: immutable bytes from our own store, served with a year's cache. A
-# single album rankings page asks for up to a hundred of them, so counting
-# them against a 120/minute budget meant one page load nearly exhausted it
-# and the next one 429'd - and client-side filtering makes that worse, since
-# every filter change renders another hundred rows.
+# Paths exempt from rate limiting, on every site.
 RATE_LIMIT_EXEMPT_PREFIXES = (
     "/robots.txt",
     "/sitemap.xml",
@@ -39,9 +33,20 @@ RATE_LIMIT_EXEMPT_PREFIXES = (
     "/admin/",
     "/static/",
     "/accounts/",
-    "/music/cover/",
     "/healthz/",
 )
+
+# And per site (core/sites.py), for paths only that site serves.
+#
+# Music's `/cover/` is here because it is a static asset in everything but the
+# URL: immutable bytes from our own store, served with a year's cache. A
+# single album rankings page asks for up to a hundred of them, so counting
+# them against a 120/minute budget meant one page load nearly exhausted it
+# and the next one 429'd - and client-side filtering makes that worse, since
+# every filter change renders another hundred rows.
+SITE_RATE_LIMIT_EXEMPT_PREFIXES = {
+    "music": ("/cover/",),
+}
 
 
 class UncompressedUptimeCheckMiddleware:
@@ -147,7 +152,10 @@ class RateLimitMiddleware:
         path = request.path
 
         # Skip rate limiting for exempt paths
-        if any(path.startswith(prefix) for prefix in RATE_LIMIT_EXEMPT_PREFIXES):
+        exempt = RATE_LIMIT_EXEMPT_PREFIXES + SITE_RATE_LIMIT_EXEMPT_PREFIXES.get(
+            request_site(request), ()
+        )
+        if path.startswith(exempt):
             return self.get_response(request)
 
         ip = get_client_ip(request)

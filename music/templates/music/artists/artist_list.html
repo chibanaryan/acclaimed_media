@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load humanize static music_filters %}
 
-{% block title %}Album Artists | Acclaimed Video Games{% endblock %}
+{% block title %}Album Artists | Acclaimed Media{% endblock %}
 {% block meta_description %}Artists with albums in the acclaimed album rankings.{% endblock %}
 
 {% block pre_alpine %}
@@ -23,7 +23,7 @@
      })">
 <h1 class="text-3xl font-bold mb-4">
     Artists
-    {% if not MUSIC_ENABLED %}<span class="badge badge-warning badge-sm align-middle ml-1">Beta</span>{% endif %}
+    <span class="ml-1">{% include 'music/includes/_beta_badge.html' %}</span>
 </h1>
 
 <div id="artist-results-wrapper">

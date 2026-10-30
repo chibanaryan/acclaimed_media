@@ -67,8 +67,6 @@ class RateLimitMiddlewareTest(TestCase):
             "/admin/login/",
             "/static/test.css",
             "/accounts/login/",
-            # A hundred of these are requested per album rankings page.
-            "/music/cover/abc/123-250.jpg",
         ]
         for path in exempt_paths:
             self._block_ip()
@@ -77,6 +75,16 @@ class RateLimitMiddlewareTest(TestCase):
                 response.status_code, 429, f"Exempt path {path} was rate limited"
             )
             self.cache.clear()
+
+    def test_music_covers_are_exempt_on_the_music_host_only(self):
+        # A hundred of these are requested per album rankings page. They are
+        # music's own route, so the same path elsewhere counts as usual.
+        path = "/cover/abc/123-250.jpg"
+        self._block_ip()
+        response = self.client.get(path, HTTP_HOST="music.acclaimedmedia.org")
+        self.assertNotEqual(response.status_code, 429)
+        response = self.client.get(path, HTTP_HOST="games.acclaimedmedia.org")
+        self.assertEqual(response.status_code, 429)
 
     def test_per_minute_rate_limit_allows_up_to_threshold(self):
         """Requests at the per-minute limit should pass."""

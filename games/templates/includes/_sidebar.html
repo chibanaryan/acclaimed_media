@@ -1,13 +1,11 @@
-{% load static game_filters %}
+{% load static game_filters core_filters %}
 <div class="flex flex-col h-full">
-    {# TOP CONTAINER: Logo + Navigation + Search - Always visible #}
+    {# TOP CONTAINER: Wordmark + Navigation + Search - Always visible #}
     <div class="shrink-0 px-4 py-6">
+        {# The shared name and the site switcher #}
+        {% include 'core/includes/_site_menu.html' %}
         {# Main navigation - the link set depends on the current media type #}
         <nav class="mb-3" aria-label="Main">
-            {# The switcher is music's way home once it is public; in the staff beta music pages have their own Back to Games link instead. #}
-            {% if MUSIC_ENABLED or BOOKS_ENABLED and media_type != 'music' %}
-            {% include 'core/includes/_media_switcher.html' with variant='tabs' size='sm' %}
-            {% endif %}
             {% include 'core/includes/_sidebar_nav.html' %}
         </nav>
 
@@ -67,7 +65,7 @@
                                 </template>
                                 <template x-for="artist in (group === 'artists' ? results.artists : [])" :key="'artist-' + artist.slug">
                                     <li>
-                                        <a :href="'/music/artists/' + artist.slug + '/'" class="flex items-center gap-2 py-2">
+                                        <a :href="'{% url 'music:artist-list' %}' + artist.slug + '/'" class="flex items-center gap-2 py-2">
                                             <span class="mdi mdi-account-music text-lg text-accent" aria-hidden="true"></span>
                                             <div class="flex-1 min-w-0">
                                                 <div class="font-semibold text-sm truncate" x-text="artist.name"></div>
@@ -89,7 +87,7 @@
                                 </template>
                                 <template x-for="album in (group === 'albums' ? results.albums : [])" :key="'album-' + album.id">
                                     <li>
-                                        <a :href="'/music/' + album.slug + '/'" class="flex items-center gap-2 py-2">
+                                        <a :href="'{% url 'music:home' %}' + album.slug + '/'" class="flex items-center gap-2 py-2">
                                             <img :src="album.thumbnail" :alt="album.name" width="90" height="90" class="w-6 h-6 rounded object-cover">
                                             <div class="flex-1 min-w-0">
                                                 <div class="font-semibold text-sm truncate" x-text="album.name"></div>
@@ -227,7 +225,8 @@
         </div>
         {% endif %}
 
-        {# Secondary navigation: Blog #}
+        {# Secondary navigation: Blog, which is the games site's #}
+        {% if media_type == 'games' %}
         {% has_published_articles as show_blog %}
         {% if show_blog %}
         <nav class="mt-3" aria-label="More">
@@ -240,6 +239,7 @@
                 </li>
             </ul>
         </nav>
+        {% endif %}
         {% endif %}
     </div>
 
@@ -256,7 +256,7 @@
             {% if not user.is_authenticated %}
             <li>
                 <button type="button" class="auth-modal-trigger w-full text-left" data-auth-screen="signup">
-                    <span class="mdi mdi-gamepad text-xl" aria-hidden="true"></span>
+                    <span class="mdi {% if media_type == 'music' %}mdi-album{% else %}mdi-gamepad{% endif %} text-xl" aria-hidden="true"></span>
                     Sign Up
                 </button>
             </li>

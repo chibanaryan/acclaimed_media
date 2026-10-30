@@ -5,10 +5,10 @@
 {# page title, with the same site suffix, and as the og/twitter titles. #}
 {# A landing page (/music/genres/<slug>/, /music/<decade>s/) sets seo_title #}
 {# to the same heading, plus its own description and ItemList. #}
-{% block title %}{% firstof seo_title filter_title "Most Acclaimed Albums" %} | Acclaimed Video Games{% endblock %}
+{% block title %}{% firstof seo_title filter_title "Most Acclaimed Albums" %} | Acclaimed Media{% endblock %}
 
 {% block meta_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}The top {{ album_count }} most recommended albums across {{ list_count }} critic lists from {{ publication_count }} publications.{% endif %}{% endblock %}
-{% block og_title %}{% firstof seo_title filter_title "Most Acclaimed Albums" %} | Acclaimed Video Games{% endblock %}
+{% block og_title %}{% firstof seo_title filter_title "Most Acclaimed Albums" %} | Acclaimed Media{% endblock %}
 {% block og_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}Album rankings aggregated from {{ list_count }} published critics' lists.{% endif %}{% endblock %}
 {% block structured_data %}{% if itemlist_json %}{{ itemlist_json|safe }}{% else %}{{ block.super }}{% endif %}{% endblock %}
 
@@ -120,7 +120,7 @@ var listenStatusOptions = JSON.parse(
     <div class="min-w-0 flex-1 max-w-[calc(100%-357px-1.5rem)] flex flex-col justify-center">
         <h1 class="text-3xl font-bold line-clamp-2" id="search-title">
             <span id="search-title-text">{{ filter_title|default:"Most Acclaimed Albums" }}</span>
-            {% if not MUSIC_ENABLED %}<span class="badge badge-warning badge-sm align-middle ml-1">Beta</span>{% endif %}
+            <span class="ml-1">{% include 'music/includes/_beta_badge.html' %}</span>
         </h1>
         <p class="text-base-content/70 text-sm">
             The top {{ album_count|intcomma }} most recommended albums across
@@ -146,7 +146,7 @@ var listenStatusOptions = JSON.parse(
     <div class="relative z-10 bg-base-200 border-b border-base-content/10 py-4 mb-4 -mx-4 px-4 flex items-center justify-between gap-3">
         <h1 class="text-lg font-bold flex-1 min-w-0" id="search-title-mobile">
             <span id="search-title-mobile-text">{{ filter_title|default:"Most Acclaimed Albums" }}</span>
-            {% if not MUSIC_ENABLED %}<span class="badge badge-warning badge-xs align-middle">Beta</span>{% endif %}
+            {% include 'music/includes/_beta_badge.html' with size='badge-xs' %}
         </h1>
         {% include 'core/includes/_quick_mark_picker.html' with scope='album' options=quick_mark_options mobile=True %}
         <button type="button" class="btn btn-primary btn-sm shrink-0" @click="filterOpen = true">
