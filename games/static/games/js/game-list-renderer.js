@@ -689,7 +689,7 @@ class GameListRenderer extends BaseMediaListRenderer {
         <div class="flex-1 min-w-0 px-4">
             <div class="truncate">
                 <a href="/game/${game.s}/" class="game-title text-lg font-bold link link-hover">${this._escapeHtml(game.n)}</a>
-                <a href="/games/?start=${game.y}&end=${game.y}&highlight=${game.id}" class="text-base-content/80 ml-1.5">(${game.y || 'N/A'})</a>
+                <a rel="nofollow" href="/games/?start=${game.y}&end=${game.y}&highlight=${game.id}" class="text-base-content/80 ml-1.5">(${game.y || 'N/A'})</a>
             </div>
             <div class="game-row-details text-base-content/80 text-sm ml-4" data-slot="meta-row">${metaRowHtml}</div>
         </div>

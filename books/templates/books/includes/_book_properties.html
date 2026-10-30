@@ -7,7 +7,7 @@
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-middle whitespace-nowrap">All time rank:</td>
         <td class="pb-3 align-middle tabular-nums">
             <span class="rank-indicator">
-                <a href="{% url 'books:home' %}?highlight={{ book.id }}" class="link link-accent font-medium">{{ book.rank }}</a>
+                <a rel="nofollow" href="{% url 'books:home' %}?highlight={{ book.id }}" class="link link-accent font-medium">{{ book.rank }}</a>
                 {% if total_book_count %}<span class="text-base-content/50 text-sm"> of {{ total_book_count|intcomma }}</span>{% endif %}
             </span>
         </td>
@@ -16,7 +16,7 @@
     <tr>
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-middle whitespace-nowrap">{{ book.decade }}s rank:</td>
         <td class="pb-3 align-middle tabular-nums">
-            <a href="{% url 'books:home' %}?start={{ book.decade }}&end={{ book.decade|add:9 }}&highlight={{ book.id }}" class="link link-accent font-medium">{{ book.decade_rank }}</a>
+            <a rel="nofollow" href="{% url 'books:home' %}?start={{ book.decade }}&end={{ book.decade|add:9 }}&highlight={{ book.id }}" class="link link-accent font-medium">{{ book.decade_rank }}</a>
             {% if decade_book_count %}<span class="text-base-content/50 text-sm"> of {{ decade_book_count|intcomma }}</span>{% endif %}
         </td>
     </tr>
@@ -25,7 +25,7 @@
     <tr>
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-middle whitespace-nowrap">{{ book.year_published }} rank:</td>
         <td class="pb-3 align-middle tabular-nums">
-            <a href="{% url 'books:home' %}?start={{ book.year_published }}&end={{ book.year_published }}&highlight={{ book.id }}" class="link link-accent font-medium">{{ book.year_rank }}</a>
+            <a rel="nofollow" href="{% url 'books:home' %}?start={{ book.year_published }}&end={{ book.year_published }}&highlight={{ book.id }}" class="link link-accent font-medium">{{ book.year_rank }}</a>
             {% if year_book_count %}<span class="text-base-content/50 text-sm"> of {{ year_book_count|intcomma }}</span>{% endif %}
         </td>
     </tr>
@@ -55,7 +55,7 @@
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-top whitespace-nowrap">{% if genres|length == 1 %}Genre{% else %}Genres{% endif %}:</td>
         <td class="pb-3">
             <span class="flex flex-wrap gap-1">
-                {% for genre in genres %}<a href="{% url 'books:home' %}?genres={{ genre.id }}&highlight={{ book.id }}" class="badge badge-outline opacity-80 hover:opacity-100 hover:badge-primary transition-colors max-w-[200px] overflow-hidden inline-flex items-center gap-1" title="{{ genre.name }}"><span class="mdi mdi-book text-sm flex-shrink-0" aria-hidden="true"></span><span class="truncate">{{ genre.name }}</span></a>{% endfor %}
+                {% for genre in genres %}<a rel="nofollow" href="{% url 'books:home' %}?genres={{ genre.id }}&highlight={{ book.id }}" class="badge badge-outline opacity-80 hover:opacity-100 hover:badge-primary transition-colors max-w-[200px] overflow-hidden inline-flex items-center gap-1" title="{{ genre.name }}"><span class="mdi mdi-book text-sm flex-shrink-0" aria-hidden="true"></span><span class="truncate">{{ genre.name }}</span></a>{% endfor %}
             </span>
         </td>
     </tr>

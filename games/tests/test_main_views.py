@@ -10,17 +10,15 @@ from unittest import mock
 
 from django.contrib.flatpages.models import FlatPage
 from django.contrib.sites.models import Site
-from django.conf import settings
 from django.core.cache import caches
-from django.core.management import call_command
 from django.db import connection
 from django.http import HttpResponse, StreamingHttpResponse
-from django.test import Client, TestCase, override_settings
+from django.test import Client, TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from core.models import User
-from core.tests.utils import clear_all_caches
+from core.tests.utils import DatabaseCacheTestCase, clear_all_caches
 from games import config
 from games import constants
 from games.models import (
@@ -4677,16 +4675,7 @@ class GamesHomeGenreQueryBudgetTests(TestCase):
         self.assertEqual(len(hierarchy_fetches), 2)
 
 
-@override_settings(
-    CACHES={
-        **settings.CACHES,
-        "default": {
-            "BACKEND": "django.core.cache.backends.db.DatabaseCache",
-            "LOCATION": "cache_table",
-        },
-    }
-)
-class GamesHomeCacheRoundTripTests(TestCase):
+class GamesHomeCacheRoundTripTests(DatabaseCacheTestCase):
     """The rankings page reads the shared cache in one batch, not per value.
 
     In production the default alias is a `DatabaseCache`, and `/` read fifteen
@@ -4695,16 +4684,6 @@ class GamesHomeCacheRoundTripTests(TestCase):
     them. Warm, the page makes two reads: the view's batch, and the articles
     check its template makes while rendering.
     """
-
-    # What `get_many` sends, and Sentry flagged; a write's SELECTs differ
-    CACHE_READ = 'FROM "cache_table" WHERE "cache_key" IN ('
-
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        # The test database was built while the default alias was LocMem.
-        # Inside the class's transaction, so it is rolled back after it.
-        call_command("createcachetable", verbosity=0)
 
     def setUp(self):
         self.platform = Platform.objects.create(name="PC", code="PC")
@@ -4715,48 +4694,29 @@ class GamesHomeCacheRoundTripTests(TestCase):
             game.platforms.add(self.platform)
         self.game = game
 
-    def _warm_cache_reads(self, url):
-        self.assertEqual(self.client.get(url).status_code, 200)
-        with CaptureQueriesContext(connection) as captured:
-            response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-        return [
-            query["sql"]
-            for query in captured.captured_queries
-            if self.CACHE_READ in query["sql"]
-        ]
-
     def test_a_filtered_page_reads_the_cache_twice(self):
         url = f"/?platforms={self.platform.id}&highlight={self.game.id}"
-        self.assertEqual(len(self._warm_cache_reads(url)), 2)
+        self.assertEqual(len(self.warm_cache_reads(url)), 2)
 
     def test_a_new_filter_reads_the_cache_twice_too(self):
         # A crawler's next platform: the lists are warm, its facets are not,
         # and the batch's misses must not be read a second time
         other = Platform.objects.create(name="Mac", code="MAC")
         self.game.platforms.add(other)
-        self._warm_cache_reads(f"/?platforms={self.platform.id}")
-        with CaptureQueriesContext(connection) as captured:
-            response = self.client.get(f"/?platforms={other.id}")
-        self.assertEqual(response.status_code, 200)
-        reads = [
-            query["sql"]
-            for query in captured.captured_queries
-            if self.CACHE_READ in query["sql"]
-        ]
-        self.assertEqual(len(reads), 2)
+        self.warm_cache_reads(f"/?platforms={self.platform.id}")
+        self.assertEqual(len(self.cache_reads(f"/?platforms={other.id}")), 2)
 
     def test_a_landing_page_reads_the_cache_three_times(self):
         # One more: setup() resolves the path through the landing decades
         # before the batch's keys are known. With a query string, as a bare
         # landing page is served whole from the per-process page cache.
-        reads = self._warm_cache_reads("/games/1990s/?sort=year")
+        reads = self.warm_cache_reads("/games/1990s/?sort=year")
         self.assertEqual(len(reads), 3)
 
     def test_a_signed_in_page_batches_the_tracking_ids_too(self):
         user = User.objects.create_user(username="batched", password="pw")
         self.client.force_login(user)
-        reads = self._warm_cache_reads(f"/?platforms={self.platform.id}&played=yes")
+        reads = self.warm_cache_reads(f"/?platforms={self.platform.id}&played=yes")
         self.assertEqual(len(reads), 2)
 
 

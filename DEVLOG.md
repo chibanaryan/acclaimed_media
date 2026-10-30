@@ -1,5 +1,17 @@
 # Developer Log
 
+## 2026-10-30
+
+- **Music's rankings pages batch their cache reads too**, as games' did
+  the day before: `/music/` and its genre and decade landing pages make
+  one `get_many` and the nav's articles check, from 7-9 reads. The
+  landing views now inject their filters in `render_rankings`, inside the
+  batch (`MusicCacheRoundTripTests`)
+- **Links into `?highlight=` URLs are `rel="nofollow"`**, in all three
+  sections' detail pages and rows, server- and client-rendered. robots.txt
+  already disallowed them; Meta's crawler walked the game badges anyway
+  (`core/tests/test_nofollow_links.py`)
+
 ## 2026-10-29
 
 - **The site moves to `https://acclaimedmedia.org`, at the bare root.**

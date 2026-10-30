@@ -26,7 +26,7 @@
     {% with genres=game.wikipedia_genres.all %}
     <div class="game-property">
         <span>Genres:</span>
-        <span>{% for genre in genres %}<a href="{% url 'home' %}?genres={{ genre.id }}&highlight={{ game.id }}">{{ genre.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</span>
+        <span>{% for genre in genres %}<a rel="nofollow" href="{% url 'home' %}?genres={{ genre.id }}&highlight={{ game.id }}">{{ genre.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</span>
     </div>
     {% endwith %}
 </div>

@@ -41,7 +41,7 @@
             {# One line, so the hover underline stops at the title: a #}
             {# newline inside the anchor renders as a trailing space. #}
             <a {% if game %}href="{% url 'game-detail' slug=game.slug %}"{% endif %} class="game-title text-lg font-bold link link-hover" data-slot="title-link"><span data-slot="name">{% if game %}{{ game.name }}{% endif %}</span></a>
-            <a {% if game %}href="{% url 'home' %}?start={{ game.year_of_release }}&end={{ game.year_of_release }}&highlight={{ game.id }}"{% endif %} class="text-base-content/80 ml-1.5" data-slot="year-link">
+            <a rel="nofollow" {% if game %}href="{% url 'home' %}?start={{ game.year_of_release }}&end={{ game.year_of_release }}&highlight={{ game.id }}"{% endif %} class="text-base-content/80 ml-1.5" data-slot="year-link">
                 (<span data-slot="year">{% if game %}{{ game.year_of_release }}{% endif %}</span>)
             </a>
         </div>

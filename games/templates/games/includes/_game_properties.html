@@ -10,7 +10,7 @@
         <td class="pb-3 align-middle tabular-nums">
             <span class="rank-indicator">
                 {% game_rank_url game.rank game.id as rank_url %}
-                <a href="{{ rank_url }}" class="link link-accent font-medium">{{ game.rank }}</a>
+                <a rel="nofollow" href="{{ rank_url }}" class="link link-accent font-medium">{{ game.rank }}</a>
                 {% if total_game_count %}<span class="text-base-content/70 text-sm"> of {{ total_game_count|intcomma }}</span>{% endif %}
             </span>
         </td>
@@ -20,7 +20,7 @@
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-middle whitespace-nowrap">{{ game.decade }}s rank:</td>
         <td class="pb-3 align-middle tabular-nums">
             {% game_rank_url game.decade_rank game.id game.decade game.decade|add:9 as decade_url %}
-            <a href="{{ decade_url }}" class="link link-accent font-medium">{{ game.decade_rank }}</a>
+            <a rel="nofollow" href="{{ decade_url }}" class="link link-accent font-medium">{{ game.decade_rank }}</a>
             {% if decade_game_count %}<span class="text-base-content/70 text-sm"> of {{ decade_game_count|intcomma }}</span>{% endif %}
         </td>
     </tr>
@@ -30,7 +30,7 @@
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-middle whitespace-nowrap">{{ game.year_of_release }} rank:</td>
         <td class="pb-3 align-middle tabular-nums">
             {% game_rank_url game.year_rank game.id game.year_of_release game.year_of_release as year_url %}
-            <a href="{{ year_url }}" class="link link-accent font-medium">{{ game.year_rank }}</a>
+            <a rel="nofollow" href="{{ year_url }}" class="link link-accent font-medium">{{ game.year_rank }}</a>
             {% if year_game_count %}<span class="text-base-content/70 text-sm"> of {{ year_game_count|intcomma }}</span>{% endif %}
         </td>
     </tr>
@@ -57,7 +57,7 @@
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-top whitespace-nowrap">{% if platforms|length == 1 %}Platform{% else %}Platforms{% endif %}:</td>
         <td class="pb-3">
             <span class="flex flex-wrap gap-1">
-                {% for platform in platforms %}<a href="{% url 'home' %}?platforms={{ platform.id }}&highlight={{ game.id }}" class="badge badge-outline opacity-80 hover:opacity-100 hover:badge-primary transition-colors max-w-[200px] overflow-hidden inline-flex items-center gap-1" title="{{ platform.name }}">{% with svg_icon=platform|platform_svg_icon mdi_icon=platform|platform_icon %}{% if svg_icon %}<svg class="w-3.5 h-3.5 fill-current flex-shrink-0" aria-hidden="true"><use href="{% static 'games/images/platform-icons.svg' %}#{{ svg_icon }}"></use></svg>{% elif mdi_icon %}<span class="mdi {{ mdi_icon }} text-sm flex-shrink-0" aria-hidden="true"></span>{% endif %}{% endwith %}<span class="truncate">{{ platform.name }}</span></a>{% endfor %}
+                {% for platform in platforms %}<a rel="nofollow" href="{% url 'home' %}?platforms={{ platform.id }}&highlight={{ game.id }}" class="badge badge-outline opacity-80 hover:opacity-100 hover:badge-primary transition-colors max-w-[200px] overflow-hidden inline-flex items-center gap-1" title="{{ platform.name }}">{% with svg_icon=platform|platform_svg_icon mdi_icon=platform|platform_icon %}{% if svg_icon %}<svg class="w-3.5 h-3.5 fill-current flex-shrink-0" aria-hidden="true"><use href="{% static 'games/images/platform-icons.svg' %}#{{ svg_icon }}"></use></svg>{% elif mdi_icon %}<span class="mdi {{ mdi_icon }} text-sm flex-shrink-0" aria-hidden="true"></span>{% endif %}{% endwith %}<span class="truncate">{{ platform.name }}</span></a>{% endfor %}
             </span>
         </td>
     </tr>
@@ -68,7 +68,7 @@
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-top whitespace-nowrap">{% if genres|length == 1 %}Genre{% else %}Genres{% endif %}:</td>
         <td class="pb-3">
             <span class="flex flex-wrap gap-1">
-                {% for genre in genres %}<a href="{% url 'home' %}?genres={{ genre.id }}&highlight={{ game.id }}" class="badge badge-outline opacity-80 hover:opacity-100 hover:badge-primary transition-colors max-w-[200px] overflow-hidden inline-flex items-center gap-1" title="{{ genre.name }}"><span class="mdi {{ genre|genre_icon }} text-sm flex-shrink-0" aria-hidden="true"></span><span class="truncate">{{ genre.name }}</span></a>{% endfor %}
+                {% for genre in genres %}<a rel="nofollow" href="{% url 'home' %}?genres={{ genre.id }}&highlight={{ game.id }}" class="badge badge-outline opacity-80 hover:opacity-100 hover:badge-primary transition-colors max-w-[200px] overflow-hidden inline-flex items-center gap-1" title="{{ genre.name }}"><span class="mdi {{ genre|genre_icon }} text-sm flex-shrink-0" aria-hidden="true"></span><span class="truncate">{{ genre.name }}</span></a>{% endfor %}
             </span>
         </td>
     </tr>
@@ -79,7 +79,7 @@
         <td class="text-base-content/70 font-semibold pr-4 pb-3 align-top whitespace-nowrap">Series:</td>
         <td class="pb-3">
             <span class="flex flex-wrap gap-1">
-                {% for series in series_list %}<a href="{% url 'home' %}?series={{ series.id }}&highlight={{ game.id }}" class="badge badge-outline opacity-80 hover:opacity-100 hover:badge-primary transition-colors max-w-[200px] sm:max-w-none overflow-hidden" title="{{ series.name }}"><span class="truncate">{{ series.name }}</span></a>{% endfor %}
+                {% for series in series_list %}<a rel="nofollow" href="{% url 'home' %}?series={{ series.id }}&highlight={{ game.id }}" class="badge badge-outline opacity-80 hover:opacity-100 hover:badge-primary transition-colors max-w-[200px] sm:max-w-none overflow-hidden" title="{{ series.name }}"><span class="truncate">{{ series.name }}</span></a>{% endfor %}
             </span>
         </td>
     </tr>

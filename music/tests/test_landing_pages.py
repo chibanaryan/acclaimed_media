@@ -17,7 +17,7 @@ from django.urls import resolve, reverse
 from django.urls.resolvers import URLPattern
 
 from core.models import User
-from core.tests.utils import clear_all_caches
+from core.tests.utils import DatabaseCacheTestCase, clear_all_caches
 from music import config, models, urls, views
 from music.services import landing_pages
 
@@ -259,6 +259,33 @@ class HiddenLandingPageTests(LandingFixtureMixin, TestCase):
         view = views.MusicLandingPageView()
         with self.assertRaises(NotImplementedError):
             view.get_page_seo()
+
+
+@override_settings(MUSIC_ENABLED=True)
+class MusicCacheRoundTripTests(LandingFixtureMixin, DatabaseCacheTestCase):
+    """The rankings pages read the shared cache in one batch, not per value.
+
+    As games' `/` did (Sentry ACCLAIMED-VIDEO-GAMES-9E): in production every
+    `cache.get` is a query on ``cache_table``. Music has no page cache, so
+    every visit paid each read; a landing page's path lookups now join the
+    batch too, because they run inside it (`render_rankings`).
+    """
+
+    # The batch, and the articles check the nav makes while rendering
+    READS = 2
+
+    def test_rankings_page(self):
+        self.assertEqual(len(self.warm_cache_reads("/music/")), self.READS)
+
+    def test_landing_pages(self):
+        for url in ("/music/1970s/", "/music/genres/rock/"):
+            with self.subTest(url=url):
+                self.assertEqual(len(self.warm_cache_reads(url)), self.READS)
+
+    def test_signed_in_batches_the_tracking_ids_too(self):
+        User.objects.create_user(username="batched", password="pw")
+        self.client.login(username="batched", password="pw")
+        self.assertEqual(len(self.warm_cache_reads("/music/")), self.READS)
 
 
 class LandingRoutingTests(TestCase):

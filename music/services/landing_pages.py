@@ -13,9 +13,9 @@ import it without a cycle.
 
 from collections import defaultdict
 
-from django.core.cache import cache
 from django.db.models import Count
 
+from core.cache_helpers import cache_get, cache_set
 from core.services import genre_tree
 from music import config, models
 
@@ -41,7 +41,7 @@ def get_landing_genres():
     ``album_count`` is distinct across the subtree, as the sidebar counts
     it, so it is exactly what the page lists.
     """
-    entries = cache.get(config.CACHE_KEY_LANDING_GENRES)
+    entries = cache_get(config.CACHE_KEY_LANDING_GENRES)
     if entries is not None:
         return entries
 
@@ -69,13 +69,13 @@ def get_landing_genres():
         if len(albums) >= MIN_GENRE_ALBUMS:
             entries.append({**root, "album_count": len(albums)})
 
-    cache.set(config.CACHE_KEY_LANDING_GENRES, entries, config.CACHE_TIMEOUT_24_HOURS)
+    cache_set(config.CACHE_KEY_LANDING_GENRES, entries, config.CACHE_TIMEOUT_24_HOURS)
     return entries
 
 
 def get_landing_decades():
     """Decades with a page, ascending: ``[1950, 1960, ...]``."""
-    decades = cache.get(config.CACHE_KEY_LANDING_DECADES)
+    decades = cache_get(config.CACHE_KEY_LANDING_DECADES)
     if decades is not None:
         return decades
 
@@ -91,7 +91,7 @@ def get_landing_decades():
         decade for decade, count in counts.items() if count >= MIN_DECADE_ALBUMS
     )
 
-    cache.set(config.CACHE_KEY_LANDING_DECADES, decades, config.CACHE_TIMEOUT_24_HOURS)
+    cache_set(config.CACHE_KEY_LANDING_DECADES, decades, config.CACHE_TIMEOUT_24_HOURS)
     return decades
 
 

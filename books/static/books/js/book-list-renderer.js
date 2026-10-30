@@ -287,7 +287,9 @@ class BookListRenderer extends BaseMediaListRenderer {
             this._fillSlot(row, 'year', expanded.year);
             const yearLink = row.querySelector('[data-slot="year-link"]');
             if (yearLink) {
-                yearLink.href = '/books/?year=' + expanded.year;
+                // The server row's link, so its rel="nofollow" still fits
+                yearLink.href = `/books/?start=${expanded.year}&end=${expanded.year}` +
+                    `&highlight=${book.id}`;
             }
         } else {
             const yearEl = row.querySelector('[data-slot="year"]');

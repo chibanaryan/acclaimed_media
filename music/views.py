@@ -41,7 +41,12 @@ from django.views import View
 from django.views.generic import DetailView, ListView, TemplateView
 
 from core import constants as core_constants
-from core.cache_helpers import get_year_bounds
+from core.cache_helpers import (
+    batched_cache_reads,
+    cache_get,
+    cache_set,
+    get_year_bounds,
+)
 from core.mixins import HTMXPartialMixin, RobustPaginationMixin, StaffOnlyMixin
 from core.models import User
 from core.services import genre_tree, seo
@@ -221,14 +226,14 @@ def _tracked_album_ids(user, cache_key, queryset):
     re-adopts them - without the FK there is no id to join on.
     """
     key = cache_key.format(user_id=user.id)
-    ids = cache.get(key)
+    ids = cache_get(key)
     if ids is None:
         ids = list(
             queryset.filter(user=user, album__isnull=False).values_list(
                 "album_id", flat=True
             )
         )
-        cache.set(key, ids, config.CACHE_TIMEOUT_TRACKING)
+        cache_set(key, ids, config.CACHE_TIMEOUT_TRACKING)
     return ids
 
 
@@ -486,7 +491,7 @@ def _genre_counts(queryset, descendants=None):
 def _cached_artist_options():
     """Return the artist filter options: every artist with at least one album."""
     cache_key = config.CACHE_KEY_ARTIST_OPTIONS
-    options = cache.get(cache_key)
+    options = cache_get(cache_key)
     if options is None:
         album_ids = album_ids_by_artist()
         options = [
@@ -495,7 +500,7 @@ def _cached_artist_options():
             .order_by(Lower("name"))
             .values("id", "name", "slug")
         ]
-        cache.set(cache_key, options, config.CACHE_TIMEOUT_24_HOURS)
+        cache_set(cache_key, options, config.CACHE_TIMEOUT_24_HOURS)
     return options
 
 
@@ -508,7 +513,7 @@ def _cached_genre_options():
     the template rendering a blank count.
     """
     cache_key = config.CACHE_KEY_GENRE_OPTIONS
-    options = cache.get(cache_key)
+    options = cache_get(cache_key)
     if options is None:
         options = list(
             models.MusicGenre.objects.annotate(albums_count=Count("albums"))
@@ -516,7 +521,7 @@ def _cached_genre_options():
             .order_by("level", "display_order", "name")
             .values("id", "name", "slug", "level", "parent_id", "path", "albums_count")
         )
-        cache.set(cache_key, options, config.CACHE_TIMEOUT_24_HOURS)
+        cache_set(cache_key, options, config.CACHE_TIMEOUT_24_HOURS)
     return options
 
 
@@ -582,11 +587,11 @@ def _cached_year_baseline(min_year, max_year):
     are cached apart (`_get_year_bounds`), and a baseline missing a decade
     they include would leave that decade with no cells to click.
     """
-    cached = cache.get(config.CACHE_KEY_YEAR_BASELINE)
+    cached = cache_get(config.CACHE_KEY_YEAR_BASELINE)
     if cached is not None and cached["bounds"] == [min_year, max_year]:
         return cached["counts"]
     counts = _year_counts(models.Album.objects.all(), min_year, max_year)
-    cache.set(
+    cache_set(
         config.CACHE_KEY_YEAR_BASELINE,
         {"bounds": [min_year, max_year], "counts": counts},
         config.CACHE_TIMEOUT_24_HOURS,
@@ -597,7 +602,7 @@ def _cached_year_baseline(min_year, max_year):
 def _cached_hero_stats():
     """Return the counts shown in the page heading."""
     cache_key = config.CACHE_KEY_HERO_STATS
-    stats = cache.get(cache_key)
+    stats = cache_get(cache_key)
     if stats is None:
         stats = {
             "album_count": models.Album.objects.count(),
@@ -605,7 +610,7 @@ def _cached_hero_stats():
             "list_count": models.MusicList.objects.count(),
             "publication_count": models.MusicPublication.objects.count(),
         }
-        cache.set(cache_key, stats, config.CACHE_TIMEOUT_24_HOURS)
+        cache_set(cache_key, stats, config.CACHE_TIMEOUT_24_HOURS)
     return stats
 
 
@@ -662,6 +667,12 @@ class AlbumHomePageView(MusicVisibleMixin, RobustPaginationMixin, ListView):
             or self.request.GET.get("partial") == "true"
         )
 
+    def _is_full_page(self):
+        """Neither a swap nor a Load More page: only this draws the year grid."""
+        return (
+            not self._is_partial_request() and self.request.GET.get("append") != "true"
+        )
+
     @cached_property
     def _descendants(self):
         """The genre descendant map, built once for the whole request.
@@ -671,6 +682,33 @@ class AlbumHomePageView(MusicVisibleMixin, RobustPaginationMixin, ListView):
         consumers between them would each walk the table.
         """
         return _genre_descendant_map()
+
+    def get(self, request, *args, **kwargs):
+        # Every cached value the page reads, in one shared-cache round trip.
+        # Here rather than in dispatch, so the gate 404s a hidden section first.
+        with batched_cache_reads(self._prefetch_cache_keys()):
+            return self.render_rankings(request, *args, **kwargs)
+
+    def render_rankings(self, request, *args, **kwargs):
+        """The page itself, inside the batch; landing pages add their filters."""
+        return super().get(request, *args, **kwargs)
+
+    def _prefetch_cache_keys(self):
+        """Every shared-cache key the page reads before it renders."""
+        keys = [
+            config.CACHE_KEY_YEAR_STATS,
+            config.CACHE_KEY_ARTIST_OPTIONS,
+            config.CACHE_KEY_GENRE_OPTIONS,
+            config.CACHE_KEY_HERO_STATS,
+        ]
+        if self._is_full_page():
+            keys.append(config.CACHE_KEY_YEAR_BASELINE)
+        if self.request.user.is_authenticated:
+            keys += [
+                template.format(user_id=self.request.user.id)
+                for template in config.PER_USER_CACHE_KEY_TEMPLATES
+            ]
+        return keys
 
     def get_template_names(self):
         """Serve the right fragment for HTMX, the full page otherwise."""
@@ -745,7 +783,7 @@ class AlbumHomePageView(MusicVisibleMixin, RobustPaginationMixin, ListView):
         # years stayed coloured. Sent only when it differs from the counts
         # above, which the grid falls back to, and only with the grid: an
         # HTMX swap or a Load More page renders none.
-        if not self._is_partial_request() and self.request.GET.get("append") != "true":
+        if self._is_full_page():
             baseline = _cached_year_baseline(min_year, max_year)
             if baseline != context["year_counts"]:
                 context["year_baseline_counts"] = baseline
@@ -892,7 +930,8 @@ class MusicLandingPageView(AlbumHomePageView):
     ``games.views.SeoRankingPageView`` does. A param the request names
     itself wins over the path's.
 
-    The injection happens in ``get()``, not ``setup()`` as games does it:
+    The injection happens in ``render_rankings()`` (called from ``get()``),
+    not ``setup()`` as games does it:
     ``setup()`` runs before ``dispatch()``, so resolving the page there
     would query the database for a request the section's gate is about to
     404.
@@ -902,14 +941,19 @@ class MusicLandingPageView(AlbumHomePageView):
         """Return ``{"params", "meta_description"}`` for this URL, or 404."""
         raise NotImplementedError
 
-    def get(self, request, *args, **kwargs):
+    def _prefetch_cache_keys(self):
+        # Each subclass names the landing list `get_page_seo` resolves the
+        # path against; none is an AttributeError, not a silent extra read
+        return [*super()._prefetch_cache_keys(), self.landing_cache_key]
+
+    def render_rankings(self, request, *args, **kwargs):
         self.seo = self.get_page_seo()
         params = request.GET.copy()
         for key, value in self.seo["params"].items():
             if key not in params:
                 params[key] = value
         request.GET = params
-        return super().get(request, *args, **kwargs)
+        return super().render_rankings(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -935,6 +979,8 @@ class MusicLandingPageView(AlbumHomePageView):
 class GenreLandingView(MusicLandingPageView):
     """A root genre's rankings at /music/genres/<slug>/."""
 
+    landing_cache_key = config.CACHE_KEY_LANDING_GENRES
+
     def get_page_seo(self):
         entry = landing_pages.resolve_genre_slug(self.kwargs["slug"])
         if entry is None:
@@ -952,6 +998,8 @@ class GenreLandingView(MusicLandingPageView):
 
 class DecadeLandingView(MusicLandingPageView):
     """A decade's rankings at /music/<decade>s/."""
+
+    landing_cache_key = config.CACHE_KEY_LANDING_DECADES
 
     def get_page_seo(self):
         decade = int(self.kwargs["decade"])
