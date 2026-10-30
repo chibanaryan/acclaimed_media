@@ -698,8 +698,7 @@ def import_albums(
     ):
         user_tracking_service.reconnect_tracking_records(id_to_album)
 
-    for user_id in orphaned_users:
-        invalidate_listen_caches(user_id)
+    invalidate_listen_caches(orphaned_users)
 
     albums_ranked, years_processed = update_year_decade_ranks(
         models.Album, "music_album", "year_released"

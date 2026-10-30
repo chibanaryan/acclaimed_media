@@ -199,8 +199,26 @@ class ReconnectTrackingRecordsTests(TestCase):
             user=self.user, album=None, wikidata_id="Q123"
         )
 
-        user_tracking_service.reconnect_tracking_records(self._id_map(self.album))
+        with self.captureOnCommitCallbacks(execute=True):
+            user_tracking_service.reconnect_tracking_records(self._id_map(self.album))
 
+        self.assertIsNone(cache.get(key))
+
+    def test_the_caches_wait_for_the_commit(self):
+        """An import calls this inside its transaction, and a read before the
+        commit would refill the cache from the old rows."""
+        key = config.CACHE_KEY_LISTENED_ALBUMS.format(user_id=self.user.id)
+        cache.set(key, [999], 300)
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=None, wikidata_id="Q123"
+        )
+
+        with self.captureOnCommitCallbacks() as callbacks:
+            user_tracking_service.reconnect_tracking_records(self._id_map(self.album))
+
+        self.assertEqual(cache.get(key), [999])
+        for callback in callbacks:
+            callback()
         self.assertIsNone(cache.get(key))
 
     def test_an_already_connected_row_is_harmless(self):
@@ -223,9 +241,10 @@ class ReconnectTrackingRecordsTests(TestCase):
         key = config.CACHE_KEY_LISTENED_ALBUMS.format(user_id=self.user.id)
         cache.set(key, [self.album.id], 300)
 
-        stats = user_tracking_service.reconnect_tracking_records(
-            self._id_map(self.album)
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            stats = user_tracking_service.reconnect_tracking_records(
+                self._id_map(self.album)
+            )
 
         self.assertEqual(stats["listened_reconnected"], 0)
         self.assertEqual(stats["users_affected"], 0)

@@ -1155,10 +1155,7 @@ class ToggleListenedAlbumView(MusicVisibleMixin, LoginRequiredMixin, View):
                 models.ListenedAlbum.objects.filter(**key).delete()
                 models.WantToListenAlbum.objects.filter(**key).delete()
 
-        # After the commit, not inside it: a rolled-back transaction must not
-        # leave the cache reflecting a write that did not happen.
-        user_id = request.user.id
-        transaction.on_commit(lambda: caching.invalidate_listen_caches(user_id))
+        caching.invalidate_listen_caches([request.user.id])
 
         response = render(
             request,

@@ -50,11 +50,7 @@ def reconnect_tracking_records(id_to_album: Dict[str, models.Album]) -> Dict:
         stats[f"{label}_merged"] = result["merged"]
         affected_users |= result["users"]
 
-    # Outside the transaction: a cache dropped for a write that then rolled
-    # back would only be refilled from the pre-write state anyway, but doing
-    # it after means the next read cannot repopulate from a doomed row.
-    for user_id in affected_users:
-        caching.invalidate_listen_caches(user_id)
+    caching.invalidate_listen_caches(affected_users)
     stats["users_affected"] = len(affected_users)
 
     return stats

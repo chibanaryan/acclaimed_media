@@ -10,6 +10,7 @@ from datetime import date
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 from django.conf import settings
 from django.core.management import call_command
@@ -1294,16 +1295,70 @@ class ImportReconnectsTrackingTests(TestCase):
         self.assertEqual(models.ListenedAlbum.objects.count(), 0)
 
     def test_dropping_an_album_drops_its_trackers_caches(self):
+        key, _ = self._tracked_album_key()
+
+        with self.captureOnCommitCallbacks(execute=True):
+            import_handler.import_albums(StringIO(ALBUMS_TSV.split("\n", 1)[1]))
+
+        self.assertIsNone(cache.get(key))
+
+    def test_a_trackers_caches_wait_for_the_imports_commit(self):
+        """A read before the commit would refill them from the old rows."""
+        key, album = self._tracked_album_key()
+
+        with self.captureOnCommitCallbacks() as callbacks:
+            import_handler.import_albums(StringIO(ALBUMS_TSV.split("\n", 1)[1]))
+
+        self.assertEqual(cache.get(key), [album.id])
+        for callback in callbacks:
+            callback()
+        self.assertIsNone(cache.get(key))
+
+    def _tracked_album_key(self):
+        """A cached set for a tracked album the next release drops."""
         album = models.Album.objects.get(rank=1)
         models.ListenedAlbum.objects.create(
             user=self.user, album=album, wikidata_id=album.wikidata_id
         )
         key = config.CACHE_KEY_LISTENED_ALBUMS.format(user_id=self.user.id)
         cache.set(key, [album.id], 300)
+        return key, album
 
-        import_handler.import_albums(StringIO(ALBUMS_TSV.split("\n", 1)[1]))
-
+    def test_a_whole_release_drops_a_trackers_caches(self):
+        key, _ = self._tracked_album_key()
+        with self.captureOnCommitCallbacks(execute=True):
+            import_release(
+                albums_file=(
+                    "1\tDéjà Vu\t113,1\t1970\tQ1136782\n"
+                    "2\tRust Never Sleeps\t56,1\t1979\tQ1140313,Q999999\n"
+                ),
+                positions_file="0:1\t2:9\n0:3\n",
+            )
         self.assertIsNone(cache.get(key))
+
+    def test_a_failed_release_leaves_a_trackers_caches(self):
+        """Its rows rolled back, so what the cache holds is still true."""
+        key, album = self._tracked_album_key()
+        with mock.patch.object(
+            import_handler, "import_listmemberships", side_effect=ValueError
+        ):
+            with self.captureOnCommitCallbacks(execute=True):
+                with self.assertRaises(ValueError):
+                    import_release(albums_file=ALBUMS_TSV.split("\n", 1)[1])
+        self.assertEqual(cache.get(key), [album.id])
+
+    def test_a_listen_cache_error_cannot_fail_the_albums_step(self):
+        """Their rows have committed. `import_batch`'s `invalidate_music_caches`
+        after the commit can still raise, which is why this stops at the step."""
+        self._tracked_album_key()
+        with mock.patch("music.services.caching.cache") as broken:
+            broken.delete_many.side_effect = ConnectionError
+            with self.captureOnCommitCallbacks(execute=True):
+                success, _ = import_handler.import_albums(
+                    StringIO(ALBUMS_TSV.split("\n", 1)[1])
+                )
+        self.assertTrue(success)
+        broken.delete_many.assert_called()
 
     def test_keeping_an_album_leaves_its_trackers_caches_alone(self):
         # The cached sets hold album pks, which a kept album does not change.
@@ -1314,6 +1369,7 @@ class ImportReconnectsTrackingTests(TestCase):
         key = config.CACHE_KEY_LISTENED_ALBUMS.format(user_id=self.user.id)
         cache.set(key, [album.id], 300)
 
-        import_handler.import_albums(StringIO(ALBUMS_TSV))
+        with self.captureOnCommitCallbacks(execute=True):
+            import_handler.import_albums(StringIO(ALBUMS_TSV))
 
         self.assertEqual(cache.get(key), [album.id])

@@ -112,7 +112,7 @@ class Command(BaseCommand):
                     defaults={"album": album},
                 )
 
-        transaction.on_commit(lambda: caching.invalidate_listen_caches(user.id))
+        caching.invalidate_listen_caches([user.id])
         self.stdout.write(
             self.style.SUCCESS(
                 f"Marked {len(to_add)} album(s) listened for {user.username}; "

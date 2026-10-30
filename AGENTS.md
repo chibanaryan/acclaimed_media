@@ -568,9 +568,8 @@ crowded that row. Four things it depends on:
 
 Per-user cache keys cannot live in `CACHE_KEYS`, which is a flat tuple an
 import iterates. They are templates in `PER_USER_CACHE_KEY_TEMPLATES`, dropped
-by `caching.invalidate_listen_caches(user_id)` at the only three moments they
-can go stale: a toggle, the reconnection pass after an import, and the bulk
-command below.
+by `caching.invalidate_listen_caches(user_ids)` at the only three moments they
+can go stale: a toggle, an import, and the bulk command below.
 
 **The Account modal shows a reader's albums** beside their games, the current
 site's block first, on any host (`music.services.listening_stats`). The block
@@ -1103,8 +1102,11 @@ normalising a secondary id to the primary and merging two rows that now
 point at one album, earliest kept. A row that is already right is skipped,
 so its user's caches are not dropped for nothing; the users whose rows a
 removal orphaned have theirs dropped instead, since their cached sets name
-the deleted pks. The pass is behind a one-query existence check, so an
-untracked database pays nothing.
+the deleted pks. Both wait for the import's commit, as every
+`invalidate_listen_caches` does: dropped inside the transaction, a page load
+before it commits would refill them from the old rows. A read already under
+way at the commit can still do that, for the set's five minutes. The pass is
+behind a one-query existence check, so an untracked database pays nothing.
 
 **An import does not fetch metadata.** A kept album needs none - its rows,
 genres and covers never left it - so after a release that mostly repeats the

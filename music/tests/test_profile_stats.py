@@ -196,7 +196,8 @@ class ListenerDistributionCacheTests(TestCase):
         models.ListenedAlbum.objects.create(
             user=self.user, album=None, wikidata_id=returning.wikidata_id
         )
-        reconnect_tracking_records({returning.wikidata_id: returning})
+        with self.captureOnCommitCallbacks(execute=True):
+            reconnect_tracking_records({returning.wikidata_id: returning})
         self.assertFalse(self._reads_stale())
 
     def test_an_import_drops_it(self):

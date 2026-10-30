@@ -2,6 +2,11 @@
 
 ## 2026-10-30
 
+- **An import drops readers' tracked-album caches after it commits**, not
+  during it, which narrows the window where a page load refills them from
+  the old rows and a re-adopted album reads as untracked for five minutes.
+  A failed drop of these caches is now logged rather than raised, on a
+  toggle too, since the write has committed by then
 - **The Account modal shows a reader's albums beside their games**, the
   current site's block first, with a rank among listeners. It is absent
   while music is hidden from them. The rank logic moved to
