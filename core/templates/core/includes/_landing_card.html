@@ -15,7 +15,7 @@
             {% for item in card.top %}
             <li class="{{ cover_class }} rounded overflow-hidden bg-base-300">
                 {% if item.image %}
-                <img src="{{ item.image }}" alt="#{{ forloop.counter }} {{ item.name }}" title="#{{ forloop.counter }} {{ item.name }}" decoding="async" class="w-full h-full object-cover">
+                <img src="{{ item.image }}"{% if item.image_2x %} srcset="{{ item.image }} 1x, {{ item.image_2x }} 2x"{% endif %} alt="#{{ forloop.counter }} {{ item.name }}" title="#{{ forloop.counter }} {{ item.name }}" decoding="async" class="w-full h-full object-cover">
                 {% else %}
                 <span class="sr-only">#{{ forloop.counter }} {{ item.name }}</span>
                 {% endif %}

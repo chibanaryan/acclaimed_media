@@ -280,6 +280,7 @@ class RealVocabularyTests(SimpleTestCase):
         "Math Rock",
         "Mbalax",
         "Memphis Blues",
+        "Midwest Emo",
         "Minimal",
         "Minimalism",
         "Minneapolis Sound",
@@ -884,6 +885,7 @@ class RealVocabularyTests(SimpleTestCase):
         "merseybeat",
         "metal",
         "microhouse",
+        "midwest emo",
         "minimal synth",
         "minimalism",
         "minneapolis sound",
@@ -1050,6 +1052,13 @@ class RealVocabularyTests(SimpleTestCase):
         )
         self.assertIsNone(gn.canonicalize("tejano"))
         self.assertTrue(gn.is_classified("tejano"))
+
+    def test_midwest_emo_files_with_emo(self):
+        """Too few albums for a leaf of its own, which would be pruned."""
+        expected = gn.Canonical("Post-Hardcore", ("Punk",))
+        for label in ("Midwest Emo", "midwest emo", "emo"):
+            with self.subTest(label=label):
+                self.assertEqual(gn.canonicalize(label), expected)
 
     def test_the_styles_the_old_fallback_misfiled(self):
         """Each of these once took its root from the album's Discogs genres."""

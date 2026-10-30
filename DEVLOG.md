@@ -15,6 +15,9 @@
 - **The old default `og:image` is gone.** Pages without artwork of their own
   now have none until new art is drawn; game and album pages keep their
   covers, and a game with no cover no longer sends `None`
+- **Sharper game covers on the landing page**: a 2x `srcset`, as the rows
+  have, for a cover shown at ~84px. Midwest Emo is classified, as an alias
+  of Post-Hardcore: one album, too few for a leaf of its own
 
 - **Music's rankings pages batch their cache reads too**, as games' did
   the day before: `/music/` and its genre and decade landing pages make

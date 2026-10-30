@@ -23,7 +23,7 @@ from django.test import (
 from core import sites
 from core.middleware import SiteHostMiddleware
 from core.tests.utils import clear_all_caches
-from games.models import Game, List, Publication
+from games.models import Game, IGDBGameData, List, Publication
 from music.models import Album, MusicList, MusicPublication
 
 ROOT_HOST = "acclaimedmedia.org"
@@ -433,6 +433,21 @@ class LandingPageTests(TestCase):
             [item["name"] for item in card["top"]][:2], ["Game 1", "Game 2"]
         )
         self.assertEqual(len(card["top"]), 5)
+
+    def test_game_covers_are_sharp_on_a_retina_screen(self):
+        game = Game.objects.get(name="Game 1")
+        game.primary_igdb_game_data = IGDBGameData.objects.create(
+            game=game, igdb_id=1, artwork_id="art.jpg", is_primary=True
+        )
+        game.save(update_fields=["primary_igdb_game_data"])
+
+        image = "https://images.igdb.com/igdb/image/upload"
+        self.assertContains(
+            self.get(),
+            f'src="{image}/t_cover_small/art.jpg" '
+            f'srcset="{image}/t_cover_small/art.jpg 1x, '
+            f'{image}/t_cover_small_2x/art.jpg 2x"',
+        )
 
     @override_settings(MUSIC_ENABLED=True)
     def test_with_music_on_the_page_offers_both(self):

@@ -107,7 +107,11 @@ class LandingView(AnonymousResponseCacheMixin, TemplateView):
             "count": Game.objects.count(),
             "list_count": List.objects.count(),
             "top": [
-                {"name": game.name, "image": game.thumbnail}
+                {
+                    "name": game.name,
+                    "image": game.thumbnail,
+                    "image_2x": game.thumbnail_2x,
+                }
                 for game in Game.objects.select_related(
                     "primary_igdb_game_data"
                 ).order_by("rank")[:LANDING_TOP_COUNT]

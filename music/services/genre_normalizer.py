@@ -275,7 +275,7 @@ GENRE_VOCABULARY: Dict[str, Dict[str, Tuple[str, ...]]] = {
     "Punk": {
         "Post-Punk": ("post-punk revival",),
         "Hardcore Punk": ("hardcore",),
-        "Post-Hardcore": ("emo", "emocore"),
+        "Post-Hardcore": ("emo", "emocore", "midwest emo"),
         "Pop Punk": (),
         "No Wave": (),
         "Proto-Punk": (),
