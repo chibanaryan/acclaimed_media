@@ -54,6 +54,7 @@ CACHE_KEY_TOTAL_ALBUM_COUNT = f"{CACHE_VERSION}:total_album_count"
 CACHE_KEY_LANDING_GENRES = f"{CACHE_VERSION}:music_landing_genres"
 CACHE_KEY_LANDING_DECADES = f"{CACHE_VERSION}:music_landing_decades"
 CACHE_KEY_YEAR_BASELINE = f"{CACHE_VERSION}:music_year_baseline"
+CACHE_KEY_LISTENER_DISTRIBUTION = f"{CACHE_VERSION}:listener_distribution"
 
 CACHE_KEYS = (
     CACHE_KEY_YEAR_STATS,
@@ -64,6 +65,7 @@ CACHE_KEYS = (
     CACHE_KEY_LANDING_GENRES,
     CACHE_KEY_LANDING_DECADES,
     CACHE_KEY_YEAR_BASELINE,
+    CACHE_KEY_LISTENER_DISTRIBUTION,
 )
 
 # Album detail is the catch-all `/<slug>/` at the root of the music host, so
@@ -103,9 +105,10 @@ RESERVED_ALBUM_SLUG_PATTERN = r"^\d{3}0s$"
 # Per-user tracking id sets. These are *templates*, not keys: there is one key
 # per user, so they cannot go in CACHE_KEYS and an import cannot blanket
 # invalidate them. `music.services.caching.invalidate_listen_caches(user_id)`
-# drops them at the only two moments they can go stale - a toggle, and the
-# reconnection pass after an import. A new per-user cached value belongs in
-# this tuple for the same reason a new global one belongs in CACHE_KEYS.
+# drops them at the only three moments they can go stale - a toggle, the
+# reconnection pass after an import, and `mark_albums_listened`. A new per-user
+# cached value belongs in this tuple for the same reason a new global one
+# belongs in CACHE_KEYS.
 CACHE_KEY_LISTENED_ALBUMS = f"{CACHE_VERSION}:listened_albums_{{user_id}}"
 CACHE_KEY_WANT_TO_LISTEN_ALBUMS = f"{CACHE_VERSION}:want_to_listen_albums_{{user_id}}"
 CACHE_KEY_OWNED_ALBUMS = f"{CACHE_VERSION}:owned_albums_{{user_id}}"

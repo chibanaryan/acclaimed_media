@@ -24,15 +24,20 @@ def invalidate_music_caches() -> None:
 
 
 def invalidate_listen_caches(user_id: int) -> None:
-    """Drop one user's cached tracking id sets.
+    """Drop one user's cached tracking id sets, and the listener distribution.
 
     Separate from `invalidate_music_caches` because these keys are per-user:
-    there is no enumerable set of them, so they are dropped by the two things
-    that can change them rather than by a blanket sweep.
+    there is no enumerable set of them, so they are dropped by the three things
+    that can change them rather than by a blanket sweep. The distribution is
+    one global key, but those same three are what normally change it; a row
+    edited in the admin or a deleted user waits out its hour, as games' does.
     """
     cache.delete_many(
         [
-            template.format(user_id=user_id)
-            for template in config.PER_USER_CACHE_KEY_TEMPLATES
+            config.CACHE_KEY_LISTENER_DISTRIBUTION,
+            *(
+                template.format(user_id=user_id)
+                for template in config.PER_USER_CACHE_KEY_TEMPLATES
+            ),
         ]
     )

@@ -2,6 +2,11 @@
 
 ## 2026-10-30
 
+- **The Account modal shows a reader's albums beside their games**, the
+  current site's block first, with a rank among listeners. It is absent
+  while music is hidden from them. The rank logic moved to
+  `core/services/percentile.py`, shared with games, and a tie now shares the
+  better rank in both sections: tied players were each told the worst
 - **Three sites, one app: a landing page at `acclaimedmedia.org`, games at
   `games.`, music at `music.`.** `core/sites.py` and `SiteHostMiddleware`
   pick the URLconf by host. Music moves from `/music/` to the root of its

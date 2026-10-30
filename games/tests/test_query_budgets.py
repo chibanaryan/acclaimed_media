@@ -154,6 +154,31 @@ class LandingPageQueryBudgetTests(QueryBudgetTestCase):
 
 
 @override_settings(MUSIC_ENABLED=True)
+class AccountModalQueryBudgetTests(QueryBudgetTestCase):
+    def test_more_tracked_albums_cost_nothing_more(self):
+        from core.models import User
+        from music.models import Album, ListenedAlbum
+
+        reader = User.objects.create_user(username="reader", password="pw")
+        other = User.objects.create_user(username="other", password="pw")
+        self.client.login(username="reader", password="pw")
+
+        def add(start=[0]):
+            for n in range(start[0], start[0] + 3):
+                album = Album.objects.create(
+                    name=f"A {n}", rank=n + 1, slug=f"a-{n}", wikidata_id=f"Q{n}"
+                )
+                for user in (reader, other):
+                    ListenedAlbum.objects.create(
+                        user=user, album=album, wikidata_id=album.wikidata_id
+                    )
+            start[0] += 3
+
+        add()
+        self.assertDoesNotGrow("/auth/modal/profile/", add)
+
+
+@override_settings(MUSIC_ENABLED=True)
 @music_site
 class MusicListsQueryBudgetTests(QueryBudgetTestCase):
     def test_more_lists_cost_nothing_more(self):

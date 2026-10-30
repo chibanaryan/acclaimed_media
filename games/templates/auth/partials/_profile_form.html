@@ -1,5 +1,4 @@
 {# Account/Profile Form - loaded via HTMX into auth modal #}
-{% load static %}
 <div>
     <h3 class="text-lg font-bold mb-6">Account</h3>
 
@@ -36,46 +35,13 @@
                    class="input input-bordered input-sm w-full input-disabled bg-base-200">
         </div>
 
-        {# Played Games Stats #}
-        <div class="flex flex-col gap-1 mb-4">
-            <div class="flex items-center gap-2 text-base-content/70">
-                <span class="star-idle flex items-center justify-center w-5 h-5">
-                    <img src="{% static 'games/images/mario-star.png' %}"
-                         srcset="{% static 'games/images/mario-star.png' %} 1x, {% static 'games/images/mario-star@2x.png' %} 2x"
-                         alt="Played" width="20" height="20"
-                         class="w-5 h-5 drop-shadow-[0_0_4px_rgba(250,204,21,0.9)]">
-                </span>
-                <span class="text-sm">
-                    <span class="font-semibold text-base-content">{{ played_count }}</span>
-                    of {{ total_games }} games played
-                </span>
-            </div>
-            <div class="pl-7 text-xs text-base-content/70">
-                {{ percentile_message }}
-            </div>
-        </div>
-
-        {# Want to Play Games Stats #}
-        {% if want_to_play_count %}
-        <div class="flex flex-col gap-1 mb-4">
-            <div class="flex items-center gap-2 text-base-content/70">
-                <span class="mdi mdi-star-plus-outline text-xl text-warning" aria-hidden="true"></span>
-                <span class="text-sm">
-                    <span class="font-semibold text-base-content">{{ want_to_play_count }}</span>
-                    game{{ want_to_play_count|pluralize }} on your backlog
-                </span>
-            </div>
-            {% if backlog_playtime.main or backlog_playtime.completionist %}
-            <div class="pl-7 text-xs text-base-content/70">
-                {% if backlog_playtime.main %}
-                ~{{ backlog_playtime.main|floatformat:0 }}h main story{% if backlog_playtime.completionist %}, {{ backlog_playtime.completionist|floatformat:0 }}h 100%{% endif %}
-                {% elif backlog_playtime.completionist %}
-                ~{{ backlog_playtime.completionist|floatformat:0 }}h 100%
-                {% endif %}
-                <span class="text-base-content/40">(HLTB estimates)</span>
-            </div>
-            {% endif %}
-        </div>
+        {# Stats, the current site's first. music_stats is None for anyone the section is hidden from. #}
+        {% if music_stats and site_key == 'music' %}
+        {% include 'music/includes/_profile_stats.html' %}
+        {% endif %}
+        {% include 'auth/partials/_profile_games_stats.html' %}
+        {% if music_stats and site_key != 'music' %}
+        {% include 'music/includes/_profile_stats.html' %}
         {% endif %}
 
         {# Email Subscription #}

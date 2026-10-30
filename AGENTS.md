@@ -572,6 +572,17 @@ by `caching.invalidate_listen_caches(user_id)` at the only three moments they
 can go stale: a toggle, the reconnection pass after an import, and the bulk
 command below.
 
+**The Account modal shows a reader's albums** beside their games, the current
+site's block first, on any host (`music.services.listening_stats`). The block
+is absent for anyone `music_visible_to` refuses, so the shared route cannot
+reveal the hidden section. Its rank counts Have and Heard together, and so
+says "tracked" rather than "heard", which would be false of a reader who only
+marks what they own. The rank logic is `core.services.percentile`, shared with
+games. `CACHE_KEY_LISTENER_DISTRIBUTION` is one global key, in `CACHE_KEYS` for
+an import, and `invalidate_listen_caches` drops it too, since the same three
+moments normally change it. An admin edit or a deleted user waits out its
+one-hour TTL, as games' distribution does.
+
 **Marking a collection in bulk**, for importing listens matched elsewhere
 (a RateYourMusic export, say) without several hundred web requests:
 

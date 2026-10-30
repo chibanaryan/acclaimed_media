@@ -79,6 +79,19 @@ class PercentileServiceTests(TestCase):
         self.assertEqual(result["percentile"], 40)
         self.assertEqual(result["total_users"], 10)
 
+    def test_a_tie_shares_the_better_rank(self):
+        """Tied players each got the worst rank in the tie until 2026-10-30."""
+        game = Game.objects.create(name="Test", rank=1, igdb_id=1)
+        for i in range(3):
+            user = User.objects.create_user(
+                username=f"user{i}", email=f"user{i}@example.com"
+            )
+            PlayedGame.objects.create(user=user, game=game, igdb_id=game.igdb_id)
+
+        self.assertEqual(
+            calculate_percentile(1)["message"], "You're #1 of 3 players!"
+        )
+
     def test_top_one_percent_message(self):
         """Users in top 1% get special message."""
         game = Game.objects.create(name="Test", rank=1, igdb_id=1)

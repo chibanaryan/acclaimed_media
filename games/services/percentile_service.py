@@ -8,7 +8,14 @@ from django.core.cache import cache
 from django.db.models import Count, Q
 
 from core.models import User
+from core.services import percentile
 from games import config
+
+RANK_WORDING = percentile.RankWording(
+    item="games",
+    people="players",
+    more_than="You've played more games than {percent}% of players",
+)
 
 
 def get_played_games_distribution():
@@ -48,62 +55,8 @@ def calculate_percentile(user_played_count: int) -> dict:
         user_played_count: Number of non-orphaned games the user has played
 
     Returns:
-        dict with:
-        - percentile: int (0-100) or None if not applicable
-        - total_users: int - number of active users in comparison
-        - message: str - formatted display message
+        The dict `core.services.percentile.calculate_percentile` describes.
     """
-    if user_played_count == 0:
-        return {
-            "percentile": None,
-            "total_users": 0,
-            "message": "Start tracking games to see your rank!",
-        }
-
-    distribution = get_played_games_distribution()
-    total_users = len(distribution)
-
-    if total_users == 0:
-        return {
-            "percentile": None,
-            "total_users": 0,
-            "message": "Start tracking games to see your rank!",
-        }
-
-    if total_users == 1:
-        return {
-            "percentile": 100,
-            "total_users": 1,
-            "message": "You're the first to start tracking games!",
-        }
-
-    # Count users with FEWER played games and calculate rank
-    users_with_fewer = sum(1 for _, count in distribution if count < user_played_count)
-    rank = total_users - users_with_fewer  # 1 = best, total_users = worst
-
-    # For small populations, show rank instead of percentile
-    if total_users < 10:
-        if rank == 1:
-            message = f"You're #1 of {total_users} players!"
-        else:
-            message = f"You're #{rank} of {total_users} players"
-        return {
-            "percentile": None,
-            "total_users": total_users,
-            "message": message,
-        }
-
-    # Calculate percentile for larger populations
-    percentile = round((users_with_fewer / total_users) * 100)
-
-    # Format message
-    if percentile >= 99:
-        message = "You're in the top 1% of players!"
-    else:
-        message = f"You've played more games than {percentile}% of players"
-
-    return {
-        "percentile": percentile,
-        "total_users": total_users,
-        "message": message,
-    }
+    return percentile.calculate_percentile(
+        user_played_count, get_played_games_distribution, RANK_WORDING
+    )

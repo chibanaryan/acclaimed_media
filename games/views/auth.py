@@ -20,6 +20,8 @@ from core.models import User
 from games import models
 from games.services import playtime
 from games.services.percentile_service import calculate_percentile
+from music.access import music_visible_to
+from music.services.listening_stats import listening_stats
 
 logger = logging.getLogger(__name__)
 
@@ -339,6 +341,23 @@ class EmailConfirmationView(TemplateView):
         return self.render_to_response({"success": False})
 
 
+def _profile_stats(user):
+    """The Account modal's stats, games' and, if ``user`` may see it, music's."""
+    # Only count non-orphaned games
+    played_count = user.played_games.filter(game__isnull=False).count()
+    want_to_play_count = user.want_to_play_games.filter(game__isnull=False).count()
+    return {
+        "profile": user,
+        "played_count": played_count,
+        "want_to_play_count": want_to_play_count,
+        "backlog_playtime": playtime.backlog_hours(user, want_to_play_count),
+        "total_games": models.Game.objects.count(),
+        "percentile_message": calculate_percentile(played_count)["message"],
+        # None hides the block, and the section's existence with it.
+        "music_stats": listening_stats(user) if music_visible_to(user) else None,
+    }
+
+
 @method_decorator(never_cache, name="get")
 class AuthModalProfileView(View):
     """Handle profile editing form in the auth modal (HTMX partial)."""
@@ -352,33 +371,10 @@ class AuthModalProfileView(View):
             response["HX-Redirect"] = reverse("auth-modal-login")
             return response
 
-        # User fields are now directly on the user model
-        user = request.user
-
-        # Get played games stats (only count non-orphaned games)
-        played_count = user.played_games.filter(game__isnull=False).count()
-        want_to_play_count = user.want_to_play_games.filter(game__isnull=False).count()
-        total_games = models.Game.objects.count()
-
-        # Calculate estimated playtime for want-to-play backlog
-        backlog_playtime = playtime.backlog_hours(user, want_to_play_count)
-
-        # Calculate percentile ranking
-        percentile_data = calculate_percentile(played_count)
-
         response = TemplateResponse(
             request,
             self.template_name,
-            {
-                "profile": user,
-                "form": {},
-                "played_count": played_count,
-                "want_to_play_count": want_to_play_count,
-                "backlog_playtime": backlog_playtime,
-                "total_games": total_games,
-                "percentile": percentile_data["percentile"],
-                "percentile_message": percentile_data["message"],
-            },
+            {"form": {}, **_profile_stats(request.user)},
         )
         response["HX-Push-Url"] = "false"
         return response
@@ -413,28 +409,12 @@ class AuthModalProfileView(View):
 
             if username_error:
                 # Re-render with full context including stats
-                played_count = user.played_games.filter(game__isnull=False).count()
-                want_to_play_count = user.want_to_play_games.filter(
-                    game__isnull=False
-                ).count()
-                total_games = models.Game.objects.count()
-                percentile_data = calculate_percentile(played_count)
-
-                # Calculate backlog playtime for error re-render
-                backlog_playtime = playtime.backlog_hours(user, want_to_play_count)
-
                 return render(
                     request,
-                    "auth/partials/_profile_form.html",
+                    self.template_name,
                     {
-                        "profile": user,
                         "form": {"username": {"errors": [username_error]}},
-                        "played_count": played_count,
-                        "want_to_play_count": want_to_play_count,
-                        "backlog_playtime": backlog_playtime,
-                        "total_games": total_games,
-                        "percentile": percentile_data["percentile"],
-                        "percentile_message": percentile_data["message"],
+                        **_profile_stats(user),
                     },
                 )
             # Free the name from any abandoned, never-verified account first.

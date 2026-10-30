@@ -19,7 +19,7 @@ from core.tests.utils import clear_all_caches
 from games.models import SiteMetadata
 from music import config, models, views
 from music.api import views as music_api_views
-from music.services import landing_pages
+from music.services import landing_pages, listening_stats
 from music.views import _filter_title, group_list_appearances
 from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 from core.sites import GAMES, site_reverse
@@ -1463,6 +1463,8 @@ class MusicCacheInvalidationTests(MusicDataMixin, TestCase):
             reverse("music:album-detail", kwargs={"slug": self.revolver.slug})
         )
         self.client.get(reverse("music:browse"))
+        # The Account modal's, which no page here renders.
+        listening_stats.get_listener_distribution()
         populated = [key for key in config.CACHE_KEYS if cache.get(key) is not None]
         self.assertEqual(sorted(populated), sorted(config.CACHE_KEYS))
 

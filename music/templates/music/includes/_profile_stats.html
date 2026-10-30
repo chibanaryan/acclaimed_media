@@ -1,0 +1,37 @@
+{# The Account modal's music stats. Props: music_stats, from music.services.listening_stats. The modal only includes this for someone the section is visible to. #}
+{% load static %}
+<h4 class="text-sm font-semibold mb-2">Music {% include 'music/includes/_beta_badge.html' with size='badge-xs' %}</h4>
+
+{# Have and Heard albums. The row's words say what it counts, so the mark is decorative; a reader who only owns albums gets Have's mark rather than Heard's. #}
+<div class="flex flex-col gap-1 mb-4">
+    <div class="flex items-center gap-2 text-base-content/70">
+        <img src="{% if music_stats.owned and not music_stats.heard %}{% static 'music/images/record-sleeve.svg' %}{% else %}{% static 'music/images/gold-record.svg' %}{% endif %}"
+             alt="" width="20" height="20"
+             class="w-5 h-5">
+        <span class="text-sm">
+            <span class="font-semibold text-base-content">{{ music_stats.collected }}</span>
+            of {{ music_stats.total_albums }} albums heard or owned
+        </span>
+    </div>
+    {% if music_stats.heard and music_stats.owned %}
+    <div class="pl-7 text-xs text-base-content/70">
+        {{ music_stats.heard }} heard, {{ music_stats.owned }} have
+    </div>
+    {% endif %}
+    <div class="pl-7 text-xs text-base-content/70">
+        {{ music_stats.rank_message }}
+    </div>
+</div>
+
+{# Want to Listen albums #}
+{% if music_stats.want %}
+<div class="flex flex-col gap-1 mb-4">
+    <div class="flex items-center gap-2 text-base-content/70">
+        <span class="mdi mdi-record-plus text-xl text-warning" aria-hidden="true"></span>
+        <span class="text-sm">
+            <span class="font-semibold text-base-content">{{ music_stats.want }}</span>
+            album{{ music_stats.want|pluralize }} on your want list
+        </span>
+    </div>
+</div>
+{% endif %}
