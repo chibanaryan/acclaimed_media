@@ -741,8 +741,9 @@ taken. A test fails if a route is added without reserving its segment.
 
 **Music landing pages** are games' `/games/<genre>/` and `/games/<decade>s/`
 for albums: `MusicLandingPageView` subclasses `AlbumHomePageView` and injects
-the path's filters into `request.GET` - in `get()`, not `setup()` as games
-does, so the gate 404s a hidden-section request before anything is queried.
+the path's filters into `request.GET` - in `render_rankings()`, not `setup()`
+as games does, so the gate 404s a hidden-section request before anything is
+queried and the cache batch covers the injection.
 Root genres with a directly tagged album and at least `MIN_GENRE_ALBUMS`
 across their subtree qualify, and decades with `MIN_DECADE_ALBUMS`; the
 lists are cached under `CACHE_KEYS`. They are self-canonical, carry an
@@ -1528,7 +1529,15 @@ It reports and blocks nothing; enforcing it means moving the dict to
 - `style-src` has `'unsafe-inline'` and no nonce: a nonce would disable it,
   and `style=""` attributes are everywhere.
 - Reports go to Sentry's security endpoint, built from the DSN
-  (`core.csp.sentry_report_uri`). Under test there is none.
+  (`core.csp.sentry_report_uri`). Under test and on a developer's machine
+  there is none (`SENTRY_ENABLED`).
+- A `meta-webindexer` report naming an `acclaimedvideogames.com` host does
+  not count against "quiet". Meta's crawler re-renders pages it stored before
+  the domain move (from 2026-10-30): their assets 301 to
+  `acclaimedmedia.org`, which the stored page's `'self'` does not cover, and
+  the report names the old URL. The policy is stored with the page, so no
+  change to ours reaches it. No template or asset references the old host,
+  though some posts link to it. A real browser's report still counts.
 
 `core/tests/test_csp.py` pins the nonces and the handler rule. When adding
 an inline script, give it the nonce; when adding a click behaviour, use a
@@ -1699,8 +1708,9 @@ Environment variables are managed via django-environ (`.env` file):
   local dev falls back to LocMem whatever this says, and tests set
   `locmemcache://`. See the Caching section
 - `SENTRY_ENVIRONMENT` - Sentry's environment tag. Defaults to `production`
-  when `DYNO` is set (any Heroku dyno) and `development` everywhere else, so a
-  local shell script's traceback is not filed as a production issue
+  when `DYNO` is set (any Heroku dyno) and `development` everywhere else.
+  `development` sends nothing, neither errors nor CSP reports, even with
+  `SENTRY_DSN` in the local `.env`; set any other value to opt a machine in
 
 ### Configuration Files
 

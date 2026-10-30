@@ -15,7 +15,7 @@ def weekly_job_monitor(slug, *, enabled, max_runtime):
     that died or overran ``max_runtime`` minutes, or one that raised -
     none of which anything reported before. A manual run (no ``--weekly``)
     does not check in, so it cannot stand in for a missed Sunday. The
-    monitor is created in Sentry by the first check-in; without a DSN
+    monitor is created in Sentry by the first check-in; with Sentry off
     (locally, under test) the check-ins go nowhere.
     """
     if not enabled:

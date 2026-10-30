@@ -8,6 +8,13 @@ and the detail pages exist; nothing else depends on it.
 from games.models import Developer, Game, Platform, Series, WikipediaGenre
 from music.models import Album, Artist, MusicGenre
 
+# Not WikipediaGenre: migrations seed the genre tree, so it is never empty
+if any(
+    model.objects.exists()
+    for model in (Album, Artist, Developer, Game, Platform, Series)
+):
+    raise SystemExit("smoke_seed.py is for an empty database; this one has data.")
+
 action = WikipediaGenre.objects.create(name="Smoke Action", slug="smoke-action")
 shooter = WikipediaGenre.objects.create(
     name="Smoke Shooter", slug="smoke-shooter", parent=action, level=1

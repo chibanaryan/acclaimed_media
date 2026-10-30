@@ -9,7 +9,7 @@ import sentry_sdk
 from sentry_sdk.integrations.django import DjangoIntegration
 
 from core.cache_config import build_caches, release_cache_prefix
-from core.csp import handler_hash, sentry_report_uri
+from core.csp import handler_hash, sentry_enabled, sentry_report_uri
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 env = environ.Env(DEBUG=(bool, False))
@@ -26,14 +26,12 @@ RUNNING_DEVSERVER = "runserver" in sys.argv
 
 SENTRY_DSN = env("SENTRY_DSN", default=None)
 # Heroku sets DYNO on every dyno; anywhere else is a developer's machine.
-# Without this the SDK defaults to "production", so a local shell script's
-# traceback was filed as a production issue.
-SENTRY_ENVIRONMENT = env(
-    "SENTRY_ENVIRONMENT",
-    default="production" if "DYNO" in os.environ else "development",
+# A blank value counts as unset: it must not turn reporting on from a laptop.
+SENTRY_ENVIRONMENT = env("SENTRY_ENVIRONMENT", default="") or (
+    "production" if "DYNO" in os.environ else "development"
 )
-# Don't initialize Sentry during test runs to avoid capturing test errors
-if SENTRY_DSN and not TEST_MODE:
+SENTRY_ENABLED = sentry_enabled(SENTRY_DSN, SENTRY_ENVIRONMENT, test_mode=TEST_MODE)
+if SENTRY_ENABLED:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         environment=SENTRY_ENVIRONMENT,
@@ -499,7 +497,7 @@ SECURE_CSP_REPORT_ONLY = {
     "form-action": [CSP.SELF],
     "frame-ancestors": [CSP.NONE],
 }
-_csp_report_uri = None if TEST_MODE else sentry_report_uri(SENTRY_DSN)
+_csp_report_uri = sentry_report_uri(SENTRY_DSN) if SENTRY_ENABLED else None
 if _csp_report_uri:
     SECURE_CSP_REPORT_ONLY["report-uri"] = [_csp_report_uri]
 

@@ -11,6 +11,17 @@ def handler_hash(source):
     return f"'sha256-{base64.b64encode(digest).decode()}'"
 
 
+def sentry_enabled(dsn, environment, test_mode=False):
+    """Whether this process reports to Sentry, CSP reports included.
+
+    Sentry is production's: the local ``.env`` carries the DSN, so every
+    runserver, shell and agent script on a laptop filed issues and fired the
+    alert emails. Test runs never report. Any environment but "development"
+    does, which is how a machine opts in.
+    """
+    return bool(dsn) and not test_mode and environment.lower() != "development"
+
+
 def sentry_report_uri(dsn):
     """Sentry's CSP report endpoint for a DSN, or None without one.
 

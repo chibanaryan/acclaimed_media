@@ -5,7 +5,7 @@ import re
 from django.conf import settings
 from django.test import SimpleTestCase, TestCase
 
-from core.csp import handler_hash, sentry_report_uri
+from core.csp import handler_hash, sentry_enabled, sentry_report_uri
 from core.tests.utils import clear_all_caches
 from games.models import Game
 
@@ -79,6 +79,29 @@ class ConnectSrcTests(TestCase):
             with self.subTest(source=source):
                 self.assertIn(source, connect_src)
         self.assertNotIn("https://www.google.com", connect_src)
+
+
+class SentryEnabledTests(SimpleTestCase):
+    DSN = "https://abc123@o42.ingest.us.sentry.io/7"
+
+    def test_production_reports(self):
+        self.assertIs(sentry_enabled(self.DSN, "production"), True)
+
+    def test_any_other_environment_opts_in(self):
+        self.assertIs(sentry_enabled(self.DSN, "staging"), True)
+
+    def test_a_developers_machine_does_not_report(self):
+        for environment in ("development", "Development"):
+            with self.subTest(environment=environment):
+                self.assertIs(sentry_enabled(self.DSN, environment), False)
+
+    def test_no_dsn_does_not_report(self):
+        for dsn in (None, ""):
+            with self.subTest(dsn=dsn):
+                self.assertIs(sentry_enabled(dsn, "production"), False)
+
+    def test_a_test_run_does_not_report(self):
+        self.assertIs(sentry_enabled(self.DSN, "production", test_mode=True), False)
 
 
 class ReportUriTests(SimpleTestCase):

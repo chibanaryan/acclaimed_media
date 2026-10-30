@@ -11,6 +11,20 @@
   sections' detail pages and rows, server- and client-rendered. robots.txt
   already disallowed them; Meta's crawler walked the game badges anyway
   (`core/tests/test_nofollow_links.py`)
+- **Developer machines no longer report to Sentry.** Tagging them
+  `development` kept them out of production's numbers but not out of the
+  inbox: 40 issues in two weeks against production's 22, and the alert rule
+  covers every environment, so a mid-edit syntax error in a worktree emailed
+  this morning. `core.csp.sentry_enabled` gates `sentry_sdk.init` and the
+  CSP's `report-uri`; set `SENTRY_ENVIRONMENT` to anything else to opt in
+- **`scripts/smoke_seed.py` refuses a database that already has data.** Run
+  locally it collided on "Super NES", then on its own "Smoke Action" from
+  the first attempt (ACCLAIMED-VIDEO-GAMES-9G/9H)
+- **The open issues were all triaged, and no live bug was among them.** The
+  three `cache_table` N+1s stopped with `a609570`: `/` went from ~14 reads a
+  request to 2. The old-domain CSP issues are Meta's crawler re-rendering
+  pages stored before the move, carrying a policy no change of ours can
+  reach (see "Content Security Policy" in `AGENTS.md`); archived for 30 days
 
 ## 2026-10-29
 
