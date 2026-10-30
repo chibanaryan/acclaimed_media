@@ -133,15 +133,24 @@ jobs:
       - run: python manage.py collectstatic --noinput
       - run: python manage.py migrate --noinput
       - name: Render pages under manifest storage
+        env:
+          MUSIC_ENABLED: "true"
         run: |
           python manage.py shell -c "
           from django.test import Client
-          # testserver is allowed only under test settings; this is a production shell
-          client = Client(raise_request_exception=True, HTTP_HOST='localhost')
-          for path in ('/', '/developers/', '/lists/', '/blog/', '/sitemap.xml'):
-              status = client.get(path, secure=True).status_code
-              print(path, status)
-              assert status == 200, path
+          # testserver is allowed only under test settings, so each site is
+          # asked for by its real host, which also picks its URLconf
+          client = Client(raise_request_exception=True)
+          pages = {
+              'acclaimedmedia.org': ('/', '/sitemap.xml'),
+              'games.acclaimedmedia.org': ('/', '/developers/', '/lists/', '/blog/', '/sitemap.xml'),
+              'music.acclaimedmedia.org': ('/', '/artists/', '/lists/', '/sitemap.xml'),
+          }
+          for host, paths in pages.items():
+              for path in paths:
+                  status = client.get(path, HTTP_HOST=host, secure=True).status_code
+                  print(host, path, status)
+                  assert status == 200, host + path
           "
 
   audit:

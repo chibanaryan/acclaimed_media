@@ -88,6 +88,9 @@ class SiteUrlTests(SimpleTestCase):
             sites.site_url(sites.ROOT, "landing"), "https://acclaimedmedia.org/"
         )
 
+    # `.localhost` is allowed under DEBUG alone, which a developer's .env sets
+    # and CI does not
+    @override_settings(ALLOWED_HOSTS=[".localhost"])
     def test_a_link_from_a_dev_host_stays_on_the_dev_server(self):
         request = self.factory.get("/", HTTP_HOST="games.localhost:8000")
         self.assertEqual(
