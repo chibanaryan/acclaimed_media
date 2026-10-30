@@ -8,9 +8,9 @@ genres, platforms with enough games, and years/decades with enough games.
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from django.core.cache import cache
 from django.db.models import Count
 
+from core.cache_helpers import cache_get, cache_set
 from games import config, models, utils
 
 # Number of games shown on each landing page
@@ -28,10 +28,17 @@ def _cache_key(suffix: str) -> str:
     return f"{config.CACHE_VERSION}:landing_pages:{suffix}"
 
 
+def cache_keys() -> List[str]:
+    """The keys the four getters below read, for a batched read."""
+    return [
+        _cache_key(suffix) for suffix in ("genres", "platforms", "years", "decades")
+    ]
+
+
 def get_landing_genres() -> List[Dict[str, Any]]:
     """Root genres that have games (directly or via descendants)."""
     cache_key = _cache_key("genres")
-    result = cache.get(cache_key)
+    result = cache_get(cache_key)
     if result is not None:
         return result
 
@@ -58,14 +65,14 @@ def get_landing_genres() -> List[Dict[str, Any]]:
                 }
             )
 
-    cache.set(cache_key, result, config.CACHE_TIMEOUT_24_HOURS)
+    cache_set(cache_key, result, config.CACHE_TIMEOUT_24_HOURS)
     return result
 
 
 def get_landing_platforms() -> List[Dict[str, Any]]:
     """Platforms with enough games to warrant a landing page."""
     cache_key = _cache_key("platforms")
-    result = cache.get(cache_key)
+    result = cache_get(cache_key)
     if result is not None:
         return result
 
@@ -77,14 +84,14 @@ def get_landing_platforms() -> List[Dict[str, Any]]:
         .values("id", "name", "slug", "code", "game_count")
     )
 
-    cache.set(cache_key, result, config.CACHE_TIMEOUT_24_HOURS)
+    cache_set(cache_key, result, config.CACHE_TIMEOUT_24_HOURS)
     return result
 
 
 def get_landing_years() -> List[int]:
     """Years with enough games to warrant a landing page."""
     cache_key = _cache_key("years")
-    result = cache.get(cache_key)
+    result = cache_get(cache_key)
     if result is not None:
         return result
 
@@ -96,14 +103,14 @@ def get_landing_years() -> List[int]:
         .values_list("year_of_release", flat=True)
     )
 
-    cache.set(cache_key, result, config.CACHE_TIMEOUT_24_HOURS)
+    cache_set(cache_key, result, config.CACHE_TIMEOUT_24_HOURS)
     return result
 
 
 def get_landing_decades() -> List[int]:
     """Decades that have at least one game."""
     cache_key = _cache_key("decades")
-    result = cache.get(cache_key)
+    result = cache_get(cache_key)
     if result is not None:
         return result
 
@@ -115,7 +122,7 @@ def get_landing_decades() -> List[int]:
         ).exists()
     ]
 
-    cache.set(cache_key, result, config.CACHE_TIMEOUT_24_HOURS)
+    cache_set(cache_key, result, config.CACHE_TIMEOUT_24_HOURS)
     return result
 
 

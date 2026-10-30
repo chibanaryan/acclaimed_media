@@ -40,6 +40,13 @@
   The policy is still report-only, so nothing was being blocked. The source
   is scoped to that path, so the rest of google.com stays out, and the test
   reads the served header
+- **The games rankings page reads the shared cache once, not fifteen
+  times.** In production every `cache.get` is a Postgres query, and a
+  crawler walking `/?platforms=N&highlight=G` (which skips the page cache)
+  paid ~15 of them per hit (Sentry ACCLAIMED-VIDEO-GAMES-9E). The view now
+  fetches every key it needs in one `get_many`
+  (`core.cache_helpers.batched_cache_reads`); pinned against a real
+  `DatabaseCache` by `GamesHomeCacheRoundTripTests`
 
 ## 2026-10-28
 

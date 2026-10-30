@@ -68,10 +68,13 @@ def playtime_range(params, *, ignore_preset=False):
     return pt_min, pt_max
 
 
+PLATFORMS_CACHE_KEY = f"search_platforms_list:{config.CACHE_VERSION}"
+
+
 def platforms_lookup():
     """The platform list virtual ids expand against, cached."""
     return utils.get_or_set_cache(
-        f"search_platforms_list:{config.CACHE_VERSION}",
+        PLATFORMS_CACHE_KEY,
         models.Platform.objects.all(),
         ["id", "name", "code", "year_start", "year_end"],
         order_by="name",

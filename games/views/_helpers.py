@@ -3,10 +3,9 @@
 import hashlib
 import json
 
-from django.core.cache import cache
-
-from core.cache_helpers import get_year_bounds
+from core.cache_helpers import cache_get, cache_set, get_year_bounds
 from games import config, models
+from games.cache import HERO_STATS_CACHE_KEY, played_ids_cache_key, want_ids_cache_key
 from games.services.game_filters import facet_params
 
 
@@ -23,15 +22,14 @@ def _get_year_bounds():
 
 def _get_hero_stats():
     """Return cached hero section statistics (list, publication, game counts)."""
-    cache_key = "homepage_hero_stats"
-    stats = cache.get(cache_key)
+    stats = cache_get(HERO_STATS_CACHE_KEY)
     if stats is None:
         stats = {
             "list_count": models.List.objects.count(),
             "publication_count": models.Publication.objects.count(),
             "game_count": models.Game.objects.count(),
         }
-        cache.set(cache_key, stats, config.CACHE_TIMEOUT_24_HOURS)
+        cache_set(HERO_STATS_CACHE_KEY, stats, config.CACHE_TIMEOUT_24_HOURS)
     return stats
 
 
@@ -72,27 +70,27 @@ def _genre_ids_with_games_or_descendant_games(genres):
 
 def _get_played_game_ids(user):
     """Return cached list of played game IGDB IDs for a user."""
-    cache_key = f"played_games_{user.id}"
-    ids = cache.get(cache_key)
+    cache_key = played_ids_cache_key(user.id)
+    ids = cache_get(cache_key)
     if ids is None:
         ids = list(
             models.PlayedGame.objects.filter(user=user).values_list(
                 "igdb_id", flat=True
             )
         )
-        cache.set(cache_key, ids, 300)  # 5 minutes
+        cache_set(cache_key, ids, 300)  # 5 minutes
     return ids
 
 
 def _get_want_to_play_game_ids(user):
     """Return cached list of want-to-play game IGDB IDs for a user."""
-    cache_key = f"want_to_play_games_{user.id}"
-    ids = cache.get(cache_key)
+    cache_key = want_ids_cache_key(user.id)
+    ids = cache_get(cache_key)
     if ids is None:
         ids = list(
             models.WantToPlayGame.objects.filter(user=user).values_list(
                 "igdb_id", flat=True
             )
         )
-        cache.set(cache_key, ids, 300)  # 5 minutes
+        cache_set(cache_key, ids, 300)  # 5 minutes
     return ids

@@ -161,7 +161,9 @@ def invalidate_hero_stats_on_game_change(sender, instance, **kwargs):
     """Invalidate homepage hero stats cache when Game count changes."""
     from django.core.cache import cache
 
-    cache.delete("homepage_hero_stats")
+    from games.cache import HERO_STATS_CACHE_KEY
+
+    cache.delete(HERO_STATS_CACHE_KEY)
     logger.debug("Homepage hero stats cache invalidated (Game changed)")
 
 

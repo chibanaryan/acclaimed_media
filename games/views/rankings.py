@@ -5,7 +5,6 @@ from functools import cached_property
 from urllib.parse import urlencode
 
 from django.conf import settings
-from django.core.cache import cache
 from django.db.models import Count, Max, Q
 from django.db.models.functions import Lower
 from django.http import Http404
@@ -14,12 +13,19 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.vary import vary_on_headers
 from django.views.generic import ListView, TemplateView
 
+from core.cache_helpers import batched_cache_reads, cache_get, cache_set
 from core.mixins import AnonymousResponseCacheMixin, RobustPaginationMixin
 from core.services import ranking, seo
 from core.services.query_params import parse_int
 from games import config, models, utils
+from games.cache import HERO_STATS_CACHE_KEY, played_ids_cache_key, want_ids_cache_key
 from games.services import landing_pages, playtime
-from games.services.game_filters import apply_game_filters, playtime_range
+from games.services.game_filters import (
+    PLATFORMS_CACHE_KEY,
+    apply_game_filters,
+    platforms_lookup,
+    playtime_range,
+)
 
 from ._helpers import (
     _facet_cache_key,
@@ -30,6 +36,9 @@ from ._helpers import (
     _get_year_bounds,
 )
 from .filter_titles import _build_filter_title
+
+GENRES_CACHE_KEY = f"search_wikipedia_genres_list_with_counts:{config.CACHE_VERSION}"
+SERIES_CACHE_KEY = f"search_series_list_with_counts:{config.CACHE_VERSION}"
 
 
 def _order_games(qs, params):
@@ -95,6 +104,55 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         """
         return utils.genre_descendant_map()
 
+    def get(self, request, *args, **kwargs):
+        # Every cached value the page reads, in one shared-cache round trip
+        with batched_cache_reads(self._prefetch_cache_keys()):
+            return super().get(request, *args, **kwargs)
+
+    def _played_cache_user_id(self):
+        """The user the facet caches are per, when the played filter applies."""
+        if self.request.GET.get("played") and self.request.user.is_authenticated:
+            return self.request.user.id
+        return None
+
+    @cached_property
+    def _facet_cache_keys(self):
+        """The keys of the facet counts and the chart for this request's filters."""
+        params = self.request.GET
+        user_id = self._played_cache_user_id()
+        return {
+            "year": _facet_cache_key("home_year_counts", params, "year", user_id),
+            "genres": _facet_cache_key("home_genre_counts", params, "genres", user_id),
+            "platforms": _facet_cache_key(
+                "home_platform_counts", params, "platforms", user_id
+            ),
+            "rank_dist": _facet_cache_key(
+                "home_rank_dist",
+                params,
+                user_id=user_id,
+                # sort=playtime leaves out games with no time, so the chart too
+                extra={"sort": params.get("sort", "rank")},
+            ),
+        }
+
+    def _prefetch_cache_keys(self):
+        """Every shared-cache key the page reads before it renders."""
+        keys = [
+            GENRES_CACHE_KEY,
+            SERIES_CACHE_KEY,
+            PLATFORMS_CACHE_KEY,
+            config.CACHE_KEY_YEAR_STATS,
+            HERO_STATS_CACHE_KEY,
+            *landing_pages.cache_keys(),
+            *self._facet_cache_keys.values(),
+        ]
+        if self.request.user.is_authenticated:
+            keys += [
+                played_ids_cache_key(self.request.user.id),
+                want_ids_cache_key(self.request.user.id),
+            ]
+        return keys
+
     def get_paginate_by(self, queryset):
         """Always use standard page size - client-side handles deep jumps."""
         return self.paginate_by
@@ -159,10 +217,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         # Convert IDs to strings for proper Alpine.js binding
         # Includes game_count for heatmap visualization and hierarchy fields
         # Filter out genres with 0 games (but keep parents if children have games)
-        genre_cache_key = (
-            f"search_wikipedia_genres_list_with_counts:{config.CACHE_VERSION}"
-        )
-        genres = cache.get(genre_cache_key)
+        genres = cache_get(GENRES_CACHE_KEY)
         if genres is None:
             all_genres = list(
                 models.WikipediaGenre.objects.annotate(
@@ -189,25 +244,18 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
                 for g in all_genres
                 if g["id"] in visible_genre_ids
             ]
-            cache.set(
-                genre_cache_key,
+            cache_set(
+                GENRES_CACHE_KEY,
                 genres,
                 config.CACHE_TIMEOUT_DEFAULT,
             )
 
-        platforms = utils.get_or_set_cache(
-            f"search_platforms_list:{config.CACHE_VERSION}",
-            models.Platform.objects.all(),
-            ["id", "name", "code", "year_start", "year_end"],
-            order_by="name",
-            transform_id=True,
-        )
+        platforms = platforms_lookup()
 
         # Get series list with game counts (only show series with 2+ games)
         # Use version-based cache key (bump CACHE_VERSION in config to invalidate)
         MIN_SERIES_GAMES = 2
-        series_cache_key = f"search_series_list_with_counts:{config.CACHE_VERSION}"
-        series_list = cache.get(series_cache_key)
+        series_list = cache_get(SERIES_CACHE_KEY)
         if series_list is None:
             series_list = list(
                 models.Series.objects.annotate(game_count=Count("games"))
@@ -217,8 +265,8 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
             )
             # Convert IDs to strings for Alpine.js
             series_list = [{**s, "id": str(s["id"])} for s in series_list]
-            cache.set(
-                series_cache_key,
+            cache_set(
+                SERIES_CACHE_KEY,
                 series_list,
                 config.CACHE_TIMEOUT_DEFAULT,
             )
@@ -312,11 +360,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
             "year": year_param,
             "decade": decade_param,
         }
-        played_cache_user_id = (
-            self.request.user.id
-            if played_param and self.request.user.is_authenticated
-            else None
-        )
+        played_cache_user_id = self._played_cache_user_id()
         facet_cache_timeout = (
             config.CACHE_TIMEOUT_1_MINUTE
             if q_param or played_cache_user_id is not None
@@ -382,10 +426,8 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
 
         # Get year counts for heatmap grid based on current filters (excluding year)
         # This allows users to see which years have games given their other filters
-        year_counts_cache_key = _facet_cache_key(
-            "home_year_counts", self.request.GET, "year", played_cache_user_id
-        )
-        year_counts = cache.get(year_counts_cache_key)
+        year_counts_cache_key = self._facet_cache_keys["year"]
+        year_counts = cache_get(year_counts_cache_key)
         if year_counts is None:
             base_qs = self._facet_queryset("year", platforms)
 
@@ -402,16 +444,14 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
             year_counts = [
                 {"year": x, "count": year_count_map.get(x, 0)} for x in all_years
             ]
-            cache.set(year_counts_cache_key, year_counts, facet_cache_timeout)
+            cache_set(year_counts_cache_key, year_counts, facet_cache_timeout)
 
         context["year_counts"] = year_counts
 
         # FACETED COUNTS FOR GENRES
         # Apply all filters EXCEPT genres (standard faceting for single-select)
-        genre_counts_cache_key = _facet_cache_key(
-            "home_genre_counts", self.request.GET, "genres", played_cache_user_id
-        )
-        genre_counts = cache.get(genre_counts_cache_key)
+        genre_counts_cache_key = self._facet_cache_keys["genres"]
+        genre_counts = cache_get(genre_counts_cache_key)
         if genre_counts is None:
             genre_facet_qs = self._facet_queryset("genres", platforms)
 
@@ -422,14 +462,12 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
                 .annotate(count=Count("id", distinct=True))
                 .values_list("wikipedia_genres__id", "count")
             )
-            cache.set(genre_counts_cache_key, genre_counts, facet_cache_timeout)
+            cache_set(genre_counts_cache_key, genre_counts, facet_cache_timeout)
 
         # FACETED COUNTS FOR PLATFORMS
         # Base: apply all filters EXCEPT platforms (q, year, genres)
-        platform_counts_cache_key = _facet_cache_key(
-            "home_platform_counts", self.request.GET, "platforms", played_cache_user_id
-        )
-        platform_counts = cache.get(platform_counts_cache_key)
+        platform_counts_cache_key = self._facet_cache_keys["platforms"]
+        platform_counts = cache_get(platform_counts_cache_key)
         if platform_counts is None:
             platform_facet_qs = self._facet_queryset("platforms", platforms)
 
@@ -440,7 +478,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
                 .annotate(count=Count("id", distinct=True))
                 .values_list("platforms__id", "count")
             )
-            cache.set(
+            cache_set(
                 platform_counts_cache_key,
                 platform_counts,
                 facet_cache_timeout,
@@ -494,14 +532,8 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
 
         # Rank distribution uses a fixed bin count across the current global max
         # rank so filtered views stay comparable to the full dataset.
-        rank_dist_cache_key = _facet_cache_key(
-            "home_rank_dist",
-            self.request.GET,
-            user_id=played_cache_user_id,
-            # sort=playtime leaves out games with no time, so the chart too
-            extra={"sort": self.request.GET.get("sort", "rank")},
-        )
-        cached_rank_data = cache.get(rank_dist_cache_key)
+        rank_dist_cache_key = self._facet_cache_keys["rank_dist"]
+        cached_rank_data = cache_get(rank_dist_cache_key)
         if cached_rank_data is None:
             # Get global max rank for consistent bin structure
             max_rank = (
@@ -522,7 +554,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
             )
 
             cached_rank_data = {"rank_bins": rank_bins, "max_rank": max_rank}
-            cache.set(rank_dist_cache_key, cached_rank_data, facet_cache_timeout)
+            cache_set(rank_dist_cache_key, cached_rank_data, facet_cache_timeout)
         else:
             rank_bins = cached_rank_data["rank_bins"]
             max_rank = cached_rank_data["max_rank"]

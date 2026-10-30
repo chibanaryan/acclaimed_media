@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from django.db.models import Q, QuerySet
 
+from core.cache_helpers import cache_get, cache_set
 from core.services.query_params import MAX_INT
 from games import config
 
@@ -234,9 +235,7 @@ def get_or_set_cache(
     Returns:
         List of dictionaries with requested fields
     """
-    from django.core.cache import cache
-
-    result = cache.get(cache_key)
+    result = cache_get(cache_key)
     if result is None:
         qs = queryset
         if order_by:
@@ -244,7 +243,7 @@ def get_or_set_cache(
         result = list(qs.values(*fields))
         if transform_id and "id" in fields:
             result = [{**item, "id": str(item["id"])} for item in result]
-        cache.set(cache_key, result, timeout)
+        cache_set(cache_key, result, timeout)
     return result
 
 
