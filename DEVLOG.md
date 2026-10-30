@@ -10,6 +10,8 @@
   root is DNS-only to Heroku, so `get_client_ip` still sees the visitor;
   `www.acclaimedmedia.org` and the old domain are 301s at Cloudflare's edge.
   The name and `contact@acclaimedvideogames.com` stay
+- **The repo is `chibanaryan/acclaimed_media`** (was `acclaimed_video_games`;
+  GitHub redirects the old URLs). The Heroku app stays `acclaimedgames`
 - **Search leads with the better match, in both sections.** "Beatles"
   filled all five album rows with Beatles albums, matched on their credit
   line, and the band sat below the dropdown's fold. Each group is now

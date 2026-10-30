@@ -21,8 +21,8 @@ For detailed documentation, see [CLAUDE.md](CLAUDE.md).
 ### Clone Repository
 
 ```bash
-git clone https://github.com/chibanaryan/acclaimed_video_games.git
-cd acclaimed_video_games
+git clone https://github.com/chibanaryan/acclaimed_media.git
+cd acclaimed_media
 heroku login
 heroku git:remote -a acclaimedgames
 ```

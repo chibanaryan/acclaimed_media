@@ -4,7 +4,7 @@ This is a one-person project, so the most useful contributions are reports.
 
 ## Reporting a problem
 
-[Open an issue](https://github.com/chibanaryan/acclaimed_video_games/issues/new/choose)
+[Open an issue](https://github.com/chibanaryan/acclaimed_media/issues/new/choose)
 for either of these:
 
 - **A bug**: something on the site that is broken or behaves wrongly.

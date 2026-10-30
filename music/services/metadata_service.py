@@ -619,11 +619,11 @@ class AlbumMetadataService:
         """Mirror the canonical remote URL onto the album.
 
         ``Album.cover_image_url`` keeps the *remote* Cover Art Archive URL,
-        not our local one: it is what the API serializer exposes and what the
-        detail page's Open Graph tags use, and an Open Graph scraper cannot
-        reach a staff-gated local route. ``Album.thumbnail`` and
+        not our local one: it is what the API serializer exposes, and the
+        fallback when no copy is stored. ``Album.thumbnail`` and
         ``Album.image`` are what the pages render, and they prefer the local
-        copy.
+        copy; ``Album.image_og`` is ``image`` made absolute for Open Graph and
+        JSON-LD.
         """
         self._set_primary(album, record, "primary_musicbrainz_album_data")
         url = record.cover_art_url(models.AlbumCover.DETAIL_SIZE)

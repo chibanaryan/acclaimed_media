@@ -4,7 +4,7 @@
 
 Report it privately through GitHub's advisory form:
 
-https://github.com/chibanaryan/acclaimed_video_games/security/advisories/new
+https://github.com/chibanaryan/acclaimed_media/security/advisories/new
 
 Please do not open a public issue for a security problem. The advisory stays
 private until a fix is out.

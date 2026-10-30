@@ -1234,9 +1234,10 @@ Decisions worth knowing before changing any of it:
   `Booklet`/`Track` scans. Re-pick an album with
   `--covers-only --force --slug <slug>`, since a stored cover is otherwise skipped.
 
-`Album.cover_image_url` keeps the remote URL for the API and Open Graph scrapers;
+`Album.cover_image_url` keeps the remote URL for the API, and as the fallback;
 `Album.thumbnail` and `Album.image` are what the pages render and prefer the local
-copy.
+copy. `Album.image_og` is `image` made absolute on `CANONICAL_ORIGIN`, for
+Open Graph and the JSON-LD.
 
 ### Discogs API terms
 

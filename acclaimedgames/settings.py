@@ -78,9 +78,6 @@ ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",
     "acclaimedmedia.org",
-    # Until the old domain redirects at Cloudflare and is removed from Heroku
-    "acclaimedvideogames.com",
-    "www.acclaimedvideogames.com",
 ]
 if TEST_MODE:
     # The test client's host; it was listed unconditionally, so production

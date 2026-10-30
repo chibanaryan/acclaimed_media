@@ -10,15 +10,14 @@
 
 {% block og_title %}{{ album.name }} | Acclaimed Video Games{% endblock %}
 {% block og_description %}{{ album.name }} ({{ album.year_released }}) by {{ album.artist_credit }} is ranked #{{ album.rank }} among the most critically acclaimed albums of all time.{% endblock %}
-{# A stored cover is a local path, and scrapers need an absolute URL #}
-{% block og_image %}{% with image=album.image %}{% if not image %}{{ block.super }}{% elif image|slice:":1" == "/" %}{{ canonical_origin }}{{ image }}{% else %}{{ image }}{% endif %}{% endwith %}{% endblock %}
+{% block og_image %}{{ album.image_og|default:block.super }}{% endblock %}
 
 {% block structured_data %}{
     "@context": "https://schema.org",
     "@type": "MusicAlbum",
     "name": "{{ album.name|escapejs }}",
-    "datePublished": "{{ album.year_released }}",
-    "image": "{{ album.image|default:'' }}"{% with credited=album.credited_artists %}{% if credited %},
+    "datePublished": "{{ album.year_released }}"{% if album.image_og %},
+    "image": "{{ album.image_og }}"{% endif %}{% with credited=album.credited_artists %}{% if credited %},
     "byArtist": [{% for artist in credited %}
         {
             "@type": "MusicGroup",

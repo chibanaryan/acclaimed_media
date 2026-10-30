@@ -10,6 +10,7 @@ import re
 from functools import cached_property
 from typing import Any, List, Optional
 
+from django.conf import settings
 from django.db import models
 from django.db.models import Count, Exists, OuterRef
 from django.urls import reverse
@@ -467,6 +468,19 @@ class Album(MediaItemBase):
     def image(self) -> Optional[str]:
         """Detail-page cover art (500px), falling back to the stored URL."""
         return self._cover_art_url(500) or self.cover_image_url
+
+    @cached_property
+    def image_og(self) -> Optional[str]:
+        """``image`` as an absolute URL, for Open Graph and JSON-LD.
+
+        A stored cover is a path on this site, which scrapers and search
+        engines cannot fetch on its own. The cover route is gated with the
+        rest of the section, so it is reachable whenever the page is.
+        """
+        image = self.image
+        if image and image.startswith("/"):
+            return settings.CANONICAL_ORIGIN + image
+        return image
 
     def _cover_art_url(self, size: int) -> Optional[str]:
         """The best URL for cover art at ``size`` px, or None.
