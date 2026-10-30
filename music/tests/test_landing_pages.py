@@ -8,6 +8,7 @@ valid slug; most tests run with it on, as a crawler would meet them.
 import json
 import re
 
+from django.conf import settings
 from django.core.cache import cache
 from django.db import connection
 from django.test import TestCase, override_settings
@@ -16,7 +17,6 @@ from django.urls import resolve, reverse
 from django.urls.resolvers import URLPattern
 
 from core.models import User
-from core.services import seo
 from core.tests.utils import clear_all_caches
 from music import config, models, urls, views
 from music.services import landing_pages
@@ -135,7 +135,7 @@ class GenreLandingViewTests(LandingFixtureMixin, TestCase):
         response = self.client.get(self.url)
         self.assertContains(
             response,
-            '<link rel="canonical" href="https://www.acclaimedvideogames.com'
+            '<link rel="canonical" href="https://acclaimedmedia.org'
             '/music/genres/rock/">',
         )
 
@@ -162,7 +162,8 @@ class GenreLandingViewTests(LandingFixtureMixin, TestCase):
         first = payload["itemListElement"][0]
         self.assertEqual(first["name"], "Rock <Record> 0")
         self.assertEqual(
-            first["url"], seo.SITE_BASE + self.rock_albums[0].get_absolute_url()
+            first["url"],
+            settings.CANONICAL_ORIGIN + self.rock_albums[0].get_absolute_url(),
         )
         self.assertContains(response, '"@type": "ItemList"')
 

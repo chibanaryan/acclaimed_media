@@ -91,11 +91,7 @@ def send_contact_email(name: str, email: str, category: str, message: str) -> bo
     else:
         recipient_email = base_email
 
-    site_url = (
-        settings.SITE_URL
-        if hasattr(settings, "SITE_URL")
-        else "acclaimedvideogames.com"
-    )
+    site_url = settings.SITE_URL
 
     email_body = f"""
 New contact form submission:
@@ -145,7 +141,7 @@ def send_post_notification_email(post, user) -> bool:
     from django.core.mail import EmailMultiAlternatives
     from django.utils.dateformat import format as format_date
 
-    site_url = getattr(settings, "SITE_URL", "https://www.acclaimedvideogames.com")
+    site_url = settings.SITE_URL
     unsubscribe_url = f"{site_url}/unsubscribe/{user.unsubscribe_token}/"
 
     title = post.title or "Latest Update"

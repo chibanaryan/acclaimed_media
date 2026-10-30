@@ -5,6 +5,8 @@ Centralizes cache timeouts, pagination defaults, and other settings.
 Mirrors the structure of games/config.py and books/config.py.
 """
 
+from django.conf import settings
+
 # =============================================================================
 # Cache Timeouts (in seconds)
 # =============================================================================
@@ -194,7 +196,7 @@ COVER_ART_ARCHIVE_URL = "https://coverartarchive.org"
 # address, and Discogs rejects requests without a descriptive one.
 MUSIC_USER_AGENT = (
     "AcclaimedGamesBot/1.0 "
-    "(https://www.acclaimedvideogames.com/; contact@acclaimedvideogames.com)"
+    f"({settings.CANONICAL_ORIGIN}/; contact@acclaimedvideogames.com)"
 )
 
 # Rate limiting.

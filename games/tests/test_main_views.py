@@ -2814,7 +2814,7 @@ class RobotsTxtViewTest(TestCase):
         """Test that robots.txt contains sitemap URL."""
         response = self.client.get(reverse("robots-txt"))
         content = response.content.decode("utf-8")
-        self.assertIn("Sitemap:", content)
+        self.assertIn("Sitemap: https://acclaimedmedia.org/sitemap.xml", content)
         self.assertIn("sitemap.xml", content)
 
     def test_robots_txt_keeps_crawlers_off_the_csv_download(self):

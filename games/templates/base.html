@@ -12,7 +12,7 @@
     {# htmx re-creates the scripts a swap brings in; this gives them the page's nonce, the one its CSP header allows #}
     <meta name="htmx-config" content='{"inlineScriptNonce": "{{ csp_nonce }}"}'>
     <meta name="description" content="{% block meta_description %}Discover the most critically acclaimed video games of all time, ranked by aggregating hundreds of critic lists from major gaming publications.{% endblock %}">
-    <link rel="canonical" href="{% block canonical_url %}https://www.acclaimedvideogames.com{{ request.path }}{% endblock %}">
+    <link rel="canonical" href="{% block canonical_url %}{{ canonical_origin }}{{ request.path }}{% endblock %}">
     {# Content Security Policy is set via CSPMiddleware with nonce support #}
     {# Note: 'unsafe-eval' is required for Alpine.js x-data expressions #}
     <title>{% block title %}Acclaimed Video Games{% endblock %}</title>
@@ -28,8 +28,8 @@
     <meta property="og:type" content="{% block og_type %}website{% endblock %}">
     <meta property="og:title" content="{% block og_title %}Acclaimed Video Games{% endblock %}">
     <meta property="og:description" content="{% block og_description %}Discover the most critically acclaimed video games of all time, ranked by aggregating hundreds of critic lists.{% endblock %}">
-    <meta property="og:url" content="{% block og_url %}https://www.acclaimedvideogames.com{{ request.path }}{% endblock %}">
-    <meta property="og:image" content="{% block og_image %}https://www.acclaimedvideogames.com{% static 'games/brand/og-image.png' %}{% endblock %}">
+    <meta property="og:url" content="{% block og_url %}{{ canonical_origin }}{{ request.path }}{% endblock %}">
+    <meta property="og:image" content="{% block og_image %}{{ canonical_origin }}{% static 'games/brand/og-image.png' %}{% endblock %}">
     <meta property="og:site_name" content="Acclaimed Video Games">
 
     {# Twitter Card Tags #}
@@ -188,11 +188,11 @@
         "@context": "https://schema.org",
         "@type": "WebSite",
         "name": "Acclaimed Video Games",
-        "url": "https://www.acclaimedvideogames.com",
+        "url": "{{ canonical_origin }}",
         "description": "The most critically acclaimed video games of all time",
         "potentialAction": {
             "@type": "SearchAction",
-            "target": "https://www.acclaimedvideogames.com/games/?q={search_term_string}",
+            "target": "{{ canonical_origin }}/games/?q={search_term_string}",
             "query-input": "required name=search_term_string"
         }
     }{% endblock %}

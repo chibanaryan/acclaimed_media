@@ -4,6 +4,7 @@ import re
 from functools import cached_property
 from urllib.parse import urlencode
 
+from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Count, Max, Q
 from django.db.models.functions import Lower
@@ -571,10 +572,6 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         return context
 
 
-# Production base for absolute URLs in structured data (matches base.html)
-LANDING_SITE_BASE = "https://www.acclaimedvideogames.com"
-
-
 def _landing_itemlist_json(name, games):
     """Build ItemList JSON-LD for a landing page's ranked games."""
     payload = {
@@ -587,7 +584,7 @@ def _landing_itemlist_json(name, games):
                 "@type": "ListItem",
                 "position": position,
                 "name": game.name,
-                "url": LANDING_SITE_BASE
+                "url": settings.CANONICAL_ORIGIN
                 + reverse("game-detail", kwargs={"slug": game.slug}),
             }
             for position, game in enumerate(games, start=1)

@@ -1030,3 +1030,17 @@ class HasPublishedArticlesTagTest(TestCase):
 
         result = has_published_articles()
         self.assertFalse(result)
+
+
+class CanonicalOriginTagTest(TestCase):
+    def test_an_email_rendered_without_a_request_still_carries_the_origin(self):
+        """allauth renders without a request outside one, when the
+        canonical_origin context processor does not run."""
+        from django.template.loader import render_to_string
+
+        body = render_to_string(
+            "account/email/password_reset_key_message.txt",
+            {"password_reset_url": "https://acclaimedmedia.org/reset/x/"},
+        )
+        self.assertTrue(body.startswith("Acclaimed Video Games"))
+        self.assertIn("\nhttps://acclaimedmedia.org\n", body)

@@ -568,13 +568,41 @@ class AlbumDetailViewTests(MusicDataMixin, TestCase):
         self.assertFalse(response.context["credits_use_variants"])
         self.assertNotContains(response, "Artist:")
 
+    def test_og_image_is_absolute_for_a_stored_cover(self):
+        with mock.patch.object(
+            models.Album,
+            "image",
+            new_callable=mock.PropertyMock,
+            return_value="/music/cover/abc/1-500.jpg",
+        ):
+            response = self.client.get(self.revolver.get_absolute_url())
+        self.assertContains(
+            response,
+            '<meta property="og:image" '
+            'content="https://acclaimedmedia.org/music/cover/abc/1-500.jpg">',
+        )
+
+    def test_og_image_keeps_a_remote_cover_url(self):
+        with mock.patch.object(
+            models.Album,
+            "image",
+            new_callable=mock.PropertyMock,
+            return_value="https://coverartarchive.org/release-group/x/front-500",
+        ):
+            response = self.client.get(self.revolver.get_absolute_url())
+        self.assertContains(
+            response,
+            '<meta property="og:image" '
+            'content="https://coverartarchive.org/release-group/x/front-500">',
+        )
+
     def test_structured_data_names_each_credited_artist(self):
         self.revolver.artists.set([self.beatles, self.young])
         response = self.client.get(self.revolver.get_absolute_url())
         self.assertContains(response, '"byArtist": [')
         self.assertContains(
             response,
-            '"url": "https://www.acclaimedvideogames.com/music/artists/neil-young/"',
+            '"url": "https://acclaimedmedia.org/music/artists/neil-young/"',
         )
 
     def test_a_compilation_has_no_by_artist(self):

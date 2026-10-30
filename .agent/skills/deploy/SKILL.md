@@ -7,7 +7,7 @@ description: Deploy to Heroku production. Use when asked to deploy, push to prod
 
 Use this workflow when making changes that need to be deployed to production.
 
-**Production URL:** https://www.acclaimedvideogames.com/
+**Production URL:** https://acclaimedmedia.org/
 
 ## Steps
 
@@ -113,7 +113,7 @@ git push heroku HEAD:main
 ### 12. Check it is up
 
 ```bash
-curl -sf https://www.acclaimedvideogames.com/healthz/ && echo ok
+curl -sf https://acclaimedmedia.org/healthz/ && echo ok
 heroku releases -a acclaimedgames -n 1
 ```
 

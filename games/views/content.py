@@ -237,7 +237,7 @@ Disallow: /*?*end=
 Disallow: /*?*highlight=
 Disallow: /*?*page=
 
-Sitemap: https://www.acclaimedvideogames.com/sitemap.xml
+Sitemap: {settings.CANONICAL_ORIGIN}/sitemap.xml
 """
     return HttpResponse(content, content_type="text/plain")
 

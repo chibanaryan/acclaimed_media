@@ -103,7 +103,7 @@ Nothing below runs in CI except the query budgets.
   since is caught only if it has a budget. Add one when a page gets slow.
 - **Page weight:** the anonymous rankings page was 690 KB on 2026-10-18.
   Check it with
-  `curl -s https://acclaimedvideogames.com/ | wc -c`. Growth spends from
+  `curl -s https://acclaimedmedia.org/ | wc -c`. Growth spends from
   the dyno's 512 MB (see "Production memory budget" in AGENTS.md).
 - **Memory:** `heroku ps -a acclaimedgames`, and `memory.rss.bytes.max` /
   `memory.swap.bytes.max` from the metrics API URL in AGENTS.md over the

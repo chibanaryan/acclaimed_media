@@ -6,7 +6,7 @@ body:
     attributes:
       label: Page
       description: The page on the site with the wrong information.
-      placeholder: https://www.acclaimedvideogames.com/games/...
+      placeholder: https://acclaimedmedia.org/games/...
     validations:
       required: true
   - type: dropdown

@@ -1381,6 +1381,37 @@ hand-maintained literals did nothing in production; in development the
 one-year max-age was what made them necessary.
 `core/tests/test_static_assets.py` keeps them from coming back.
 
+## Domain
+
+The site is `https://acclaimedmedia.org`, at the bare root, since 2026-10-29;
+it was `www.acclaimedvideogames.com` before. `settings.CANONICAL_ORIGIN` is
+the one place the origin is written: canonical and Open Graph links and the
+structured data (`{{ canonical_origin }}` from the context processor, and
+`{% canonical_origin %}` from `core_filters` where a template may render
+without a request, as allauth's emails can), robots.txt, the email footers
+(through `SITE_URL`, which defaults to it in production) and the User-Agent
+the metadata fetchers send. Page code reads the setting at call time, not
+into a module constant, so `override_settings` reaches it. The sitemap reads
+`Site.domain`, which migration `0122` moved. Only the address changed: the site
+is still called Acclaimed Video Games, and mail still goes to and from
+`contact@acclaimedvideogames.com`, the address Titan and Brevo have verified.
+
+DNS is in Cloudflare (James's account; both zones), and the app on Heroku
+has the one custom domain:
+
+- **`acclaimedmedia.org` is DNS-only** (grey cloud), a flattened CNAME to its
+  Heroku DNS target, with Heroku's ACM certificate. It must not be proxied:
+  `get_client_ip` takes the last `X-Forwarded-For` entry, Heroku's router's,
+  and behind Cloudflare that would be a Cloudflare address, so every visitor
+  would share a rate-limit bucket.
+- **Every other host is a 301 at Cloudflare's edge**: `www.acclaimedmedia.org`,
+  `acclaimedvideogames.com` and `www.acclaimedvideogames.com` are proxied
+  records with a placeholder address (`192.0.2.1`) and a dynamic redirect rule
+  in their zone sending the path and query string on to the root. They never
+  reach a dyno, so Django does no host redirecting of its own.
+- Keep the old domain registered, and leave its MX, SPF, DKIM and DMARC
+  records alone: the contact address still lives there.
+
 ## Caching
 
 Three aliases, defined by `core/cache_config.py` (which `settings.py` calls):

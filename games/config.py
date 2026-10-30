@@ -5,6 +5,8 @@ Centralizes cache timeouts, IGDB settings, pagination defaults,
 and other magic values that were previously scattered across the codebase.
 """
 
+from django.conf import settings
+
 # =============================================================================
 # Cache Timeouts (in seconds)
 # =============================================================================
@@ -119,7 +121,7 @@ WIKI_REQUEST_DELAY = 1.0  # seconds between requests
 # User agent (required by Wikimedia API policy)
 WIKI_USER_AGENT = (
     "AcclaimedGamesBot/1.0 "
-    "(https://www.acclaimedvideogames.com/; contact@acclaimedvideogames.com)"
+    f"({settings.CANONICAL_ORIGIN}/; contact@acclaimedvideogames.com)"
 )
 
 # Wikidata property IDs

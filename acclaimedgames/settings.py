@@ -68,9 +68,17 @@ SECRET_KEY = env(
         "django-insecure-dev-key-change-in-production" if (DEBUG or TEST_MODE) else None
     ),
 )  # Required - no default for security in production
+# The site's one public origin: canonical links, structured data, robots.txt,
+# emails. Unlike SITE_URL it does not follow DEBUG, so a local render carries
+# the same canonical tags as production. www.acclaimedmedia.org and the old
+# acclaimedvideogames.com hosts are 301'd to it by Cloudflare redirect rules
+# and never reach Django (see "Domain" in AGENTS.md).
+CANONICAL_ORIGIN = "https://acclaimedmedia.org"
 ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",
+    "acclaimedmedia.org",
+    # Until the old domain redirects at Cloudflare and is removed from Heroku
     "acclaimedvideogames.com",
     "www.acclaimedvideogames.com",
 ]
@@ -182,6 +190,7 @@ TEMPLATES = [
                 "django.template.context_processors.csp",  # {{ csp_nonce }}
                 "games.context_processors.feature_flags",  # Feature flags
                 "games.context_processors.media_type",  # Current media type
+                "games.context_processors.canonical_origin",  # Public origin
             ],
             # In development/tests, don't use cached template loader
             # This ensures template changes are picked up immediately
@@ -399,7 +408,7 @@ DEFAULT_FROM_EMAIL = "Acclaimed Video Games <contact@acclaimedvideogames.com>"
 CONTACT_EMAIL = "contact@acclaimedvideogames.com"
 SITE_URL = env(
     "SITE_URL",
-    default="http://localhost:8000" if DEBUG else "https://www.acclaimedvideogames.com",
+    default="http://localhost:8000" if DEBUG else CANONICAL_ORIGIN,
 )
 
 # Logging configuration
@@ -508,6 +517,8 @@ if not DEBUG and not TEST_MODE and not RUNNING_DEVSERVER:
     SECURE_HSTS_SECONDS = 31536000  # 1 year - enable HTTP Strict Transport Security
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
+    # allauth's links built without a request; with one they follow its scheme
+    ACCOUNT_DEFAULT_HTTP_PROTOCOL = "https"
     SESSION_COOKIE_SECURE = True  # Only send session cookie over HTTPS
     CSRF_COOKIE_SECURE = True  # Only send CSRF cookie over HTTPS
     SECURE_SSL_REDIRECT = True  # Redirect HTTP to HTTPS

@@ -154,8 +154,7 @@ class LandingPageViewTests(LandingPageDataMixin, TestCase):
         )
         self.assertIn("Most Acclaimed Action Games of All Time</h1>", html)
         self.assertIn(
-            'rel="canonical" '
-            'href="https://www.acclaimedvideogames.com/games/action/"',
+            'rel="canonical" href="https://acclaimedmedia.org/games/action/"',
             html,
         )
         # The interactive filter component is seeded with the path-implied
@@ -176,7 +175,7 @@ class LandingPageViewTests(LandingPageDataMixin, TestCase):
         first = data["itemListElement"][0]
         self.assertEqual(first["position"], 1)
         self.assertEqual(first["name"], "Test Game 1")
-        self.assertIn("https://www.acclaimedvideogames.com/game/", first["url"])
+        self.assertIn("https://acclaimedmedia.org/game/", first["url"])
 
     def test_genre_page_uses_natural_filter_title(self):
         response = self.client.get("/games/role-playing/")
@@ -544,3 +543,59 @@ class SiteDomainMigrationTests(TestCase):
         )
         self.migration.backwards(self._Apps(), None)
         self.assertEqual(Site.objects.get(pk=1).domain, "acclaimedvideogames.com")
+
+
+class AcclaimedMediaSiteDomainMigrationTests(TestCase):
+    """Migration 0122 moves the Site domain to acclaimedmedia.org."""
+
+    _Apps = SiteDomainMigrationTests._Apps
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.migration = importlib.import_module(
+            "games.migrations.0122_site_domain_acclaimedmedia"
+        )
+
+    def test_forwards_moves_either_old_domain(self):
+        from django.contrib.sites.models import Site
+
+        for old in ("www.acclaimedvideogames.com", "acclaimedvideogames.com"):
+            Site.objects.update_or_create(pk=1, defaults={"domain": old})
+            self.migration.forwards(self._Apps(), None)
+            self.assertEqual(Site.objects.get(pk=1).domain, "acclaimedmedia.org")
+
+    def test_forwards_leaves_another_domain_alone(self):
+        from django.contrib.sites.models import Site
+
+        Site.objects.update_or_create(pk=1, defaults={"domain": "localhost:8000"})
+        self.migration.forwards(self._Apps(), None)
+        self.assertEqual(Site.objects.get(pk=1).domain, "localhost:8000")
+
+    def test_forwards_renames_one_row_when_both_old_domains_exist(self):
+        from django.contrib.sites.models import Site
+
+        Site.objects.update_or_create(
+            pk=1, defaults={"domain": "www.acclaimedvideogames.com"}
+        )
+        Site.objects.create(pk=2, domain="acclaimedvideogames.com")
+        self.migration.forwards(self._Apps(), None)
+        self.assertEqual(Site.objects.get(pk=1).domain, "acclaimedmedia.org")
+        self.assertEqual(Site.objects.get(pk=2).domain, "acclaimedvideogames.com")
+
+    def test_forwards_leaves_the_rows_alone_when_the_new_domain_exists(self):
+        from django.contrib.sites.models import Site
+
+        Site.objects.update_or_create(
+            pk=1, defaults={"domain": "www.acclaimedvideogames.com"}
+        )
+        Site.objects.create(pk=2, domain="acclaimedmedia.org")
+        self.migration.forwards(self._Apps(), None)
+        self.assertEqual(Site.objects.get(pk=1).domain, "www.acclaimedvideogames.com")
+
+    def test_backwards_restores_the_www_domain(self):
+        from django.contrib.sites.models import Site
+
+        Site.objects.update_or_create(pk=1, defaults={"domain": "acclaimedmedia.org"})
+        self.migration.backwards(self._Apps(), None)
+        self.assertEqual(Site.objects.get(pk=1).domain, "www.acclaimedvideogames.com")

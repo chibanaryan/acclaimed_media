@@ -10,10 +10,22 @@ from datetime import datetime
 
 import markdown as md
 from django import template
+from django.conf import settings
 from django.utils import timezone
 from django.utils.safestring import mark_safe
 
 register = template.Library()
+
+
+@register.simple_tag
+def canonical_origin():
+    """The site's public origin, for templates rendered without a request.
+
+    allauth renders its emails with the request when there is one and
+    without it otherwise, when the ``canonical_origin`` context processor
+    does not run.
+    """
+    return settings.CANONICAL_ORIGIN
 
 
 @register.simple_tag

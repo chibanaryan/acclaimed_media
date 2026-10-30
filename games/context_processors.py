@@ -38,3 +38,12 @@ def media_type(request):
         if namespace.startswith("music"):
             return {"media_type": "music"}
     return {"media_type": "games"}
+
+
+def canonical_origin(request):
+    """
+    Add the site's public origin, for canonical links and structured data.
+    """
+    from django.conf import settings
+
+    return {"canonical_origin": settings.CANONICAL_ORIGIN}

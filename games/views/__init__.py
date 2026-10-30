@@ -27,7 +27,6 @@ from .download import (
 from .rankings import (
     _order_games,
     HomePageView,
-    LANDING_SITE_BASE,
     _landing_itemlist_json,
     SeoRankingPageView,
     CategoryRankingView,
@@ -96,7 +95,6 @@ __all__ = [
     "download_games_csv",
     "_order_games",
     "HomePageView",
-    "LANDING_SITE_BASE",
     "_landing_itemlist_json",
     "SeoRankingPageView",
     "CategoryRankingView",

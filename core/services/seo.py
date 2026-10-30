@@ -7,9 +7,7 @@ games still carries its own copy and can move onto this one unchanged.
 
 import json
 
-# Production base for absolute URLs in structured data (matches base.html's
-# canonical link).
-SITE_BASE = "https://www.acclaimedvideogames.com"
+from django.conf import settings
 
 
 def json_ld(payload):
@@ -34,7 +32,7 @@ def itemlist_json(name, entries):
             "@type": "ListItem",
             "position": position,
             "name": item_name,
-            "url": SITE_BASE + path,
+            "url": settings.CANONICAL_ORIGIN + path,
         }
         for position, (item_name, path) in enumerate(entries, start=1)
     ]

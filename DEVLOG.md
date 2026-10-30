@@ -2,6 +2,14 @@
 
 ## 2026-10-29
 
+- **The site moves to `https://acclaimedmedia.org`, at the bare root.**
+  `settings.CANONICAL_ORIGIN` is now the one place the origin is written
+  (canonical and Open Graph links, structured data, robots.txt, the email
+  footers, the fetchers' User-Agent), where it was hard-coded in nine.
+  Migration `0122` moves `Site.domain`, which the sitemap reads. The new
+  root is DNS-only to Heroku, so `get_client_ip` still sees the visitor;
+  `www.acclaimedmedia.org` and the old domain are 301s at Cloudflare's edge.
+  The name and `contact@acclaimedvideogames.com` stay
 - **Search leads with the better match, in both sections.** "Beatles"
   filled all five album rows with Beatles albums, matched on their credit
   line, and the band sat below the dropdown's fold. Each group is now
