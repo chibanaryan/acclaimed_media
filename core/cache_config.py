@@ -5,7 +5,7 @@ There are three aliases, deliberately.
 ``default`` is the **shared** cache. In production it is Django's
 ``DatabaseCache`` on the Postgres we already run, so the gunicorn workers and
 whatever one-off dyno a management command lands in all read the same entries.
-That is what makes ``music.views._invalidate_music_caches`` mean anything:
+That is what makes ``music.services.caching`` mean anything:
 under ``LocMemCache`` every process held its own copy and an invalidation
 reached exactly one of them, so a metadata refresh left stale genre and artist
 filter options behind for up to their 24-hour TTL.

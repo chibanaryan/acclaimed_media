@@ -2,13 +2,12 @@
 
 ## 2026-10-30
 
-- **An import drops readers' tracked-album caches after it commits**, not
-  during it, which narrows the window where a page load refills them from
-  the old rows and a re-adopted album reads as untracked for five minutes.
-  A failed drop of these caches is now logged rather than raised, on a
-  toggle too, since the write has committed by then
-- **A cache error no longer reports a live music import as failed**, which
-  invited staff to re-run it. It is logged and noted in the import's message
+- **Music's caches cannot be refilled with old rows.** An import drops
+  everything in one call after it commits, and every write skips its save
+  if an invalidation ran while it was querying (`caching.cached`)
+- **A cache error no longer fails a committed music write.** It is logged,
+  and an import shows an amber warning naming the fix, where it used to
+  report a live release as failed. The weekly metadata job finishes too
 - **The Account modal shows a reader's albums beside their games**, the
   current site's block first, with a rank among listeners. It is absent
   while music is hidden from them. The rank logic moved to

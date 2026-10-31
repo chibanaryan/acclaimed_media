@@ -4,12 +4,12 @@ A service rather than the tracked-id helpers in ``music.views``, so that the
 modal's view, which lives in ``games``, need not import that module.
 """
 
-from django.core.cache import cache
 from django.db.models import Count, Q
 
 from core.services import percentile
 from music import config
 from music.models import Album, ListenedAlbum, WantToListenAlbum
+from music.services import caching
 
 # "tracked", not "heard": the rank counts Have as well as Heard, and Have is
 # for readers who track what they own, so "heard" could be false of them.
@@ -27,21 +27,17 @@ def get_listener_distribution():
     ``caching.invalidate_listen_caches``. Orphaned rows are left out, so a
     release dropping an album cannot leave a user ranked on what they can't see.
     """
-    distribution = cache.get(config.CACHE_KEY_LISTENER_DISTRIBUTION)
-    if distribution is None:
-        distribution = list(
+    return caching.cached(
+        config.CACHE_KEY_LISTENER_DISTRIBUTION,
+        lambda: list(
             ListenedAlbum.objects.filter(album__isnull=False)
             .values("user_id")
             .annotate(collected=Count("pk"))
             .order_by("collected")
             .values_list("user_id", "collected")
-        )
-        cache.set(
-            config.CACHE_KEY_LISTENER_DISTRIBUTION,
-            distribution,
-            config.CACHE_TIMEOUT_1_HOUR,
-        )
-    return distribution
+        ),
+        config.CACHE_TIMEOUT_1_HOUR,
+    )
 
 
 def listening_stats(user):

@@ -43,7 +43,7 @@ MUSIC_BETA = True
 
 # Every key carries CACHE_VERSION, so one bump invalidates the whole set, and
 # every *global* key appears in CACHE_KEYS, which
-# `music.views._invalidate_music_caches` iterates - a new cached option cannot
+# `music.services.caching.invalidate_music_caches` iterates - a new cached option cannot
 # be added without being invalidated too. Per-user values cannot be
 # enumerated that way; they live in PER_USER_CACHE_KEY_TEMPLATES below.
 CACHE_KEY_YEAR_STATS = f"{CACHE_VERSION}:album_year_stats"
@@ -55,6 +55,10 @@ CACHE_KEY_LANDING_GENRES = f"{CACHE_VERSION}:music_landing_genres"
 CACHE_KEY_LANDING_DECADES = f"{CACHE_VERSION}:music_landing_decades"
 CACHE_KEY_YEAR_BASELINE = f"{CACHE_VERSION}:music_year_baseline"
 CACHE_KEY_LISTENER_DISTRIBUTION = f"{CACHE_VERSION}:listener_distribution"
+
+# Not a cached value but the stamp every invalidation moves, so it stays out
+# of CACHE_KEYS: `music.services.caching.cached` compares it around a read.
+CACHE_KEY_GENERATION = f"{CACHE_VERSION}:cache_generation"
 
 CACHE_KEYS = (
     CACHE_KEY_YEAR_STATS,

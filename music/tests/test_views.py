@@ -19,7 +19,7 @@ from core.tests.utils import clear_all_caches
 from games.models import SiteMetadata
 from music import config, models, views
 from music.api import views as music_api_views
-from music.services import landing_pages, listening_stats
+from music.services import caching, landing_pages, listening_stats
 from music.views import _filter_title, group_list_appearances
 from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 from core.sites import GAMES, site_reverse
@@ -1447,7 +1447,7 @@ class MusicCacheInvalidationTests(MusicDataMixin, TestCase):
     def test_invalidation_clears_every_declared_key(self):
         for key in config.CACHE_KEYS:
             cache.set(key, "stale", 60)
-        views._invalidate_music_caches()
+        caching.invalidate_music_caches()
         for key in config.CACHE_KEYS:
             with self.subTest(key=key):
                 self.assertIsNone(cache.get(key))

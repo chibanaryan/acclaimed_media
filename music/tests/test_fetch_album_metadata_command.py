@@ -78,6 +78,20 @@ class FetchAlbumMetadataCommandTests(TestCase):
         self.assertNotIn("Refreshing", output)
 
     @mock.patch(f"{COMMAND}.AlbumMetadataService")
+    def test_a_failed_cache_drop_warns_and_still_finishes(self, service):
+        service.return_value.run_musicbrainz.return_value = mock.MagicMock(
+            errors=[], summary=lambda: "MusicBrainz: 0 processed"
+        )
+        with mock.patch(f"{COMMAND}.rebuild_album_genres"), mock.patch(
+            f"{COMMAND}.write_report"
+        ), mock.patch(f"{COMMAND}.refresh_release_dates", return_value=0), mock.patch(
+            f"{COMMAND}.caching.invalidate_music_caches", return_value=False
+        ):
+            output = self._run(musicbrainz=True)
+        self.assertIn("Caches not cleared", output)
+        self.assertIn("MusicBrainz: 0 processed", output)
+
+    @mock.patch(f"{COMMAND}.AlbumMetadataService")
     def test_refresh_stale_reaches_the_service(self, service):
         service.return_value.run_musicbrainz.return_value = mock.MagicMock(
             errors=[], summary=lambda: "MusicBrainz: 0 processed"

@@ -57,7 +57,12 @@ def cache_set(key, value, timeout):
 
 
 def get_year_bounds(
-    model_class, year_field, cache_key, cache_timeout, default_min=1970
+    model_class,
+    year_field,
+    cache_key,
+    cache_timeout,
+    default_min=1970,
+    read_through=None,
 ):
     """
     Return cached global min/max years for a model.
@@ -68,17 +73,26 @@ def get_year_bounds(
         cache_key: Unique cache key for this model's year stats
         cache_timeout: Cache timeout in seconds
         default_min: Default minimum year if no data exists
+        read_through: A section's own ``(key, compute, timeout)`` cache read,
+            for one that guards its writes
 
     Returns:
         Tuple of (min_year, max_year)
     """
-    year_stats = cache_get(cache_key)
-    if year_stats is None:
-        year_stats = model_class.objects.aggregate(
+
+    def aggregate():
+        return model_class.objects.aggregate(
             min_year=Min(year_field),
             max_year=Max(year_field),
         )
-        cache_set(cache_key, year_stats, cache_timeout)
+
+    if read_through is not None:
+        year_stats = read_through(cache_key, aggregate, cache_timeout)
+    else:
+        year_stats = cache_get(cache_key)
+        if year_stats is None:
+            year_stats = aggregate()
+            cache_set(cache_key, year_stats, cache_timeout)
     min_year = year_stats["min_year"] or default_min
     max_year = year_stats["max_year"] or datetime.today().year
     return min_year, max_year

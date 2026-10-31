@@ -23,7 +23,6 @@ from music.services.listening_stats import (
     get_listener_distribution,
     listening_stats,
 )
-from music.services.user_tracking_service import reconnect_tracking_records
 from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 from music.tests.test_imports import import_release
 
@@ -188,16 +187,6 @@ class ListenerDistributionCacheTests(TestCase):
         third = make_album(3)
         with self.captureOnCommitCallbacks(execute=True):
             call_command("mark_albums_listened", user="reader", ids=third.wikidata_id)
-        self.assertFalse(self._reads_stale())
-
-    def test_the_reconnection_pass_drops_it(self):
-        self._prime()
-        returning = make_album(3)
-        models.ListenedAlbum.objects.create(
-            user=self.user, album=None, wikidata_id=returning.wikidata_id
-        )
-        with self.captureOnCommitCallbacks(execute=True):
-            reconnect_tracking_records({returning.wikidata_id: returning})
         self.assertFalse(self._reads_stale())
 
     def test_an_import_drops_it(self):

@@ -39,9 +39,9 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from core.services.monitoring import weekly_job_monitor
-from music import views as music_views
 from music.management.commands.rebuild_album_genres import write_report
 from music.models import Album
+from music.services import caching
 from music.services.artist_slugs import rebuild_artist_slugs
 from music.services.genre_rebuild import rebuild_album_genres
 from music.services.release_dates import refresh_release_dates
@@ -192,7 +192,8 @@ class Command(BaseCommand):
             for source_id, old, new in rebuild_artist_slugs():
                 self.stdout.write(f"Artist {source_id} slug: {old} -> {new}")
 
-        music_views._invalidate_music_caches()
+        if not caching.invalidate_music_caches():
+            self.stdout.write(self.style.WARNING(caching.CACHES_NOT_CLEARED))
         self._print_summary(results, time.time() - start)
 
     # ------------------------------------------------------------- selection

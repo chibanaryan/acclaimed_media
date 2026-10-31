@@ -21,7 +21,6 @@ from typing import Dict
 from django.db import transaction
 
 from music import models
-from music.services import caching
 
 
 def reconnect_tracking_records(id_to_album: Dict[str, models.Album]) -> Dict:
@@ -34,9 +33,11 @@ def reconnect_tracking_records(id_to_album: Dict[str, models.Album]) -> Dict:
             find its way home.
 
     Returns:
-        A dict of counts per model plus the users affected.
+        A dict of counts per model, plus ``users``, whose caches the caller
+        drops with the rest of the import's once it has committed, and
+        ``users_affected``, how many that is.
     """
-    stats = {"users_affected": 0}
+    stats = {}
     affected_users = set()
 
     for model_class, label in (
@@ -50,7 +51,7 @@ def reconnect_tracking_records(id_to_album: Dict[str, models.Album]) -> Dict:
         stats[f"{label}_merged"] = result["merged"]
         affected_users |= result["users"]
 
-    caching.invalidate_listen_caches(affected_users)
+    stats["users"] = affected_users
     stats["users_affected"] = len(affected_users)
 
     return stats

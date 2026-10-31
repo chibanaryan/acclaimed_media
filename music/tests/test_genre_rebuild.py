@@ -149,6 +149,14 @@ class RebuildTests(RebuildTestCase):
             genre_rebuild.rebuild_album_genres()
         invalidate.assert_called_once()
 
+    def test_a_cache_error_cannot_fail_a_committed_rebuild(self):
+        self.album("X", 1, discogs=(["Grunge"], ["Rock"]))
+        with mock.patch("music.services.caching.cache") as broken:
+            broken.delete_many.side_effect = ConnectionError
+            with self.assertLogs("music.services.caching", "ERROR"):
+                with self.captureOnCommitCallbacks(execute=True):
+                    genre_rebuild.rebuild_album_genres()
+
     def test_unclassified_labels_are_reported(self):
         self.album("X", 1, discogs=(["Grunge", "Zeuhl"], ["Rock"]), wikidata="zeuhl")
         report = genre_rebuild.rebuild_album_genres(dry_run=True)

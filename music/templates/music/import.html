@@ -38,6 +38,12 @@
         <p class="text-sm">{{ summary.message }}</p>
     </div>
 </div>
+{% for warning in summary.warnings %}
+<div class="alert alert-warning mb-4">
+    <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
+    <p class="text-sm">{{ warning }}</p>
+</div>
+{% endfor %}
 {% endif %}
 
 {# Current state, so it is obvious what an import would replace. #}

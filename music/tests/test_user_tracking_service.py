@@ -192,34 +192,17 @@ class ReconnectTrackingRecordsTests(TestCase):
         self.assertEqual(stats["want_reconnected"], 0)
         self.assertEqual(stats["users_affected"], 0)
 
-    def test_it_drops_the_affected_users_caches(self):
-        key = config.CACHE_KEY_LISTENED_ALBUMS.format(user_id=self.user.id)
-        cache.set(key, [999], 300)
+    def test_it_names_the_users_whose_caches_went_stale(self):
+        # The import drops them, with the rest of its caches, once it commits.
         models.ListenedAlbum.objects.create(
             user=self.user, album=None, wikidata_id="Q123"
         )
 
-        with self.captureOnCommitCallbacks(execute=True):
-            user_tracking_service.reconnect_tracking_records(self._id_map(self.album))
-
-        self.assertIsNone(cache.get(key))
-
-    def test_the_caches_wait_for_the_commit(self):
-        """An import calls this inside its transaction, and a read before the
-        commit would refill the cache from the old rows."""
-        key = config.CACHE_KEY_LISTENED_ALBUMS.format(user_id=self.user.id)
-        cache.set(key, [999], 300)
-        models.ListenedAlbum.objects.create(
-            user=self.user, album=None, wikidata_id="Q123"
+        stats = user_tracking_service.reconnect_tracking_records(
+            self._id_map(self.album)
         )
 
-        with self.captureOnCommitCallbacks() as callbacks:
-            user_tracking_service.reconnect_tracking_records(self._id_map(self.album))
-
-        self.assertEqual(cache.get(key), [999])
-        for callback in callbacks:
-            callback()
-        self.assertIsNone(cache.get(key))
+        self.assertEqual(stats["users"], {self.user.id})
 
     def test_an_already_connected_row_is_harmless(self):
         # The pass runs over every row whose id is in the map, not only the
@@ -241,13 +224,12 @@ class ReconnectTrackingRecordsTests(TestCase):
         key = config.CACHE_KEY_LISTENED_ALBUMS.format(user_id=self.user.id)
         cache.set(key, [self.album.id], 300)
 
-        with self.captureOnCommitCallbacks(execute=True):
-            stats = user_tracking_service.reconnect_tracking_records(
-                self._id_map(self.album)
-            )
+        stats = user_tracking_service.reconnect_tracking_records(
+            self._id_map(self.album)
+        )
 
         self.assertEqual(stats["listened_reconnected"], 0)
-        self.assertEqual(stats["users_affected"], 0)
+        self.assertEqual(stats["users"], set())
         self.assertEqual(cache.get(key), [self.album.id])
 
     def test_a_connected_row_under_a_secondary_id_is_still_normalized(self):

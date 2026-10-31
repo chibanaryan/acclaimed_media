@@ -1102,11 +1102,10 @@ normalising a secondary id to the primary and merging two rows that now
 point at one album, earliest kept. A row that is already right is skipped,
 so its user's caches are not dropped for nothing; the users whose rows a
 removal orphaned have theirs dropped instead, since their cached sets name
-the deleted pks. Both wait for the import's commit, as every
-`invalidate_listen_caches` does: dropped inside the transaction, a page load
-before it commits would refill them from the old rows. A read already under
-way at the commit can still do that, for the set's five minutes. The pass is
-behind a one-query existence check, so an untracked database pays nothing.
+the deleted pks. `import_batch` drops them with the section's keys, in one
+call, once it has committed: dropped inside the transaction, a page load
+before it commits would refill them from the old rows. The pass is behind a
+one-query existence check, so an untracked database pays nothing.
 
 **An import does not fetch metadata.** A kept album needs none - its rows,
 genres and covers never left it - so after a release that mostly repeats the
@@ -1124,10 +1123,14 @@ scheduled fetch (below) closes the gap by the next Sunday if nobody does.
 
 **A cache error does not fail a committed import.** The release is live by the
 time `import_batch` drops the caches, and staff told it failed would re-run
-it, so it logs the error and adds a line to the import's message instead. The
-filter options and counts can then lag for their 24-hour TTL, or until the
-next `fetch_album_metadata`. If the database connection itself has died, the
-staff page's own queries after the import can still fail; the release stands.
+it, so `invalidate_release_caches` logs the error and returns `False`, and
+the import returns a warning: an amber alert on the staff page, `style.WARNING`
+from the command. The fix it names is `rebuild_album_genres`, which is offline
+and always drops them. `fetch_album_metadata` and the genre rebuild get the
+same protection from `invalidate_music_caches`, so a cache error no longer
+stops the weekly job before its dates and slugs. If the database connection
+itself has died, the staff page's own queries after the import can still fail;
+the release stands.
 
 The import stamps `SiteMetadata` under the `music` key, which the rankings
 heading reads as "Updated: ...". `SiteMetadata` is keyed per section, so
@@ -1527,7 +1530,7 @@ Three aliases, defined by `core/cache_config.py` (which `settings.py` calls):
 - **`default` is shared across processes.** In production it is Django's
   `DatabaseCache` on the existing Postgres (`CACHE_URL=dbcache://cache_table`),
   so the gunicorn workers and any one-off dyno see the same entries. That
-  is what makes `music.views._invalidate_music_caches()` mean anything: under
+  is what makes `music.services.caching` mean anything: under
   `LocMemCache` each process had its own copy and an invalidation reached
   exactly one of them, so a metadata refresh left stale filter options behind
   for up to their 24-hour TTL. Local dev stays on LocMem; `createcachetable
@@ -1605,9 +1608,21 @@ cached while the flag was on would go on being served after it was turned off
 - and every cached rankings page spends from the 512 MB budget below.
 
 Music's cache keys all live in `music/config.py` as `CACHE_KEYS`, which
-`_invalidate_music_caches()` iterates - add a cached value there or it will not
-be invalidated. Every key carries `CACHE_VERSION`, so bumping that string
-invalidates the whole set.
+`caching.invalidate_music_caches()` iterates - add a cached value there or it
+will not be invalidated. Every key carries `CACHE_VERSION`, so bumping that
+string invalidates the whole set.
+
+**Every music cache write goes through `caching.cached` or `set_if_current`.**
+A read that queried just before a commit would otherwise save the old rows
+just after the commit's delete, and they would stay for the key's whole TTL,
+24 hours for the filter options. Every drop first writes a new
+`CACHE_KEY_GENERATION`, and a read skips its save if that moved while it was
+querying. One generation covers everything, so a toggle costs a concurrent
+miss its save and nothing more. A hit costs nothing extra; a miss costs two
+reads. A tiny window remains between the check and the write. Versioned keys
+would close it, at a cache read on every unbatched page and a rewrite of the
+music cache tests. `music/tests/test_caching.py` fails if a module writes the
+cache around the guard.
 
 Music's `/cover/` is exempt from rate limiting on the music host
 (`SITE_RATE_LIMIT_EXEMPT_PREFIXES`): it is a static asset in all but the URL,

@@ -25,7 +25,6 @@ from io import TextIOWrapper
 from pathlib import Path
 
 from django.conf import settings
-from django.core.cache import cache
 from django.db.models import Count, F, Max, Prefetch, Q
 from django.db.models.expressions import OrderBy
 from django.db.models.functions import Lower
@@ -44,7 +43,6 @@ from core import constants as core_constants
 from core.cache_helpers import (
     batched_cache_reads,
     cache_get,
-    cache_set,
     get_year_bounds,
 )
 from core.mixins import HTMXPartialMixin, RobustPaginationMixin, StaffOnlyMixin
@@ -226,16 +224,15 @@ def _tracked_album_ids(user, cache_key, queryset):
     a release dropped their album are left out until the reconnection pass
     re-adopts them - without the FK there is no id to join on.
     """
-    key = cache_key.format(user_id=user.id)
-    ids = cache_get(key)
-    if ids is None:
-        ids = list(
+    return caching.cached(
+        cache_key.format(user_id=user.id),
+        lambda: list(
             queryset.filter(user=user, album__isnull=False).values_list(
                 "album_id", flat=True
             )
-        )
-        cache_set(key, ids, config.CACHE_TIMEOUT_TRACKING)
-    return ids
+        ),
+        config.CACHE_TIMEOUT_TRACKING,
+    )
 
 
 def _get_listened_album_ids(user):
@@ -273,6 +270,7 @@ def _get_year_bounds():
         cache_key=config.CACHE_KEY_YEAR_STATS,
         cache_timeout=config.CACHE_TIMEOUT_24_HOURS,
         default_min=config.DEFAULT_MIN_YEAR,
+        read_through=caching.cached,
     )
 
 
@@ -491,18 +489,19 @@ def _genre_counts(queryset, descendants=None):
 
 def _cached_artist_options():
     """Return the artist filter options: every artist with at least one album."""
-    cache_key = config.CACHE_KEY_ARTIST_OPTIONS
-    options = cache_get(cache_key)
-    if options is None:
+
+    def load():
         album_ids = album_ids_by_artist()
-        options = [
+        return [
             {**option, "albums_count": len(album_ids[option["id"]])}
             for option in models.Artist.objects.filter(id__in=list(album_ids))
             .order_by(Lower("name"))
             .values("id", "name", "slug")
         ]
-        cache_set(cache_key, options, config.CACHE_TIMEOUT_24_HOURS)
-    return options
+
+    return caching.cached(
+        config.CACHE_KEY_ARTIST_OPTIONS, load, config.CACHE_TIMEOUT_24_HOURS
+    )
 
 
 def _cached_genre_options():
@@ -513,17 +512,16 @@ def _cached_genre_options():
     selected explicitly - annotating without naming it in ``values()`` leaves
     the template rendering a blank count.
     """
-    cache_key = config.CACHE_KEY_GENRE_OPTIONS
-    options = cache_get(cache_key)
-    if options is None:
-        options = list(
+    return caching.cached(
+        config.CACHE_KEY_GENRE_OPTIONS,
+        lambda: list(
             models.MusicGenre.objects.annotate(albums_count=Count("albums"))
             .filter(albums_count__gt=0)
             .order_by("level", "display_order", "name")
             .values("id", "name", "slug", "level", "parent_id", "path", "albums_count")
-        )
-        cache_set(cache_key, options, config.CACHE_TIMEOUT_24_HOURS)
-    return options
+        ),
+        config.CACHE_TIMEOUT_24_HOURS,
+    )
 
 
 def genre_tree_options(descendants=None):
@@ -591,28 +589,29 @@ def _cached_year_baseline(min_year, max_year):
     cached = cache_get(config.CACHE_KEY_YEAR_BASELINE)
     if cached is not None and cached["bounds"] == [min_year, max_year]:
         return cached["counts"]
+    generation = caching.current_generation()
     counts = _year_counts(models.Album.objects.all(), min_year, max_year)
-    cache_set(
+    caching.set_if_current(
         config.CACHE_KEY_YEAR_BASELINE,
         {"bounds": [min_year, max_year], "counts": counts},
         config.CACHE_TIMEOUT_24_HOURS,
+        generation,
     )
     return counts
 
 
 def _cached_hero_stats():
     """Return the counts shown in the page heading."""
-    cache_key = config.CACHE_KEY_HERO_STATS
-    stats = cache_get(cache_key)
-    if stats is None:
-        stats = {
+    return caching.cached(
+        config.CACHE_KEY_HERO_STATS,
+        lambda: {
             "album_count": models.Album.objects.count(),
             "artist_count": len(album_ids_by_artist()),
             "list_count": models.MusicList.objects.count(),
             "publication_count": models.MusicPublication.objects.count(),
-        }
-        cache_set(cache_key, stats, config.CACHE_TIMEOUT_24_HOURS)
-    return stats
+        },
+        config.CACHE_TIMEOUT_24_HOURS,
+    )
 
 
 def group_list_appearances(memberships):
@@ -1208,15 +1207,11 @@ class AlbumDetailView(MusicVisibleMixin, DetailView):
         context["grouped_lists"] = group_list_appearances(album.lists.all())
         context["list_appearance_count"] = len(album.lists.all())
 
-        total_album_count = cache.get(config.CACHE_KEY_TOTAL_ALBUM_COUNT)
-        if total_album_count is None:
-            total_album_count = models.Album.objects.count()
-            cache.set(
-                config.CACHE_KEY_TOTAL_ALBUM_COUNT,
-                total_album_count,
-                config.CACHE_TIMEOUT_24_HOURS,
-            )
-        context["total_album_count"] = total_album_count
+        context["total_album_count"] = caching.cached(
+            config.CACHE_KEY_TOTAL_ALBUM_COUNT,
+            models.Album.objects.count,
+            config.CACHE_TIMEOUT_24_HOURS,
+        )
 
         # "N of M" beside the decade and year ranks, as the game detail page
         # shows beside its own. Without them a rank reads as a bare number.
@@ -1649,7 +1644,7 @@ class MusicImportView(StaffOnlyMixin, View):
 
         if form.is_valid():
             try:
-                message = self._run_import(form.cleaned_data)
+                _, message, warnings = self._run_import(form.cleaned_data)
             except Exception as exc:  # noqa: BLE001 - surfaced to the page
                 # The importer runs in one transaction, so a failure leaves
                 # the previous rankings in place; report it and carry on.
@@ -1657,7 +1652,11 @@ class MusicImportView(StaffOnlyMixin, View):
             else:
                 # Outside the try: the release is live by now, so a failure
                 # here must not reach the message above.
-                summary = {"message": message, "counts": _music_counts()}
+                summary = {
+                    "message": message,
+                    "warnings": warnings,
+                    "counts": _music_counts(),
+                }
 
         return render(
             request,
@@ -1690,14 +1689,14 @@ class MusicImportView(StaffOnlyMixin, View):
                     )
                     for field, name in BUNDLED_FILES.items()
                 }
-                return import_handler.import_batch(**files)[1]
+                return import_handler.import_batch(**files)
         else:
             wrappers = {
                 field: TextIOWrapper(data[field], encoding="utf-8-sig", newline="")
                 for field in MusicImportForm.FILE_FIELDS
             }
             try:
-                return import_handler.import_batch(**wrappers)[1]
+                return import_handler.import_batch(**wrappers)
             finally:
                 for wrapper in wrappers.values():
                     wrapper.detach()
@@ -1782,8 +1781,3 @@ def _metadata_gaps():
             else 0
         ),
     }
-
-
-def _invalidate_music_caches():
-    """Drop the cached filter options and counts after a data change."""
-    caching.invalidate_music_caches()

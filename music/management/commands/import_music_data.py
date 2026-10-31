@@ -68,12 +68,14 @@ class Command(BaseCommand):
             paths["albums"].open(encoding="utf-8-sig", newline="") as albums_file,
             paths["positions"].open(encoding="utf-8-sig") as positions_file,
         ):
-            _, message = import_handler.import_batch(
+            _, message, warnings = import_handler.import_batch(
                 lists_file, albums_file, positions_file, artists_file
             )
 
         self._print_list_types()
         self.stdout.write(self.style.SUCCESS(message))
+        for warning in warnings:
+            self.stdout.write(self.style.WARNING(warning))
         self.stdout.write(
             "Albums: {albums} | Artists: {artists} ({credits} credits) | "
             "Lists: {lists} | Publications: {pubs} | "

@@ -34,7 +34,7 @@ to it: metadata, genres, covers and tracking rows.
 import csv
 import logging
 import re
-from typing import Callable, Dict, List, NamedTuple, Optional, Tuple
+from typing import Callable, Dict, List, NamedTuple, Optional, Set, Tuple
 
 from django.db import transaction
 
@@ -44,7 +44,11 @@ from games.models import SiteMetadata
 from music import config, models
 from music.services import artist_slugs, user_tracking_service
 from music.services.credits import credit_text
-from music.services.caching import invalidate_listen_caches, invalidate_music_caches
+from music.services.caching import (
+    CACHES_NOT_CLEARED,
+    invalidate_listen_caches,
+    invalidate_release_caches,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -576,6 +580,15 @@ def credit_errors(rows: List[AlbumRow], names_by_source: Dict[int, List[str]]):
 def import_albums(
     file_obj, progress_callback: Optional[Callable[[str, Dict], None]] = None
 ) -> Tuple[bool, str]:
+    """`_replace_albums` on its own, dropping the caches it staled on commit."""
+    message, users = _replace_albums(file_obj, progress_callback)
+    invalidate_listen_caches(users)
+    return (True, message)
+
+
+def _replace_albums(
+    file_obj, progress_callback: Optional[Callable[[str, Dict], None]] = None
+) -> Tuple[str, Set[int]]:
     """Upsert every album from a TSV file, then recompute derived ranks.
 
     Albums are matched on Wikidata id (:func:`match_albums`). A matched album
@@ -588,6 +601,9 @@ def import_albums(
     The artists must already be imported by :func:`import_artists`; each
     credit's name is the variant it names, and ``artist_credit`` is those
     names joined.
+
+    Returns:
+        The summary line, and the users whose cached tracking sets it staled.
     """
     rows = parse_albums_file(file_obj)
     total = len(rows)
@@ -621,12 +637,12 @@ def import_albums(
 
     # Deleted first, so a new album can take a removed one's slug. Their
     # tracking rows survive on SET_NULL; the users' cached id sets would
-    # still name the deleted pks, so those are dropped below.
-    orphaned_users = set()
+    # still name the deleted pks, so those are dropped with the rest.
+    stale_users = set()
     if match.removed:
         removed_pks = [album.pk for album in match.removed]
         for model_class in (models.ListenedAlbum, models.WantToListenAlbum):
-            orphaned_users.update(
+            stale_users.update(
                 model_class.objects.filter(album_id__in=removed_pks).values_list(
                     "user_id", flat=True
                 )
@@ -696,9 +712,9 @@ def import_albums(
         models.ListenedAlbum.objects.exists()
         or models.WantToListenAlbum.objects.exists()
     ):
-        user_tracking_service.reconnect_tracking_records(id_to_album)
-
-    invalidate_listen_caches(orphaned_users)
+        stale_users |= user_tracking_service.reconnect_tracking_records(id_to_album)[
+            "users"
+        ]
 
     albums_ranked, years_processed = update_year_decade_ranks(
         models.Album, "music_album", "year_released"
@@ -719,9 +735,9 @@ def import_albums(
         )
 
     return (
-        True,
         f"Albums: {total} ({kept} kept, {added} added, {removed} removed), "
         f"{albums_ranked} ranks calculated",
+        stale_users,
     )
 
 
@@ -818,6 +834,9 @@ def import_batch(
     row's album, so the order is fixed. Any failure rolls the whole import
     back rather than leaving the rankings half-replaced. Dropping the caches
     comes after the commit, so a failure there cannot, and is only reported.
+
+    Returns:
+        ``(True, message, warnings)``, each warning a line for staff to see.
     """
     messages = []
     with transaction.atomic():
@@ -827,7 +846,7 @@ def import_batch(
         _, message = import_lists(lists_file, progress_callback)
         messages.append(message)
 
-        _, message = import_albums(albums_file, progress_callback)
+        message, stale_users = _replace_albums(albums_file, progress_callback)
         messages.append(message)
 
         if not models.MusicList.objects.exists():
@@ -846,13 +865,6 @@ def import_batch(
     # exist, and dropping them inside would race a reader that repopulates
     # the cache from the pre-commit state. The release is live by now, so a
     # cache error must not read as a failed import, which staff would re-run.
-    try:
-        invalidate_music_caches()
-    except Exception:  # noqa: BLE001 - the release has committed
-        logger.exception("Music import committed but its caches were not dropped")
-        messages.append(
-            "Caches not cleared: filters, counts and landing pages can lag for "
-            "up to 24 hours, or until the next metadata run"
-        )
+    cleared = invalidate_release_caches(stale_users)
 
-    return (True, " | ".join(messages))
+    return (True, " | ".join(messages), [] if cleared else [CACHES_NOT_CLEARED])

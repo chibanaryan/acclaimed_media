@@ -20,7 +20,7 @@ from django.test import TestCase
 from core import constants as core_constants
 from core.models import User
 from music import config, models
-from music.services import import_handler
+from music.services import caching, import_handler
 from django.core.cache import cache
 from django.urls import reverse
 from games.models import SiteMetadata
@@ -865,6 +865,14 @@ class ImportMusicDataCommandTests(TestCase):
         call_command("import_music_data", stdout=out, **self.paths, **options)
         return out.getvalue()
 
+    def test_a_cache_warning_reaches_the_operator(self):
+        with mock.patch(
+            "music.services.import_handler.invalidate_release_caches",
+            return_value=False,
+        ):
+            output = self.run_command()
+        self.assertIn(caching.CACHES_NOT_CLEARED, output)
+
     def test_a_dry_run_names_a_bad_lists_file_without_a_traceback(self):
         (self.dir / "ListData.txt").write_text(
             "Mojo\t1995\tThe 100 Greatest Albums\t\n", encoding="utf-8"
@@ -997,8 +1005,9 @@ class ImportListMembershipsTests(TestCase):
 
 class ImportBatchTests(TestCase):
     def test_runs_all_four_importers_in_order(self):
-        success, message = import_release()
+        success, message, warnings = import_release()
         self.assertTrue(success)
+        self.assertEqual(warnings, [])
         self.assertTrue(message.startswith("Artists: 4"))
         self.assertIn("Lists: 3 created", message)
         self.assertIn("Albums: 3 (0 kept, 3 added, 0 removed)", message)
@@ -1037,7 +1046,7 @@ class RealReleaseFilesTests(TestCase):
     """End-to-end over the files the rankings actually shipped with."""
 
     def test_the_supplied_release_imports_completely(self):
-        success, _ = import_real_release()
+        success, _, _ = import_real_release()
 
         self.assertTrue(success)
         # Counted from the files, so a new release does not fail the suite
@@ -1356,16 +1365,45 @@ class ImportReconnectsTrackingTests(TestCase):
         _, dropped = self._tracked_album_key()
         with mock.patch("music.services.caching.cache") as broken:
             broken.delete_many.side_effect = ConnectionError
-            with self.assertLogs("music.services.import_handler", "ERROR"):
-                with self.captureOnCommitCallbacks(execute=True):
-                    success, message = import_release(
-                        albums_file=SHORTER_ALBUMS_TSV,
-                        positions_file=SHORTER_POSITIONS_TSV,
-                    )
+            with self.assertLogs("music.services.caching", "ERROR"):
+                success, _, warnings = import_release(
+                    albums_file=SHORTER_ALBUMS_TSV,
+                    positions_file=SHORTER_POSITIONS_TSV,
+                )
         self.assertTrue(success)
-        self.assertIn("Caches not cleared", message)
+        self.assertEqual(warnings, [caching.CACHES_NOT_CLEARED])
         self.assertFalse(models.Album.objects.filter(pk=dropped.pk).exists())
-        broken.delete_many.assert_called()
+
+    def test_a_release_makes_one_drop_for_everyone_it_touched(self):
+        _, dropped = self._tracked_album_key()
+        returning = models.Album.objects.get(rank=2)
+        reader = User.objects.create_user(username="returning", password="pw")
+        models.ListenedAlbum.objects.create(
+            user=reader, album=None, wikidata_id=returning.wikidata_id
+        )
+
+        with mock.patch(
+            "music.services.import_handler.invalidate_release_caches",
+            return_value=True,
+        ) as invalidate:
+            import_release(
+                albums_file=SHORTER_ALBUMS_TSV,
+                positions_file=SHORTER_POSITIONS_TSV,
+            )
+
+        invalidate.assert_called_once_with({self.user.id, reader.id})
+
+    def test_a_failed_release_makes_no_drop(self):
+        self._tracked_album_key()
+        with mock.patch.object(
+            import_handler, "import_listmemberships", side_effect=ValueError
+        ), mock.patch(
+            "music.services.import_handler.invalidate_release_caches"
+        ) as invalidate:
+            with self.assertRaises(ValueError):
+                import_release(albums_file=ALBUMS_TSV.split("\n", 1)[1])
+
+        invalidate.assert_not_called()
 
     def test_keeping_an_album_leaves_its_trackers_caches_alone(self):
         # The cached sets hold album pks, which a kept album does not change.

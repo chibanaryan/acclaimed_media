@@ -15,9 +15,9 @@ from collections import defaultdict
 
 from django.db.models import Count
 
-from core.cache_helpers import cache_get, cache_set
 from core.services import genre_tree
 from music import config, models
+from music.services import caching
 
 # How many albums go into a page's ItemList structured data.
 TOP_N = 25
@@ -41,10 +41,13 @@ def get_landing_genres():
     ``album_count`` is distinct across the subtree, as the sidebar counts
     it, so it is exactly what the page lists.
     """
-    entries = cache_get(config.CACHE_KEY_LANDING_GENRES)
-    if entries is not None:
-        return entries
+    return caching.cached(
+        config.CACHE_KEY_LANDING_GENRES, _landing_genres, config.CACHE_TIMEOUT_24_HOURS
+    )
 
+
+def _landing_genres():
+    """`get_landing_genres`, uncached."""
     descendants = genre_tree.fetch_descendants_by_id(models.MusicGenre.objects.all())
     albums_by_genre = defaultdict(set)
     for album_id, genre_id in models.Album.objects.exclude(
@@ -68,17 +71,20 @@ def get_landing_genres():
             albums |= albums_by_genre.get(genre_id, set())
         if len(albums) >= MIN_GENRE_ALBUMS:
             entries.append({**root, "album_count": len(albums)})
-
-    cache_set(config.CACHE_KEY_LANDING_GENRES, entries, config.CACHE_TIMEOUT_24_HOURS)
     return entries
 
 
 def get_landing_decades():
     """Decades with a page, ascending: ``[1950, 1960, ...]``."""
-    decades = cache_get(config.CACHE_KEY_LANDING_DECADES)
-    if decades is not None:
-        return decades
+    return caching.cached(
+        config.CACHE_KEY_LANDING_DECADES,
+        _landing_decades,
+        config.CACHE_TIMEOUT_24_HOURS,
+    )
 
+
+def _landing_decades():
+    """`get_landing_decades`, uncached."""
     counts = defaultdict(int)
     for row in (
         models.Album.objects.exclude(year_released__isnull=True)
@@ -87,12 +93,9 @@ def get_landing_decades():
         .annotate(count=Count("id"))
     ):
         counts[(row["year_released"] // 10) * 10] += row["count"]
-    decades = sorted(
+    return sorted(
         decade for decade, count in counts.items() if count >= MIN_DECADE_ALBUMS
     )
-
-    cache_set(config.CACHE_KEY_LANDING_DECADES, decades, config.CACHE_TIMEOUT_24_HOURS)
-    return decades
 
 
 def resolve_genre_slug(slug):
