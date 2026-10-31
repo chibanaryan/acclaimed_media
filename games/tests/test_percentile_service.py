@@ -1,5 +1,7 @@
 """Tests for percentile service."""
 
+from unittest import mock
+
 from django.test import TestCase
 
 from core.models import User
@@ -105,6 +107,14 @@ class PercentileServiceTests(TestCase):
         result = calculate_percentile(100)
         self.assertEqual(result["percentile"], 100)
         self.assertEqual(result["message"], "You're #1 of 100 players!")
+
+    def test_a_share_is_rounded_down(self):
+        """5 of 9 others is 55.6%, which is not more than 56%."""
+        with mock.patch(
+            "games.services.percentile_service.get_played_counts",
+            return_value=[1] * 5 + [9] * 4 + [5],
+        ):
+            self.assertEqual(calculate_percentile(5)["percentile"], 55)
 
     def test_excludes_orphaned_played_games(self):
         """Only counts non-orphaned PlayedGame records."""

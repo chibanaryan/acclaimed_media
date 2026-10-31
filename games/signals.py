@@ -105,17 +105,33 @@ def _notify_subscribers(post_pk):
 
 @receiver(pre_save, sender=Developer)
 def remember_the_root_a_developer_leaves(sender, instance, **kwargs):
-    """Note the old root of a studio moving parent, whose page still lists it."""
+    """Note what a save changes, for `invalidate_developer_cache_on_change`.
+
+    The old root of a studio moving parent, whose page still lists it. And
+    whether anything changed at all: the IGDB refresh saves every developer on
+    every game, and a drop for each would keep the whole family uncached for as
+    long as it ran.
+    """
     instance._root_left_id = None
+    instance._save_changes_nothing = False
     if instance.pk is None or kwargs.get("raw"):
         return
-    old_parent = (
-        Developer.objects.filter(subsidiaries=instance.pk)
-        .exclude(pk=instance.parent_id)
-        .first()
+    fields = [
+        field.attname
+        for field in Developer._meta.concrete_fields
+        if not getattr(field, "auto_now", False)
+    ]
+    previous = Developer.objects.filter(pk=instance.pk).values(*fields).first()
+    if previous is None:
+        return
+    instance._save_changes_nothing = all(
+        previous[name] == getattr(instance, name) for name in fields
     )
-    if old_parent:
-        instance._root_left_id = old_parent.root_developer.id
+    old_parent_id = previous["parent_id"]
+    if old_parent_id and old_parent_id != instance.parent_id:
+        old_parent = Developer.objects.filter(pk=old_parent_id).first()
+        if old_parent:
+            instance._root_left_id = old_parent.root_developer.id
 
 
 @receiver([post_save, post_delete], sender=Developer)
@@ -123,6 +139,9 @@ def invalidate_developer_cache_on_change(sender, instance, **kwargs):
     """Invalidate developer hierarchy cache when Developer changes."""
     from games.cache import invalidate_developer_detail
     from games.services.developer_service import invalidate_developer_cache
+
+    if kwargs.get("created") is False and instance._save_changes_nothing:
+        return
 
     invalidate_developer_cache()
 

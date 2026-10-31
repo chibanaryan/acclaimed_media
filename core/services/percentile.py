@@ -5,6 +5,7 @@ supplies its own counts and wording, since it alone knows what is being
 counted.
 """
 
+import math
 from dataclasses import dataclass
 from typing import Callable, List
 
@@ -63,11 +64,12 @@ def calculate_percentile(
     # Small populations show a position. Compared with everyone else, not
     # everyone: the reader cannot beat themselves, so a leader of 20 would
     # otherwise have "more than 95%". Capped for the same stale counts, and
-    # below 100 for anyone with someone ahead of them
+    # below 100 for anyone with someone ahead of them. Rounded down, or "more
+    # than 56%" would be said of 55.6%
     percentile = None
     if total_users >= 10:
         share = users_with_fewer / (total_users - 1)
-        percentile = min(round(share * 100), 100 if rank == 1 else 99)
+        percentile = min(math.floor(share * 100), 100 if rank == 1 else 99)
 
     position = f"#{rank} of {total_users} {wording.people}"
     if tied:

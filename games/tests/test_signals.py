@@ -96,6 +96,26 @@ class DeveloperCacheInvalidationSignalTests(CommitHooksRunNowMixin, TestCase):
                 studio.parent = old_root
                 studio.save()
 
+    def test_a_new_row_given_its_own_pk_still_drops(self):
+        from games.services.developer_service import DEVELOPER_HIERARCHY_CACHE_KEY
+
+        cache.set(DEVELOPER_HIERARCHY_CACHE_KEY, {"test": "data"})
+
+        Developer(pk=987, name="Given", igdb_id=1).save()
+
+        self.assertIsNone(cache.get(DEVELOPER_HIERARCHY_CACHE_KEY))
+
+    def test_a_save_that_changes_nothing_drops_nothing(self):
+        """The IGDB refresh saves every developer on every game."""
+        from games.services.developer_service import DEVELOPER_HIERARCHY_CACHE_KEY
+
+        studio = Developer.objects.create(name="Studio", igdb_id=1)
+        cache.set(DEVELOPER_HIERARCHY_CACHE_KEY, {"test": "data"})
+
+        Developer.objects.get(pk=studio.pk).save()
+
+        self.assertIsNotNone(cache.get(DEVELOPER_HIERARCHY_CACHE_KEY))
+
     def test_a_save_that_did_not_reach_the_row_does_not_hide_a_later_move(self):
         """The old parent is read from the row, not remembered on the instance."""
         old_root = Developer.objects.create(name="Old", igdb_id=1)

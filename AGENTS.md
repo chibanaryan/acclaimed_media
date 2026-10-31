@@ -1639,8 +1639,8 @@ cache around the guard.
 counts, and the developer hierarchy and detail. A generation row is written on
 every drop, so there is one per family, not per key, which could outgrow the
 cache table's budget, and not one for the section, which would have the weekly
-refresh cancel every family's saves. Its developer saves still move that family,
-which costs an overlapping page build its save and nothing else. They drop through
+refresh cancel every family's saves. A developer save that changes nothing, which
+is most of what the IGDB refresh does, drops nothing. They drop through
 `core.cache_helpers.drop_on_commit`, not `cache.delete`: `post_save` fires
 inside an import's transaction, and a page load before the commit used to put
 the old counts back for a day with nothing left to drop them. Keys collect per

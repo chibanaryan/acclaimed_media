@@ -12,7 +12,7 @@
     {# htmx re-creates the scripts a swap brings in; this gives them the page's nonce, the one its CSP header allows #}
     <meta name="htmx-config" content='{"inlineScriptNonce": "{{ csp_nonce }}"}'>
     <meta name="description" content="{% block meta_description %}{% if site_key == 'music' %}Discover the most critically acclaimed albums of all time, ranked by aggregating critic lists from music publications worldwide.{% elif site_key == 'root' %}Rankings of the most critically acclaimed video games and albums of all time, built by aggregating hundreds of critic lists.{% else %}Discover the most critically acclaimed video games of all time, ranked by aggregating hundreds of critic lists from major gaming publications.{% endif %}{% endblock %}">
-    <link rel="canonical" href="{% block canonical_url %}{{ canonical_origin }}{{ request.path }}{% endblock %}">
+    <link rel="canonical" href="{% block canonical_url %}{% if page_canonical_url %}{{ page_canonical_url }}{% else %}{{ canonical_origin }}{{ request.path }}{% endif %}{% endblock %}">
     {# Content Security Policy is set via CSPMiddleware with nonce support #}
     {# Note: 'unsafe-eval' is required for Alpine.js x-data expressions #}
     <title>{% block title %}Acclaimed Media{% endblock %}</title>
@@ -28,7 +28,7 @@
     <meta property="og:type" content="{% block og_type %}website{% endblock %}">
     <meta property="og:title" content="{% block og_title %}Acclaimed Media{% endblock %}">
     <meta property="og:description" content="{% block og_description %}{% if site_key == 'music' %}Discover the most critically acclaimed albums of all time, ranked by aggregating critic lists.{% elif site_key == 'root' %}The most critically acclaimed video games and albums of all time, ranked by aggregating critic lists.{% else %}Discover the most critically acclaimed video games of all time, ranked by aggregating hundreds of critic lists.{% endif %}{% endblock %}">
-    <meta property="og:url" content="{% block og_url %}{{ canonical_origin }}{{ request.path }}{% endblock %}">
+    <meta property="og:url" content="{% block og_url %}{% if page_canonical_url %}{{ page_canonical_url }}{% else %}{{ canonical_origin }}{{ request.path }}{% endif %}{% endblock %}">
     {# No site-wide image until new brand art is drawn: a page with its own #}
     {# artwork fills this block with the whole og:image tag. #}
     {% block og_image %}{% endblock %}
