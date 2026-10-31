@@ -155,7 +155,9 @@ class RebuildTests(RebuildTestCase):
             broken.delete_many.side_effect = ConnectionError
             with self.assertLogs("music.services.caching", "ERROR"):
                 with self.captureOnCommitCallbacks(execute=True):
-                    genre_rebuild.rebuild_album_genres()
+                    report = genre_rebuild.rebuild_album_genres()
+
+        self.assertFalse(report.caches_cleared)
 
     def test_unclassified_labels_are_reported(self):
         self.album("X", 1, discogs=(["Grunge", "Zeuhl"], ["Rock"]), wikidata="zeuhl")

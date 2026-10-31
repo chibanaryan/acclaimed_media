@@ -12,6 +12,7 @@ use ``--report`` to see the labels it does not classify yet.
 
 from django.core.management.base import BaseCommand
 
+from music.services import caching
 from music.services import genre_normalizer as gn
 from music.services.genre_rebuild import rebuild_album_genres
 
@@ -57,6 +58,8 @@ def write_report(command, report, verbose=False):
         out.write(f"  Deleted {len(report.deleted)} unused genre row(s)")
     if report.saved_filters_remapped:
         out.write(f"  Remapped {report.saved_filters_remapped} saved filter(s)")
+    if not report.caches_cleared:
+        out.write(style.WARNING(f"  {caching.CACHES_NOT_CLEARED}"))
     if report.unclassified:
         out.write(
             style.WARNING(

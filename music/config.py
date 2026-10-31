@@ -108,11 +108,10 @@ RESERVED_ALBUM_SLUG_PATTERN = r"^\d{3}0s$"
 
 # Per-user tracking id sets. These are *templates*, not keys: there is one key
 # per user, so they cannot go in CACHE_KEYS and an import cannot blanket
-# invalidate them. `music.services.caching.invalidate_listen_caches`
-# drops them at the only three moments they can go stale - a toggle, an
-# import, and `mark_albums_listened`. A new per-user
-# cached value belongs in this tuple for the same reason a new global one
-# belongs in CACHE_KEYS.
+# invalidate them. `music.services.caching` drops them at the only three
+# moments they can go stale - a toggle, an import, and `mark_albums_listened`.
+# A new per-user cached value belongs in this tuple for the same reason a new
+# global one belongs in CACHE_KEYS.
 CACHE_KEY_LISTENED_ALBUMS = f"{CACHE_VERSION}:listened_albums_{{user_id}}"
 CACHE_KEY_WANT_TO_LISTEN_ALBUMS = f"{CACHE_VERSION}:want_to_listen_albums_{{user_id}}"
 CACHE_KEY_OWNED_ALBUMS = f"{CACHE_VERSION}:owned_albums_{{user_id}}"

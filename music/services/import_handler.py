@@ -44,11 +44,7 @@ from games.models import SiteMetadata
 from music import config, models
 from music.services import artist_slugs, user_tracking_service
 from music.services.credits import credit_text
-from music.services.caching import (
-    CACHES_NOT_CLEARED,
-    invalidate_listen_caches,
-    invalidate_release_caches,
-)
+from music.services.caching import CACHES_NOT_CLEARED, invalidate_release_caches
 
 logger = logging.getLogger(__name__)
 
@@ -579,15 +575,6 @@ def credit_errors(rows: List[AlbumRow], names_by_source: Dict[int, List[str]]):
 
 def import_albums(
     file_obj, progress_callback: Optional[Callable[[str, Dict], None]] = None
-) -> Tuple[bool, str]:
-    """`_replace_albums` on its own, dropping the caches it staled on commit."""
-    message, users = _replace_albums(file_obj, progress_callback)
-    invalidate_listen_caches(users)
-    return (True, message)
-
-
-def _replace_albums(
-    file_obj, progress_callback: Optional[Callable[[str, Dict], None]] = None
 ) -> Tuple[str, Set[int]]:
     """Upsert every album from a TSV file, then recompute derived ranks.
 
@@ -826,7 +813,7 @@ def import_batch(
     positions_file,
     artists_file,
     progress_callback: Optional[Callable[[str, Dict], None]] = None,
-) -> Tuple[bool, str]:
+) -> Tuple[bool, str, List[str]]:
     """Run the four importers in dependency order, in one transaction.
 
     Artists must exist before an album can be credited to them, lists before
@@ -846,7 +833,7 @@ def import_batch(
         _, message = import_lists(lists_file, progress_callback)
         messages.append(message)
 
-        message, stale_users = _replace_albums(albums_file, progress_callback)
+        message, stale_users = import_albums(albums_file, progress_callback)
         messages.append(message)
 
         if not models.MusicList.objects.exists():

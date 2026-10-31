@@ -1,11 +1,14 @@
 """The section's cache writes, and what happens when dropping them fails."""
 
 import re
+from io import StringIO
 from pathlib import Path
 from unittest import mock
 
 from django.conf import settings
 from django.core.cache import cache
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import SimpleTestCase, TestCase
 
 from core.cache_helpers import batched_cache_reads
@@ -14,6 +17,9 @@ from music.services import caching
 from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 
 KEY = config.CACHE_KEY_HERO_STATS
+WRITE = re.compile(
+    r"\bcache_set\(|\bcaches\[|\bcache\.(set|add|set_many|get_or_set|incr|touch)\("
+)
 
 
 class CachedTests(SimpleTestCase):
@@ -57,12 +63,44 @@ class CachedTests(SimpleTestCase):
 
         self.assertIsNone(cache.get(KEY))
 
+    def test_a_skipped_value_still_answers_the_rest_of_a_batch(self):
+        def read_old_rows_then_lose_the_race():
+            caching.invalidate_music_caches()
+            return "old rows"
+
+        with batched_cache_reads([KEY]):
+            caching.cached(KEY, read_old_rows_then_lose_the_race, 60)
+            compute = mock.Mock()
+            self.assertEqual(caching.cached(KEY, compute, 60), "old rows")
+        compute.assert_not_called()
+        self.assertIsNone(cache.get(KEY))
+
+    def test_a_page_batch_answers_the_generation(self):
+        with batched_cache_reads([KEY, config.CACHE_KEY_GENERATION]):
+            with mock.patch("core.cache_helpers.cache") as spy:
+                caching.current_generation()
+        spy.get.assert_not_called()
+
     def test_a_saved_value_reaches_the_rest_of_a_batch(self):
         with batched_cache_reads([KEY]):
             caching.cached(KEY, lambda: "fresh", 60)
             compute = mock.Mock()
             self.assertEqual(caching.cached(KEY, compute, 60), "fresh")
         compute.assert_not_called()
+
+
+class ClearMusicCachesCommandTests(SimpleTestCase):
+    def test_it_says_when_they_are_cleared(self):
+        out = StringIO()
+        call_command("clear_music_caches", stdout=out)
+        self.assertIn("cleared", out.getvalue())
+
+    def test_a_failure_exits_non_zero(self):
+        with mock.patch(
+            "music.services.caching.invalidate_music_caches", return_value=False
+        ):
+            with self.assertRaises(CommandError):
+                call_command("clear_music_caches")
 
 
 class EveryWriteIsGuardedTests(SimpleTestCase):
@@ -72,9 +110,9 @@ class EveryWriteIsGuardedTests(SimpleTestCase):
         unguarded = [
             str(path.relative_to(root))
             for path in root.rglob("*.py")
-            if "tests" not in path.parts
+            if "tests" not in path.relative_to(root).parts
             and path.name != "caching.py"
-            and re.search(r"\bcache_set\(|\bcache\.(set|add)\(", path.read_text())
+            and WRITE.search(path.read_text())
         ]
         self.assertEqual(unguarded, [])
 

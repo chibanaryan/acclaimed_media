@@ -480,8 +480,7 @@ class ImportAlbumsTests(TestCase):
         import_artists()
 
     def test_creates_albums_artists_and_derived_ranks(self):
-        success, message = import_handler.import_albums(StringIO(ALBUMS_TSV))
-        self.assertTrue(success)
+        message, _ = import_handler.import_albums(StringIO(ALBUMS_TSV))
         self.assertIn("Albums: 3 (0 kept, 3 added, 0 removed)", message)
         self.assertIn("3 ranks calculated", message)
         self.assertEqual(models.Album.objects.count(), 3)
@@ -663,8 +662,7 @@ class ImportAlbumsInPlaceTests(TestCase):
     def test_a_reimport_keeps_every_pk_and_slug(self):
         before = dict(models.Album.objects.values_list("wikidata_id", "pk"))
         slugs = set(models.Album.objects.values_list("slug", flat=True))
-        success, message = self.reimport()
-        self.assertTrue(success)
+        message, _ = self.reimport()
         self.assertIn("Albums: 3 (3 kept, 0 added, 0 removed)", message)
         self.assertEqual(
             dict(models.Album.objects.values_list("wikidata_id", "pk")), before
@@ -768,7 +766,7 @@ class ImportAlbumsInPlaceTests(TestCase):
         self.assertEqual(album.wikidata_id, "Q42")
 
     def test_dropped_albums_are_removed_and_new_ones_added(self):
-        _, message = self.reimport(
+        message, _ = self.reimport(
             "1\tPet Sounds\t3,0\t1966\tQ212863\n" "2\tHarvest\t56,0\t1972\tQ1191683\n"
         )
         self.assertIn("Albums: 2 (1 kept, 1 added, 2 removed)", message)
@@ -786,7 +784,7 @@ class ImportAlbumsInPlaceTests(TestCase):
         self.assertEqual(models.Album.objects.get().slug, "pet-sounds")
 
     def test_one_album_is_claimed_by_one_row(self):
-        _, message = self.reimport(
+        message, _ = self.reimport(
             "1\tPet Sounds\t3,0\t1966\tQ212863\n"
             "2\tPet Sounds (Stereo)\t3,0\t1966\tQ212863\n"
         )
@@ -799,7 +797,7 @@ class ImportAlbumsInPlaceTests(TestCase):
     def test_a_row_without_a_wikidata_id_is_always_new(self):
         self.reimport("1\tUntitled\t3,0\t1999\n")
         album = models.Album.objects.get()
-        _, message = self.reimport("1\tUntitled\t3,0\t1999\n")
+        message, _ = self.reimport("1\tUntitled\t3,0\t1999\n")
         self.assertIn("(0 kept, 1 added, 1 removed)", message)
         self.assertNotEqual(models.Album.objects.get().pk, album.pk)
 
@@ -1306,29 +1304,8 @@ class ImportReconnectsTrackingTests(TestCase):
     def test_a_reimport_leaves_an_untracked_database_alone(self):
         # The common case, and the reason the pass is behind an existence
         # check rather than run unconditionally.
-        success, _ = import_handler.import_albums(StringIO(ALBUMS_TSV))
-        self.assertTrue(success)
+        import_handler.import_albums(StringIO(ALBUMS_TSV))
         self.assertEqual(models.ListenedAlbum.objects.count(), 0)
-
-    def test_dropping_an_album_drops_its_trackers_caches(self):
-        key, _ = self._tracked_album_key()
-
-        with self.captureOnCommitCallbacks(execute=True):
-            import_handler.import_albums(StringIO(ALBUMS_TSV.split("\n", 1)[1]))
-
-        self.assertIsNone(cache.get(key))
-
-    def test_a_trackers_caches_wait_for_the_imports_commit(self):
-        """A read before the commit would refill them from the old rows."""
-        key, album = self._tracked_album_key()
-
-        with self.captureOnCommitCallbacks() as callbacks:
-            import_handler.import_albums(StringIO(ALBUMS_TSV.split("\n", 1)[1]))
-
-        self.assertEqual(cache.get(key), [album.id])
-        for callback in callbacks:
-            callback()
-        self.assertIsNone(cache.get(key))
 
     def _tracked_album_key(self):
         """A cached set for a tracked album the next release drops."""
@@ -1342,11 +1319,10 @@ class ImportReconnectsTrackingTests(TestCase):
 
     def test_a_whole_release_drops_a_trackers_caches(self):
         key, _ = self._tracked_album_key()
-        with self.captureOnCommitCallbacks(execute=True):
-            import_release(
-                albums_file=SHORTER_ALBUMS_TSV,
-                positions_file=SHORTER_POSITIONS_TSV,
-            )
+        import_release(
+            albums_file=SHORTER_ALBUMS_TSV,
+            positions_file=SHORTER_POSITIONS_TSV,
+        )
         self.assertIsNone(cache.get(key))
 
     def test_a_failed_release_leaves_a_trackers_caches(self):
@@ -1355,9 +1331,8 @@ class ImportReconnectsTrackingTests(TestCase):
         with mock.patch.object(
             import_handler, "import_listmemberships", side_effect=ValueError
         ):
-            with self.captureOnCommitCallbacks(execute=True):
-                with self.assertRaises(ValueError):
-                    import_release(albums_file=ALBUMS_TSV.split("\n", 1)[1])
+            with self.assertRaises(ValueError):
+                import_release(albums_file=ALBUMS_TSV.split("\n", 1)[1])
         self.assertEqual(cache.get(key), [album.id])
 
     def test_a_cache_error_cannot_fail_a_committed_release(self):
@@ -1414,7 +1389,6 @@ class ImportReconnectsTrackingTests(TestCase):
         key = config.CACHE_KEY_LISTENED_ALBUMS.format(user_id=self.user.id)
         cache.set(key, [album.id], 300)
 
-        with self.captureOnCommitCallbacks(execute=True):
-            import_handler.import_albums(StringIO(ALBUMS_TSV))
+        import_release()
 
         self.assertEqual(cache.get(key), [album.id])

@@ -17,14 +17,14 @@ from uuid import uuid4
 from django.core.cache import cache
 from django.db import transaction
 
-from core.cache_helpers import cache_get, cache_set
+from core.cache_helpers import cache_get, cache_set, remember_in_batch
 from music import config
 
 logger = logging.getLogger(__name__)
 
 CACHES_NOT_CLEARED = (
     "Caches not cleared: filter options, counts and landing pages can lag for "
-    "up to 24 hours. Run `python manage.py rebuild_album_genres` to clear them."
+    "up to 24 hours. Run `python manage.py clear_music_caches` to clear them."
 )
 
 
@@ -45,8 +45,12 @@ def _drop(keys: List[str]) -> bool:
 
 
 def current_generation() -> Optional[str]:
-    """The value `set_if_current` compares against, taken before reading rows."""
-    return cache.get(config.CACHE_KEY_GENERATION)
+    """The value `set_if_current` compares against, taken before reading rows.
+
+    A page's batch answers this, so a miss costs no second read here. A value
+    from the start of the request is older, which only makes the check stricter.
+    """
+    return cache_get(config.CACHE_KEY_GENERATION)
 
 
 def set_if_current(
@@ -56,17 +60,21 @@ def set_if_current(
 
     Without this, a read that queried just before a commit saves the old rows
     just after the commit's delete, and they stay for the key's whole TTL. A
-    tiny window remains between this check and the write.
+    tiny window remains between this check and the write. A skipped value still
+    answers the rest of a batch, or each later read would compute it again.
     """
-    if current_generation() == generation:
+    if cache.get(config.CACHE_KEY_GENERATION) == generation:
         cache_set(key, value, timeout)
+    else:
+        remember_in_batch(key, value)
 
 
 def cached(key: str, compute: Callable[[], Any], timeout: int) -> Any:
     """``key``'s value, computed and saved on a miss.
 
     Every value in this section is written through here or `set_if_current`.
-    A hit costs what `cache_get` costs; a miss adds the two generation reads.
+    A hit costs what `cache_get` costs; a miss adds one generation read, or
+    two outside a page's batch.
     """
     value = cache_get(key)
     if value is None:
@@ -101,10 +109,12 @@ def invalidate_listen_caches(user_ids) -> None:
     """Drop these users' cached tracking id sets, and the listener counts.
 
     Separate from `invalidate_music_caches` because these keys are per-user:
-    there is no enumerable set of them, so they are dropped by the three things
-    that can change them rather than by a blanket sweep. The listener counts
-    are one global key, but those same three normally change them; a row
-    edited in the admin or a deleted user waits out its hour, as games' does.
+    there is no enumerable set of them, so they are dropped by the things that
+    can change them rather than by a blanket sweep: a toggle and the bulk
+    command here, and an import through `invalidate_release_caches`. The
+    listener counts are one global key, but those same things normally change
+    them; a row edited in the admin or a deleted user waits out its hour, as
+    games' does.
 
     Runs once the open transaction commits, or at once with none open: dropped
     inside one, a page load before the commit would refill a set from the old
@@ -117,11 +127,12 @@ def invalidate_listen_caches(user_ids) -> None:
 
 
 def invalidate_release_caches(user_ids) -> bool:
-    """Everything an import changed, in one drop.
+    """Everything an import changed, in one drop: `invalidate_music_caches`'
+    keys and `invalidate_listen_caches`' for these users.
 
     For `import_batch`, once its transaction has committed.
 
     Returns:
         False if the drop failed. It is logged, and the values lag their TTL.
     """
-    return _drop(list(dict.fromkeys([*config.CACHE_KEYS, *_listen_keys(user_ids)])))
+    return _drop([*config.CACHE_KEYS, *_listen_keys(user_ids)])

@@ -568,8 +568,9 @@ crowded that row. Four things it depends on:
 
 Per-user cache keys cannot live in `CACHE_KEYS`, which is a flat tuple an
 import iterates. They are templates in `PER_USER_CACHE_KEY_TEMPLATES`, dropped
-by `caching.invalidate_listen_caches(user_ids)` at the only three moments they
-can go stale: a toggle, an import, and the bulk command below.
+by `caching.invalidate_listen_caches(user_ids)` on a toggle and from the bulk
+command below, and `invalidate_release_caches(user_ids)` on an import, the only
+three moments they can go stale.
 
 **The Account modal shows a reader's albums** beside their games, the current
 site's block first, on any host (`music.services.listening_stats`). The block
@@ -577,9 +578,11 @@ is absent for anyone `music_visible_to` refuses, so the shared route cannot
 reveal the hidden section. Its rank counts Have and Heard together, and so
 says "tracked" rather than "heard", which would be false of a reader who only
 marks what they own. The rank logic is `core.services.percentile`, shared with
-games: a percentage compares a reader with everyone else, "top 1%" means the
-rank really is, and a leader or last place gets a position instead, since "more
-than 95%" undersells the first and "more than 0%" says nothing to the second. `CACHE_KEY_LISTENER_COUNTS` is one global key, in `CACHE_KEYS` for
+games: a percentage compares a reader with everyone else, "top 1%" counts those
+level with or ahead of them, so a tie cannot claim it, and a leader or someone
+near the bottom gets a position instead, "tied for" when it is shared, since
+"more than 95%" undersells the first and "more than 0%" says nothing to the
+second. `CACHE_KEY_LISTENER_COUNTS` is one global key, in `CACHE_KEYS` for
 an import, and `invalidate_listen_caches` drops it too, since the same three
 moments normally change it. An admin edit or a deleted user waits out its
 one-hour TTL, as games' distribution does.
@@ -1127,10 +1130,11 @@ scheduled fetch (below) closes the gap by the next Sunday if nobody does.
 time `import_batch` drops the caches, and staff told it failed would re-run
 it, so `invalidate_release_caches` logs the error and returns `False`, and
 the import returns a warning: an amber alert on the staff page, `style.WARNING`
-from the command. The fix it names is `rebuild_album_genres`, which is offline
-and always drops them. `fetch_album_metadata` and the genre rebuild get the
-same protection from `invalidate_music_caches`, so a cache error no longer
-stops the weekly job before its dates and slugs. If the database connection
+from the command. The fix it names is `python manage.py clear_music_caches`,
+which does only that and exits non-zero if it fails too. `fetch_album_metadata`
+and `rebuild_album_genres` get the same protection from
+`invalidate_music_caches`, and print the same warning, so a cache error no
+longer stops the weekly job before its dates and slugs. If the database connection
 itself has died, the staff page's own queries after the import can still fail;
 the release stands.
 
@@ -1620,8 +1624,9 @@ just after the commit's delete, and they would stay for the key's whole TTL,
 24 hours for the filter options. Every drop first writes a new
 `CACHE_KEY_GENERATION`, and a read skips its save if that moved while it was
 querying. One generation covers everything, so a toggle costs a concurrent
-miss its save and nothing more. A hit costs nothing extra; a miss costs two
-reads. A tiny window remains between the check and the write. Versioned keys
+miss its save and nothing more. A hit costs nothing extra; a miss costs one
+more read, since `AlbumHomePageView` batches the generation with its keys. A
+tiny window remains between the check and the write. Versioned keys
 would close it, at a cache read on every unbatched page and a rewrite of the
 music cache tests. `music/tests/test_caching.py` fails if a module writes the
 cache around the guard.

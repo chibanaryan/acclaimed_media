@@ -697,6 +697,7 @@ class AlbumHomePageView(MusicVisibleMixin, RobustPaginationMixin, ListView):
     def _prefetch_cache_keys(self):
         """Every shared-cache key the page reads before it renders."""
         keys = [
+            config.CACHE_KEY_GENERATION,
             config.CACHE_KEY_YEAR_STATS,
             config.CACHE_KEY_ARTIST_OPTIONS,
             config.CACHE_KEY_GENRE_OPTIONS,

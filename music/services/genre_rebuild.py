@@ -54,6 +54,7 @@ class RebuildReport:
     #: (source, label) -> how many albums carry it
     unclassified: Counter = field(default_factory=Counter)
     renamed: List[Tuple[str, str]] = field(default_factory=list)
+    caches_cleared: bool = True
     deleted: List[str] = field(default_factory=list)
     saved_filters_remapped: int = 0
 
@@ -186,7 +187,11 @@ def rebuild_album_genres(dry_run: bool = False) -> RebuildReport:
 
     with transaction.atomic():
         _write(albums, assignments, report)
-        transaction.on_commit(caching.invalidate_music_caches)
+
+        def drop_caches():
+            report.caches_cleared = caching.invalidate_music_caches()
+
+        transaction.on_commit(drop_caches)
 
     return report
 

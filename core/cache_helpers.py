@@ -48,12 +48,17 @@ def cache_get(key):
     return cache.get(key)
 
 
-def cache_set(key, value, timeout):
-    """`cache.set`, and the value for the rest of an active batch."""
-    cache.set(key, value, timeout)
+def remember_in_batch(key, value):
+    """``value`` for the rest of an active batch, if it asked for ``key``."""
     batch = _batched.get()
     if batch is not None and key in batch[0]:
         batch[1][key] = value
+
+
+def cache_set(key, value, timeout):
+    """`cache.set`, and the value for the rest of an active batch."""
+    cache.set(key, value, timeout)
+    remember_in_batch(key, value)
 
 
 def get_year_bounds(

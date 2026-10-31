@@ -169,7 +169,7 @@ class MusicImportViewTests(TestCase):
 
         self.assertIsNone(response.context["error"])
         self.assertContains(response, "alert-warning")
-        self.assertContains(response, "rebuild_album_genres")
+        self.assertContains(response, "clear_music_caches")
         self.assertTrue(models.Album.objects.exists())
 
     def test_a_failure_after_the_commit_does_not_claim_a_rollback(self):

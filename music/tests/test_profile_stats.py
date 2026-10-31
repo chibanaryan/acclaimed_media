@@ -122,10 +122,15 @@ class RankMessageTests(TestCase):
         self._others(1)
         self.assertEqual(self._message(), "You're #1 of 2 listeners!")
 
-    def test_a_tie_shares_the_better_rank(self):
+    def test_a_tie_shares_the_better_rank_and_says_so(self):
         mark(self.user, self.albums[0])
         self._others(1)
-        self.assertEqual(self._message(), "You're #1 of 2 listeners!")
+        self.assertEqual(self._message(), "You're tied for #1 of 2 listeners!")
+
+    def test_a_tie_below_first_says_so(self):
+        mark(self.user, self.albums[0])
+        self._others(1, 2)
+        self.assertEqual(self._message(), "You're tied for #2 of 3 listeners")
 
     def test_a_stale_distribution_cannot_rank_past_its_own_size(self):
         """The reader's count is live and the cached distribution is not."""
@@ -156,18 +161,41 @@ class RankMessageTests(TestCase):
     def test_a_full_tie_is_shared_first_place(self):
         mark(self.user, self.albums[0])
         self._others(*[1] * 19)
-        self.assertEqual(self._message(), "You're #1 of 20 listeners!")
+        self.assertEqual(self._message(), "You're tied for #1 of 20 listeners!")
+
+    def test_a_share_that_rounds_to_zero_gets_a_position(self):
+        result = self._rank(2, [5] * 998 + [2, 1])
+        self.assertEqual(result["message"], "You're #999 of 1000 listeners")
 
     def test_a_percentile_cannot_pass_100_on_stale_counts(self):
         """The reader's count is live; the cached counts may not hold them."""
         result = percentile.calculate_percentile(5, lambda: [1] * 10, RANK_WORDING)
         self.assertEqual(result["percentile"], 100)
 
-    def test_the_top_of_a_large_population_is_told_so(self):
-        for album in self.albums:
-            mark(self.user, album)
-        self._others(*[1] * 100)
-        self.assertEqual(self._message(), "You're in the top 1% of listeners!")
+    def _rank(self, count, counts):
+        return percentile.calculate_percentile(count, lambda: counts, RANK_WORDING)
+
+    def test_the_real_top_one_percent_is_told_so(self):
+        result = self._rank(5, [9, 5] + [1] * 198)
+        self.assertEqual(result["message"], "You're in the top 1% of listeners!")
+
+    def test_a_tie_cannot_claim_the_top_one_percent(self):
+        """30 level at the top of 150, and 100 level behind one, are not 1%."""
+        self.assertEqual(
+            self._rank(5, [5] * 30 + [1] * 120)["message"],
+            "You're tied for #1 of 150 listeners!",
+        )
+        self.assertNotIn(
+            "top 1%", self._rank(5, [9] + [5] * 100 + [1] * 199)["message"]
+        )
+
+    def test_someone_ahead_means_never_more_than_100_percent(self):
+        """Stale counts hold the reader's old number and someone above them."""
+        result = self._rank(5, [4] + [1] * 8 + [9])
+        self.assertEqual(result["percentile"], 99)
+        self.assertEqual(
+            result["message"], "You've tracked more albums than 99% of listeners"
+        )
 
     def test_have_counts_towards_the_rank_as_heard_does(self):
         """Have is for readers who track what they own, and they are ranked."""

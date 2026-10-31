@@ -87,10 +87,12 @@ class PercentileServiceTests(TestCase):
             )
             PlayedGame.objects.create(user=user, game=game, igdb_id=game.igdb_id)
 
-        self.assertEqual(calculate_percentile(1)["message"], "You're #1 of 3 players!")
+        self.assertEqual(
+            calculate_percentile(1)["message"], "You're tied for #1 of 3 players!"
+        )
 
-    def test_top_one_percent_message(self):
-        """Users in top 1% get special message."""
+    def test_a_leader_gets_their_position(self):
+        """A leader of 100 is #1, however many they have beaten."""
         game = Game.objects.create(name="Test", rank=1, igdb_id=1)
 
         # Create 100 users with 1 game each
@@ -100,10 +102,9 @@ class PercentileServiceTests(TestCase):
             )
             PlayedGame.objects.create(user=user, game=game, igdb_id=game.igdb_id)
 
-        # User with 100 games should be in top 1%
         result = calculate_percentile(100)
         self.assertEqual(result["percentile"], 100)
-        self.assertIn("top 1%", result["message"])
+        self.assertEqual(result["message"], "You're #1 of 100 players!")
 
     def test_excludes_orphaned_played_games(self):
         """Only counts non-orphaned PlayedGame records."""
