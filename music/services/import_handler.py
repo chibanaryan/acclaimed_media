@@ -813,7 +813,7 @@ def import_batch(
     positions_file,
     artists_file,
     progress_callback: Optional[Callable[[str, Dict], None]] = None,
-) -> Tuple[bool, str, List[str]]:
+) -> Tuple[str, List[str]]:
     """Run the four importers in dependency order, in one transaction.
 
     Artists must exist before an album can be credited to them, lists before
@@ -823,7 +823,7 @@ def import_batch(
     comes after the commit, so a failure there cannot, and is only reported.
 
     Returns:
-        ``(True, message, warnings)``, each warning a line for staff to see.
+        ``(message, warnings)``, each warning a line for staff to see.
     """
     messages = []
     with transaction.atomic():
@@ -854,4 +854,4 @@ def import_batch(
     # cache error must not read as a failed import, which staff would re-run.
     cleared = invalidate_release_caches(stale_users)
 
-    return (True, " | ".join(messages), [] if cleared else [CACHES_NOT_CLEARED])
+    return (" | ".join(messages), [] if cleared else [CACHES_NOT_CLEARED])

@@ -160,6 +160,20 @@ class RebuildTests(RebuildTestCase):
 
         self.assertFalse(report.caches_cleared)
 
+    def test_the_command_warns_of_a_failed_drop(self):
+        self.album("X", 1, discogs=(["Grunge"], ["Rock"]))
+        out = StringIO()
+        with mock.patch(
+            "core.cache_helpers.cache.delete_many", side_effect=ConnectionError
+        ):
+            with self.assertLogs("core.cache_helpers", "ERROR"):
+                with mock.patch(
+                    "music.services.genre_rebuild.transaction.on_commit",
+                    side_effect=lambda func: func(),
+                ):
+                    call_command("rebuild_album_genres", stdout=out)
+        self.assertIn("Caches not cleared", out.getvalue())
+
     def test_unclassified_labels_are_reported(self):
         self.album("X", 1, discogs=(["Grunge", "Zeuhl"], ["Rock"]), wikidata="zeuhl")
         report = genre_rebuild.rebuild_album_genres(dry_run=True)

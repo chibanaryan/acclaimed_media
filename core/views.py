@@ -81,19 +81,27 @@ class LandingView(AnonymousResponseCacheMixin, TemplateView):
     template_name = "core/landing.html"
     page_cache_timeout = games_config.CACHE_TIMEOUT_LANDING_PAGE
 
+    def _is_old_filter_link(self):
+        """The rankings lived at `/` until the split, so every filtered link
+        out there is `/?genres=5`. A tracking tag is not a filter."""
+        return any(
+            not key.startswith(LANDING_TRACKING_PREFIXES) for key in self.request.GET
+        )
+
     def get(self, request, *args, **kwargs):
-        # The rankings lived at `/` until the split, so every filtered link
-        # out there is `/?genres=5`. A tracking tag is not a filter.
-        if any(not key.startswith(LANDING_TRACKING_PREFIXES) for key in request.GET):
+        if self._is_old_filter_link():
             return redirect_to_site(request)
         return super().get(request, *args, **kwargs)
 
     def get_page_cache_key(self):
-        # `get` has sent any filter away, so what remains is a tracking tag,
-        # which changes nothing on the page. MUSIC_ENABLED decides whether the
-        # music card renders. A config var change restarts the dynos and so
-        # empties this per-process cache, but the flag is in the key so the
-        # page can never outlive it.
+        # The cache is read before `get` runs, so an old filter link has to
+        # miss it to reach the redirect. A tracking tag changes nothing on the
+        # page and shares the entry. MUSIC_ENABLED decides whether the music
+        # card renders. A config var change restarts the dynos and so empties
+        # this per-process cache, but the flag is in the key so the page can
+        # never outlive it.
+        if self._is_old_filter_link():
+            return None
         return (
             f"landing_root:{games_config.CACHE_VERSION}:"
             f"music={int(settings.MUSIC_ENABLED)}"

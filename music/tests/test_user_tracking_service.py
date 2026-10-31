@@ -172,7 +172,7 @@ class ReconnectTrackingRecordsTests(TestCase):
 
         self.assertEqual(models.ListenedAlbum.objects.count(), 2)
         self.assertEqual(stats["listened_merged"], 0)
-        self.assertEqual(stats["users_affected"], 2)
+        self.assertEqual(len(stats["users"]), 2)
 
     def test_a_row_for_an_album_no_longer_in_the_release_is_left_alone(self):
         # Still orphaned, still kept: the album may come back next release.
@@ -190,7 +190,7 @@ class ReconnectTrackingRecordsTests(TestCase):
         )
         self.assertEqual(stats["listened_reconnected"], 0)
         self.assertEqual(stats["want_reconnected"], 0)
-        self.assertEqual(stats["users_affected"], 0)
+        self.assertEqual(stats["users"], set())
 
     def test_it_names_the_users_whose_caches_went_stale(self):
         # The import drops them, with the rest of its caches, once it commits.

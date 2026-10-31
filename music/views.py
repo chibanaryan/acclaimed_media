@@ -1642,7 +1642,7 @@ class MusicImportView(StaffOnlyMixin, View):
 
         if form.is_valid():
             try:
-                _, message, warnings = self._run_import(form.cleaned_data)
+                message, warnings = self._run_import(form.cleaned_data)
             except Exception as exc:  # noqa: BLE001 - surfaced to the page
                 # The importer runs in one transaction, so a failure leaves
                 # the previous rankings in place; report it and carry on.

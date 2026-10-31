@@ -34,8 +34,7 @@ def reconnect_tracking_records(id_to_album: Dict[str, models.Album]) -> Dict:
 
     Returns:
         A dict of counts per model, plus ``users``, whose caches the caller
-        drops with the rest of the import's once it has committed, and
-        ``users_affected``, how many that is.
+        drops with the rest of the import's once it has committed.
     """
     stats = {}
     affected_users = set()
@@ -52,7 +51,6 @@ def reconnect_tracking_records(id_to_album: Dict[str, models.Album]) -> Dict:
         affected_users |= result["users"]
 
     stats["users"] = affected_users
-    stats["users_affected"] = len(affected_users)
 
     return stats
 

@@ -68,7 +68,7 @@ class Command(BaseCommand):
             paths["albums"].open(encoding="utf-8-sig", newline="") as albums_file,
             paths["positions"].open(encoding="utf-8-sig") as positions_file,
         ):
-            _, message, warnings = import_handler.import_batch(
+            message, warnings = import_handler.import_batch(
                 lists_file, albums_file, positions_file, artists_file
             )
 

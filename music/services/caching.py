@@ -9,10 +9,7 @@ most recommended albums across 54 critic lists" for up to 24 hours after the
 release grew to 1000.
 """
 
-from functools import partial
 from typing import Any, Callable, Iterable, List, Optional
-
-from django.db import transaction
 
 from core import cache_helpers
 from music import config
@@ -88,8 +85,8 @@ def invalidate_listen_caches(user_ids) -> None:
     """
     if not user_ids:
         return
-    keys = [config.CACHE_KEY_LISTENER_COUNTS, *_listen_keys(user_ids)]
-    transaction.on_commit(partial(_drop, keys))
+    for key in (config.CACHE_KEY_LISTENER_COUNTS, *_listen_keys(user_ids)):
+        cache_helpers.drop_on_commit(key, config.CACHE_KEY_GENERATION)
 
 
 def invalidate_release_caches(user_ids) -> bool:

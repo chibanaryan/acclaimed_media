@@ -1003,8 +1003,7 @@ class ImportListMembershipsTests(TestCase):
 
 class ImportBatchTests(TestCase):
     def test_runs_all_four_importers_in_order(self):
-        success, message, warnings = import_release()
-        self.assertTrue(success)
+        message, warnings = import_release()
         self.assertEqual(warnings, [])
         self.assertTrue(message.startswith("Artists: 4"))
         self.assertIn("Lists: 3 created", message)
@@ -1044,9 +1043,8 @@ class RealReleaseFilesTests(TestCase):
     """End-to-end over the files the rankings actually shipped with."""
 
     def test_the_supplied_release_imports_completely(self):
-        success, _, _ = import_real_release()
+        import_real_release()
 
-        self.assertTrue(success)
         # Counted from the files, so a new release does not fail the suite
         # just for being bigger. What matters is that every row lands.
         album_rows = _read_fixture_rows("WebRankings.txt")
@@ -1342,11 +1340,10 @@ class ImportReconnectsTrackingTests(TestCase):
             "core.cache_helpers.cache.delete_many", side_effect=ConnectionError
         ):
             with self.assertLogs("core.cache_helpers", "ERROR"):
-                success, _, warnings = import_release(
+                _, warnings = import_release(
                     albums_file=SHORTER_ALBUMS_TSV,
                     positions_file=SHORTER_POSITIONS_TSV,
                 )
-        self.assertTrue(success)
         self.assertEqual(warnings, [caching.CACHES_NOT_CLEARED])
         self.assertFalse(models.Album.objects.filter(pk=dropped.pk).exists())
 

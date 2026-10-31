@@ -476,6 +476,14 @@ class LandingPageTests(TestCase):
         with self.settings(MUSIC_ENABLED=True):
             self.assertContains(self.get(), "Renamed")
 
+    def test_an_old_filter_link_redirects_even_with_the_page_cached(self):
+        """The cache is read before the view's redirect."""
+        self.get()
+        response = self.client.get(
+            "/", {"genres": "5"}, HTTP_HOST=ROOT_HOST, secure=True
+        )
+        self.assertEqual(response.status_code, 301)
+
     def test_a_tracking_tag_shares_the_cache(self):
         """A campaign's unique tags would otherwise each render the page."""
         self.get()

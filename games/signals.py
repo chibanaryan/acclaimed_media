@@ -105,17 +105,18 @@ def _notify_subscribers(post_pk):
 
 @receiver(pre_save, sender=Developer)
 def remember_the_root_a_developer_leaves(sender, instance, **kwargs):
-    """Note the old root of a studio moving parent, whose page still lists it."""
+    """Note the old root of a studio moving parent, whose page still lists it.
+
+    The parent it had comes from `Developer.from_db` or the last save, so the
+    many saves that move nothing, such as the weekly refresh's, cost no query.
+    """
+    old_parent_id = getattr(instance, "_saved_parent_id", None)
+    instance._saved_parent_id = instance.parent_id
     instance._root_left_id = None
-    if instance._state.adding or kwargs.get("raw"):
-        return
-    parent_id = (
-        Developer.objects.filter(pk=instance.pk)
-        .values_list("parent_id", flat=True)
-        .first()
-    )
-    if parent_id and parent_id != instance.parent_id:
-        instance._root_left_id = Developer.objects.get(pk=parent_id).root_developer.id
+    if old_parent_id and old_parent_id != instance.parent_id:
+        old_parent = Developer.objects.filter(pk=old_parent_id).first()
+        if old_parent:
+            instance._root_left_id = old_parent.root_developer.id
 
 
 @receiver([post_save, post_delete], sender=Developer)

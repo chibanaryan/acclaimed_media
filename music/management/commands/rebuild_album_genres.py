@@ -35,6 +35,8 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         report = rebuild_album_genres(dry_run=options["dry_run"])
         write_report(self, report, verbose=options["report"])
+        if not report.caches_cleared:
+            self.stdout.write(self.style.WARNING(caching.CACHES_NOT_CLEARED))
         if report.dry_run:
             self.stdout.write(self.style.WARNING("Dry run: nothing was changed."))
 
@@ -58,8 +60,6 @@ def write_report(command, report, verbose=False):
         out.write(f"  Deleted {len(report.deleted)} unused genre row(s)")
     if report.saved_filters_remapped:
         out.write(f"  Remapped {report.saved_filters_remapped} saved filter(s)")
-    if not report.caches_cleared:
-        out.write(style.WARNING(f"  {caching.CACHES_NOT_CLEARED}"))
     if report.unclassified:
         out.write(
             style.WARNING(

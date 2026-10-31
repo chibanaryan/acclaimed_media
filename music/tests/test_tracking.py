@@ -230,7 +230,7 @@ class ToggleListenedAlbumViewTests(TestCase):
 
         with self.captureOnCommitCallbacks(execute=False) as callbacks:
             self._post("listened")
-        self.assertEqual(len(callbacks), 1)
+        self.assertTrue(callbacks)
         self.assertIsNotNone(cache.get(key))
 
     def test_one_users_toggle_does_not_touch_another(self):
