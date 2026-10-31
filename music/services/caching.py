@@ -9,18 +9,13 @@ most recommended albums across 54 critic lists" for up to 24 hours after the
 release grew to 1000.
 """
 
-import logging
 from functools import partial
 from typing import Any, Callable, Iterable, List, Optional
-from uuid import uuid4
 
-from django.core.cache import cache
 from django.db import transaction
 
-from core.cache_helpers import cache_get, cache_set, remember_in_batch
+from core import cache_helpers
 from music import config
-
-logger = logging.getLogger(__name__)
 
 CACHES_NOT_CLEARED = (
     "Caches not cleared: filter options, counts and landing pages can lag for "
@@ -29,59 +24,31 @@ CACHES_NOT_CLEARED = (
 
 
 def _drop(keys: List[str]) -> bool:
-    """Delete ``keys``, reporting failure rather than raising it.
-
-    Every caller has already committed the write these keys describe, so a
-    cache error must not report that write as failed. The generation moves
-    first, so a read under way cannot save over the delete (see `cached`).
-    """
-    try:
-        cache.set(config.CACHE_KEY_GENERATION, uuid4().hex, None)
-        cache.delete_many(keys)
-    except Exception:  # noqa: BLE001 - logged, and the write stands
-        logger.exception("Music caches were not dropped")
-        return False
-    return True
+    """`cache_helpers.drop_keys` on this section's generation."""
+    return cache_helpers.drop_keys(keys, config.CACHE_KEY_GENERATION)
 
 
 def current_generation() -> Optional[str]:
-    """The value `set_if_current` compares against, taken before reading rows.
-
-    A page's batch answers this, so a miss costs no second read here. A value
-    from the start of the request is older, which only makes the check stricter.
-    """
-    return cache_get(config.CACHE_KEY_GENERATION)
+    """The value `set_if_current` compares against, taken before reading rows."""
+    return cache_helpers.current_generation(config.CACHE_KEY_GENERATION)
 
 
 def set_if_current(
     key: str, value: Any, timeout: int, generation: Optional[str]
 ) -> None:
-    """Cache ``value`` unless an invalidation has run since ``generation``.
-
-    Without this, a read that queried just before a commit saves the old rows
-    just after the commit's delete, and they stay for the key's whole TTL. A
-    tiny window remains between this check and the write. A skipped value still
-    answers the rest of a batch, or each later read would compute it again.
-    """
-    if cache.get(config.CACHE_KEY_GENERATION) == generation:
-        cache_set(key, value, timeout)
-    else:
-        remember_in_batch(key, value)
+    """Cache ``value`` unless an invalidation has run since ``generation``."""
+    cache_helpers.set_if_current(
+        key, value, timeout, config.CACHE_KEY_GENERATION, generation
+    )
 
 
 def cached(key: str, compute: Callable[[], Any], timeout: int) -> Any:
     """``key``'s value, computed and saved on a miss.
 
     Every value in this section is written through here or `set_if_current`.
-    A hit costs what `cache_get` costs; a miss adds one generation read, or
-    two outside a page's batch.
+    One generation covers them all: a toggle costs a concurrent miss its save.
     """
-    value = cache_get(key)
-    if value is None:
-        generation = current_generation()
-        value = compute()
-        set_if_current(key, value, timeout, generation)
-    return value
+    return cache_helpers.cached(key, compute, timeout, config.CACHE_KEY_GENERATION)
 
 
 def invalidate_music_caches() -> bool:
@@ -113,8 +80,7 @@ def invalidate_listen_caches(user_ids) -> None:
     can change them rather than by a blanket sweep: a toggle and the bulk
     command here, and an import through `invalidate_release_caches`. The
     listener counts are one global key, but those same things normally change
-    them; a row edited in the admin or a deleted user waits out its hour, as
-    games' does.
+    them; a row edited in the admin or a deleted user waits out its hour.
 
     Runs once the open transaction commits, or at once with none open: dropped
     inside one, a page load before the commit would refill a set from the old

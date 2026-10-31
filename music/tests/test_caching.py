@@ -147,7 +147,7 @@ class EveryWriteIsGuardedTests(SimpleTestCase):
                 if (
                     isinstance(node, ast.Call)
                     and getattr(node.func, "id", None) == "get_year_bounds"
-                    and "read_through" not in {kw.arg for kw in node.keywords}
+                    and "generation_key" not in {kw.arg for kw in node.keywords}
                 ):
                     unguarded.append(f"{path.relative_to(root)}:{node.lineno}")
         self.assertEqual(unguarded, [])
@@ -158,18 +158,20 @@ class DroppingCachesTests(TestCase):
         cache.clear()
 
     def test_a_failed_drop_is_reported_not_raised(self):
-        with mock.patch("music.services.caching.cache") as broken:
-            broken.delete_many.side_effect = ConnectionError
-            with self.assertLogs("music.services.caching", "ERROR"):
+        with mock.patch(
+            "core.cache_helpers.cache.delete_many", side_effect=ConnectionError
+        ):
+            with self.assertLogs("core.cache_helpers", "ERROR"):
                 self.assertFalse(caching.invalidate_music_caches())
 
     def test_a_good_drop_says_so(self):
         self.assertTrue(caching.invalidate_music_caches())
 
     def test_a_failed_toggle_drop_cannot_fail_the_commit(self):
-        with mock.patch("music.services.caching.cache") as broken:
-            broken.delete_many.side_effect = ConnectionError
-            with self.assertLogs("music.services.caching", "ERROR"):
+        with mock.patch(
+            "core.cache_helpers.cache.delete_many", side_effect=ConnectionError
+        ):
+            with self.assertLogs("core.cache_helpers", "ERROR"):
                 with self.captureOnCommitCallbacks(execute=True):
                     caching.invalidate_listen_caches([1])
 
@@ -179,11 +181,11 @@ class DroppingCachesTests(TestCase):
         self.assertEqual(callbacks, [])
 
     def test_a_release_drop_is_one_call_with_each_key_once(self):
-        with mock.patch("music.services.caching.cache") as spy:
+        with mock.patch("core.cache_helpers.cache.delete_many") as spy:
             self.assertTrue(caching.invalidate_release_caches({7}))
 
-        spy.delete_many.assert_called_once()
-        keys = spy.delete_many.call_args.args[0]
+        spy.assert_called_once()
+        keys = spy.call_args.args[0]
         self.assertEqual(len(keys), len(set(keys)))
         self.assertTrue(set(config.CACHE_KEYS) <= set(keys))
         self.assertIn(config.CACHE_KEY_LISTENED_ALBUMS.format(user_id=7), keys)

@@ -1448,6 +1448,7 @@ class DeveloperListViewTest(TestCase):
     """Test the developer list view."""
 
     def setUp(self):
+        clear_all_caches()
         # Create developers
         self.dev1 = Developer.objects.create(
             name="Nintendo", slug="nintendo", igdb_id=1

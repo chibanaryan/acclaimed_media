@@ -3,12 +3,12 @@
 from django.core.cache import cache
 from django.test import TestCase
 
-from core.tests.utils import clear_all_caches
+from core.tests.utils import CommitHooksRunNowMixin, clear_all_caches
 from games import config
 from games.models import Developer, Game, WikipediaGenre
 
 
-class DeveloperCacheInvalidationSignalTests(TestCase):
+class DeveloperCacheInvalidationSignalTests(CommitHooksRunNowMixin, TestCase):
     """Tests for developer hierarchy cache invalidation signals."""
 
     def setUp(self):
@@ -78,6 +78,27 @@ class DeveloperCacheInvalidationSignalTests(TestCase):
         # Parent's detail cache should be invalidated
         self.assertIsNone(cache.get(parent_cache_key))
 
+    def test_a_studio_moving_parent_drops_the_root_it_left(self):
+        """The old root's page still lists the studio and its games."""
+        old_root = Developer.objects.create(name="Old", igdb_id=1)
+        new_root = Developer.objects.create(name="New", igdb_id=2)
+        studio = Developer.objects.create(name="Studio", igdb_id=3, parent=old_root)
+        key = f"{config.CACHE_VERSION}:developer_detail:{old_root.id}"
+        cache.set(key, {"detail": "cached"})
+
+        studio.parent = new_root
+        studio.save()
+
+        self.assertIsNone(cache.get(key))
+
+    def test_an_ordinary_save_leaves_the_root_alone_in_that_step(self):
+        root = Developer.objects.create(name="Root", igdb_id=1)
+        studio = Developer.objects.create(name="Studio", igdb_id=2, parent=root)
+
+        studio.save()
+
+        self.assertIsNone(studio._root_left_id)
+
     def test_handles_deleted_parent_during_subsidiary_delete(self):
         """Test graceful handling when parent is already deleted."""
         parent = Developer.objects.create(name="Parent", igdb_id=1, slug="parent")
@@ -91,7 +112,7 @@ class DeveloperCacheInvalidationSignalTests(TestCase):
         child.delete()  # Should not raise
 
 
-class GameDeveloperM2MSignalTests(TestCase):
+class GameDeveloperM2MSignalTests(CommitHooksRunNowMixin, TestCase):
     """Tests for Game.developers M2M change signals."""
 
     def setUp(self):

@@ -585,7 +585,7 @@ near the bottom gets a position instead, "tied for" when it is shared, since
 second. `CACHE_KEY_LISTENER_COUNTS` is one global key, in `CACHE_KEYS` for
 an import, and `invalidate_listen_caches` drops it too, since the same three
 moments normally change it. An admin edit or a deleted user waits out its
-one-hour TTL, as games' distribution does.
+one-hour TTL; games' signals cover those, and music has none yet.
 
 **Marking a collection in bulk**, for importing listens matched elsewhere
 (a RateYourMusic export, say) without several hundred web requests:
@@ -1131,7 +1131,8 @@ time `import_batch` drops the caches, and staff told it failed would re-run
 it, so `invalidate_release_caches` logs the error and returns `False`, and
 the import returns a warning: an amber alert on the staff page, `style.WARNING`
 from the command. The fix it names is `python manage.py clear_music_caches`,
-which does only that and exits non-zero if it fails too. `fetch_album_metadata`
+which does only that, readers' sets included, and exits non-zero if it fails
+too. `fetch_album_metadata`
 and `rebuild_album_genres` get the same protection from
 `invalidate_music_caches`, and print the same warning, so a cache error no
 longer stops the weekly job before its dates and slugs. If the database connection
@@ -1618,18 +1619,36 @@ Music's cache keys all live in `music/config.py` as `CACHE_KEYS`, which
 will not be invalidated. Every key carries `CACHE_VERSION`, so bumping that
 string invalidates the whole set.
 
-**Every music cache write goes through `caching.cached` or `set_if_current`.**
-A read that queried just before a commit would otherwise save the old rows
-just after the commit's delete, and they would stay for the key's whole TTL,
-24 hours for the filter options. Every drop first writes a new
-`CACHE_KEY_GENERATION`, and a read skips its save if that moved while it was
-querying. One generation covers everything, so a toggle costs a concurrent
-miss its save and nothing more. A hit costs nothing extra; a miss costs one
+**Every music cache write goes through `caching.cached` or `set_if_current`,**
+wrappers on `core.cache_helpers`. A read that queried just before a commit
+would otherwise save the old rows just after the commit's delete, and they
+would stay for the key's whole TTL, 24 hours for the filter options. Every drop
+first writes a new `CACHE_KEY_GENERATION`, and a read skips its save if that
+moved while it was querying. One generation covers the section, so a toggle
+costs a concurrent miss its save and nothing more. A hit costs nothing extra; a miss costs one
 more read, since `AlbumHomePageView` batches the generation with its keys. A
 tiny window remains between the check and the write. Versioned keys
 would close it, at a cache read on every unbatched page and a rewrite of the
 music cache tests. `music/tests/test_caching.py` fails if a module writes the
 cache around the guard.
+
+**Games' invalidated caches use the same guard, a family at a time**
+(`games/cache.py`): hero stats, the played and want-to-play id sets and played
+counts, and the developer hierarchy and detail. A generation row is written on
+every drop, so there is one per family, not per key, which could outgrow the
+cache table's budget, and not one for the section, which would have the weekly
+refresh cancel every family's saves. Its developer saves still move that family,
+which costs an overlapping page build its save and nothing else. They drop through
+`core.cache_helpers.drop_on_commit`, not `cache.delete`: `post_save` fires
+inside an import's transaction, and a page load before the commit used to put
+the old counts back for a day with nothing left to drop them. Keys collect per
+thread and flush together at the commit, so an import costs one drop per family
+rather than thousands. Hero stats drop when a game, list or publication is created or
+deleted, not on every save, which is what the weekly refresh does. Games' facet,
+landing and count caches are not converted: nothing invalidates them by event,
+so they have no race. Books' are not either, being staff-only in production. A
+test of what a signal invalidates takes
+`core.tests.utils.CommitHooksRunNowMixin`, since a `TestCase` never commits.
 
 Music's `/cover/` is exempt from rate limiting on the music host
 (`SITE_RATE_LIMIT_EXEMPT_PREFIXES`): it is a static asset in all but the URL,

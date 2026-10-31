@@ -13,7 +13,6 @@ from core import sites
 from core.models import User
 from core.services import seo
 from games import config, constants, models
-from games.cache import invalidate_played_games_cache, invalidate_want_to_play_cache
 
 
 class GameDetailView(DetailView):
@@ -157,12 +156,6 @@ def _game_json_ld(game):
     return seo.json_ld(payload)
 
 
-def _invalidate_tracking_caches(user_id):
-    cache.delete(config.CACHE_KEY_PLAYED_COUNTS)
-    invalidate_played_games_cache(user_id)
-    invalidate_want_to_play_cache(user_id)
-
-
 class TogglePlayedGameView(LoginRequiredMixin, View):
     """
     Set or cycle a game's tracking status.
@@ -213,11 +206,6 @@ class TogglePlayedGameView(LoginRequiredMixin, View):
                 models.WantToPlayGame.objects.filter(**key).delete()
         new_is_played = target == "played"
         new_is_want_to_play = target == "want"
-
-        # After the commit, not inside it: a rolled-back transaction must not
-        # leave the cache reflecting a write that did not happen.
-        user_id = request.user.id
-        transaction.on_commit(lambda: _invalidate_tracking_caches(user_id))
 
         # Preserve button size (large on game detail page, default elsewhere)
         size = request.GET.get("size")

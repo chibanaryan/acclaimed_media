@@ -9,9 +9,9 @@ Game.developers relationships change.
 from collections import defaultdict
 from typing import Any, Dict, Optional, Set
 
-from django.core.cache import cache
-
+from core import cache_helpers
 from games import config
+from games.cache import GENERATION_DEVELOPERS
 
 # Cache key for developer hierarchy data
 DEVELOPER_HIERARCHY_CACHE_KEY = f"{config.CACHE_VERSION}:developer_hierarchy"
@@ -33,13 +33,12 @@ def get_developer_hierarchy() -> Dict[str, Any]:
     The data is cached for 24 hours and invalidated via signals when
     Developer or Game.developers relationships change.
     """
-    cached = cache.get(DEVELOPER_HIERARCHY_CACHE_KEY)
-    if cached is not None:
-        return cached
-
-    data = _compute_hierarchy()
-    cache.set(DEVELOPER_HIERARCHY_CACHE_KEY, data, config.CACHE_TIMEOUT_24_HOURS)
-    return data
+    return cache_helpers.cached(
+        DEVELOPER_HIERARCHY_CACHE_KEY,
+        _compute_hierarchy,
+        config.CACHE_TIMEOUT_24_HOURS,
+        GENERATION_DEVELOPERS,
+    )
 
 
 def invalidate_developer_cache() -> None:
@@ -48,7 +47,7 @@ def invalidate_developer_cache() -> None:
 
     Call this after Developer save/delete or Game.developers M2M changes.
     """
-    cache.delete(DEVELOPER_HIERARCHY_CACHE_KEY)
+    cache_helpers.drop_on_commit(DEVELOPER_HIERARCHY_CACHE_KEY, GENERATION_DEVELOPERS)
 
 
 def _compute_hierarchy() -> Dict[str, Any]:

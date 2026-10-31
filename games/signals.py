@@ -12,8 +12,10 @@ from core.services.background import start_background_thread
 from games.models import (
     Developer,
     Game,
+    List,
     PlayedGame,
     Post,
+    Publication,
     WantToPlayGame,
 )
 
@@ -101,24 +103,34 @@ def _notify_subscribers(post_pk):
 # =============================================================================
 
 
+@receiver(pre_save, sender=Developer)
+def remember_the_root_a_developer_leaves(sender, instance, **kwargs):
+    """Note the old root of a studio moving parent, whose page still lists it."""
+    previous = Developer.objects.filter(pk=instance.pk).first()
+    instance._root_left_id = None
+    if previous and previous.parent_id and previous.parent_id != instance.parent_id:
+        instance._root_left_id = previous.root_developer.id
+
+
 @receiver([post_save, post_delete], sender=Developer)
 def invalidate_developer_cache_on_change(sender, instance, **kwargs):
     """Invalidate developer hierarchy cache when Developer changes."""
-    from django.core.cache import cache
-
-    from games import config
+    from games.cache import invalidate_developer_detail
     from games.services.developer_service import invalidate_developer_cache
 
     invalidate_developer_cache()
 
     # Also invalidate detail page caches for this developer and its root
-    cache.delete(f"{config.CACHE_VERSION}:developer_detail:{instance.id}")
+    invalidate_developer_detail(instance.id)
+    root_left_id = getattr(instance, "_root_left_id", None)
+    if root_left_id:
+        invalidate_developer_detail(root_left_id)
     if instance.parent_id:
         # Invalidate root developer's detail cache too
         # Use try-except because parent may already be deleted during bulk deletion
         try:
             root = instance.root_developer
-            cache.delete(f"{config.CACHE_VERSION}:developer_detail:{root.id}")
+            invalidate_developer_detail(root.id)
         except Developer.DoesNotExist:
             pass
 
@@ -128,9 +140,7 @@ def invalidate_developer_cache_on_change(sender, instance, **kwargs):
 @receiver(m2m_changed, sender=Game.developers.through)
 def invalidate_developer_cache_on_game_change(sender, instance, pk_set, **kwargs):
     """Invalidate developer hierarchy cache when Game.developers M2M changes."""
-    from django.core.cache import cache
-
-    from games import config
+    from games.cache import invalidate_developer_detail
     from games.services.developer_service import invalidate_developer_cache
 
     invalidate_developer_cache()
@@ -138,13 +148,13 @@ def invalidate_developer_cache_on_game_change(sender, instance, pk_set, **kwargs
     # Invalidate detail page caches for affected developers
     if pk_set:
         for dev_id in pk_set:
-            cache.delete(f"{config.CACHE_VERSION}:developer_detail:{dev_id}")
+            invalidate_developer_detail(dev_id)
             # Also invalidate root developer's cache
             try:
                 dev = Developer.objects.get(id=dev_id)
                 if dev.parent_id:
                     root = dev.root_developer
-                    cache.delete(f"{config.CACHE_VERSION}:developer_detail:{root.id}")
+                    invalidate_developer_detail(root.id)
             except Developer.DoesNotExist:
                 pass
 
@@ -157,14 +167,20 @@ def invalidate_developer_cache_on_game_change(sender, instance, pk_set, **kwargs
 
 
 @receiver([post_save, post_delete], sender=Game)
-def invalidate_hero_stats_on_game_change(sender, instance, **kwargs):
-    """Invalidate homepage hero stats cache when Game count changes."""
-    from django.core.cache import cache
+@receiver([post_save, post_delete], sender=List)
+@receiver([post_save, post_delete], sender=Publication)
+def invalidate_hero_stats_on_count_change(sender, instance, **kwargs):
+    """Invalidate homepage hero stats cache when a count it holds changes.
 
-    from games.cache import HERO_STATS_CACHE_KEY
+    Not on an ordinary save, which changes no count: the weekly refresh saves
+    every game, and the entry would never survive it. `post_delete` sends no
+    ``created``.
+    """
+    from games.cache import invalidate_hero_stats
 
-    cache.delete(HERO_STATS_CACHE_KEY)
-    logger.debug("Homepage hero stats cache invalidated (Game changed)")
+    if kwargs.get("created", True):
+        invalidate_hero_stats()
+        logger.debug("Homepage hero stats cache invalidated (count changed)")
 
 
 # =============================================================================
@@ -175,9 +191,10 @@ def invalidate_hero_stats_on_game_change(sender, instance, **kwargs):
 @receiver([post_save, post_delete], sender=PlayedGame)
 def invalidate_played_game_cache(sender, instance, **kwargs):
     """Invalidate played games cache when PlayedGame changes."""
-    from games.cache import invalidate_played_games_cache
+    from games.cache import invalidate_played_counts, invalidate_played_games_cache
 
     invalidate_played_games_cache(instance.user_id)
+    invalidate_played_counts()
     logger.debug(f"Played games cache invalidated (user {instance.user_id})")
 
 

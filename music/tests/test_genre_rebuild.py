@@ -151,9 +151,10 @@ class RebuildTests(RebuildTestCase):
 
     def test_a_cache_error_cannot_fail_a_committed_rebuild(self):
         self.album("X", 1, discogs=(["Grunge"], ["Rock"]))
-        with mock.patch("music.services.caching.cache") as broken:
-            broken.delete_many.side_effect = ConnectionError
-            with self.assertLogs("music.services.caching", "ERROR"):
+        with mock.patch(
+            "core.cache_helpers.cache.delete_many", side_effect=ConnectionError
+        ):
+            with self.assertLogs("core.cache_helpers", "ERROR"):
                 with self.captureOnCommitCallbacks(execute=True):
                     report = genre_rebuild.rebuild_album_genres()
 

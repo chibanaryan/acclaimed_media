@@ -1,11 +1,15 @@
 """Helpers shared by the test suites."""
 
+from unittest import mock
+
 from django.conf import settings
 from django.core.cache import caches
 from django.core.management import call_command
 from django.db import connection
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
+
+from core.cache_helpers import drop_keys
 
 
 def clear_all_caches():
@@ -72,6 +76,24 @@ def site_host(site):
     from django.conf import settings
 
     return urlsplit(settings.SITE_ORIGINS[site]).netloc
+
+
+class CommitHooksRunNowMixin:
+    """Run `core.cache_helpers.drop_on_commit` where it is called.
+
+    A ``TestCase`` never commits, so for tests of *what* a signal invalidates
+    rather than *when*. The when has tests of its own.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        patcher = mock.patch(
+            "core.cache_helpers.drop_on_commit",
+            side_effect=lambda key, generation_key: drop_keys([key], generation_key),
+        )
+        patcher.start()
+        cls.addClassCleanup(patcher.stop)
 
 
 def get_on_site(client, site, viewname, *, query=None, **kwargs):

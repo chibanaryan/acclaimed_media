@@ -37,7 +37,6 @@ from .rankings import (
 from .game_pages import (
     GameDetailView,
     _game_json_ld,
-    _invalidate_tracking_caches,
     TogglePlayedGameView,
 )
 from .developers import (
@@ -103,7 +102,6 @@ __all__ = [
     "BrowseIndexView",
     "GameDetailView",
     "_game_json_ld",
-    "_invalidate_tracking_caches",
     "TogglePlayedGameView",
     "DeveloperListView",
     "StudioListView",

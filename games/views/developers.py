@@ -9,7 +9,9 @@ from django.views.generic import ListView, DetailView
 
 from core.mixins import HTMXPartialMixin, RobustPaginationMixin
 from core.services.query_params import parse_int
+from core.cache_helpers import current_generation, set_if_current
 from games import config, models
+from games.cache import GENERATION_DEVELOPERS, developer_detail_cache_key
 from games.services import playtime
 
 
@@ -277,9 +279,7 @@ class DeveloperDetailView(DetailView):
         """Get cached context for this developer, or None if not cached."""
         from django.core.cache import cache
 
-        from games import config
-
-        cache_key = f"{config.CACHE_VERSION}:developer_detail:{developer.id}"
+        cache_key = developer_detail_cache_key(developer.id)
         cached = cache.get(cache_key)
         if isinstance(cached, dict):
             cached_schema = cached.get("cache_schema_version")
@@ -296,12 +296,13 @@ class DeveloperDetailView(DetailView):
 
     def _set_cached_context(self, developer, context_data):
         """Cache the expensive context data for this developer."""
-        from django.core.cache import cache
-
-        from games import config
-
-        cache_key = f"{config.CACHE_VERSION}:developer_detail:{developer.id}"
-        cache.set(cache_key, context_data, config.CACHE_TIMEOUT_24_HOURS)
+        set_if_current(
+            developer_detail_cache_key(developer.id),
+            context_data,
+            config.CACHE_TIMEOUT_24_HOURS,
+            GENERATION_DEVELOPERS,
+            self._cache_generation,
+        )
 
     @staticmethod
     def _serialize_developer(developer):
@@ -511,6 +512,10 @@ class DeveloperDetailView(DetailView):
                 context.update(cached)
             return context
 
+        # Before the rows are read, so a change during the build is not saved
+        # over its own invalidation. `get_object` read this one already.
+        self._cache_generation = current_generation(GENERATION_DEVELOPERS)
+        developer.refresh_from_db()
         self._prefetch_hierarchy(developer)
 
         # Recursively gather subsidiaries with nested structure

@@ -271,7 +271,7 @@ def _get_year_bounds():
         cache_key=config.CACHE_KEY_YEAR_STATS,
         cache_timeout=config.CACHE_TIMEOUT_24_HOURS,
         default_min=config.DEFAULT_MIN_YEAR,
-        read_through=caching.cached,
+        generation_key=config.CACHE_KEY_GENERATION,
     )
 
 

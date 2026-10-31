@@ -9,8 +9,6 @@ import logging
 
 from django.db import transaction
 
-from games.cache import invalidate_played_games_cache, invalidate_want_to_play_cache
-
 logger = logging.getLogger(__name__)
 
 
@@ -27,7 +25,8 @@ def reconnect_tracking_records(
     2. Updates them to point to the game
     3. Normalizes igdb_id to the primary ID
     4. Detects and merges duplicates (keeps earliest, deletes others)
-    5. Invalidates affected user caches
+
+    The cached sets are dropped by the signals on the rows this saves.
 
     Args:
         game: The Game instance to reconnect records to
@@ -78,11 +77,6 @@ def reconnect_tracking_records(
         stats["want_reconnected"] = want_stats["reconnected"]
         stats["want_merged"] = want_stats["merged"]
         stats["users_affected"].update(want_stats["users_affected"])
-
-    # Invalidate caches for affected users (outside transaction for safety)
-    for user_id in stats["users_affected"]:
-        invalidate_played_games_cache(user_id)
-        invalidate_want_to_play_cache(user_id)
 
     if stats["played_reconnected"] or stats["want_reconnected"]:
         logger.info(

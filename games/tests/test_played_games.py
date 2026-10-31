@@ -418,18 +418,20 @@ class TogglePlayedGameAtomicityTests(TestCase):
         self.assertEqual(WantToPlayGame.objects.filter(user=self.user).count(), 1)
 
     def test_caches_are_dropped_only_once_the_write_commits(self):
-        from unittest import mock
+        from django.core.cache import cache
 
-        with mock.patch(
-            "games.views.game_pages.invalidate_played_games_cache"
-        ) as invalidate:
-            with self.captureOnCommitCallbacks(execute=False) as callbacks:
-                self.client.post(f"{self.url}?status=played")
-            invalidate.assert_not_called()
+        from games.cache import played_ids_cache_key
 
-            for callback in callbacks:
-                callback()
-            invalidate.assert_called_once_with(self.user.id)
+        key = played_ids_cache_key(self.user.id)
+        cache.set(key, [], 60)
+
+        with self.captureOnCommitCallbacks(execute=False) as callbacks:
+            self.client.post(f"{self.url}?status=played")
+        self.assertEqual(cache.get(key), [])
+
+        for callback in callbacks:
+            callback()
+        self.assertIsNone(cache.get(key))
 
 
 class ProfilePlayedCountTests(TestCase):

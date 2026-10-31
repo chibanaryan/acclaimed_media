@@ -2,9 +2,10 @@
 
 ## 2026-10-30
 
-- **Music's caches cannot be refilled with old rows.** An import drops
-  everything in one call after it commits, and every write skips its save
-  if an invalidation ran while it was querying (`caching.cached`)
+- **Caches cannot be refilled with old rows, in music or games.** Invalidated
+  caches drop after the commit, not during it, and a write skips its save if
+  a drop ran while it was querying (`core.cache_helpers.cached`). Games' hero
+  counts could stay wrong for a day after an import
 - **A cache error no longer fails a committed music write.** It is logged,
   and an import shows an amber warning naming the fix, where it used to
   report a live release as failed. The weekly metadata job finishes too

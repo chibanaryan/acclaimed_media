@@ -3,7 +3,7 @@
 from django.core.cache import cache
 from django.test import TestCase
 
-from core.tests.utils import clear_all_caches
+from core.tests.utils import CommitHooksRunNowMixin, clear_all_caches
 from games.models import Developer, Game
 from games.services.developer_service import (
     DEVELOPER_HIERARCHY_CACHE_KEY,
@@ -15,7 +15,7 @@ from games.services.developer_service import (
 )
 
 
-class DeveloperServiceTests(TestCase):
+class DeveloperServiceTests(CommitHooksRunNowMixin, TestCase):
     """Tests for developer hierarchy service."""
 
     def setUp(self):
@@ -320,7 +320,7 @@ class CollectDescendantsTests(TestCase):
         self.assertEqual(result, set())
 
 
-class DeveloperHierarchyIntegrationTests(TestCase):
+class DeveloperHierarchyIntegrationTests(CommitHooksRunNowMixin, TestCase):
     """Integration tests for the full developer hierarchy workflow."""
 
     def setUp(self):

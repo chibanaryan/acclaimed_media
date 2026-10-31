@@ -162,9 +162,10 @@ class MusicImportViewTests(TestCase):
         self.assertContains(response, "Import complete")
 
     def test_a_cache_error_after_the_commit_is_not_a_failed_import(self):
-        with mock.patch("music.services.caching.cache") as broken:
-            broken.delete_many.side_effect = ConnectionError
-            with self.assertLogs("music.services.caching", "ERROR"):
+        with mock.patch(
+            "core.cache_helpers.cache.delete_many", side_effect=ConnectionError
+        ):
+            with self.assertLogs("core.cache_helpers", "ERROR"):
                 response = self.client.post(self.url, _all_files())
 
         self.assertIsNone(response.context["error"])

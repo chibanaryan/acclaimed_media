@@ -1338,9 +1338,10 @@ class ImportReconnectsTrackingTests(TestCase):
     def test_a_cache_error_cannot_fail_a_committed_release(self):
         """Staff told it failed, with the new rankings live, would re-run it."""
         _, dropped = self._tracked_album_key()
-        with mock.patch("music.services.caching.cache") as broken:
-            broken.delete_many.side_effect = ConnectionError
-            with self.assertLogs("music.services.caching", "ERROR"):
+        with mock.patch(
+            "core.cache_helpers.cache.delete_many", side_effect=ConnectionError
+        ):
+            with self.assertLogs("core.cache_helpers", "ERROR"):
                 success, _, warnings = import_release(
                     albums_file=SHORTER_ALBUMS_TSV,
                     positions_file=SHORTER_POSITIONS_TSV,

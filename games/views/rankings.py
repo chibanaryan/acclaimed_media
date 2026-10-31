@@ -18,7 +18,13 @@ from core.mixins import AnonymousResponseCacheMixin, RobustPaginationMixin
 from core.services import ranking, seo
 from core.services.query_params import parse_int
 from games import config, models, utils
-from games.cache import HERO_STATS_CACHE_KEY, played_ids_cache_key, want_ids_cache_key
+from games.cache import (
+    GENERATION_HERO,
+    GENERATION_TRACKING,
+    HERO_STATS_CACHE_KEY,
+    played_ids_cache_key,
+    want_ids_cache_key,
+)
 from games.services import landing_pages, playtime
 from games.services.game_filters import (
     PLATFORMS_CACHE_KEY,
@@ -143,6 +149,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
             PLATFORMS_CACHE_KEY,
             config.CACHE_KEY_YEAR_STATS,
             HERO_STATS_CACHE_KEY,
+            GENERATION_HERO,
             *landing_pages.cache_keys(),
             *self._facet_cache_keys.values(),
         ]
@@ -150,6 +157,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
             keys += [
                 played_ids_cache_key(self.request.user.id),
                 want_ids_cache_key(self.request.user.id),
+                GENERATION_TRACKING,
             ]
         return keys
 
