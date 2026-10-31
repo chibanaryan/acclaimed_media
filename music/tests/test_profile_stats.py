@@ -20,7 +20,7 @@ from games.models import Game, PlayedGame
 from music import config, models
 from music.services.listening_stats import (
     RANK_WORDING,
-    get_listener_distribution,
+    get_listener_counts,
     listening_stats,
 )
 from music.tests.site import setUpModule, tearDownModule  # noqa: F401
@@ -76,7 +76,7 @@ class ListeningStatsTests(TestCase):
 
         self.assertEqual(stats["collected"], 0)
         self.assertEqual(stats["want"], 0)
-        self.assertEqual(get_listener_distribution(), [])
+        self.assertEqual(get_listener_counts(), [])
 
     def test_another_readers_rows_do_not_count(self):
         other = User.objects.create_user(username="other", password="pw")
@@ -103,8 +103,8 @@ class RankMessageTests(TestCase):
         self._others(1)
         with CaptureQueriesContext(connection) as captured:
             message = self._message()
-        self.assertEqual(message, "Start tracking albums to see your rank!")
-        self.assertEqual(cache.get(config.CACHE_KEY_LISTENER_DISTRIBUTION), None)
+        self.assertEqual(message, "Mark an album Heard or Have to see your rank!")
+        self.assertEqual(cache.get(config.CACHE_KEY_LISTENER_COUNTS), None)
         self.assertEqual(len(captured.captured_queries), 3)
 
     def test_the_first_listener_is_told_so(self):
@@ -129,7 +129,7 @@ class RankMessageTests(TestCase):
 
     def test_a_stale_distribution_cannot_rank_past_its_own_size(self):
         """The reader's count is live and the cached distribution is not."""
-        stale = [(1, 2), (2, 2)]
+        stale = [2, 2]
         result = percentile.calculate_percentile(1, lambda: stale, RANK_WORDING)
         self.assertEqual(result["message"], "You're #2 of 2 listeners")
 
@@ -138,8 +138,30 @@ class RankMessageTests(TestCase):
         mark(self.user, self.albums[1])
         self._others(1, 1, 3, 3, 3, 3, 3, 3, 3)
         self.assertEqual(
-            self._message(), "You've tracked more albums than 20% of listeners"
+            self._message(), "You've tracked more albums than 22% of listeners"
         )
+
+    def test_a_leader_under_a_hundred_gets_a_position_not_a_share(self):
+        """The leader of 20 is not in the top 1%, and beat everyone, not 95%."""
+        mark(self.user, self.albums[0])
+        mark(self.user, self.albums[1])
+        self._others(*[1] * 19)
+        self.assertEqual(self._message(), "You're #1 of 20 listeners!")
+
+    def test_last_place_gets_a_position_not_zero_percent(self):
+        mark(self.user, self.albums[0])
+        self._others(*[2] * 19)
+        self.assertEqual(self._message(), "You're #20 of 20 listeners")
+
+    def test_a_full_tie_is_shared_first_place(self):
+        mark(self.user, self.albums[0])
+        self._others(*[1] * 19)
+        self.assertEqual(self._message(), "You're #1 of 20 listeners!")
+
+    def test_a_percentile_cannot_pass_100_on_stale_counts(self):
+        """The reader's count is live; the cached counts may not hold them."""
+        result = percentile.calculate_percentile(5, lambda: [1] * 10, RANK_WORDING)
+        self.assertEqual(result["percentile"], 100)
 
     def test_the_top_of_a_large_population_is_told_so(self):
         for album in self.albums:
@@ -167,10 +189,10 @@ class ListenerDistributionCacheTests(TestCase):
 
     def _reads_stale(self):
         """Whether a change made behind the cache's back goes unnoticed."""
-        return get_listener_distribution() == [(self.user.pk, 1)]
+        return get_listener_counts() == [1]
 
     def _prime(self):
-        self.assertEqual(get_listener_distribution(), [(self.user.pk, 1)])
+        self.assertEqual(get_listener_counts(), [1])
         mark(self.user, self.second)
         self.assertTrue(self._reads_stale())
 

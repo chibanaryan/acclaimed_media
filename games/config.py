@@ -31,6 +31,7 @@ CACHE_VERSION = "v10"
 # =============================================================================
 
 CACHE_KEY_YEAR_STATS = "game_year_stats"
+CACHE_KEY_PLAYED_COUNTS = "user_played_counts"
 
 # =============================================================================
 # Pagination Defaults

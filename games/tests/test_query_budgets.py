@@ -6,6 +6,8 @@ page is rendered, more of whatever it lists is added, and the count must stay
 put - a per-row query (an N+1) is the only thing that makes it grow.
 """
 
+import itertools
+
 from django.db import connection
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
@@ -163,16 +165,18 @@ class AccountModalQueryBudgetTests(QueryBudgetTestCase):
         other = User.objects.create_user(username="other", password="pw")
         self.client.login(username="reader", password="pw")
 
-        def add(start=[0]):
-            for n in range(start[0], start[0] + 3):
+        numbers = itertools.count(1)
+
+        def add():
+            for _ in range(3):
+                n = next(numbers)
                 album = Album.objects.create(
-                    name=f"A {n}", rank=n + 1, slug=f"a-{n}", wikidata_id=f"Q{n}"
+                    name=f"A {n}", rank=n, slug=f"a-{n}", wikidata_id=f"Q{n}"
                 )
                 for user in (reader, other):
                     ListenedAlbum.objects.create(
                         user=user, album=album, wikidata_id=album.wikidata_id
                     )
-            start[0] += 3
 
         add()
         self.assertDoesNotGrow("/auth/modal/profile/", add)

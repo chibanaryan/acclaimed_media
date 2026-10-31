@@ -158,7 +158,7 @@ def _game_json_ld(game):
 
 
 def _invalidate_tracking_caches(user_id):
-    cache.delete("user_played_games_distribution")
+    cache.delete(config.CACHE_KEY_PLAYED_COUNTS)
     invalidate_played_games_cache(user_id)
     invalidate_want_to_play_cache(user_id)
 

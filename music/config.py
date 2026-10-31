@@ -54,7 +54,7 @@ CACHE_KEY_TOTAL_ALBUM_COUNT = f"{CACHE_VERSION}:total_album_count"
 CACHE_KEY_LANDING_GENRES = f"{CACHE_VERSION}:music_landing_genres"
 CACHE_KEY_LANDING_DECADES = f"{CACHE_VERSION}:music_landing_decades"
 CACHE_KEY_YEAR_BASELINE = f"{CACHE_VERSION}:music_year_baseline"
-CACHE_KEY_LISTENER_DISTRIBUTION = f"{CACHE_VERSION}:listener_distribution"
+CACHE_KEY_LISTENER_COUNTS = f"{CACHE_VERSION}:listener_counts"
 
 # Not a cached value but the stamp every invalidation moves, so it stays out
 # of CACHE_KEYS: `music.services.caching.cached` compares it around a read.
@@ -69,7 +69,7 @@ CACHE_KEYS = (
     CACHE_KEY_LANDING_GENRES,
     CACHE_KEY_LANDING_DECADES,
     CACHE_KEY_YEAR_BASELINE,
-    CACHE_KEY_LISTENER_DISTRIBUTION,
+    CACHE_KEY_LISTENER_COUNTS,
 )
 
 # Album detail is the catch-all `/<slug>/` at the root of the music host, so

@@ -1464,7 +1464,7 @@ class MusicCacheInvalidationTests(MusicDataMixin, TestCase):
         )
         self.client.get(reverse("music:browse"))
         # The Account modal's, which no page here renders.
-        listening_stats.get_listener_distribution()
+        listening_stats.get_listener_counts()
         populated = [key for key in config.CACHE_KEYS if cache.get(key) is not None]
         self.assertEqual(sorted(populated), sorted(config.CACHE_KEYS))
 

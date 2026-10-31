@@ -65,6 +65,7 @@ from core.services import ranking, titles
 from games.models import SiteMetadata
 from music.templatetags import music_filters
 from music.services.data_version import compute_album_data_version
+from music.services.listening_stats import total_album_count
 
 # The checked-in release files, offered as the import default so the page is
 # usable without hunting for them.
@@ -1207,11 +1208,7 @@ class AlbumDetailView(MusicVisibleMixin, DetailView):
         context["grouped_lists"] = group_list_appearances(album.lists.all())
         context["list_appearance_count"] = len(album.lists.all())
 
-        context["total_album_count"] = caching.cached(
-            config.CACHE_KEY_TOTAL_ALBUM_COUNT,
-            models.Album.objects.count,
-            config.CACHE_TIMEOUT_24_HOURS,
-        )
+        context["total_album_count"] = total_album_count()
 
         # "N of M" beside the decade and year ranks, as the game detail page
         # shows beside its own. Without them a rank reads as a bare number.

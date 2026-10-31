@@ -98,12 +98,12 @@ def _listen_keys(user_ids: Iterable[int]) -> List[str]:
 
 
 def invalidate_listen_caches(user_ids) -> None:
-    """Drop these users' cached tracking id sets, and the listener distribution.
+    """Drop these users' cached tracking id sets, and the listener counts.
 
     Separate from `invalidate_music_caches` because these keys are per-user:
     there is no enumerable set of them, so they are dropped by the three things
-    that can change them rather than by a blanket sweep. The distribution is
-    one global key, but those same three are what normally change it; a row
+    that can change them rather than by a blanket sweep. The listener counts
+    are one global key, but those same three normally change them; a row
     edited in the admin or a deleted user waits out its hour, as games' does.
 
     Runs once the open transaction commits, or at once with none open: dropped
@@ -112,7 +112,7 @@ def invalidate_listen_caches(user_ids) -> None:
     """
     if not user_ids:
         return
-    keys = [config.CACHE_KEY_LISTENER_DISTRIBUTION, *_listen_keys(user_ids)]
+    keys = [config.CACHE_KEY_LISTENER_COUNTS, *_listen_keys(user_ids)]
     transaction.on_commit(partial(_drop, keys))
 
 

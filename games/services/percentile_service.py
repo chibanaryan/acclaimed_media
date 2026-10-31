@@ -14,37 +14,35 @@ from games import config
 RANK_WORDING = percentile.RankWording(
     item="games",
     people="players",
-    more_than="You've played more games than {percent}% of players",
+    verb="played",
+    prompt="Mark a game Played",
 )
 
 
-def get_played_games_distribution():
+def get_played_counts():
     """
-    Get cached distribution of played game counts across users.
-
-    Returns a sorted list of (user_id, played_count) tuples for users
-    with at least 1 non-orphaned played game.
+    Get the cached played game count of every user with at least 1
+    non-orphaned played game.
 
     Cached for 1 hour.
     """
-    cache_key = "user_played_games_distribution"
-    distribution = cache.get(cache_key)
+    counts = cache.get(config.CACHE_KEY_PLAYED_COUNTS)
 
-    if distribution is None:
+    if counts is None:
         # Aggregate played game counts per user (non-orphaned only)
-        distribution = list(
+        counts = list(
             User.objects.annotate(
                 played_count=Count(
                     "played_games", filter=Q(played_games__game__isnull=False)
                 )
             )
             .filter(played_count__gt=0)
-            .values_list("id", "played_count")
-            .order_by("played_count")
+            .order_by()
+            .values_list("played_count", flat=True)
         )
-        cache.set(cache_key, distribution, config.CACHE_TIMEOUT_1_HOUR)
+        cache.set(config.CACHE_KEY_PLAYED_COUNTS, counts, config.CACHE_TIMEOUT_1_HOUR)
 
-    return distribution
+    return counts
 
 
 def calculate_percentile(user_played_count: int) -> dict:
@@ -58,5 +56,5 @@ def calculate_percentile(user_played_count: int) -> dict:
         The dict `core.services.percentile.calculate_percentile` describes.
     """
     return percentile.calculate_percentile(
-        user_played_count, get_played_games_distribution, RANK_WORDING
+        user_played_count, get_played_counts, RANK_WORDING
     )

@@ -7,7 +7,7 @@ from core.tests.utils import clear_all_caches
 from games.models import Game, PlayedGame
 from games.services.percentile_service import (
     calculate_percentile,
-    get_played_games_distribution,
+    get_played_counts,
 )
 
 
@@ -22,7 +22,7 @@ class PercentileServiceTests(TestCase):
         """User with 0 played games gets None percentile."""
         result = calculate_percentile(0)
         self.assertIsNone(result["percentile"])
-        self.assertIn("Start tracking", result["message"])
+        self.assertEqual(result["message"], "Mark a game Played to see your rank!")
 
     def test_single_user_returns_first_message(self):
         """Single active user gets special message."""
@@ -73,10 +73,9 @@ class PercentileServiceTests(TestCase):
                     user=user, game=game, igdb_id=game.igdb_id + j
                 )
 
-        # User with 5 games should be at 40th percentile
-        # (4 users have fewer games: 1, 2, 3, 4)
+        # User with 5 games beats 4 of the 9 others: 1, 2, 3, 4
         result = calculate_percentile(5)
-        self.assertEqual(result["percentile"], 40)
+        self.assertEqual(result["percentile"], 44)
         self.assertEqual(result["total_users"], 10)
 
     def test_a_tie_shares_the_better_rank(self):
@@ -116,9 +115,7 @@ class PercentileServiceTests(TestCase):
         PlayedGame.objects.create(user=user, game=None, igdb_id=2)  # orphaned
         PlayedGame.objects.create(user=user, game=None, igdb_id=3)  # orphaned
 
-        distribution = get_played_games_distribution()
-        self.assertEqual(len(distribution), 1)
-        self.assertEqual(distribution[0][1], 1)  # Only 1 non-orphaned game
+        self.assertEqual(get_played_counts(), [1])  # Only 1 non-orphaned game
 
     def test_excludes_users_with_zero_games(self):
         """Users with no played games are excluded from distribution."""
@@ -130,8 +127,7 @@ class PercentileServiceTests(TestCase):
         game = Game.objects.create(name="Test", rank=1, igdb_id=1)
         PlayedGame.objects.create(user=active_user, game=game, igdb_id=1)
 
-        distribution = get_played_games_distribution()
-        self.assertEqual(len(distribution), 1)
+        self.assertEqual(len(get_played_counts()), 1)
 
     def test_distribution_is_cached(self):
         """Distribution result is cached."""
@@ -140,19 +136,19 @@ class PercentileServiceTests(TestCase):
         PlayedGame.objects.create(user=user, game=game, igdb_id=1)
 
         # First call
-        dist1 = get_played_games_distribution()
+        dist1 = get_played_counts()
 
         # Add another user (won't be in cache)
         user2 = User.objects.create_user(username="test2", email="test2@example.com")
         PlayedGame.objects.create(user=user2, game=game, igdb_id=1)
 
         # Second call should return cached result
-        dist2 = get_played_games_distribution()
+        dist2 = get_played_counts()
         self.assertEqual(len(dist1), len(dist2))
 
         # After cache clear, should see new user
         clear_all_caches()
-        dist3 = get_played_games_distribution()
+        dist3 = get_played_counts()
         self.assertEqual(len(dist3), 2)
 
     def test_empty_distribution_returns_none(self):

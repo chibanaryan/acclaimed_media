@@ -577,7 +577,9 @@ is absent for anyone `music_visible_to` refuses, so the shared route cannot
 reveal the hidden section. Its rank counts Have and Heard together, and so
 says "tracked" rather than "heard", which would be false of a reader who only
 marks what they own. The rank logic is `core.services.percentile`, shared with
-games. `CACHE_KEY_LISTENER_DISTRIBUTION` is one global key, in `CACHE_KEYS` for
+games: a percentage compares a reader with everyone else, "top 1%" means the
+rank really is, and a leader or last place gets a position instead, since "more
+than 95%" undersells the first and "more than 0%" says nothing to the second. `CACHE_KEY_LISTENER_COUNTS` is one global key, in `CACHE_KEYS` for
 an import, and `invalidate_listen_caches` drops it too, since the same three
 moments normally change it. An admin edit or a deleted user waits out its
 one-hour TTL, as games' distribution does.

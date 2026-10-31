@@ -8,6 +8,9 @@
 - **A cache error no longer fails a committed music write.** It is logged,
   and an import shows an amber warning naming the fix, where it used to
   report a live release as failed. The weekly metadata job finishes too
+- **The modal's rank lines say what is true.** A percentage compares a reader
+  with everyone else, so more games users see a slightly higher number; a
+  leader or last place gets a position; "top 1%" is only said of the top 1%
 - **The Account modal shows a reader's albums beside their games**, the
   current site's block first, with a rank among listeners. It is absent
   while music is hidden from them. The rank logic moved to
