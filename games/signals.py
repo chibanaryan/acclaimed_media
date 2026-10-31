@@ -16,6 +16,7 @@ from django.dispatch import receiver
 
 from core.services.background import start_background_thread
 from games.models import (
+    DEVELOPER_PARENT_CHAIN,
     Developer,
     Game,
     List,
@@ -226,7 +227,7 @@ def invalidate_developer_pages_on_game_delete(sender, instance, **kwargs):
     from games.services.developer_service import invalidate_developer_cache
 
     invalidate_developer_cache()
-    for developer in instance.developers.all():
+    for developer in instance.developers.select_related(*DEVELOPER_PARENT_CHAIN):
         invalidate_developer_detail(developer.id)
         if developer.parent_id:
             invalidate_developer_detail(developer.root_developer.id)

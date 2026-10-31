@@ -156,6 +156,28 @@ class LandingPageQueryBudgetTests(QueryBudgetTestCase):
 
 
 @override_settings(MUSIC_ENABLED=True)
+class GameDeleteQueryBudgetTests(QueryBudgetTestCase):
+    def test_a_deep_studio_chain_costs_a_deleted_game_nothing_more(self):
+        """`pre_delete` runs for every game an import replaces."""
+        root = Developer.objects.create(name="Root", igdb_id=1)
+        shallow = Game.objects.create(name="S", slug="s", rank=1, igdb_id=10)
+        shallow.developers.add(
+            Developer.objects.create(name="A", igdb_id=2, parent=root)
+        )
+        middle = Developer.objects.create(name="M", igdb_id=3, parent=root)
+        deep = Game.objects.create(name="D", slug="d", rank=2, igdb_id=11)
+        deep.developers.add(
+            Developer.objects.create(name="B", igdb_id=4, parent=middle)
+        )
+
+        with CaptureQueriesContext(connection) as first:
+            shallow.delete()
+        with CaptureQueriesContext(connection) as second:
+            deep.delete()
+
+        self.assertEqual(len(first), len(second))
+
+
 class AccountModalQueryBudgetTests(QueryBudgetTestCase):
     def test_more_tracked_albums_cost_nothing_more(self):
         from core.models import User
