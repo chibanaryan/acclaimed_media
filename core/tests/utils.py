@@ -9,11 +9,11 @@ from django.db import connection
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 
-from core.cache_helpers import drop_keys
+from core.cache_helpers import drop_keys, forget_queued_drops
 
 
 def clear_all_caches():
-    """Empty every cache alias.
+    """Empty every cache alias, and the drops queued for a commit.
 
     Tests used to call `cache.clear()`, which only empties `default`. Whole
     rendered pages now live on the per-process `local` alias (see
@@ -24,6 +24,7 @@ def clear_all_caches():
     """
     for cache in caches.all():
         cache.clear()
+    forget_queued_drops()
 
 
 @override_settings(

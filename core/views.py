@@ -89,11 +89,11 @@ class LandingView(AnonymousResponseCacheMixin, TemplateView):
         return super().get(request, *args, **kwargs)
 
     def get_page_cache_key(self):
-        if self.request.META.get("QUERY_STRING", ""):
-            return None
-        # MUSIC_ENABLED decides whether the music card renders. A config var
-        # change restarts the dynos and so empties this per-process cache,
-        # but the flag is in the key so the page can never outlive it.
+        # `get` has sent any filter away, so what remains is a tracking tag,
+        # which changes nothing on the page. MUSIC_ENABLED decides whether the
+        # music card renders. A config var change restarts the dynos and so
+        # empties this per-process cache, but the flag is in the key so the
+        # page can never outlive it.
         return (
             f"landing_root:{games_config.CACHE_VERSION}:"
             f"music={int(settings.MUSIC_ENABLED)}"

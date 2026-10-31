@@ -98,16 +98,21 @@ def set_if_current(key, value, timeout, generation_key, generation):
 
 
 def cached(key, compute, timeout, generation_key):
-    """``key``'s value, computed and saved on a miss, guarded by `set_if_current`.
+    """``key``'s value, computed and saved on a miss.
 
-    A hit costs what `cache_get` costs; a miss adds one generation read, or two
-    outside a batch holding it.
+    The save is guarded by `set_if_current`, unless ``generation_key`` is None
+    for a value nothing invalidates. A hit costs what `cache_get` costs, and a
+    miss adds one generation read, or two outside a batch holding it.
     """
     value = cache_get(key)
     if value is None:
-        generation = current_generation(generation_key)
-        value = compute()
-        set_if_current(key, value, timeout, generation_key, generation)
+        if generation_key is None:
+            value = compute()
+            cache_set(key, value, timeout)
+        else:
+            generation = current_generation(generation_key)
+            value = compute()
+            set_if_current(key, value, timeout, generation_key, generation)
     return value
 
 
@@ -135,6 +140,11 @@ def _flush_queued_drops():
     queued, _queued.drops = getattr(_queued, "drops", {}), {}
     for generation_key, keys in queued.items():
         drop_keys(sorted(keys), generation_key)
+
+
+def forget_queued_drops():
+    """Empty this thread's queue, for a test: a `TestCase` never commits."""
+    _queued.drops = {}
 
 
 def drop_on_commit(key, generation_key):
@@ -183,13 +193,7 @@ def get_year_bounds(
             max_year=Max(year_field),
         )
 
-    if generation_key is not None:
-        year_stats = cached(cache_key, aggregate, cache_timeout, generation_key)
-    else:
-        year_stats = cache_get(cache_key)
-        if year_stats is None:
-            year_stats = aggregate()
-            cache_set(cache_key, year_stats, cache_timeout)
+    year_stats = cached(cache_key, aggregate, cache_timeout, generation_key)
     min_year = year_stats["min_year"] or default_min
     max_year = year_stats["max_year"] or datetime.today().year
     return min_year, max_year

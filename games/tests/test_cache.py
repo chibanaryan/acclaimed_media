@@ -183,6 +183,15 @@ class OvertakenReadTests(TestCase):
 
         self.assertEqual(cache.get(key), "fresh")
 
+    def test_a_developer_deleted_mid_render_is_a_404(self):
+        developer = Developer.objects.create(name="D", slug="d", igdb_id=1)
+
+        with mock.patch(
+            "games.views.developers.current_generation",
+            side_effect=lambda _key: Developer.objects.filter(pk=developer.pk).delete(),
+        ):
+            self.assertEqual(self.client.get("/developers/d/").status_code, 404)
+
     def test_hero_stats_are_read_through_the_guard(self):
         Game.objects.create(name="G", slug="g", rank=1)
         clear_all_caches()

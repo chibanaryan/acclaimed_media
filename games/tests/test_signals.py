@@ -91,6 +91,34 @@ class DeveloperCacheInvalidationSignalTests(CommitHooksRunNowMixin, TestCase):
 
         self.assertIsNone(cache.get(key))
 
+    def test_a_studio_moving_parent_drops_the_new_root_after_a_cached_read(self):
+        """`root_creator` is cached on the instance from before the move."""
+        old_root = Developer.objects.create(name="Old", igdb_id=1)
+        new_root = Developer.objects.create(name="New", igdb_id=2)
+        studio = Developer.objects.create(name="Studio", igdb_id=3, parent=old_root)
+        self.assertEqual(studio.root_developer, old_root)
+        key = f"{config.CACHE_VERSION}:developer_detail:{new_root.id}"
+        cache.set(key, {"detail": "cached"})
+
+        studio.parent = new_root
+        studio.save()
+
+        self.assertIsNone(cache.get(key))
+
+    def test_a_studio_detached_from_its_parent_forgets_its_root(self):
+        root = Developer.objects.create(name="Root", igdb_id=1)
+        studio = Developer.objects.create(name="Studio", igdb_id=2, parent=root)
+        self.assertEqual(studio.root_developer, root)
+
+        studio.parent = None
+        studio.save()
+
+        self.assertEqual(studio.root_developer, studio)
+
+    def test_a_new_developer_makes_no_lookup_for_a_root_it_left(self):
+        with self.assertNumQueries(1):
+            Developer(name="New", igdb_id=2).save()
+
     def test_an_ordinary_save_leaves_the_root_alone_in_that_step(self):
         root = Developer.objects.create(name="Root", igdb_id=1)
         studio = Developer.objects.create(name="Studio", igdb_id=2, parent=root)

@@ -3,6 +3,7 @@
 import math
 
 from django.db.models import Count, Max, Prefetch, prefetch_related_objects
+from django.http import Http404
 from django.shortcuts import redirect, get_object_or_404
 from django.views import View
 from django.views.generic import ListView, DetailView
@@ -294,14 +295,14 @@ class DeveloperDetailView(DetailView):
                 return None
         return cached
 
-    def _set_cached_context(self, developer, context_data):
+    def _set_cached_context(self, developer, context_data, generation):
         """Cache the expensive context data for this developer."""
         set_if_current(
             developer_detail_cache_key(developer.id),
             context_data,
             config.CACHE_TIMEOUT_24_HOURS,
             GENERATION_DEVELOPERS,
-            self._cache_generation,
+            generation,
         )
 
     @staticmethod
@@ -514,8 +515,11 @@ class DeveloperDetailView(DetailView):
 
         # Before the rows are read, so a change during the build is not saved
         # over its own invalidation. `get_object` read this one already.
-        self._cache_generation = current_generation(GENERATION_DEVELOPERS)
-        developer.refresh_from_db()
+        generation = current_generation(GENERATION_DEVELOPERS)
+        try:
+            developer.refresh_from_db()
+        except models.Developer.DoesNotExist:
+            raise Http404("Developer not found")
         self._prefetch_hierarchy(developer)
 
         # Recursively gather subsidiaries with nested structure
@@ -778,7 +782,7 @@ class DeveloperDetailView(DetailView):
             "max_rank": max_rank,
             "rank_distribution_bin_count": config.RANK_DISTRIBUTION_BIN_COUNT,
         }
-        self._set_cached_context(developer, cacheable_context)
+        self._set_cached_context(developer, cacheable_context, generation)
 
         return context
 

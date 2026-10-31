@@ -476,13 +476,14 @@ class LandingPageTests(TestCase):
         with self.settings(MUSIC_ENABLED=True):
             self.assertContains(self.get(), "Renamed")
 
-    def test_a_query_string_skips_the_cache(self):
+    def test_a_tracking_tag_shares_the_cache(self):
+        """A campaign's unique tags would otherwise each render the page."""
         self.get()
         Game.objects.filter(rank=1).update(name="Renamed")
         response = self.client.get(
             "/", {"utm_source": "x"}, HTTP_HOST=ROOT_HOST, secure=True
         )
-        self.assertContains(response, "Renamed")
+        self.assertNotContains(response, "Renamed")
 
 
 class CookieSettingsTests(SimpleTestCase):

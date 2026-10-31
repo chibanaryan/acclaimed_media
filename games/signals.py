@@ -106,10 +106,16 @@ def _notify_subscribers(post_pk):
 @receiver(pre_save, sender=Developer)
 def remember_the_root_a_developer_leaves(sender, instance, **kwargs):
     """Note the old root of a studio moving parent, whose page still lists it."""
-    previous = Developer.objects.filter(pk=instance.pk).first()
     instance._root_left_id = None
-    if previous and previous.parent_id and previous.parent_id != instance.parent_id:
-        instance._root_left_id = previous.root_developer.id
+    if instance._state.adding or kwargs.get("raw"):
+        return
+    parent_id = (
+        Developer.objects.filter(pk=instance.pk)
+        .values_list("parent_id", flat=True)
+        .first()
+    )
+    if parent_id and parent_id != instance.parent_id:
+        instance._root_left_id = Developer.objects.get(pk=parent_id).root_developer.id
 
 
 @receiver([post_save, post_delete], sender=Developer)
@@ -125,6 +131,9 @@ def invalidate_developer_cache_on_change(sender, instance, **kwargs):
     root_left_id = getattr(instance, "_root_left_id", None)
     if root_left_id:
         invalidate_developer_detail(root_left_id)
+    # Cached on the instance, and it may have just changed parent.
+    instance.__dict__.pop("root_creator", None)
+    instance.__dict__.pop("root_developer", None)
     if instance.parent_id:
         # Invalidate root developer's detail cache too
         # Use try-except because parent may already be deleted during bulk deletion
