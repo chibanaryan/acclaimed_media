@@ -57,6 +57,13 @@ ALBUMS_TSV = (
 
 POSITIONS_TSV = "0:2\t1:5\n0:1\t2:9\n0:3\n"
 
+# The next release: Pet Sounds is dropped and the rest move up.
+SHORTER_ALBUMS_TSV = (
+    "1\tDéjà Vu\t113,1\t1970\tQ1136782\n"
+    "2\tRust Never Sleeps\t56,1\t1979\tQ1140313,Q999999\n"
+)
+SHORTER_POSITIONS_TSV = "0:1\t2:9\n0:3\n"
+
 
 def import_artists(tsv=ARTISTS_TSV):
     return import_handler.import_artists(StringIO(tsv))
@@ -1328,11 +1335,8 @@ class ImportReconnectsTrackingTests(TestCase):
         key, _ = self._tracked_album_key()
         with self.captureOnCommitCallbacks(execute=True):
             import_release(
-                albums_file=(
-                    "1\tDéjà Vu\t113,1\t1970\tQ1136782\n"
-                    "2\tRust Never Sleeps\t56,1\t1979\tQ1140313,Q999999\n"
-                ),
-                positions_file="0:1\t2:9\n0:3\n",
+                albums_file=SHORTER_ALBUMS_TSV,
+                positions_file=SHORTER_POSITIONS_TSV,
             )
         self.assertIsNone(cache.get(key))
 
@@ -1347,17 +1351,20 @@ class ImportReconnectsTrackingTests(TestCase):
                     import_release(albums_file=ALBUMS_TSV.split("\n", 1)[1])
         self.assertEqual(cache.get(key), [album.id])
 
-    def test_a_listen_cache_error_cannot_fail_the_albums_step(self):
-        """Their rows have committed. `import_batch`'s `invalidate_music_caches`
-        after the commit can still raise, which is why this stops at the step."""
-        self._tracked_album_key()
+    def test_a_cache_error_cannot_fail_a_committed_release(self):
+        """Staff told it failed, with the new rankings live, would re-run it."""
+        _, dropped = self._tracked_album_key()
         with mock.patch("music.services.caching.cache") as broken:
             broken.delete_many.side_effect = ConnectionError
-            with self.captureOnCommitCallbacks(execute=True):
-                success, _ = import_handler.import_albums(
-                    StringIO(ALBUMS_TSV.split("\n", 1)[1])
-                )
+            with self.assertLogs("music.services.import_handler", "ERROR"):
+                with self.captureOnCommitCallbacks(execute=True):
+                    success, message = import_release(
+                        albums_file=SHORTER_ALBUMS_TSV,
+                        positions_file=SHORTER_POSITIONS_TSV,
+                    )
         self.assertTrue(success)
+        self.assertIn("Caches not cleared", message)
+        self.assertFalse(models.Album.objects.filter(pk=dropped.pk).exists())
         broken.delete_many.assert_called()
 
     def test_keeping_an_album_leaves_its_trackers_caches_alone(self):

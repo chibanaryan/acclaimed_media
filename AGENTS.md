@@ -1122,6 +1122,13 @@ has the same split (its "Metadata Operations" panel, with its own buttons);
 music's import page shows what is missing and the command to run. The weekly
 scheduled fetch (below) closes the gap by the next Sunday if nobody does.
 
+**A cache error does not fail a committed import.** The release is live by the
+time `import_batch` drops the caches, and staff told it failed would re-run
+it, so it logs the error and adds a line to the import's message instead. The
+filter options and counts can then lag for their 24-hour TTL, or until the
+next `fetch_album_metadata`. If the database connection itself has died, the
+staff page's own queries after the import can still fail; the release stands.
+
 The import stamps `SiteMetadata` under the `music` key, which the rankings
 heading reads as "Updated: ...". `SiteMetadata` is keyed per section, so
 games and music carry their own dates.

@@ -816,7 +816,8 @@ def import_batch(
     Artists must exist before an album can be credited to them, lists before
     positions can join against them, and albums before positions can find a
     row's album, so the order is fixed. Any failure rolls the whole import
-    back rather than leaving the rankings half-replaced.
+    back rather than leaving the rankings half-replaced. Dropping the caches
+    comes after the commit, so a failure there cannot, and is only reported.
     """
     messages = []
     with transaction.atomic():
@@ -843,7 +844,15 @@ def import_batch(
 
     # Outside the transaction: the cached counts describe rows that no longer
     # exist, and dropping them inside would race a reader that repopulates
-    # the cache from the pre-commit state.
-    invalidate_music_caches()
+    # the cache from the pre-commit state. The release is live by now, so a
+    # cache error must not read as a failed import, which staff would re-run.
+    try:
+        invalidate_music_caches()
+    except Exception:  # noqa: BLE001 - the release has committed
+        logger.exception("Music import committed but its caches were not dropped")
+        messages.append(
+            "Caches not cleared: filters, counts and landing pages can lag for "
+            "up to 24 hours, or until the next metadata run"
+        )
 
     return (True, " | ".join(messages))

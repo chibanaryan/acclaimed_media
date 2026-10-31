@@ -1649,11 +1649,15 @@ class MusicImportView(StaffOnlyMixin, View):
 
         if form.is_valid():
             try:
-                summary = self._run_import(form.cleaned_data)
+                message = self._run_import(form.cleaned_data)
             except Exception as exc:  # noqa: BLE001 - surfaced to the page
                 # The importer runs in one transaction, so a failure leaves
                 # the previous rankings in place; report it and carry on.
                 error = str(exc)
+            else:
+                # Outside the try: the release is live by now, so a failure
+                # here must not reach the message above.
+                summary = {"message": message, "counts": _music_counts()}
 
         return render(
             request,
@@ -1686,20 +1690,17 @@ class MusicImportView(StaffOnlyMixin, View):
                     )
                     for field, name in BUNDLED_FILES.items()
                 }
-                _, message = import_handler.import_batch(**files)
+                return import_handler.import_batch(**files)[1]
         else:
             wrappers = {
                 field: TextIOWrapper(data[field], encoding="utf-8-sig", newline="")
                 for field in MusicImportForm.FILE_FIELDS
             }
             try:
-                _, message = import_handler.import_batch(**wrappers)
+                return import_handler.import_batch(**wrappers)[1]
             finally:
                 for wrapper in wrappers.values():
                     wrapper.detach()
-
-        _invalidate_music_caches()
-        return {"message": message, "counts": _music_counts()}
 
     def _context(self, form, summary=None, error=None):
         return {

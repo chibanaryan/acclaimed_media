@@ -161,6 +161,25 @@ class MusicImportViewTests(TestCase):
         self.assertEqual(models.AlbumListMembership.objects.count(), 1)
         self.assertContains(response, "Import complete")
 
+    def test_a_cache_error_after_the_commit_is_not_a_failed_import(self):
+        with mock.patch("music.services.caching.cache") as broken:
+            broken.delete_many.side_effect = ConnectionError
+            with self.assertLogs("music.services.import_handler", "ERROR"):
+                response = self.client.post(self.url, _all_files())
+
+        self.assertIsNone(response.context["error"])
+        summary = response.context["summary"]
+        self.assertIn("Caches not cleared", summary["message"])
+        self.assertTrue(models.Album.objects.exists())
+
+    def test_a_failure_after_the_commit_does_not_claim_a_rollback(self):
+        """The page would say the rankings are untouched, with the new ones live."""
+        with mock.patch("music.views._music_counts", side_effect=ConnectionError):
+            with self.assertRaises(ConnectionError):
+                self.client.post(self.url, _all_files())
+
+        self.assertTrue(models.Album.objects.exists())
+
     def test_posting_the_bundled_checkbox_imports_the_release(self):
         response = self.client.post(self.url, {"seed_bundled_data": "on"})
         self.assertEqual(response.status_code, 200)

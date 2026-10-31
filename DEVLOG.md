@@ -7,6 +7,8 @@
   the old rows and a re-adopted album reads as untracked for five minutes.
   A failed drop of these caches is now logged rather than raised, on a
   toggle too, since the write has committed by then
+- **A cache error no longer reports a live music import as failed**, which
+  invited staff to re-run it. It is logged and noted in the import's message
 - **The Account modal shows a reader's albums beside their games**, the
   current site's block first, with a rank among listeners. It is absent
   while music is hidden from them. The rank logic moved to
