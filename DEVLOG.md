@@ -1,5 +1,11 @@
 # Developer Log
 
+## 2026-10-31
+
+- **`rimraf` is gone from the CSS build.** It only deleted one folder and held
+  `glob` and `minimatch` on versions with new advisories, so `build:clean` now
+  uses Node's `fs.rmSync`. Nine packages leave the lock; the CSS is unchanged
+
 ## 2026-10-30
 
 - **Caches cannot be refilled with old rows, in music or games.** Invalidated
