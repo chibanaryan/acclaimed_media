@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 CACHES_NOT_CLEARED = (
     "Caches not cleared: filter options, counts and landing pages can lag for "
-    "up to 24 hours. Run `python manage.py clear_music_caches` to clear them."
+    "up to 24 hours. Run python manage.py clear_music_caches to clear them."
 )
 
 

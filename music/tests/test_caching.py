@@ -1,5 +1,6 @@
 """The section's cache writes, and what happens when dropping them fails."""
 
+import ast
 import re
 from io import StringIO
 from pathlib import Path
@@ -12,7 +13,9 @@ from django.core.management.base import CommandError
 from django.test import SimpleTestCase, TestCase
 
 from core.cache_helpers import batched_cache_reads
+from core.models import User
 from music import config
+from music.models import ListenedAlbum, WantToListenAlbum
 from music.services import caching
 from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 
@@ -89,15 +92,32 @@ class CachedTests(SimpleTestCase):
         compute.assert_not_called()
 
 
-class ClearMusicCachesCommandTests(SimpleTestCase):
-    def test_it_says_when_they_are_cleared(self):
+class ClearMusicCachesCommandTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    def test_it_clears_section_and_reader_keys_and_says_so(self):
+        reader = User.objects.create_user(username="reader", password="pw")
+        wanter = User.objects.create_user(username="wanter", password="pw")
+        ListenedAlbum.objects.create(user=reader, album=None, wikidata_id="Q1")
+        WantToListenAlbum.objects.create(user=wanter, album=None, wikidata_id="Q2")
+        keys = [
+            KEY,
+            config.CACHE_KEY_LISTENED_ALBUMS.format(user_id=reader.id),
+            config.CACHE_KEY_WANT_TO_LISTEN_ALBUMS.format(user_id=wanter.id),
+        ]
+        for key in keys:
+            cache.set(key, [1], 60)
+
         out = StringIO()
         call_command("clear_music_caches", stdout=out)
+
         self.assertIn("cleared", out.getvalue())
+        self.assertEqual(cache.get_many(keys), {})
 
     def test_a_failure_exits_non_zero(self):
         with mock.patch(
-            "music.services.caching.invalidate_music_caches", return_value=False
+            "music.services.caching.invalidate_release_caches", return_value=False
         ):
             with self.assertRaises(CommandError):
                 call_command("clear_music_caches")
@@ -114,6 +134,22 @@ class EveryWriteIsGuardedTests(SimpleTestCase):
             and path.name != "caching.py"
             and WRITE.search(path.read_text())
         ]
+        self.assertEqual(unguarded, [])
+
+    def test_every_year_bounds_read_is_guarded(self):
+        """The write happens in core, so the search above cannot see this one."""
+        root = Path(settings.BASE_DIR) / "music"
+        unguarded = []
+        for path in root.rglob("*.py"):
+            if "tests" in path.relative_to(root).parts:
+                continue
+            for node in ast.walk(ast.parse(path.read_text())):
+                if (
+                    isinstance(node, ast.Call)
+                    and getattr(node.func, "id", None) == "get_year_bounds"
+                    and "read_through" not in {kw.arg for kw in node.keywords}
+                ):
+                    unguarded.append(f"{path.relative_to(root)}:{node.lineno}")
         self.assertEqual(unguarded, [])
 
 
