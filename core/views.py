@@ -13,6 +13,7 @@ from core import sites
 from core.mixins import AnonymousResponseCacheMixin
 from games import config as games_config
 from games.models import Game, List
+from games.services.game_filters import DIMENSIONS
 from music.access import music_visible_to
 from music.models import Album, MusicList
 
@@ -22,7 +23,11 @@ logger = logging.getLogger(__name__)
 LANDING_TOP_COUNT = 5
 
 # Query parameters a campaign adds to a link to the landing page
-LANDING_TRACKING_PREFIXES = ("utm_", "fbclid", "gclid")
+# What an old rankings link at `/` carried. The set is closed, where tracking
+# tags are not: `igsh`, `gbraid` and whatever comes next stay on the landing page.
+OLD_FILTER_PARAMS = frozenset(
+    param for params in DIMENSIONS.values() for param in params
+) | {"sort", "dir", "page", "highlight", "append", "partial"}
 
 # Where the apex's old music paths live on the music host
 MUSIC_PATH_PREFIXES = (("/api/music", "/api/"), ("/music", "/"))
@@ -83,10 +88,8 @@ class LandingView(AnonymousResponseCacheMixin, TemplateView):
 
     def _is_old_filter_link(self):
         """The rankings lived at `/` until the split, so every filtered link
-        out there is `/?genres=5`. A tracking tag is not a filter."""
-        return any(
-            not key.startswith(LANDING_TRACKING_PREFIXES) for key in self.request.GET
-        )
+        out there is `/?genres=5`."""
+        return not OLD_FILTER_PARAMS.isdisjoint(self.request.GET)
 
     def get(self, request, *args, **kwargs):
         if self._is_old_filter_link():
@@ -95,11 +98,11 @@ class LandingView(AnonymousResponseCacheMixin, TemplateView):
 
     def get_page_cache_key(self):
         # The cache is read before `get` runs, so an old filter link has to
-        # miss it to reach the redirect. A tracking tag changes nothing on the
-        # page and shares the entry. MUSIC_ENABLED decides whether the music
-        # card renders. A config var change restarts the dynos and so empties
-        # this per-process cache, but the flag is in the key so the page can
-        # never outlive it.
+        # miss it to reach the redirect. Anything else, such as a tracking tag,
+        # changes nothing on the page and shares the entry. MUSIC_ENABLED
+        # decides whether the music card renders. A config var change restarts
+        # the dynos and so empties this per-process cache, but the flag is in
+        # the key so the page can never outlive it.
         if self._is_old_filter_link():
             return None
         return (

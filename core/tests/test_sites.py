@@ -22,7 +22,7 @@ from django.test import (
 
 from core import sites
 from core.middleware import SiteHostMiddleware
-from core.tests.utils import clear_all_caches
+from core.tests.utils import clear_all_caches, get_on_site
 from games.models import Game, IGDBGameData, List, Publication
 from music.models import Album, MusicList, MusicPublication
 
@@ -41,6 +41,11 @@ class HostMappingTests(SimpleTestCase):
         self.assertEqual(sites.site_for_host("localhost:8000"), sites.ROOT)
         self.assertEqual(sites.site_for_host("games.localhost:8000"), sites.GAMES)
         self.assertEqual(sites.site_for_host("MUSIC.localhost"), sites.MUSIC)
+
+    def test_a_fully_qualified_host_names_its_site(self):
+        """Django's host check accepts the trailing dot, so this must too."""
+        self.assertEqual(sites.site_for_host("music.acclaimedmedia.org."), sites.MUSIC)
+        self.assertEqual(sites.site_for_host("acclaimedmedia.org."), sites.ROOT)
 
     def test_any_other_host_names_no_site(self):
         for host in (
@@ -484,6 +489,22 @@ class LandingPageTests(TestCase):
         )
         self.assertEqual(response.status_code, 301)
 
+    def test_every_old_filter_param_still_redirects(self):
+        for param in ("q", "decade", "genres", "platforms", "sort", "page"):
+            with self.subTest(param=param):
+                response = self.client.get(
+                    "/", {param: "1"}, HTTP_HOST=ROOT_HOST, secure=True
+                )
+                self.assertEqual(response.status_code, 301)
+
+    def test_common_tracking_tags_stay_on_the_landing_page(self):
+        for tag in ("utm_source", "fbclid", "igsh", "gbraid", "ref", "mc_cid"):
+            with self.subTest(tag=tag):
+                response = self.client.get(
+                    "/", {tag: "x"}, HTTP_HOST=ROOT_HOST, secure=True
+                )
+                self.assertEqual(response.status_code, 200)
+
     def test_a_tracking_tag_shares_the_cache(self):
         """A campaign's unique tags would otherwise each render the page."""
         self.get()
@@ -492,6 +513,19 @@ class LandingPageTests(TestCase):
             "/", {"utm_source": "x"}, HTTP_HOST=ROOT_HOST, secure=True
         )
         self.assertNotContains(response, "Renamed")
+
+
+class ContactPageCanonicalTests(TestCase):
+    def test_every_host_names_the_apexs_copy(self):
+        """One page, served on every site, as the flat pages are."""
+        for site in (sites.ROOT, sites.GAMES, sites.MUSIC):
+            with self.subTest(site=site):
+                response = get_on_site(self.client, site, "contact")
+                self.assertContains(
+                    response,
+                    '<link rel="canonical" '
+                    'href="https://acclaimedmedia.org/contact/"',
+                )
 
 
 class CookieSettingsTests(SimpleTestCase):

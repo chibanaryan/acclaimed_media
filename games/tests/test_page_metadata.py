@@ -1,6 +1,7 @@
 """Each page's description and social card say what is on it."""
 
 import re
+from unittest import mock
 
 from django.contrib.flatpages.models import FlatPage
 from django.contrib.sites.models import Site
@@ -65,9 +66,19 @@ class PageMetadataTests(TestCase):
         for url in ("/", "/game/doom/"):
             with self.subTest(url=url):
                 meta = metadata(self.client.get(url))
-                self.assertEqual(meta["twitter:card"], "summary_large_image")
+                self.assertEqual(meta["twitter:card"], "summary")
                 for tag in ("twitter:title", "twitter:description", "twitter:image"):
                     self.assertNotIn(tag, meta)
+
+    def test_a_page_with_artwork_asks_for_the_large_card(self):
+        Game.objects.create(name="Doom", slug="doom", rank=1, year_of_release=1993)
+        with mock.patch(
+            "games.models.Game.image_og",
+            new_callable=mock.PropertyMock,
+            return_value="https://example.com/doom.jpg",
+        ):
+            meta = metadata(self.client.get("/game/doom/"))
+        self.assertEqual(meta["twitter:card"], "summary_large_image")
 
     def test_a_page_without_artwork_has_no_preview_image(self):
         """Not the old brand image, and not content="None" for a coverless game."""

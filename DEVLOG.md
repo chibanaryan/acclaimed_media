@@ -6,6 +6,10 @@
   caches drop after the commit, not during it, and a write skips its save if
   a drop ran while it was querying (`core.cache_helpers.cached`). Games' hero
   counts could stay wrong for a day after an import
+- **Smaller fixes the reviews found.** Old filter links keep redirecting past
+  a cached landing page; any tracking tag stays on it; a trailing-dot host
+  finds its site; a page with no artwork asks X for the small card; `/contact/`
+  names the apex's copy as canonical
 - **A cache error no longer fails a committed music write.** It is logged,
   and an import shows an amber warning naming the fix, where it used to
   report a live release as failed. The weekly metadata job finishes too

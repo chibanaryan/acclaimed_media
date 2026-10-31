@@ -8,6 +8,7 @@
 {% block og_title %}{{ article.title }}{% endblock %}
 {% block og_description %}{{ article.excerpt|default:article.title }}{% endblock %}
 {% block og_image %}{% if article.featured_image %}<meta property="og:image" content="{{ article.featured_image }}">{% endif %}{% endblock %}
+{% block twitter_card %}{% if article.featured_image %}summary_large_image{% else %}summary{% endif %}{% endblock %}
 
 {% block structured_data %}{
     "@context": "https://schema.org",

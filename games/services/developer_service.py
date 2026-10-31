@@ -47,7 +47,9 @@ def invalidate_developer_cache() -> None:
 
     Call this after Developer save/delete or Game.developers M2M changes.
     """
-    cache_helpers.drop_on_commit(DEVELOPER_HIERARCHY_CACHE_KEY, GENERATION_DEVELOPERS)
+    cache_helpers.drop_on_commit(
+        DEVELOPER_HIERARCHY_CACHE_KEY, generation_key=GENERATION_DEVELOPERS
+    )
 
 
 def _compute_hierarchy() -> Dict[str, Any]:

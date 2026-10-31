@@ -14,6 +14,7 @@ from django.test import SimpleTestCase, TestCase
 
 from core.cache_helpers import batched_cache_reads
 from core.models import User
+from core.tests.utils import clear_all_caches
 from music import config
 from music.models import ListenedAlbum, WantToListenAlbum
 from music.services import caching
@@ -27,7 +28,7 @@ WRITE = re.compile(
 
 class CachedTests(SimpleTestCase):
     def setUp(self):
-        cache.clear()
+        clear_all_caches()
 
     def test_a_miss_computes_and_saves(self):
         self.assertEqual(caching.cached(KEY, lambda: "fresh", 60), "fresh")
@@ -94,7 +95,7 @@ class CachedTests(SimpleTestCase):
 
 class ClearMusicCachesCommandTests(TestCase):
     def setUp(self):
-        cache.clear()
+        clear_all_caches()
 
     def test_it_clears_section_and_reader_keys_and_says_so(self):
         reader = User.objects.create_user(username="reader", password="pw")
@@ -155,7 +156,7 @@ class EveryWriteIsGuardedTests(SimpleTestCase):
 
 class DroppingCachesTests(TestCase):
     def setUp(self):
-        cache.clear()
+        clear_all_caches()
 
     def test_a_failed_drop_is_reported_not_raised(self):
         with mock.patch(
@@ -174,6 +175,14 @@ class DroppingCachesTests(TestCase):
             with self.assertLogs("core.cache_helpers", "ERROR"):
                 with self.captureOnCommitCallbacks(execute=True):
                     caching.invalidate_listen_caches([1])
+
+    def test_a_toggle_is_one_drop_for_all_its_keys(self):
+        """Each drop writes the generation, several queries on `DatabaseCache`."""
+        with mock.patch("core.cache_helpers.drop_keys") as drop:
+            with self.captureOnCommitCallbacks(execute=True):
+                caching.invalidate_listen_caches([1])
+        drop.assert_called_once()
+        self.assertIn(config.CACHE_KEY_LISTENER_COUNTS, drop.call_args.args[0])
 
     def test_no_users_means_no_drop(self):
         with self.captureOnCommitCallbacks() as callbacks:

@@ -40,26 +40,33 @@ def developer_detail_cache_key(developer_id):
 
 def invalidate_hero_stats():
     """Invalidate the counts in the rankings heading."""
-    cache_helpers.drop_on_commit(HERO_STATS_CACHE_KEY, GENERATION_HERO)
+    cache_helpers.drop_on_commit(HERO_STATS_CACHE_KEY, generation_key=GENERATION_HERO)
 
 
 def invalidate_played_games_cache(user_id):
     """Invalidate the played games cache for a specific user."""
-    cache_helpers.drop_on_commit(played_ids_cache_key(user_id), GENERATION_TRACKING)
+    cache_helpers.drop_on_commit(
+        played_ids_cache_key(user_id), generation_key=GENERATION_TRACKING
+    )
 
 
 def invalidate_want_to_play_cache(user_id):
     """Invalidate the want-to-play games cache for a specific user."""
-    cache_helpers.drop_on_commit(want_ids_cache_key(user_id), GENERATION_TRACKING)
+    cache_helpers.drop_on_commit(
+        want_ids_cache_key(user_id), generation_key=GENERATION_TRACKING
+    )
 
 
 def invalidate_played_counts():
     """Invalidate the played count of every user, which the rank line reads."""
-    cache_helpers.drop_on_commit(config.CACHE_KEY_PLAYED_COUNTS, GENERATION_TRACKING)
+    cache_helpers.drop_on_commit(
+        config.CACHE_KEY_PLAYED_COUNTS, generation_key=GENERATION_TRACKING
+    )
 
 
 def invalidate_developer_detail(developer_id):
     """Invalidate one developer page's cached context."""
     cache_helpers.drop_on_commit(
-        developer_detail_cache_key(developer_id), GENERATION_DEVELOPERS
+        developer_detail_cache_key(developer_id),
+        generation_key=GENERATION_DEVELOPERS,
     )

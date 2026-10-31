@@ -297,8 +297,8 @@ class Developer(CreatorBase):
     # root_creator and display_root_creator from CreatorBase
 
     @classmethod
-    def from_db(cls, db, field_names, values):
-        instance = super().from_db(db, field_names, values)
+    def from_db(cls, db, field_names, values, **kwargs):
+        instance = super().from_db(db, field_names, values, **kwargs)
         # What `games.signals` compares a save with, to see a parent change.
         instance._saved_parent_id = instance.__dict__.get("parent_id")
         return instance

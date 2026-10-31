@@ -702,7 +702,7 @@ The application uses Django templates with HTMX for dynamic interactions and Alp
 
 - **games/** - Main Django app containing:
   - **views/** - Views for all routes, one module per page family
-  - **urls.py** - URL routing configuration (in main acclaimedgames/urls.py)
+  - URL routing is `acclaimedgames/urls_games.py`, with the shared routes in `urls_common.py`
   - **templates/** - Django templates organized by feature:
     - **base.html** - Main template layout with navigation
     - **games/** - Game list, detail, and search templates
@@ -1492,7 +1492,9 @@ URL whatever the request is uses `sites.site_reverse()` (music's
   `music.…/<rest>`, `/api/music/<rest>` to `music.…/api/<rest>`, and every
   other path to the same path on `games.`, query string kept. `/` with a
   query is an old filter link, since the rankings lived there, and goes to
-  `games.` too; a tracking tag (`utm_...`) stays on the landing page. While
+  `games.` too, if it carries one of the rankings' own parameters
+(`OLD_FILTER_PARAMS`); anything else, such as a tracking tag, stays on the
+landing page and shares its cache. While
   music is hidden, its old paths 404 for anyone it is hidden from.
 - **Each site has its own `robots.txt` and `sitemap.xml`**
   (`core.sitemaps.for_site` puts each `<loc>` on the site's origin; the

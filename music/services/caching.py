@@ -85,8 +85,11 @@ def invalidate_listen_caches(user_ids) -> None:
     """
     if not user_ids:
         return
-    for key in (config.CACHE_KEY_LISTENER_COUNTS, *_listen_keys(user_ids)):
-        cache_helpers.drop_on_commit(key, config.CACHE_KEY_GENERATION)
+    cache_helpers.drop_on_commit(
+        config.CACHE_KEY_LISTENER_COUNTS,
+        *_listen_keys(user_ids),
+        generation_key=config.CACHE_KEY_GENERATION,
+    )
 
 
 def invalidate_release_caches(user_ids) -> bool:

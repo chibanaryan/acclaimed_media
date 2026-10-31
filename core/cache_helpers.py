@@ -147,11 +147,11 @@ def forget_queued_drops():
     _queued.drops = {}
 
 
-def drop_on_commit(key, generation_key):
+def drop_on_commit(*keys, generation_key):
     """`drop_keys` once the open transaction commits, or at once with none.
 
     Inside one, as a `post_save` during an import is, a page load before the
-    commit would refill ``key`` from the old rows with nothing left to drop it.
+    commit would refill ``keys`` from the old rows with nothing left to drop them.
     Keys are collected and flushed together, because an import saves a thousand
     rows and each drop is several queries on a `DatabaseCache`: the first hook
     to run empties the queue and the rest find nothing. A rolled-back write
@@ -160,7 +160,7 @@ def drop_on_commit(key, generation_key):
     """
     if not hasattr(_queued, "drops"):
         _queued.drops = {}
-    _queued.drops.setdefault(generation_key, set()).add(key)
+    _queued.drops.setdefault(generation_key, set()).update(keys)
     transaction.on_commit(_flush_queued_drops)
 
 

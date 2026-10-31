@@ -11,6 +11,7 @@
 {% block og_title %}{{ album.name }} | Acclaimed Media{% endblock %}
 {% block og_description %}{{ album.name }} ({{ album.year_released }}) by {{ album.artist_credit }} is ranked #{{ album.rank }} among the most critically acclaimed albums of all time.{% endblock %}
 {% block og_image %}{% if album.image_og %}<meta property="og:image" content="{{ album.image_og }}">{% endif %}{% endblock %}
+{% block twitter_card %}{% if album.image_og %}summary_large_image{% else %}summary{% endif %}{% endblock %}
 
 {% block structured_data %}{
     "@context": "https://schema.org",

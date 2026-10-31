@@ -42,6 +42,8 @@ def _split_host(host):
     ``base`` keeps the port, so a link built from it stays on the dev server.
     """
     hostname, _, port = host.lower().partition(":")
+    # Django's ALLOWED_HOSTS check accepts a fully qualified "example.org."
+    hostname = hostname.rstrip(".")
     suffix = f":{port}" if port else ""
     for base in _base_domains():
         if hostname == base:

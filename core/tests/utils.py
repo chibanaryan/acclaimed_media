@@ -91,7 +91,9 @@ class CommitHooksRunNowMixin:
         super().setUpClass()
         patcher = mock.patch(
             "core.cache_helpers.drop_on_commit",
-            side_effect=lambda key, generation_key: drop_keys([key], generation_key),
+            side_effect=lambda *keys, generation_key: drop_keys(
+                list(keys), generation_key
+            ),
         )
         patcher.start()
         cls.addClassCleanup(patcher.stop)

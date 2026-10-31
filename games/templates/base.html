@@ -35,7 +35,8 @@
     <meta property="og:site_name" content="Acclaimed Media">
 
     {# Twitter Card Tags #}
-    <meta name="twitter:card" content="summary_large_image">
+    {# A large card with no image can be dropped altogether, so a page with artwork asks for one. #}
+    <meta name="twitter:card" content="{% block twitter_card %}summary{% endblock %}">
     <meta name="twitter:site" content="@AVGRankings">
     {# No twitter:title/description/image: X falls back to og:title, #}
     {# og:description and og:image, so every page's card matches its Open #}

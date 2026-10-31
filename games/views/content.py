@@ -30,6 +30,14 @@ class ContactFormView(FormView):
     success_url = reverse_lazy("contact_thank_you")
     template_name = "contact.html"  # Minimal template for form errors
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # One copy served on every site, as the flat pages are
+        context["page_canonical_url"] = sites.canonical_url(
+            sites.ROOT, self.request.path
+        )
+        return context
+
     def form_valid(self, form):
         """Process valid contact form submission and send email."""
         name = form.cleaned_data["name"]
