@@ -23,20 +23,24 @@ from games.services import contact_spam_guard
 logger = logging.getLogger(__name__)
 
 
-class ContactFormView(FormView):
+class ApexCanonicalMixin:
+    """One copy of a page, served on every site so a visitor keeps their own
+    sidebar; the apex's is the one search engines index."""
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["page_canonical_url"] = sites.canonical_url(
+            sites.ROOT, self.request.path
+        )
+        return context
+
+
+class ContactFormView(ApexCanonicalMixin, FormView):
     """Dedicated contact form handler (for form POST from modal)."""
 
     form_class = ContactForm
     success_url = reverse_lazy("contact_thank_you")
     template_name = "contact.html"  # Minimal template for form errors
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        # One copy served on every site, as the flat pages are
-        context["page_canonical_url"] = sites.canonical_url(
-            sites.ROOT, self.request.path
-        )
-        return context
 
     def form_valid(self, form):
         """Process valid contact form submission and send email."""
@@ -90,13 +94,13 @@ class ContactFormView(FormView):
         return error_fields == {"website"}
 
 
-class ContactThankYouView(TemplateView):
+class ContactThankYouView(ApexCanonicalMixin, TemplateView):
     """Display thank you page after successful contact form submission."""
 
     template_name = "contact_thank_you.html"
 
 
-class PageDetailView(TemplateView):
+class PageDetailView(ApexCanonicalMixin, TemplateView):
     template_name = "pages/page_detail.html"
 
     def get_context_data(self, **kwargs):
@@ -124,11 +128,6 @@ class PageDetailView(TemplateView):
         ).chars(155)
 
         context["flatpage"] = flatpage
-        # One copy of each page, served on every site so a visitor keeps
-        # their own sidebar; the apex's is the one search engines index
-        context["page_canonical_url"] = sites.canonical_url(
-            sites.ROOT, self.request.path
-        )
         return context
 
 

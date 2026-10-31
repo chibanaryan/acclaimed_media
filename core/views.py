@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 # How many covers each card on the landing page shows
 LANDING_TOP_COUNT = 5
 
-# Query parameters a campaign adds to a link to the landing page
 # What an old rankings link at `/` carried. The set is closed, where tracking
 # tags are not: `igsh`, `gbraid` and whatever comes next stay on the landing page.
 OLD_FILTER_PARAMS = frozenset(

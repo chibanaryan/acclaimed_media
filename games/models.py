@@ -296,13 +296,6 @@ class Developer(CreatorBase):
     # root_developer and display_root_developer instead of
     # root_creator and display_root_creator from CreatorBase
 
-    @classmethod
-    def from_db(cls, db, field_names, values, **kwargs):
-        instance = super().from_db(db, field_names, values, **kwargs)
-        # What `games.signals` compares a save with, to see a parent change.
-        instance._saved_parent_id = instance.__dict__.get("parent_id")
-        return instance
-
     @cached_property
     def root_developer(self) -> "Developer":
         """

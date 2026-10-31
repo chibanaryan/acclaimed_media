@@ -105,18 +105,17 @@ def _notify_subscribers(post_pk):
 
 @receiver(pre_save, sender=Developer)
 def remember_the_root_a_developer_leaves(sender, instance, **kwargs):
-    """Note the old root of a studio moving parent, whose page still lists it.
-
-    The parent it had comes from `Developer.from_db` or the last save, so the
-    many saves that move nothing, such as the weekly refresh's, cost no query.
-    """
-    old_parent_id = getattr(instance, "_saved_parent_id", None)
-    instance._saved_parent_id = instance.parent_id
+    """Note the old root of a studio moving parent, whose page still lists it."""
     instance._root_left_id = None
-    if old_parent_id and old_parent_id != instance.parent_id:
-        old_parent = Developer.objects.filter(pk=old_parent_id).first()
-        if old_parent:
-            instance._root_left_id = old_parent.root_developer.id
+    if instance.pk is None or kwargs.get("raw"):
+        return
+    old_parent = (
+        Developer.objects.filter(subsidiaries=instance.pk)
+        .exclude(pk=instance.parent_id)
+        .first()
+    )
+    if old_parent:
+        instance._root_left_id = old_parent.root_developer.id
 
 
 @receiver([post_save, post_delete], sender=Developer)
@@ -191,6 +190,14 @@ def invalidate_hero_stats_on_count_change(sender, instance, **kwargs):
     if kwargs.get("created", True):
         invalidate_hero_stats()
         logger.debug("Homepage hero stats cache invalidated (count changed)")
+
+
+@receiver(post_delete, sender=Game)
+def invalidate_played_counts_on_game_delete(sender, instance, **kwargs):
+    """A deleted game orphans its PlayedGame rows, and SET_NULL sends no signal."""
+    from games.cache import invalidate_played_counts
+
+    invalidate_played_counts()
 
 
 # =============================================================================

@@ -583,8 +583,8 @@ level with or ahead of them, so a tie cannot claim it, and a leader or someone
 near the bottom gets a position instead, "tied for" when it is shared, since
 "more than 95%" undersells the first and "more than 0%" says nothing to the
 second. `CACHE_KEY_LISTENER_COUNTS` is one global key, in `CACHE_KEYS` for
-an import, and `invalidate_listen_caches` drops it too, since the same three
-moments normally change it. An admin edit or a deleted user waits out its
+an import, and `invalidate_listen_caches` drops it too, for a toggle or the bulk
+command. An admin edit or a deleted user waits out its
 one-hour TTL; games' signals cover those, and music has none yet.
 
 **Marking a collection in bulk**, for importing listens matched elsewhere

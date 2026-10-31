@@ -98,6 +98,18 @@ class DropOnCommitTests(TestCase):
 
         self.assertEqual(get_played_counts(), [1])
 
+    def test_deleting_a_game_drops_the_played_counts(self):
+        """Its rows are orphaned by SET_NULL, which sends no signal."""
+        user = User.objects.create_user(username="reader", password="pw")
+        game = Game.objects.create(name="G", slug="g", rank=1, igdb_id=1)
+        PlayedGame.objects.create(user=user, game=game, igdb_id=1)
+        self.assertEqual(get_played_counts(), [1])
+
+        with self.captureOnCommitCallbacks(execute=True):
+            game.delete()
+
+        self.assertEqual(get_played_counts(), [])
+
     def test_reconnecting_a_row_drops_the_played_counts(self):
         user = User.objects.create_user(username="reader", password="pw")
         PlayedGame.objects.create(user=user, game=None, igdb_id=7)

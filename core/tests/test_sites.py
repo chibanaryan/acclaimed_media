@@ -518,14 +518,18 @@ class LandingPageTests(TestCase):
 class ContactPageCanonicalTests(TestCase):
     def test_every_host_names_the_apexs_copy(self):
         """One page, served on every site, as the flat pages are."""
-        for site in (sites.ROOT, sites.GAMES, sites.MUSIC):
-            with self.subTest(site=site):
-                response = get_on_site(self.client, site, "contact")
-                self.assertContains(
-                    response,
-                    '<link rel="canonical" '
-                    'href="https://acclaimedmedia.org/contact/"',
-                )
+        for name, path in (
+            ("contact", "/contact/"),
+            ("contact_thank_you", "/contact/thank-you/"),
+        ):
+            for site in (sites.ROOT, sites.GAMES, sites.MUSIC):
+                with self.subTest(site=site, name=name):
+                    response = get_on_site(self.client, site, name)
+                    self.assertContains(
+                        response,
+                        '<link rel="canonical" '
+                        f'href="https://acclaimedmedia.org{path}"',
+                    )
 
 
 class CookieSettingsTests(SimpleTestCase):

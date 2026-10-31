@@ -96,15 +96,19 @@ class DeveloperCacheInvalidationSignalTests(CommitHooksRunNowMixin, TestCase):
                 studio.parent = old_root
                 studio.save()
 
-    def test_an_old_parent_deleted_since_is_not_an_error(self):
-        root = Developer.objects.create(name="Root", igdb_id=1)
-        studio = Developer.objects.create(name="Studio", igdb_id=2, parent=root)
-        Developer.objects.filter(pk=root.pk).delete()
+    def test_a_save_that_did_not_reach_the_row_does_not_hide_a_later_move(self):
+        """The old parent is read from the row, not remembered on the instance."""
+        old_root = Developer.objects.create(name="Old", igdb_id=1)
+        new_root = Developer.objects.create(name="New", igdb_id=2)
+        studio = Developer.objects.create(name="Studio", igdb_id=3, parent=old_root)
+        key = f"{config.CACHE_VERSION}:developer_detail:{old_root.id}"
 
-        studio.parent = None
+        studio.parent = new_root
+        studio.save(update_fields=["name"])
+        cache.set(key, {"detail": "cached"})
         studio.save()
 
-        self.assertIsNone(studio._root_left_id)
+        self.assertIsNone(cache.get(key))
 
     def test_a_studio_moving_parent_drops_the_new_root_after_a_cached_read(self):
         """`root_creator` is cached on the instance from before the move."""
