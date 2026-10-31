@@ -484,8 +484,9 @@ a sort.
 - **The toggle is atomic.** The delete and the write run in one transaction
   and the write is an `update_or_create` keyed on the `unique_together`, so a
   double-click cannot race into an `IntegrityError` - and a row orphaned when
-  a release dropped its album is re-adopted on the spot. The cache is dropped in
-  `transaction.on_commit`, so a rolled-back write cannot clear it.
+  a release dropped its album is re-adopted on the spot. The cache is dropped
+  on commit, so no reader can refill it from the old rows; a rolled-back write
+  leaves its keys for the thread's next commit, which drops them harmlessly.
 - **Nothing per-user goes in `/api/all/`.** That payload is held in
   `sessionStorage` keyed only on its version, so two people sharing a browser
   session share it. The client joins on the album pk, which the payload

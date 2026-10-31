@@ -5,7 +5,13 @@ Signals for the games app.
 import logging
 
 from django.db import transaction
-from django.db.models.signals import m2m_changed, post_delete, post_save, pre_save
+from django.db.models.signals import (
+    m2m_changed,
+    post_delete,
+    post_save,
+    pre_delete,
+    pre_save,
+)
 from django.dispatch import receiver
 
 from core.services.background import start_background_thread
@@ -209,6 +215,21 @@ def invalidate_hero_stats_on_count_change(sender, instance, **kwargs):
     if kwargs.get("created", True):
         invalidate_hero_stats()
         logger.debug("Homepage hero stats cache invalidated (count changed)")
+
+
+@receiver(pre_delete, sender=Game)
+def invalidate_developer_pages_on_game_delete(sender, instance, **kwargs):
+    """A cascade removes its through rows with no `m2m_changed`, so the
+    developer pages would go on counting a game that is gone. Before the delete,
+    while the links can still be read; a whole import's deletes make one drop."""
+    from games.cache import invalidate_developer_detail
+    from games.services.developer_service import invalidate_developer_cache
+
+    invalidate_developer_cache()
+    for developer in instance.developers.all():
+        invalidate_developer_detail(developer.id)
+        if developer.parent_id:
+            invalidate_developer_detail(developer.root_developer.id)
 
 
 @receiver(post_delete, sender=Game)

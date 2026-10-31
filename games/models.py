@@ -1269,6 +1269,8 @@ class Game(MediaItemBase):
             igdb_id=dev_data["id"],  # Lookup key - ensures no duplicates
             defaults={
                 "name": dev_data["name"],
+                # Named here, since update_or_create saves only its defaults
+                "name_normalized": normalize_name(dev_data["name"]),
                 "parent": parent,
                 # Only root developers get slugs
                 "slug": igdb_slug if is_root else None,

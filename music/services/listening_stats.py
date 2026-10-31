@@ -42,7 +42,7 @@ def get_listener_counts():
 
 
 def total_album_count():
-    """How many albums the ranking holds, which only an import changes."""
+    """How many albums the ranking holds; an admin edit waits out the 24 hours."""
     return caching.cached(
         config.CACHE_KEY_TOTAL_ALBUM_COUNT,
         Album.objects.count,

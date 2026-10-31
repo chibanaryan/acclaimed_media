@@ -116,6 +116,14 @@ class PercentileServiceTests(TestCase):
         ):
             self.assertEqual(calculate_percentile(5)["percentile"], 55)
 
+    def test_a_whole_percent_is_not_lost_to_float_rounding(self):
+        """57 / 100 * 100 is 56.99... in binary."""
+        with mock.patch(
+            "games.services.percentile_service.get_played_counts",
+            return_value=[1] * 57 + [9] * 43 + [5],
+        ):
+            self.assertEqual(calculate_percentile(5)["percentile"], 57)
+
     def test_excludes_orphaned_played_games(self):
         """Only counts non-orphaned PlayedGame records."""
         user = User.objects.create_user(username="test", email="test@example.com")

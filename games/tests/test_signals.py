@@ -284,6 +284,27 @@ class GameDeveloperM2MSignalTests(CommitHooksRunNowMixin, TestCase):
         # Should not raise - the except Developer.DoesNotExist should handle it
 
 
+class GameDeleteSignalTests(CommitHooksRunNowMixin, TestCase):
+    def test_deleting_a_game_drops_its_developers_pages_and_their_root(self):
+        """The through rows cascade without an `m2m_changed`."""
+        from games.services.developer_service import DEVELOPER_HIERARCHY_CACHE_KEY
+
+        root = Developer.objects.create(name="Root", igdb_id=1)
+        studio = Developer.objects.create(name="Studio", igdb_id=2, parent=root)
+        game = Game.objects.create(name="G", rank=1, igdb_id=100)
+        game.developers.add(studio)
+        keys = [
+            DEVELOPER_HIERARCHY_CACHE_KEY,
+            f"{config.CACHE_VERSION}:developer_detail:{studio.id}",
+            f"{config.CACHE_VERSION}:developer_detail:{root.id}",
+        ]
+        cache.set_many({key: {"test": "data"} for key in keys})
+
+        game.delete()
+
+        self.assertEqual(cache.get_many(keys), {})
+
+
 class GenreHierarchyChangesApplyImmediatelyTests(TestCase):
     """A re-parented genre filters by its new tree on the very next request.
 
