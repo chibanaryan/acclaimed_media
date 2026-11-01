@@ -268,7 +268,13 @@ Music-specific models:
   keeps a nullable `album` FK **and** the album's `wikidata_id`, because an
   import deletes the albums a release drops: the rows survive on `SET_NULL` and
   `music.services.user_tracking_service` re-adopts them by that id if the
-  album comes back.
+  album comes back. The column holds `Album.tracking_key`: the primary QID, or
+  `pk:<id>` for an album the release gives none, which the import keeps by
+  its artists and title so the pk lasts. Before 2026-11-01 a QID-less album
+  had no button and the toggle refused it, so on its page the only button was
+  a "More by" row's, for another album (Blumfeld's 'Old Nobody' marked
+  'L'Etat Et Moi'). Key a tracking row on `tracking_key`, never on
+  `wikidata_id`.
   Mutual exclusivity is enforced by the toggle view, not by a constraint -
   they are separate tables, so no one constraint spans them. "Have" (an album
   the user owns) is a `ListenedAlbum` row with `owned=True`, not a third
@@ -506,9 +512,11 @@ a sort.
   own earlier copies so they do not pile up. `core/js/media-tracking.js` is
   one delegated listener instead, and a page registers what its scope means.
 - **The toggle is atomic.** The delete and the write run in one transaction
-  and the write is an `update_or_create` keyed on the `unique_together`, so a
-  double-click cannot race into an `IntegrityError` - and a row orphaned when
-  a release dropped its album is re-adopted on the spot. The cache is dropped
+  under a per-user lock, and `user_tracking_service.write_tracking_row` finds
+  the user's row by tracking key or FK and updates it, so a double-click
+  cannot race into an `IntegrityError`, a row orphaned when a release dropped
+  its album is re-adopted on the spot, and one under an older key is renamed
+  rather than left beside a second. The cache is dropped
   after the block commits, so a rolled-back write cannot clear it.
 - **Nothing per-user goes in `/api/all/`.** That payload is held in
   `sessionStorage` keyed only on its version, so two people sharing a browser
@@ -1078,9 +1086,14 @@ differ from the games files:
   is claimed by one row at most, so a split row gets a new album. A matched
   album has its rank, name, year, ids and credits rewritten and keeps its pk
   and slug - and so its metadata pointers, genres, release date, covers and
-  tracking rows. Albums the file drops are deleted (before any are created,
-  so a new album can take a dropped one's slug), and a row with no QID is
-  always new. The message, `--dry-run` and the staff import page all report
+  tracking rows. A row no id matches then tries `models.release_identity`
+  (its artists' provider ids, whether it is a compilation, and its title
+  without accents, case, punctuation or spaces) and its year against the albums still
+  unclaimed, provided the row or the album has no QID to disagree; a row
+  matching two albums is new. That keeps an album
+  without a QID, which was recreated every import until 2026-11-01, and one
+  the release gives or takes a QID. Albums the file drops are deleted
+  (before any are created, so a new album can take a dropped one's slug). The message, `--dry-run` and the staff import page all report
   "N kept, N added, N removed". Until 2026-10-23 every import deleted every
   album, and the next metadata run spent ~22 minutes re-fetching MusicBrainz
   for all of them.
@@ -1092,8 +1105,10 @@ Unranked lists record every member at rank 1, matching the games convention.
 drops is deleted and its rows wait on `SET_NULL`, so `import_albums` still
 runs `music.services.user_tracking_service.reconnect_tracking_records` as the
 safety net: when the album comes back it reconnects them by Wikidata id -
-normalising a secondary id to the primary and merging two rows that now
-point at one album, earliest kept. A row that is already right is skipped,
+normalising a secondary id to the primary, renaming a kept album's rows when
+it gains or loses a QID (`pk:<id>` to the QID, or back), and merging two rows
+that now point at one album, earliest kept. A row on a QID-less album the
+release drops is keyed on a pk that is gone, so it stays orphaned. A row that is already right is skipped,
 so its user's caches are not dropped for nothing; the users whose rows a
 removal orphaned have theirs dropped instead, since their cached sets name
 the deleted pks. `import_batch` drops them with the section's keys, in one
@@ -1191,8 +1206,10 @@ and stores only those.
 ## Music Metadata Pipeline
 
 Run `/music-metadata` (`python manage.py fetch_album_metadata`) after an import.
-Every album carries a Wikidata QID, which supplies the Discogs and MusicBrainz
-identifiers the other sources are keyed by, so nothing is matched on title.
+Nearly every album carries a Wikidata QID, which supplies the Discogs and
+MusicBrainz identifiers the other sources are keyed by, so nothing is matched
+on title. One the release gives no QID gets no metadata (no cover, genres or
+external ids) until the release adds one.
 
 Four passes, selectable, because their costs differ by two orders of magnitude:
 Wikidata is ~25 batched requests (seconds), cover art ~1000 downloads (~18 min),

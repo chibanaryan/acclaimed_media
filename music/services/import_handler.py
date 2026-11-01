@@ -34,9 +34,11 @@ to it: metadata, genres, covers and tracking rows.
 import csv
 import logging
 import re
-from typing import Callable, Dict, List, NamedTuple, Optional, Set, Tuple
+from collections import Counter, defaultdict
+from typing import Callable, Dict, List, NamedTuple, Optional, Sequence, Set, Tuple
 
 from django.db import transaction
+from django.db.models import prefetch_related_objects
 
 from core import constants as core_constants
 from core.services.ranking import update_year_decade_ranks
@@ -482,6 +484,8 @@ class AlbumMatch(NamedTuple):
     kept: List[Tuple[AlbumRow, models.Album]]
     added: List[AlbumRow]
     removed: List[models.Album]
+    # The kept pairs matched by title rather than id, for --dry-run to list.
+    by_identity: Sequence[Tuple[AlbumRow, models.Album]] = ()
 
 
 def parse_albums_file(file_obj) -> List[AlbumRow]:
@@ -515,13 +519,23 @@ def parse_albums_file(file_obj) -> List[AlbumRow]:
 
 
 def match_albums(rows: List[AlbumRow], existing) -> AlbumMatch:
-    """Pair each row with the stored album it describes, by Wikidata id.
+    """Pair each row with the stored album it describes. Nothing is written.
 
-    A row claims the first album found under any of its ids, primary first,
-    and an album can be claimed once: a release that splits one album into
-    two rows keeps the album for the first and creates the second, rather
-    than having both write to one row. A row without an id cannot be
-    matched, so it is always new. Nothing is written.
+    By Wikidata id first: a row claims the first album found under any of
+    its ids, primary first, and an album can be claimed once, so a release
+    that splits one album into two rows keeps the album for the first and
+    creates the second, rather than having both write to one row.
+
+    A row no id matched then tries :func:`models.release_identity` - its
+    artists, title and whether it is a compilation - and its year, against
+    the albums still unclaimed, when the row or that album has no id to
+    disagree with. That keeps an album the release gives no QID (Blumfeld's
+    'Old Nobody'), which was otherwise recreated by every import under a new
+    pk, and with it the tracking rows keyed on that pk; and it keeps an album
+    across the release adding or dropping its QID. Two ids that disagree are
+    never overruled by a title, and two candidates are never chosen between:
+    a row matching more than one album, or one of two rows matching an album,
+    is new.
     """
     by_qid: Dict[str, models.Album] = {}
     for album in existing:
@@ -529,8 +543,8 @@ def match_albums(rows: List[AlbumRow], existing) -> AlbumMatch:
             by_qid.setdefault(qid, album)
 
     claimed = set()
-    kept, added = [], []
-    for row in rows:
+    matched: Dict[int, models.Album] = {}
+    for index, row in enumerate(rows):
         album = next(
             (
                 by_qid[qid]
@@ -539,14 +553,67 @@ def match_albums(rows: List[AlbumRow], existing) -> AlbumMatch:
             ),
             None,
         )
-        if album is None:
-            added.append(row)
-        else:
+        if album is not None:
             claimed.add(album.pk)
-            kept.append((row, album))
+            matched[index] = album
 
+    identities = {
+        index: (
+            models.release_identity(
+                row.name,
+                [artist_id for artist_id, _ in row.credits],
+                row.various_artists,
+            ),
+            row.year,
+        )
+        for index, row in enumerate(rows)
+        if index not in matched
+    }
+    # Nearly every row matches by QID, so the credits are only fetched when
+    # a row is left to match by title.
+    unclaimed = [album for album in existing if album.pk not in claimed]
+    if identities:
+        prefetch_related_objects(unclaimed, models.credits_prefetch())
+    else:
+        unclaimed = []
+    by_identity: Dict[tuple, List[models.Album]] = defaultdict(list)
+    for album in unclaimed:
+        by_identity[(album.stored_identity, album.year_released)].append(album)
+
+    # QID-less row to QID-less album first, so a row gaining a QID cannot
+    # take an album from the QID-less row that is still that album, and a
+    # dropped album with a QID does not make the QID-less one ambiguous.
+    # Then a row gaining a QID, or an album losing one.
+    identity_matched = []
+    for both_without in (True, False):
+        # Two rows the same album could be are not chosen between either.
+        waiting = {
+            index: identity
+            for index, identity in identities.items()
+            if index not in matched and not (both_without and rows[index].wikidata_ids)
+        }
+        rows_per_identity = Counter(waiting.values())
+        for index, identity in waiting.items():
+            if rows_per_identity[identity] > 1:
+                continue
+            row = rows[index]
+            candidates = [
+                album
+                for album in by_identity.get(identity, [])
+                if album.pk not in claimed
+                and not (row.wikidata_ids and album.wikidata_id)
+                and both_without == (not row.wikidata_ids and not album.wikidata_id)
+            ]
+            if len(candidates) == 1:
+                claimed.add(candidates[0].pk)
+                matched[index] = candidates[0]
+                identity_matched.append(index)
+
+    kept = [(row, matched[index]) for index, row in enumerate(rows) if index in matched]
+    added = [row for index, row in enumerate(rows) if index not in matched]
     removed = [album for album in existing if album.pk not in claimed]
-    return AlbumMatch(kept=kept, added=added, removed=removed)
+    by_title = [(rows[index], matched[index]) for index in sorted(identity_matched)]
+    return AlbumMatch(kept=kept, added=added, removed=removed, by_identity=by_title)
 
 
 def credit_errors(rows: List[AlbumRow], names_by_source: Dict[int, List[str]]):
@@ -644,12 +711,24 @@ def import_albums(
     ).delete()
 
     credits: List[models.AlbumCredit] = []
-    # Every Wikidata id each album carries, for the tracking reconnection
-    # pass below. Built here because the loop already has the ids parsed.
+    # Every key a tracking row may be stored under - each album's Wikidata
+    # ids, and pk:<id> for one without - for the reconnection pass below,
+    # with `previous_keys` for the keys a kept album had before this release.
+    # Built here because the loop already has the ids parsed.
     id_to_album: Dict[str, models.Album] = {}
+    previous_keys: Dict[str, models.Album] = {}
     for index, row in enumerate(rows, start=1):
         credited = row_credits[index]
         album = kept_by_row.get(id(row)) or models.Album()
+        # The keys this album's tracking rows may still be stored under, from
+        # before this release changed its ids: one that gains or loses a QID
+        # is kept now (see `match_albums`), and its rows are renamed below.
+        if album.pk and album.wikidata_qids != row.wikidata_ids:
+            # First wins for a QID two stored albums shared, as in
+            # `match_albums`; a key this release gives an album wins over
+            # both (see below).
+            for key in [album.tracking_key, *album.wikidata_qids]:
+                previous_keys.setdefault(key, album)
         album.rank = row.rank
         album.name = row.name
         # MediaItemBase.save sets this only for a name with non-ASCII in it,
@@ -668,6 +747,8 @@ def import_albums(
 
         for wikidata_id in row.wikidata_ids:
             id_to_album[wikidata_id] = album
+        if not row.wikidata_ids:
+            id_to_album[album.tracking_key] = album
 
         credits.extend(
             models.AlbumCredit(
@@ -699,9 +780,10 @@ def import_albums(
         models.ListenedAlbum.objects.exists()
         or models.WantToListenAlbum.objects.exists()
     ):
-        stale_users |= user_tracking_service.reconnect_tracking_records(id_to_album)[
-            "users"
-        ]
+        # An id this release gives an album wins over one an album had before.
+        stale_users |= user_tracking_service.reconnect_tracking_records(
+            {**previous_keys, **id_to_album}
+        )["users"]
 
     albums_ranked, years_processed = update_year_decade_ranks(
         models.Album, "music_album", "year_released"

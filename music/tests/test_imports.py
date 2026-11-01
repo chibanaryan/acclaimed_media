@@ -794,12 +794,29 @@ class ImportAlbumsInPlaceTests(TestCase):
         )
         self.assertEqual(models.Album.objects.count(), 2)
 
-    def test_a_row_without_a_wikidata_id_is_always_new(self):
+    def test_a_row_without_a_wikidata_id_is_kept_by_artists_and_title(self):
+        # Until 2026-11-01 such a row was always new, so the album got a new
+        # pk on every import and lost its metadata and tracking rows.
         self.reimport("1\tUntitled\t3,0\t1999\n")
         album = models.Album.objects.get()
-        message, _ = self.reimport("1\tUntitled\t3,0\t1999\n")
+        message, _ = self.reimport("2\tUntitled\t3,0\t1999\n")
+        self.assertIn("(1 kept, 0 added, 0 removed)", message)
+        self.assertEqual(models.Album.objects.get().pk, album.pk)
+        self.assertEqual(models.Album.objects.get().rank, 2)
+
+    def test_a_row_without_a_wikidata_id_and_a_new_year_is_new(self):
+        # The year is part of what is matched: a lone same-titled record
+        # from another year may be another album, so it is not taken.
+        self.reimport("1\tUntitled\t3,0\t1999\n")
+        message, _ = self.reimport("1\tUntitled\t3,0\t1998\n")
         self.assertIn("(0 kept, 1 added, 1 removed)", message)
-        self.assertNotEqual(models.Album.objects.get().pk, album.pk)
+
+    def test_an_album_gaining_its_first_wikidata_id_is_kept(self):
+        self.reimport("1\tUntitled\t3,0\t1999\n")
+        album = models.Album.objects.get()
+        message, _ = self.reimport("1\tUntitled\t3,0\t1999\tQ5\n")
+        self.assertIn("(1 kept, 0 added, 0 removed)", message)
+        self.assertEqual(models.Album.objects.get(pk=album.pk).wikidata_id, "Q5")
 
 
 class MatchAlbumsTests(TestCase):
@@ -833,6 +850,143 @@ class MatchAlbumsTests(TestCase):
         self.assertEqual([album for _, album in match.kept], [first, second])
         self.assertEqual(match.added, [])
         self.assertEqual(match.removed, [])
+
+    def _credited(self, name, *source_ids, wikidata_id=None, year=None, rank=1):
+        album = models.Album.objects.create(
+            name=name, rank=rank, wikidata_id=wikidata_id, year_released=year
+        )
+        for source_id in source_ids:
+            artist, _ = models.Artist.objects.get_or_create(
+                source_id=source_id,
+                defaults={"name": f"Artist {source_id}", "slug": f"a{source_id}"},
+            )
+            models.AlbumCredit.objects.create(album=album, artist=artist)
+        return album
+
+    def _match(self, *rows):
+        return import_handler.match_albums(
+            list(rows),
+            list(models.Album.objects.prefetch_related(models.credits_prefetch())),
+        )
+
+    def _row(self, name, credits, year=None, wikidata_ids=()):
+        return import_handler.AlbumRow(
+            rank=1,
+            name=name,
+            credits=[(source_id, 0) for source_id in credits],
+            various_artists=False,
+            year=year,
+            wikidata_ids=list(wikidata_ids),
+        )
+
+    def test_a_row_without_ids_matches_on_artists_and_title(self):
+        album = self._credited("Old Nobody", 77, year=1999)
+        match = self._match(self._row("Old Nobody", [77], 1999))
+        self.assertEqual(match.kept[0][1], album)
+        self.assertEqual(match.removed, [])
+
+    def test_the_identity_ignores_punctuation_and_keeps_non_ascii(self):
+        letat = self._credited("L'Etat Et Moi", 77, year=1994)
+        kanji = self._credited("\u98a8\u8857\u308d\u307e\u3093", 9, year=1972, rank=2)
+        match = self._match(
+            self._row("L\u2019\u00c9tat et moi", [77], 1994),
+            self._row("\u3086\u3067\u3081\u3093", [9], 1972),
+        )
+        self.assertEqual([album for _, album in match.kept], [letat])
+        self.assertEqual(match.removed, [kanji])
+
+    def test_titles_of_symbols_stay_apart(self):
+        # Ed Sheeran's '+' and divide sign slugify to the same empty string.
+        self._credited("+", 3, year=2011)
+        match = self._match(self._row("\u00f7", [3], 2011))
+        self.assertEqual(match.kept, [])
+
+    def test_punctuation_inside_a_word_does_not_split_it(self):
+        album = self._credited("Sgt Peppers", 4, year=1967)
+        match = self._match(self._row("Sgt. Pepper's", [4], 1967))
+        self.assertEqual(match.kept[0][1], album)
+
+    def test_a_change_in_spacing_still_matches(self):
+        album = self._credited("Live/Dead", 6, year=1969)
+        match = self._match(self._row("Live / Dead", [6], 1969))
+        self.assertEqual(match.kept[0][1], album)
+
+    def test_a_japanese_voicing_mark_is_part_of_the_letter(self):
+        # NFKD splits the mark off as a combining character, like an accent.
+        self._credited("\u30d0\u30ab", 9, year=1980)
+        match = self._match(self._row("\u30cf\u30ab", [9], 1980))
+        self.assertEqual(match.kept, [])
+
+    def test_a_title_of_punctuation_alone_still_matches(self):
+        album = self._credited("-", 3, year=2023)
+        match = self._match(self._row("-", [3], 2023))
+        self.assertEqual(match.kept[0][1], album)
+
+    def test_a_compilation_does_not_match_an_artist_album(self):
+        self._credited("Greatest Hits", year=1990)
+        row = self._row("Greatest Hits", [], 1990)._replace(various_artists=True)
+        self.assertEqual(self._match(row).kept, [])
+
+    def test_two_ids_that_disagree_are_not_overruled_by_a_title(self):
+        self._credited("Old Nobody", 77, wikidata_id="Q1")
+        match = self._match(self._row("Old Nobody", [77], wikidata_ids=["Q2"]))
+        self.assertEqual(match.kept, [])
+
+    def test_an_album_dropping_its_id_is_kept(self):
+        album = self._credited("Old Nobody", 77, wikidata_id="Q1")
+        match = self._match(self._row("Old Nobody", [77]))
+        self.assertEqual(match.kept[0][1], album)
+
+    def test_the_rows_year_chooses_between_same_titled_records(self):
+        self._credited("Peter Gabriel", 5, year=1977)
+        second = self._credited("Peter Gabriel", 5, year=1978, rank=2)
+        match = self._match(self._row("Peter Gabriel", [5], 1978))
+        self.assertEqual(match.kept[0][1], second)
+
+    def test_a_same_titled_record_from_another_year_is_not_taken(self):
+        self._credited("Peter Gabriel", 5, year=1977)
+        match = self._match(self._row("Peter Gabriel", [5], 1980))
+        self.assertEqual(match.kept, [])
+
+    def test_two_albums_with_the_same_identity_are_not_chosen_between(self):
+        self._credited("Peter Gabriel", 5, year=1977)
+        self._credited("Peter Gabriel", 5, year=1977, rank=2)
+        match = self._match(self._row("Peter Gabriel", [5], 1977))
+        self.assertEqual(match.kept, [])
+
+    def test_a_qid_less_row_takes_the_qid_less_album_first(self):
+        # A row gaining a QID listed above the QID-less row that is still
+        # the album must not take it, and with it the album's marks.
+        album = self._credited("Old Nobody", 77, year=1999)
+        match = self._match(
+            self._row("Old Nobody", [77], 1999, wikidata_ids=["Q9"]),
+            self._row("Old Nobody", [77], 1999),
+        )
+        [(row, kept)] = match.kept
+        self.assertEqual((row.wikidata_ids, kept), ([], album))
+        self.assertEqual([row.wikidata_ids for row in match.added], [["Q9"]])
+
+    def test_two_rows_one_album_could_be_are_not_chosen_between(self):
+        self._credited("Old Nobody", 77, year=1999)
+        match = self._match(
+            self._row("Old Nobody", [77], 1999), self._row("Old Nobody", [77], 1999)
+        )
+        self.assertEqual(match.kept, [])
+
+    def test_a_dropped_album_with_a_qid_does_not_make_it_ambiguous(self):
+        album = self._credited("Old Nobody", 77, year=1999)
+        self._credited("Old Nobody", 77, wikidata_id="Q1", year=1999, rank=2)
+        match = self._match(self._row("Old Nobody", [77], 1999))
+        self.assertEqual(match.kept[0][1], album)
+
+    def test_a_qid_match_is_not_claimed_again_by_title(self):
+        album = self._credited("Old Nobody", 77, wikidata_id="Q1")
+        match = self._match(
+            self._row("Old Nobody", [77], wikidata_ids=["Q1"]),
+            self._row("Old Nobody", [77]),
+        )
+        self.assertEqual([kept for _, kept in match.kept], [album])
+        self.assertEqual(len(match.added), 1)
 
 
 class ImportMusicDataCommandTests(TestCase):
@@ -887,6 +1041,17 @@ class ImportMusicDataCommandTests(TestCase):
         self.assertEqual(
             list(models.Album.objects.values_list("pk", "name", "rank")), before
         )
+
+    def test_a_dry_run_lists_an_album_kept_by_title(self):
+        # Pet Sounds drops its QID: kept by artists, title and year, which
+        # moves its tracking rows, so the operator sees the pairing first.
+        albums = Path(self.paths["albums"])
+        albums.write_text(
+            albums.read_text(encoding="utf-8").replace("\tQ212863", ""),
+            encoding="utf-8",
+        )
+        output = self.run_command(dry_run=True)
+        self.assertIn("=     1 Pet Sounds [no Wikidata id] keeps #1 by title", output)
 
     def test_a_dry_run_lists_name_variants_and_artists_the_file_drops(self):
         models.Artist.objects.create(name="Dropped", slug="dropped", source_id=999)
@@ -1283,6 +1448,71 @@ class ImportReconnectsTrackingTests(TestCase):
         row = models.ListenedAlbum.objects.get()
         self.assertEqual(row.album.name, "Rust Never Sleeps")
         self.assertEqual(row.wikidata_id, "Q1140313")
+
+    def test_an_album_without_a_wikidata_id_keeps_its_row_across_imports(self):
+        # Old Nobody: the release gives it no QID, so its row is keyed on its
+        # pk, and the import has to keep the album for that key to last.
+        no_qid = ALBUMS_TSV + "4\tOld Nobody\t56,0\t1999\n"
+        import_handler.import_albums(StringIO(no_qid))
+        album = models.Album.objects.get(name="Old Nobody")
+        row = models.WantToListenAlbum.objects.create(
+            user=self.user, album=album, wikidata_id=album.tracking_key
+        )
+
+        import_handler.import_albums(StringIO(no_qid))
+
+        self.assertEqual(
+            list(models.WantToListenAlbum.objects.values("pk", "album", "wikidata_id")),
+            [{"pk": row.pk, "album": album.pk, "wikidata_id": f"pk:{album.pk}"}],
+        )
+
+    def test_a_row_is_renamed_when_its_album_gains_a_qid(self):
+        import_handler.import_albums(
+            StringIO(ALBUMS_TSV + "4\tOld Nobody\t56,0\t1999\n")
+        )
+        album = models.Album.objects.get(name="Old Nobody")
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=album, wikidata_id=album.tracking_key
+        )
+
+        import_handler.import_albums(
+            StringIO(ALBUMS_TSV + "4\tOld Nobody\t56,0\t1999\tQ424242\n")
+        )
+
+        row = models.ListenedAlbum.objects.get()
+        self.assertEqual(row.album, album)
+        self.assertEqual(row.wikidata_id, "Q424242")
+
+    def test_a_rename_alone_leaves_the_users_caches(self):
+        # The cached sets hold album pks, which a rename does not change.
+        import_handler.import_albums(
+            StringIO(ALBUMS_TSV + "4\tOld Nobody\t56,0\t1999\n")
+        )
+        album = models.Album.objects.get(name="Old Nobody")
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=album, wikidata_id=album.tracking_key
+        )
+
+        _, users = import_handler.import_albums(
+            StringIO(ALBUMS_TSV + "4\tOld Nobody\t56,0\t1999\tQ424242\n")
+        )
+
+        self.assertEqual(users, set())
+
+    def test_a_row_is_renamed_when_its_album_loses_its_qid(self):
+        # Otherwise the next import, matching on the pk key, would leave it
+        # under a QID nothing carries, and dropping the album would strand it.
+        album = models.Album.objects.get(rank=1)
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=album, wikidata_id=album.wikidata_id, owned=True
+        )
+
+        import_handler.import_albums(StringIO(ALBUMS_TSV.replace("\tQ212863", "")))
+
+        row = models.ListenedAlbum.objects.get()
+        self.assertEqual(row.album, album)
+        self.assertEqual(row.wikidata_id, f"pk:{album.pk}")
+        self.assertTrue(row.owned)
 
     def test_a_reimport_merges_two_rows_that_now_point_at_one_album(self):
         models.ListenedAlbum.objects.create(
