@@ -1968,6 +1968,17 @@ symlinks into the main checkout in every worktree (`scripts/setup_worktree.sh`),
 so `npm install` or `pip install` in a worktree changes every checkout's copy.
 Replace the symlink with a real install before changing either on a branch.
 
+Two things run that script. Conductor runs it as the workspace setup script
+(`.conductor/settings.toml`). Claude Code runs it from a `SessionStart` hook
+(`.claude/settings.json`), which covers the desktop app's Worktree toggle
+and `claude --worktree`. Claude Code runs hooks in the main checkout, with
+`$CLAUDE_PROJECT_DIR` pointing there, even for a worktree session, so the
+hook passes `--hook-input` and the script reads the session's directory from
+the `cwd` field of the hook's JSON. Until 2026-11-01 the hook `cd`'d to
+`$CLAUDE_PROJECT_DIR`, so a worktree session found itself "in the main
+checkout" and provisioned nothing. The hook skips migrations: run
+`manage.py migrate` in a worktree whose branch adds one.
+
 The shared venv lives in the main checkout and is built on Homebrew's
 `python@3.14`, kept on the patch release production runs (check with
 `heroku run -a acclaimedgames -- python --version`, which starts a

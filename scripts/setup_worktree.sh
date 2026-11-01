@@ -12,21 +12,11 @@
 #   scripts/setup_worktree.sh               provision the current worktree
 #   scripts/setup_worktree.sh --no-migrate  skip applying this branch's migrations
 #   scripts/setup_worktree.sh --quiet       print only what was actually done
+#   scripts/setup_worktree.sh --hook-input  provision the "cwd" a Claude Code hook
+#                                           passes as JSON on stdin
 #   scripts/setup_worktree.sh --print-port  the dev-server port for this worktree
 
 set -e
-
-# The worktree to provision is the one we are standing in, not the one this
-# script lives in: a worktree manager's setup hook runs before the new branch
-# necessarily has this file, so it has to be able to call the main checkout's
-# copy from inside the new worktree.
-WORKTREE="$(git rev-parse --show-toplevel)"
-cd "$WORKTREE"
-
-# The main checkout owns the shared venv, node_modules and reference database.
-# --git-common-dir points into it from a worktree, and at .git from the
-# checkout itself - which is also how we detect there is nothing to do.
-ROOT="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"
 
 # Dev-server port, derived from the path so a worktree keeps the same one
 # across restarts, and nudged up while something else is already listening.
@@ -42,24 +32,58 @@ worktree_port() {
 
 MIGRATE=1
 QUIET=0
+HOOK_INPUT=0
+PRINT_PORT=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --print-port)
-            if [ "$WORKTREE" = "$ROOT" ]; then echo 8000; else worktree_port; fi
-            exit 0
-            ;;
+        --print-port) PRINT_PORT=1 ;;
         --no-migrate) MIGRATE=0 ;;
+        # Claude Code runs hooks in the main checkout's root, with
+        # $CLAUDE_PROJECT_DIR pointing there too, even for a session in a
+        # worktree (the desktop app's Worktree toggle, `claude --worktree`).
+        # Only the hook's JSON input names the directory the session is in.
+        --hook-input) HOOK_INPUT=1 ;;
         # For a SessionStart hook, whose output is read by every session:
         # say nothing unless something was actually provisioned.
         --quiet) QUIET=1 ;;
         *)
-            echo "usage: $0 [--no-migrate] [--quiet] | --print-port" >&2
+            echo "usage: $0 [--no-migrate] [--quiet] [--hook-input] | --print-port" >&2
             exit 2
             ;;
     esac
     shift
 done
+
+if [ "$HOOK_INPUT" = 1 ]; then
+    HOOK_JSON="$(cat)"
+    if command -v jq >/dev/null 2>&1; then
+        HOOK_CWD="$(printf '%s' "$HOOK_JSON" | jq -r '.cwd // empty' 2>/dev/null || true)"
+    else
+        HOOK_CWD="$(printf '%s' "$HOOK_JSON" | python3 -c \
+            'import json, sys; print(json.load(sys.stdin).get("cwd") or "")' 2>/dev/null || true)"
+    fi
+    if [ -n "$HOOK_CWD" ] && [ -d "$HOOK_CWD" ]; then
+        cd "$HOOK_CWD"
+    fi
+fi
+
+# The worktree to provision is the one we are standing in, not the one this
+# script lives in: a worktree manager's setup hook runs before the new branch
+# necessarily has this file, so it has to be able to call the main checkout's
+# copy from inside the new worktree.
+WORKTREE="$(git rev-parse --show-toplevel)"
+cd "$WORKTREE"
+
+# The main checkout owns the shared venv, node_modules and reference database.
+# --git-common-dir points into it from a worktree, and at .git from the
+# checkout itself - which is also how we detect there is nothing to do.
+ROOT="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"
+
+if [ "$PRINT_PORT" = 1 ]; then
+    if [ "$WORKTREE" = "$ROOT" ]; then echo 8000; else worktree_port; fi
+    exit 0
+fi
 
 say() {
     if [ "$QUIET" = 0 ]; then
