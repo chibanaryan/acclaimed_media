@@ -7,7 +7,9 @@
 # main checkout, the rest are per-worktree copies.
 #
 # Idempotent, and a no-op in the main checkout, so it is safe to call from a
-# worktree manager's setup hook or a SessionStart hook on every session.
+# worktree manager's setup hook or a SessionStart hook on every session. The
+# exception is a Claude Code cloud session, which has no main checkout to
+# share from: there it hands over to scripts/setup_cloud.sh.
 #
 #   scripts/setup_worktree.sh               provision the current worktree
 #   scripts/setup_worktree.sh --no-migrate  skip applying this branch's migrations
@@ -126,6 +128,15 @@ activate_venv() {
     fi
 }
 trap activate_venv EXIT
+
+# A Claude Code cloud session is a fresh Linux clone with no main checkout of
+# ours to link or copy from, so it builds its own venv and database instead,
+# before the main-checkout exit below and before activate_venv looks for the
+# venv. A failure warns rather than aborting, so the rest still runs.
+if [ "${CLAUDE_CODE_REMOTE:-}" = true ]; then
+    "$ROOT/scripts/setup_cloud.sh" \
+        || echo "  WARNING: scripts/setup_cloud.sh failed - run it to see why" >&2
+fi
 
 if [ "$WORKTREE" = "$ROOT" ]; then
     say "Main checkout - nothing to provision."

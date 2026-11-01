@@ -1984,6 +1984,17 @@ which is gitignored. Conductor's Run button is `.claude/launch.json` in the
 desktop app: `runserver` on a free port the app picks and passes as `$PORT`,
 opening on the landing page.
 
+A Claude Code **cloud session** (claude.ai/code, `CLAUDE_CODE_REMOTE=true`)
+is a fresh Linux clone with nothing to link or copy, and it cannot reach the
+Mac's checkout, whose venv would not run there anyway. So the same hook runs
+`scripts/setup_cloud.sh` first: it builds a venv on `.python-version`'s
+Python with `uv`, migrates a new `db.sqlite3`, and loads the release files in
+`acclaimedgames/test_input_files/`, about 20 s with uv's download cache warm.
+That is the rankings alone, with no covers, genres, playtimes or accounts:
+the fetchers and `sync_from_prod` need credentials the session does not
+have. Later starts cost ~2 s and print nothing. No environment setup script
+is needed.
+
 The shared venv lives in the main checkout and is built on Homebrew's
 `python@3.14`, kept on the patch release production runs (check with
 `heroku run -a acclaimedgames -- python --version`, which starts a
