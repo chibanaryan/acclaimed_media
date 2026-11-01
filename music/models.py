@@ -7,8 +7,9 @@ this module only adds what is specific to recorded music.
 """
 
 import re
+import unicodedata
 from functools import cached_property
-from typing import Any, List, Optional
+from typing import Any, Iterable, List, Optional
 
 from django.db import models
 from django.db.models import Count, Exists, OuterRef
@@ -217,6 +218,46 @@ def credits_prefetch() -> models.Prefetch:
     )
 
 
+def _identity_title(name: str) -> str:
+    """A title as :func:`release_identity` compares it.
+
+    Latin accents, case, punctuation and spaces dropped, so a release that
+    fixes "L'Etat Et Moi" to "L'État et moi", "Sgt Peppers" to "Sgt.
+    Pepper's" or "Live/Dead" to "Live / Dead" still matches. Letters in any
+    script and symbols are kept, so a kanji title is not empty and Ed
+    Sheeran's "+" and "÷" stay apart. A title of punctuation alone ("-") is
+    kept whole rather than emptied.
+    """
+    # Only the combining accents (U+0300 to U+036F) go: a Japanese voicing
+    # mark also decomposes to a combining character, but changes the letter.
+    decomposed = unicodedata.normalize("NFKD", name)
+    bare = "".join(c for c in decomposed if not "\u0300" <= c <= "\u036f")
+    bare = unicodedata.normalize("NFC", bare).casefold()
+    kept = "".join(c for c in bare if not unicodedata.category(c).startswith("P"))
+    # Spaces go too, so "Live/Dead" and "Live / Dead" or "Re-Animator" and
+    # "Re Animator" still match; the artists and year keep it from matching
+    # anything it should not.
+    letters = "".join(kept.split())
+    return letters or "".join(bare.split())
+
+
+def release_identity(
+    name: str, artist_source_ids: Iterable[Optional[int]], various_artists: bool
+):
+    """What an import matches an album on when the Wikidata ids cannot.
+
+    The credited artists' permanent provider ids, whether it is a
+    compilation, and the title as :func:`_identity_title` normalizes it.
+    :func:`music.services.import_handler.match_albums` also requires the same
+    year, which is left out here only so it can say so in one place.
+    """
+    return (
+        tuple(sorted(str(source_id) for source_id in artist_source_ids)),
+        various_artists,
+        _identity_title(name),
+    )
+
+
 class AlbumQuerySet(models.QuerySet):
     """Chainable query helpers that keep album list views off the N+1 path."""
 
@@ -413,6 +454,39 @@ class Album(MediaItemBase):
 
     def get_absolute_url(self) -> str:
         return site_reverse(MUSIC, "music:album-detail", kwargs={"slug": self.slug})
+
+    @property
+    def tracking_key(self) -> Optional[str]:
+        """The id this album's tracking rows are keyed on.
+
+        A tracking row keeps an id beside its FK so that it survives the
+        album being deleted and recreated by an import. That id is the
+        album's primary Wikidata QID. The release leaves a few albums without
+        one (Blumfeld's 'Old Nobody'), and those had no key at all: no button
+        rendered, the toggle refused them, and on the album page the only
+        button left was a "More by" row's, for another album. They are keyed
+        on their pk instead, which lasts as long as the album does: an import
+        keeps them by :func:`release_identity`. A QID-less album the release
+        drops, or renames past that, is recreated under a new pk and its rows
+        stay orphaned, which a QID-keyed row would not.
+        """
+        if self.wikidata_id:
+            return self.wikidata_id
+        # None for an unsaved album, so the button's no-id guard still holds.
+        return f"pk:{self.pk}" if self.pk else None
+
+    @property
+    def stored_identity(self):
+        """:func:`release_identity` from the stored title and credits.
+
+        Reads ``credits`` with their artists, which ``match_albums``
+        prefetches.
+        """
+        return release_identity(
+            self.name,
+            (credit.artist.source_id for credit in self.credits.all()),
+            self.various_artists,
+        )
 
     @property
     def wikidata_qids(self) -> List[str]:
@@ -638,7 +712,9 @@ class ListenedAlbum(UserTrackingBase):
     """Tracks albums a user has marked as listened to.
 
     Hybrid FK + external id, as ``books.models.ReadBook`` is: the FK is what
-    queries join on, and ``wikidata_id`` is what survives an import. An
+    queries join on, and ``wikidata_id`` is what survives an import. It holds
+    ``Album.tracking_key``: the QID, or ``pk:<id>`` for an album the release
+    gives no QID (the column keeps its name from before those). An
     import keeps the albums it can match, rows and all, but deletes one the
     release drops; the row then waits on its external id, and
     ``music.services.user_tracking_service`` re-adopts it if the album comes
@@ -661,7 +737,10 @@ class ListenedAlbum(UserTrackingBase):
     wikidata_id = models.CharField(
         max_length=20,
         db_index=True,
-        help_text="Wikidata QID, for reconnection after an album reimport",
+        help_text=(
+            "Album.tracking_key - the Wikidata QID, or pk:<id> for an "
+            "album without one - for reconnection after an album reimport"
+        ),
     )
     owned = models.BooleanField(
         default=False,
@@ -700,7 +779,10 @@ class WantToListenAlbum(UserTrackingBase):
     wikidata_id = models.CharField(
         max_length=20,
         db_index=True,
-        help_text="Wikidata QID, for reconnection after an album reimport",
+        help_text=(
+            "Album.tracking_key - the Wikidata QID, or pk:<id> for an "
+            "album without one - for reconnection after an album reimport"
+        ),
     )
 
     class Meta:

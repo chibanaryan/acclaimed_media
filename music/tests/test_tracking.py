@@ -120,15 +120,55 @@ class ToggleListenedAlbumViewTests(TestCase):
         response = self.client.post(self.url)
         self.assertEqual(response.status_code, 400)
 
-    def test_an_album_with_no_wikidata_id_is_rejected(self):
-        # The tracking row is keyed on that id, so there is nothing to store.
+    def test_an_album_with_no_wikidata_id_is_tracked_under_its_pk(self):
+        # Blumfeld's 'Old Nobody': the release gives it no QID. It was
+        # refused here, and its page and rows rendered no button at all.
         album = models.Album.objects.create(
-            name="Unknown", rank=2, slug="unknown", wikidata_id=None
+            name="Old Nobody", rank=2, year_released=1999, wikidata_id=None
         )
         url = reverse("music:toggle-listened", args=[album.pk])
-        response = self.client.post(f"{url}?status=listened")
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(models.ListenedAlbum.objects.count(), 0)
+
+        response = self.client.post(f"{url}?status=want")
+
+        self.assertEqual(response.status_code, 200)
+        row = models.WantToListenAlbum.objects.get(user=self.user)
+        self.assertEqual(row.album, album)
+        self.assertEqual(row.wikidata_id, f"pk:{album.pk}")
+        # The swapped-in button posts back to the same album.
+        self.assertIn(f'data-item-id="{album.pk}"', response.content.decode())
+
+    def test_a_row_under_an_older_key_is_still_this_albums(self):
+        # The QID was edited in the admin after the user marked the album.
+        # Matched by key alone the row would be missed: Untracked would
+        # delete nothing and Want would leave Heard beside it.
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=self.album, wikidata_id="Q-old"
+        )
+
+        self._post("want")
+
+        self.assertFalse(self._listened())
+        self.assertEqual(
+            list(
+                models.WantToListenAlbum.objects.values_list("wikidata_id", flat=True)
+            ),
+            ["Q123"],
+        )
+        self._post("none")
+        self.assertFalse(self._wanted())
+
+    def test_a_second_row_for_the_album_is_merged_into_the_first(self):
+        first = models.ListenedAlbum.objects.create(
+            user=self.user, album=self.album, wikidata_id="Q-old"
+        )
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=None, wikidata_id="Q123"
+        )
+
+        self._post("own")
+
+        row = models.ListenedAlbum.objects.get()
+        self.assertEqual((row.pk, row.wikidata_id, row.owned), (first.pk, "Q123", True))
 
     def test_an_unknown_album_is_a_404(self):
         url = reverse("music:toggle-listened", args=[999999])

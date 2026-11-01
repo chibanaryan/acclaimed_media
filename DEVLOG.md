@@ -1,5 +1,17 @@
 # Developer Log
 
+## 2026-11-01
+
+- **An album without a Wikidata id can be marked.** Tracking rows are keyed on
+  the album's QID, so one the release gives none (Blumfeld's 'Old Nobody') had
+  no button in any row or on its page, and the page's only button was the
+  "More by" row's, for 'L'Etat Et Moi'. Such an album is now keyed on its pk,
+  and the import keeps it by its artists and title instead of recreating it
+  under a new pk every time, so its metadata and marks last too. An album the
+  release gives or takes a QID is kept the same way, and its rows renamed.
+  The client-rendered rows already showed a button, which the toggle then
+  refused; the two now agree
+
 ## 2026-10-31
 
 - **A year range draws and clears as one fade, on both sites.** The gaps were

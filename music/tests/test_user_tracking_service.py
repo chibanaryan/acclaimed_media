@@ -246,3 +246,43 @@ class ReconnectTrackingRecordsTests(TestCase):
         row.refresh_from_db()
         self.assertEqual(row.wikidata_id, "Q123")
         self.assertEqual(stats["listened_reconnected"], 1)
+
+    def test_a_rename_onto_a_key_the_user_holds_keeps_the_old_key(self):
+        # Two albums sharing a QID would make the rename break the unique
+        # constraint; the row is re-pointed and keeps the key it had.
+        other = models.Album.objects.create(
+            name="Surfer Rosa", rank=2, slug="surfer-rosa"
+        )
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=other, wikidata_id="Q123"
+        )
+        row = models.ListenedAlbum.objects.create(
+            user=self.user, album=None, wikidata_id="Q999"
+        )
+
+        stats = user_tracking_service.reconnect_tracking_records({"Q999": self.album})
+
+        row.refresh_from_db()
+        self.assertEqual(row.album, self.album)
+        self.assertEqual(row.wikidata_id, "Q999")
+        self.assertEqual(stats["listened_reconnected"], 1)
+        self.assertEqual(models.ListenedAlbum.objects.count(), 2)
+
+    def test_a_merge_on_a_kept_album_drops_the_users_caches(self):
+        # Both rows already point at the album, but merging them can turn a
+        # "Heard" into a "Have", which the cached sets split on.
+        self.album.all_wikidata_ids = ["Q123", "Q456"]
+        self.album.save()
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=self.album, wikidata_id="Q123"
+        )
+        models.ListenedAlbum.objects.create(
+            user=self.user, album=self.album, wikidata_id="Q456", owned=True
+        )
+
+        stats = user_tracking_service.reconnect_tracking_records(
+            self._id_map(self.album)
+        )
+
+        self.assertEqual(stats["users"], {self.user.id})
+        self.assertTrue(models.ListenedAlbum.objects.get().owned)

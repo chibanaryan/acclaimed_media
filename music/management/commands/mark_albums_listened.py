@@ -13,10 +13,11 @@ the toggle has:
 
 - the delete and the write run in one transaction, so a failure between
   them cannot leave the user tracking nothing;
-- the write is an ``update_or_create`` keyed on the ``unique_together``, so
-  re-running is harmless and a row orphaned by a reimport is re-adopted;
-- marking an album listened clears any want-to-listen row for it, because
-  the two are mutually exclusive;
+- the write goes through ``write_tracking_row``, keyed on the album's
+  ``tracking_key``, so re-running is harmless and a row orphaned by a
+  reimport is re-adopted;
+- marking an album listened clears any want-to-listen row for it, found by
+  key or FK, because the two are mutually exclusive;
 - the per-user caches are dropped in ``transaction.on_commit``.
 
 An id already marked listened is left alone rather than rewritten, so the
@@ -31,6 +32,7 @@ from django.db import transaction
 from core.models import User
 from music import models
 from music.services import caching
+from music.services.user_tracking_service import rows_for, write_tracking_row
 
 
 class Command(BaseCommand):
@@ -102,15 +104,12 @@ class Command(BaseCommand):
             return
 
         with transaction.atomic():
-            models.WantToListenAlbum.objects.filter(
-                user=user, album__in=albums.values()
-            ).delete()
+            # By key or FK, as the toggle does, so an orphaned Want under the
+            # album's key goes too rather than being re-adopted later.
+            for album in albums.values():
+                rows_for(models.WantToListenAlbum, user, album).delete()
             for album in to_add:
-                models.ListenedAlbum.objects.update_or_create(
-                    user=user,
-                    wikidata_id=album.wikidata_id,
-                    defaults={"album": album},
-                )
+                write_tracking_row(models.ListenedAlbum, user, album)
 
         caching.invalidate_listen_caches([user.id])
         self.stdout.write(

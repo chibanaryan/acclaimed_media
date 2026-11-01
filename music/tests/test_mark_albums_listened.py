@@ -76,6 +76,18 @@ class MarkAlbumsListenedTests(TestCase):
         self.assertEqual(self._listened(), {"pet-sounds"})
         self.assertIn("Clearing 1 want-to-listen row(s): Pet Sounds", out)
 
+    def test_an_orphaned_want_under_the_albums_key_is_cleared_too(self):
+        # A reimport would otherwise re-adopt it, leaving the album both
+        # Heard and Want.
+        models.WantToListenAlbum.objects.create(
+            user=self.user, album=None, wikidata_id="Q212863"
+        )
+
+        self._run(user="ColonelChibbers", ids="Q212863")
+
+        self.assertFalse(models.WantToListenAlbum.objects.exists())
+        self.assertEqual(self._listened(), {"pet-sounds"})
+
     def test_a_secondary_wikidata_id_finds_its_album(self):
         self.pet_sounds.all_wikidata_ids = ["Q212863", "Q999999"]
         self.pet_sounds.save(update_fields=["all_wikidata_ids"])

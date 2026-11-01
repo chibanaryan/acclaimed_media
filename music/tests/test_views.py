@@ -1668,6 +1668,18 @@ class ListenStatusPageTests(MusicDataMixin, TestCase):
         self._own_kid_a()
         self.assertNotIn("Kid A", self._names("?listened=no"))
 
+    def test_an_untracked_row_without_a_wikidata_id_has_a_button(self):
+        # The Old Nobody bug: on ?listened=no its row had no button at all,
+        # because the button keyed on the QID the release does not give it.
+        self.kid_a.wikidata_id = None
+        self.kid_a.save(update_fields=["wikidata_id"])
+        response = self.client.get(self.url + "?listened=no")
+        self.assertEqual(
+            [album.name for album in response.context["albums"]], ["Kid A"]
+        )
+        toggle_url = reverse("music:toggle-listened", args=[self.kid_a.pk])
+        self.assertContains(response, f'data-toggle-url="{toggle_url}"', count=2)
+
     def test_the_heading_names_the_owned_status(self):
         response = self.client.get(self.url + "?listened=own")
         self.assertIn(": Owned", response.context["filter_title"])
@@ -1790,14 +1802,33 @@ class AlbumDetailListenButtonTests(MusicDataMixin, TestCase):
         html = self.client.get(self.url).content.decode()
         self.assertIn("media-tracking.min.js", html)
 
-    def test_no_button_without_a_wikidata_id(self):
-        # Nothing to key a tracking row on.
-        self.kid_a.wikidata_id = None
-        self.kid_a.save()
-        response = self.client.get(
-            reverse("music:album-detail", args=[self.kid_a.slug])
+    def test_an_album_without_a_wikidata_id_has_its_own_button(self):
+        # The Old Nobody bug: the release gives Blumfeld's 'Old Nobody' no
+        # QID, so the page rendered no button of its own, and the only one
+        # left was the "More by" row's for 'L'Etat Et Moi' - which is what
+        # pressing "the button" on the page marked.
+        blumfeld = models.Artist.objects.create(
+            name="Blumfeld", slug="blumfeld", source_id=77
         )
-        self.assertNotIn("tracking-button-wrapper", response.content.decode())
+        old_nobody = models.Album.objects.create(
+            name="Old Nobody", rank=4, year_released=1999, wikidata_id=None
+        )
+        letat = models.Album.objects.create(
+            name="L'Etat Et Moi", rank=5, year_released=1994, wikidata_id="Q6455713"
+        )
+        for album in (old_nobody, letat):
+            models.AlbumCredit.objects.create(album=album, artist=blumfeld)
+
+        response = self.client.get(
+            reverse("music:album-detail", args=[old_nobody.slug])
+        )
+
+        html = response.content.decode()
+        heading = html[html.index("<h1") : html.index("</h1>")]
+        own_url = reverse("music:toggle-listened", args=[old_nobody.pk])
+        self.assertIn(f'data-item-id="{old_nobody.pk}"', heading)
+        self.assertIn(f'data-toggle-url="{own_url}"', heading)
+        self.assertNotIn(f'data-item-id="{letat.pk}"', heading)
 
     def test_the_related_albums_carry_the_listen_annotation(self):
         # They render the same row partial, so without the annotation every

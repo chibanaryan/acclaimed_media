@@ -63,6 +63,7 @@ from games.models import SiteMetadata
 from music.templatetags import music_filters
 from music.services.data_version import compute_album_data_version
 from music.services.listening_stats import total_album_count
+from music.services.user_tracking_service import rows_for, write_tracking_row
 
 # The checked-in release files, offered as the import default so the page is
 # usable without hunting for them.
@@ -1115,37 +1116,40 @@ class ToggleListenedAlbumView(LoginRequiredMixin, View):
 
     Two things games and books both get wrong here are fixed. The delete and
     the write run in one transaction, so a failure between them cannot leave
-    a user who was tracking the album tracking nothing. And the write is an
-    ``update_or_create`` keyed on the ``unique_together``, so a double-click
-    cannot race into an IntegrityError - and a row orphaned by a reimport is
-    re-adopted on the spot rather than waiting for the next import's pass.
+    a user who was tracking the album tracking nothing. And the write
+    (``user_tracking_service.write_tracking_row``) updates the row it finds,
+    under a per-user lock, so a double-click cannot race into an
+    IntegrityError - and a row orphaned by a reimport is re-adopted on the
+    spot rather than waiting for the next import's pass.
     """
 
     def post(self, request, album_id):
         album = get_object_or_404(models.Album, pk=album_id)
         target = request.GET.get("status")
-        if not album.wikidata_id or target not in config.LISTEN_TOGGLE_STATUSES:
+        if target not in config.LISTEN_TOGGLE_STATUSES:
             return HttpResponseBadRequest("Unknown status")
 
-        key = {"user": request.user, "wikidata_id": album.wikidata_id}
+        # Rows are found by tracking key or FK and written by
+        # ``user_tracking_service``, so an album the release gives no QID is
+        # trackable (see ``Album.tracking_key``) and a row under an older key
+        # is renamed rather than left beside a second one.
+        user = request.user
         with transaction.atomic():
             # One user's toggles run one at a time, as games' do: otherwise
             # a Heard and a Want sent together each delete the other table
             # before the other's insert is visible, and both rows survive.
-            User.objects.select_for_update().filter(pk=request.user.pk).first()
+            User.objects.select_for_update().filter(pk=user.pk).first()
             if target in ("listened", "own"):
-                models.WantToListenAlbum.objects.filter(**key).delete()
-                models.ListenedAlbum.objects.update_or_create(
-                    **key, defaults={"album": album, "owned": target == "own"}
+                rows_for(models.WantToListenAlbum, user, album).delete()
+                write_tracking_row(
+                    models.ListenedAlbum, user, album, owned=target == "own"
                 )
             elif target == "want":
-                models.ListenedAlbum.objects.filter(**key).delete()
-                models.WantToListenAlbum.objects.update_or_create(
-                    **key, defaults={"album": album}
-                )
+                rows_for(models.ListenedAlbum, user, album).delete()
+                write_tracking_row(models.WantToListenAlbum, user, album)
             else:
-                models.ListenedAlbum.objects.filter(**key).delete()
-                models.WantToListenAlbum.objects.filter(**key).delete()
+                rows_for(models.ListenedAlbum, user, album).delete()
+                rows_for(models.WantToListenAlbum, user, album).delete()
 
         caching.invalidate_listen_caches([request.user.id])
 

@@ -154,6 +154,13 @@ class Command(BaseCommand):
         for album in match.removed:
             qids = ", ".join(album.wikidata_qids) or "no Wikidata id"
             self.stdout.write(f"  - {album.rank:>5} {album.name} [{qids}]")
+        # Kept by artists, title and year, not by id: their tracking rows
+        # follow, so a wrong pairing is worth catching here.
+        for row, album in match.by_identity:
+            qids = ", ".join(row.wikidata_ids) or "no Wikidata id"
+            self.stdout.write(
+                f"  = {row.rank:>5} {row.name} [{qids}] keeps #{album.rank} by title"
+            )
 
         with paths["positions"].open(encoding="utf-8-sig") as f:
             position_rows = sum(1 for line in f if line.strip())
