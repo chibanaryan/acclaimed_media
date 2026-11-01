@@ -11,8 +11,9 @@
 #
 #   scripts/setup_worktree.sh               provision the current worktree
 #   scripts/setup_worktree.sh --no-migrate  skip applying this branch's migrations
-#   scripts/setup_worktree.sh --migrate-new migrate only a database cloned by this
-#                                           run, as Conductor does at creation
+#   scripts/setup_worktree.sh --migrate-new migrate a cloned database once, as
+#                                           Conductor does at creation (retried
+#                                           until it succeeds)
 #   scripts/setup_worktree.sh --quiet       print only what was actually done
 #   scripts/setup_worktree.sh --hook-input  provision the "cwd" a Claude Code hook
 #                                           passes as JSON on stdin
@@ -61,16 +62,25 @@ while [ $# -gt 0 ]; do
     shift
 done
 
+# A checkout's shared .git directory, which every worktree of one repository
+# has in common; empty outside a repository.
+common_dir() {
+    git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true
+}
+
 if [ "$HOOK_INPUT" = 1 ]; then
-    HOOK_JSON="$(cat)"
-    if command -v jq >/dev/null 2>&1; then
-        HOOK_CWD="$(printf '%s' "$HOOK_JSON" | jq -r '.cwd // empty' 2>/dev/null || true)"
-    else
-        HOOK_CWD="$(printf '%s' "$HOOK_JSON" | python3 -c \
-            'import json, sys; print(json.load(sys.stdin).get("cwd") or "")' 2>/dev/null || true)"
-    fi
-    if [ -n "$HOOK_CWD" ] && [ -d "$HOOK_CWD" ]; then
+    HOOK_CWD="$(python3 -c \
+        'import json, sys; print(json.load(sys.stdin).get("cwd") or "")' 2>/dev/null || true)"
+    # The session's cwd is wherever Claude last cd'd: /tmp, or another
+    # repository, by the time a /compact or /clear fires the hook. Only a
+    # directory in this repository names a worktree to provision; otherwise
+    # provision the project, as the hook did before it read its input.
+    HOME_REPO="$(common_dir "${CLAUDE_PROJECT_DIR:-.}")"
+    if [ -n "$HOOK_CWD" ] && [ -d "$HOOK_CWD" ] && [ -n "$HOME_REPO" ] \
+        && [ "$(common_dir "$HOOK_CWD")" = "$HOME_REPO" ]; then
         cd "$HOOK_CWD"
+    elif [ -n "$CLAUDE_PROJECT_DIR" ]; then
+        cd "$CLAUDE_PROJECT_DIR"
     fi
 fi
 
@@ -104,9 +114,14 @@ say() {
 # exists, but registered here so the main checkout's early exit runs it too.
 activate_venv() {
     if [ -n "$CLAUDE_ENV_FILE" ] && [ -x "$WORKTREE/venv/bin/python" ]; then
+        # Guarded, because every start, resume, /clear and /compact runs the
+        # hook again and the file runs before every Bash command.
+        local bin
+        bin="$(printf '%q' "$WORKTREE/venv/bin")"
         {
             printf 'export VIRTUAL_ENV=%q\n' "$WORKTREE/venv"
-            printf 'export PATH=%q:"$PATH"\n' "$WORKTREE/venv/bin"
+            printf 'case ":$PATH:" in *:%s:*) ;; *) export PATH=%s:"$PATH" ;; esac\n' \
+                "$bin" "$bin"
         } >>"$CLAUDE_ENV_FILE"
     fi
 }
@@ -170,10 +185,14 @@ copy_untracked media
 if [ ! -f db.sqlite3 ] && [ -f "$ROOT/db.sqlite3" ]; then
     cp -c "$ROOT/db.sqlite3" db.sqlite3 2>/dev/null || cp "$ROOT/db.sqlite3" db.sqlite3
     echo "  cloned   db.sqlite3"
-    CLONED_DB=1
+    # Kept in the worktree's own git directory, out of the checkout, until a
+    # migrate succeeds: --migrate-new retries a first migrate that failed, or
+    # that had no venv to run with, rather than skipping it from then on.
+    touch "$(git rev-parse --absolute-git-dir)/setup-migrate-pending"
 fi
 
-if [ "$MIGRATE" = new ] && [ -z "$CLONED_DB" ]; then
+MIGRATE_PENDING="$(git rev-parse --absolute-git-dir)/setup-migrate-pending"
+if [ "$MIGRATE" = new ] && [ ! -f "$MIGRATE_PENDING" ]; then
     MIGRATE=0
 fi
 
@@ -182,6 +201,7 @@ fi
 # production, while bare python3 can be any interpreter on PATH.
 if [ "$MIGRATE" != 0 ] && [ -f db.sqlite3 ] && [ -x venv/bin/python ]; then
     if venv/bin/python manage.py migrate --noinput >/dev/null; then
+        rm -f "$MIGRATE_PENDING"
         echo "  migrated db.sqlite3 onto this branch"
     else
         echo "  WARNING: migrate failed - run it yourself to see why" >&2

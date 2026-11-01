@@ -11,6 +11,14 @@
   release gives or takes a QID is kept the same way, and its rows renamed.
   The client-rendered rows already showed a button, which the toggle then
   refused; the two now agree
+- **A Claude desktop worktree session is set up as a Conductor workspace
+  is.** Claude Code runs hooks in the main checkout, with `$CLAUDE_PROJECT_DIR`
+  pointing there, so the `SessionStart` hook found itself "in the main
+  checkout" and provisioned nothing. It now reads the session's own directory
+  from the hook's JSON (`setup_worktree.sh --hook-input`), migrates the cloned
+  database once (`--migrate-new`), and puts the venv on the session's `PATH`.
+  `.claude/launch.json` is Conductor's Run button, `runserver` on a free port,
+  and `.claude/worktrees/` is gitignored
 
 ## 2026-10-31
 
