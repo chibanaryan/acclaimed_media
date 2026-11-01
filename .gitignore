@@ -28,3 +28,6 @@ core/fixtures/
 
 # Per-person Claude Code settings (permissions, local paths)
 .claude/settings.local.json
+
+# Worktrees the Claude desktop app and `claude --worktree` create per session
+.claude/worktrees/

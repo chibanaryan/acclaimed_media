@@ -5,8 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$(git -C \"$CLAUDE_PROJECT_DIR\" rev-parse --path-format=absolute --git-common-dir)/../scripts/setup_worktree.sh\" --hook-input --no-migrate --quiet",
-            "timeout": 60
+            "command": "\"$(git -C \"$CLAUDE_PROJECT_DIR\" rev-parse --path-format=absolute --git-common-dir)/../scripts/setup_worktree.sh\" --hook-input --migrate-new --quiet",
+            "timeout": 600
           }
         ]
       }

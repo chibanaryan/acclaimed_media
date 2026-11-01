@@ -1976,8 +1976,13 @@ and `claude --worktree`. Claude Code runs hooks in the main checkout, with
 hook passes `--hook-input` and the script reads the session's directory from
 the `cwd` field of the hook's JSON. Until 2026-11-01 the hook `cd`'d to
 `$CLAUDE_PROJECT_DIR`, so a worktree session found itself "in the main
-checkout" and provisioned nothing. The hook skips migrations: run
-`manage.py migrate` in a worktree whose branch adds one.
+checkout" and provisioned nothing. The hook runs on every start and resume,
+so it passes `--migrate-new`, which migrates only the session that clones the
+database, as Conductor does once at creation; a branch that adds a migration
+later still needs `manage.py migrate`. It also writes the venv onto `PATH`
+through `$CLAUDE_ENV_FILE`, so `python` and `pytest` in a session are the
+venv's, in the main checkout too. The worktrees live in `.claude/worktrees/`,
+which is gitignored.
 
 The shared venv lives in the main checkout and is built on Homebrew's
 `python@3.14`, kept on the patch release production runs (check with

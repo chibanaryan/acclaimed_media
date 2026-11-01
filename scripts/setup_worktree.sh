@@ -11,6 +11,8 @@
 #
 #   scripts/setup_worktree.sh               provision the current worktree
 #   scripts/setup_worktree.sh --no-migrate  skip applying this branch's migrations
+#   scripts/setup_worktree.sh --migrate-new migrate only a database cloned by this
+#                                           run, as Conductor does at creation
 #   scripts/setup_worktree.sh --quiet       print only what was actually done
 #   scripts/setup_worktree.sh --hook-input  provision the "cwd" a Claude Code hook
 #                                           passes as JSON on stdin
@@ -39,6 +41,10 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --print-port) PRINT_PORT=1 ;;
         --no-migrate) MIGRATE=0 ;;
+        # A SessionStart hook runs on every start and resume. Migrating once,
+        # when the worktree gets its database, is what Conductor's setup does;
+        # every session after that would pay Django's boot for nothing.
+        --migrate-new) MIGRATE=new ;;
         # Claude Code runs hooks in the main checkout's root, with
         # $CLAUDE_PROJECT_DIR pointing there too, even for a session in a
         # worktree (the desktop app's Worktree toggle, `claude --worktree`).
@@ -48,7 +54,7 @@ while [ $# -gt 0 ]; do
         # say nothing unless something was actually provisioned.
         --quiet) QUIET=1 ;;
         *)
-            echo "usage: $0 [--no-migrate] [--quiet] [--hook-input] | --print-port" >&2
+            echo "usage: $0 [--no-migrate | --migrate-new] [--quiet] [--hook-input] | --print-port" >&2
             exit 2
             ;;
     esac
@@ -91,6 +97,21 @@ say() {
     fi
 }
 
+# Put the venv first on PATH for the rest of a Claude Code session, as an
+# activated venv would be: Claude Code sources $CLAUDE_ENV_FILE before each
+# Bash command, so `python`, `pytest` and `pre-commit` are the venv's in the
+# main checkout and every worktree alike. Done at the end, once the link
+# exists, but registered here so the main checkout's early exit runs it too.
+activate_venv() {
+    if [ -n "$CLAUDE_ENV_FILE" ] && [ -x "$WORKTREE/venv/bin/python" ]; then
+        {
+            printf 'export VIRTUAL_ENV=%q\n' "$WORKTREE/venv"
+            printf 'export PATH=%q:"$PATH"\n' "$WORKTREE/venv/bin"
+        } >>"$CLAUDE_ENV_FILE"
+    fi
+}
+trap activate_venv EXIT
+
 if [ "$WORKTREE" = "$ROOT" ]; then
     say "Main checkout - nothing to provision."
     exit 0
@@ -130,7 +151,7 @@ link_shared theme/static_src/node_modules
 # The main checkout's venv lags a .python-version bump until it is rebuilt,
 # and a worktree linked to it would quietly test a stack production has left.
 want_py="$(cat .python-version 2>/dev/null)"
-have_py="$(venv/bin/python -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null)"
+have_py="$(venv/bin/python -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || true)"
 if [ -n "$want_py" ] && [ -n "$have_py" ] && [ "$want_py" != "$have_py" ]; then
     echo "  WARNING: venv is Python $have_py but .python-version says $want_py;" \
         "rebuild it (AGENTS.md \"Dependencies\")" >&2
@@ -149,12 +170,17 @@ copy_untracked media
 if [ ! -f db.sqlite3 ] && [ -f "$ROOT/db.sqlite3" ]; then
     cp -c "$ROOT/db.sqlite3" db.sqlite3 2>/dev/null || cp "$ROOT/db.sqlite3" db.sqlite3
     echo "  cloned   db.sqlite3"
+    CLONED_DB=1
+fi
+
+if [ "$MIGRATE" = new ] && [ -z "$CLONED_DB" ]; then
+    MIGRATE=0
 fi
 
 # Use the venv's interpreter, not bare python3: the venv is on Homebrew's
 # Python at .python-version's release, with the locked packages, matching
 # production, while bare python3 can be any interpreter on PATH.
-if [ "$MIGRATE" = 1 ] && [ -f db.sqlite3 ]; then
+if [ "$MIGRATE" != 0 ] && [ -f db.sqlite3 ] && [ -x venv/bin/python ]; then
     if venv/bin/python manage.py migrate --noinput >/dev/null; then
         echo "  migrated db.sqlite3 onto this branch"
     else
