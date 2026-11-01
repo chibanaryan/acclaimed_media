@@ -80,7 +80,10 @@ function buildTimeWindow(start, end, minYear, maxYear) {
     if (start <= minYear && end >= maxYear) return 'All Time';
     if (start === end) return String(start);
     if (start % 10 === 0 && end === start + 9) return 'the ' + start + 's';
-    return start + '-' + end;
+    if (end < minYear || start > maxYear) return start + '-' + end;
+    const first = Math.max(start, minYear);
+    const last = Math.min(end, maxYear);
+    return first === last ? String(first) : first + '-' + last;
 }
 
 function mediaListControlsData(config) {
@@ -899,7 +902,6 @@ function mediaListControlsData(config) {
             this.filters.sort = params.get('sort') || this.defaultSort;
             this.filters.sortDirection = params.get('dir') || 'asc';
             this._applyTitle();
-            window.dispatchEvent(new CustomEvent('year-reset'));
         }
     };
 }

@@ -16,8 +16,7 @@
 <div class="year-grid-wrapper"
      x-data="yearGridComponent({ filters, minYear: {{ min_year }}, maxYear: {{ max_year }}, requestFilterUpdate: () => { if (initialized) debouncedFilterUpdate(); }, isApplyingSavedFilter: () => (typeof applyingSavedFilter !== 'undefined' && applyingSavedFilter) })"
      @mouseleave="cancelDrag()"
-     @mouseup.window="endDrag()"
-     @year-reset.window="handleReset()">
+     @mouseup.window="endDrag()">
 
     {# Header row with hint and legend #}
     <div class="year-grid-header">
@@ -34,7 +33,7 @@
         <template x-for="(decade, row) in decades" :key="decade.start">
             <div class="year-grid-row">
                 {# Decade label - clickable to select entire decade, draggable for ranges #}
-                <div class="year-grid-decade"
+                <div class="year-grid-tile year-grid-decade"
                      role="button"
                      :data-row="row"
                      data-col="0"
@@ -43,22 +42,20 @@
                      :aria-label="decade.label + ', ' + getDecadeCount(decade) + ' {{ item_noun_plural|default:'games' }}'"
                      @focus="focusRow = row; focusCol = 0"
                      :class="{
-                         'is-in-range': isDecadeSelected(decade.start) || isDecadeInDragRange(decade.start),
-                         'sharp-top': (isDecadeSelected(decade.start) || isDecadeInDragRange(decade.start)) && decadeHasSelectedAbove(decade.start),
-                         'sharp-bottom': (isDecadeSelected(decade.start) || isDecadeInDragRange(decade.start)) && decadeHasSelectedBelow(decade.start),
-                         'sharp-right': (isDecadeSelected(decade.start) || isDecadeInDragRange(decade.start)) && decadeHasSelectedRight(decade.start),
-                         'corner-br': (isDecadeSelected(decade.start) || isDecadeInDragRange(decade.start)) && decadeHasSelectedBelow(decade.start) && decadeHasSelectedRight(decade.start) && isInRange(decade.start - 10)
+                         'is-in-range': isDecadeSelected(decade.start),
+                         'sharp-top': isDecadeSelected(decade.start) && decadeHasSelectedAbove(decade.start),
+                         'sharp-bottom': isDecadeSelected(decade.start) && decadeHasSelectedBelow(decade.start)
                      }"
                      @mousedown="startDragDecade(decade.start, $event)"
                      @mouseenter="updateDragDecade(decade.start)"
-                     @click.stop="if (!isDragging || (dragStart === decade.start && dragEnd === decade.start + 9)) selectDecade(decade.start, $event)"
+                     @click.stop="pickRange($event, decade.start, decade.start + 9)"
                      :title="decade.label + ': ' + getDecadeCount(decade) + ' {{ item_noun_plural|default:'games' }}'">
-                    <span x-text="decade.label"></span>
+                    <span class="year-grid-tile-label" x-text="decade.label"></span>
                 </div>
 
                 {# Year cells - positioned by column (0-9) #}
                 <template x-for="(cell, idx) in decade.cells" :key="decade.start + '-' + idx">
-                    <div class="year-grid-cell"
+                    <div class="year-grid-tile year-grid-cell"
                          :role="cell && cell.year && !cell.hidden ? 'button' : null"
                          :data-row="row"
                          :data-col="cell && cell.year && !cell.hidden ? idx + 1 : null"
@@ -72,7 +69,6 @@
                              'sharp-bottom': cell && cell.year && isInRange(cell.year) && hasSelectedBelow(cell.year),
                              'sharp-left': cell && cell.year && isInRange(cell.year) && hasSelectedLeft(cell.year),
                              'sharp-right': cell && cell.year && isInRange(cell.year) && hasSelectedRight(cell.year),
-                             'corner-br': cell && cell.year && isInRange(cell.year) && hasSelectedRight(cell.year) && hasSelectedBelow(cell.year) && hasSelectedDiagonalBR(cell.year),
                              'year-grid-cell-empty': !cell,
                              'year-grid-cell-hidden': cell && cell.hidden,
                              'is-unavailable': cell && cell.year && !cell.available && !isInRange(cell.year)
@@ -81,8 +77,8 @@
                          :title="cell && cell.year ? cell.year + ': ' + cell.count + ' {{ item_noun_plural|default:'games' }}' : ''"
                          @mousedown="cell && cell.year && startDrag(cell.year, $event)"
                          @mouseenter="cell && cell.year && updateDrag(cell.year)"
-                         @click.stop="cell && cell.year && (!isDragging || dragStart === cell.year) && selectYear(cell.year, $event)">
-                        <span class="year-grid-cell-label" x-text="cell && cell.year ? getYearLabel(cell.year) : ''"></span>
+                         @click.stop="cell && cell.year && pickRange($event, cell.year, cell.year)">
+                        <span class="year-grid-cell-label year-grid-tile-label" x-text="cell && cell.year ? getYearLabel(cell.year) : ''"></span>
                     </div>
                 </template>
             </div>

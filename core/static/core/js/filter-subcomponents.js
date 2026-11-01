@@ -424,9 +424,9 @@
             dragAnchorEnd: null,
             dragEnd: null,
             isDragging: false,
-            isDraggingDecade: false,
-            isDraggingToDecade: false,
-            lastClicked: null,
+            shiftDrag: false,
+            pressApplied: false,
+            pressTimer: null,
             wasAlreadySelected: false,
             _yearCountsHandler: null,
             _yearOriginalCountsHandler: null,
@@ -520,10 +520,6 @@
                 if (this._yearOriginalCountsHandler) {
                     window.removeEventListener("year-original-counts-update", this._yearOriginalCountsHandler);
                 }
-            },
-
-            handleReset: function () {
-                this.lastClicked = null;
             },
 
             _rebuildCaches: function () {
@@ -675,97 +671,112 @@
 
             isInRange: function (year) {
                 if (this.isDragging) {
-                    var min = Math.min(this.dragStart, this.dragAnchorEnd, this.dragEnd);
-                    var max = Math.max(this.dragStart, this.dragAnchorEnd, this.dragEnd);
-                    return year >= min && year <= max;
+                    var range = this.dragRange();
+                    return year >= range.start && year <= range.end;
                 }
                 if (isApplyingSavedFilter()) {
                     return false;
                 }
-                if (filters.start === minYear && filters.end === maxYear) {
+                if (this.isWholeRange()) {
                     return false;
                 }
                 return year >= filters.start && year <= filters.end;
             },
 
             isDecadeSelected: function (decadeStart) {
-                if (this.isDragging) {
-                    return false;
-                }
                 if (isApplyingSavedFilter()) {
                     return false;
                 }
-                if (filters.start === minYear && filters.end === maxYear) {
+                var range = this.isDragging ? this.dragRange() : filters;
+                if (!this.isDragging && this.isWholeRange(range)) {
                     return false;
                 }
-                var isDecadeAligned = filters.start % 10 === 0 && filters.end % 10 === 9;
+                var isDecadeAligned = range.start % 10 === 0 && range.end % 10 === 9;
                 if (!isDecadeAligned) {
                     return false;
                 }
-                return decadeStart >= filters.start && decadeStart + 9 <= filters.end;
+                return decadeStart >= range.start && decadeStart + 9 <= range.end;
             },
 
-            isDecadeInDragRange: function (decadeStart) {
-                if (!this.isDragging || !this.isDraggingDecade) {
-                    return false;
-                }
-                if (!this.isDraggingToDecade) {
-                    return decadeStart === this.dragStart;
-                }
-                var min = Math.min(this.dragStart, this.dragEnd);
-                var max = Math.max(this.dragStart, this.dragEnd);
-                return decadeStart >= min && decadeStart <= max;
+            /** Past either end counts: a drag to the last decade ends at its 9. */
+            isWholeRange: function (range) {
+                var checked = range || filters;
+                return checked.start <= minYear && checked.end >= maxYear;
             },
 
-            selectDecade: function (decadeStart, event) {
-                if (event && event.shiftKey && this.lastClicked !== null) {
-                    filters.start = Math.min(this.lastClicked, decadeStart);
-                    filters.end = Math.max(this.lastClicked, decadeStart + 9);
-                    requestFilterUpdate();
-                } else if (this.wasAlreadySelected) {
-                    filters.start = minYear;
-                    filters.end = maxYear;
-                    this.lastClicked = null;
-                    this.wasAlreadySelected = false;
-                    requestFilterUpdate();
-                } else {
-                    this.lastClicked = decadeStart;
+            /** A range covering everything is spelled as the bounds. */
+            setRange: function (start, end) {
+                var whole = this.isWholeRange({ start: start, end: end });
+                filters.start = whole ? minYear : start;
+                filters.end = whole ? maxYear : end;
+            },
+
+            /**
+             * What Shift makes of a pick: the range on screen, taken to it.
+             * Upward or inside it ends at the pick, and downward it keeps its
+             * far end, so a decade then an older year holds the whole decade.
+             */
+            extendedRange: function (start, end) {
+                if (this.isWholeRange()) {
+                    return { start: start, end: end };
                 }
+                return {
+                    start: Math.min(filters.start, start),
+                    end: start < filters.start ? Math.max(filters.end, end) : end,
+                };
+            },
+
+            /** The range a drag in progress would apply, which is what shows. */
+            dragRange: function () {
+                var start = Math.min(this.dragStart, this.dragAnchorEnd, this.dragEnd);
+                var end = Math.max(this.dragStart, this.dragAnchorEnd, this.dragEnd);
+                return this.shiftDrag ? this.extendedRange(start, end) : { start: start, end: end };
+            },
+
+            /**
+             * Press and release have already applied a click, and a second
+             * clears it. A click with no press before it, as assistive tech
+             * can send, or a Control-click off a Mac, has applied nothing.
+             */
+            pickRange: function (event, start, end) {
+                if (!this.pressApplied) {
+                    this.applyPick(start, end, event);
+                    return;
+                }
+                this.pressApplied = false;
+                var again = this.wasAlreadySelected;
+                this.wasAlreadySelected = false;
+                if (again && !event.shiftKey) {
+                    this.setRange(minYear, maxYear);
+                    requestFilterUpdate();
+                }
+            },
+
+            /** A press on a tile. A right-click, or a Mac's Control-click, selects nothing. */
+            beginPress: function (start, end, event) {
+                if (event.button || event.ctrlKey) {
+                    return;
+                }
+                event.preventDefault();
+                clearTimeout(this.pressTimer);
+                this.isDragging = true;
+                this.pressApplied = true;
+                this.shiftDrag = event.shiftKey === true;
+                this.dragStart = start;
+                this.dragAnchorEnd = end;
+                this.dragEnd = end;
+                this.wasAlreadySelected = filters.start === start && filters.end === end;
+                this.dispatchPreview();
             },
 
             startDragDecade: function (decadeStart, event) {
-                event.preventDefault();
-                this.isDragging = true;
-                this.isDraggingDecade = true;
-                this.isDraggingToDecade = true;
-                this.dragStart = decadeStart;
-                this.dragAnchorEnd = decadeStart + 9;
-                this.dragEnd = decadeStart + 9;
-                this.wasAlreadySelected = filters.start === decadeStart && filters.end === decadeStart + 9;
-                this.dispatchPreview();
+                this.beginPress(decadeStart, decadeStart + 9, event);
             },
 
             updateDragDecade: function (decadeStart) {
                 if (this.isDragging) {
-                    this.isDraggingToDecade = true;
                     this.dragEnd = decadeStart < this.dragStart ? decadeStart : decadeStart + 9;
                     this.dispatchPreview();
-                }
-            },
-
-            selectYear: function (year, event) {
-                if (event && event.shiftKey && this.lastClicked !== null) {
-                    filters.start = Math.min(this.lastClicked, year);
-                    filters.end = Math.max(this.lastClicked, year);
-                    requestFilterUpdate();
-                } else if (this.wasAlreadySelected) {
-                    filters.start = minYear;
-                    filters.end = maxYear;
-                    this.lastClicked = null;
-                    this.wasAlreadySelected = false;
-                    requestFilterUpdate();
-                } else {
-                    this.lastClicked = year;
                 }
             },
 
@@ -777,7 +788,7 @@
              * Keyboard use of the grid, which was mouse-only: arrows and
              * Home/End move between the decade labels and the years that
              * exist, Enter or Space selects, and Shift with either extends
-             * the range from the last pick, as Shift+click does.
+             * the range on screen, as Shift+click does.
              */
             onGridKeydown: function (event) {
                 var cell = event.target.closest("[data-col]");
@@ -788,10 +799,10 @@
                     event.preventDefault();
                     var decade = this.decades[row];
                     if (col === 0) {
-                        this.keySelectRange(decade.start, decade.start + 9, event);
+                        this.applyPick(decade.start, decade.start + 9, event);
                     } else {
                         var year = decade.cells[col - 1].year;
-                        this.keySelectRange(year, year, event);
+                        this.applyPick(year, year, event);
                     }
                     return;
                 }
@@ -843,64 +854,64 @@
             },
 
             /**
-             * Select a year or decade from the keyboard. A mouse selection
-             * is set by the drag (endDrag) and the click only settles it, so
-             * the keyboard sets the range itself: picking the range that is
-             * already the whole selection clears it, as a second click does.
+             * A pick no press has applied: the keyboard's, or a click with no
+             * press before it. The mouse's goes through beginPress and endDrag
+             * instead. Picking the range that is already the whole selection
+             * clears it, as a second click does.
              */
-            keySelectRange: function (start, end, event) {
-                if (event.shiftKey && this.lastClicked !== null) {
-                    filters.start = Math.min(this.lastClicked, start);
-                    filters.end = Math.max(this.lastClicked, end);
+            applyPick: function (start, end, event) {
+                var range = { start: start, end: end };
+                if (event.shiftKey) {
+                    range = this.extendedRange(start, end);
                 } else if (filters.start === start && filters.end === end) {
-                    filters.start = minYear;
-                    filters.end = maxYear;
-                    this.lastClicked = null;
-                } else {
-                    filters.start = start;
-                    filters.end = end;
-                    this.lastClicked = start;
+                    range = { start: minYear, end: maxYear };
                 }
+                this.setRange(range.start, range.end);
                 requestFilterUpdate();
             },
 
             startDrag: function (year, event) {
-                event.preventDefault();
-                this.isDragging = true;
-                this.dragStart = year;
-                this.dragAnchorEnd = year;
-                this.dragEnd = year;
-                this.wasAlreadySelected = filters.start === year && filters.end === year;
-                this.dispatchPreview();
+                this.beginPress(year, year, event);
             },
 
             updateDrag: function (year) {
                 if (this.isDragging) {
-                    this.isDraggingToDecade = false;
                     this.dragEnd = year;
                     this.dispatchPreview();
                 }
             },
 
             endDrag: function () {
+                if (!this.isDragging && !this.pressApplied) {
+                    return;
+                }
                 if (this.isDragging) {
-                    filters.start = Math.min(this.dragStart, this.dragAnchorEnd, this.dragEnd);
-                    filters.end = Math.max(this.dragStart, this.dragAnchorEnd, this.dragEnd);
+                    var range = this.dragRange();
+                    this.setRange(range.start, range.end);
                     requestFilterUpdate();
                 }
-                this.isDragging = false;
-                this.isDraggingDecade = false;
-                this.isDraggingToDecade = false;
-                this.dragStart = null;
-                this.dragAnchorEnd = null;
-                this.dragEnd = null;
-                window.dispatchEvent(new CustomEvent("year-preview", { detail: { active: false } }));
+                this.stopDrag();
+                // A click comes straight after this release, or not at all
+                // if it landed on another tile, and the press ends with it
+                var self = this;
+                this.pressTimer = setTimeout(function () {
+                    self.pressApplied = false;
+                    self.wasAlreadySelected = false;
+                }, 0);
             },
 
+            /** The pointer left the grid, so this press can no longer clear a range. */
             cancelDrag: function () {
+                if (!this.isDragging) {
+                    return;
+                }
+                this.wasAlreadySelected = false;
+                this.stopDrag();
+            },
+
+            stopDrag: function () {
                 this.isDragging = false;
-                this.isDraggingDecade = false;
-                this.isDraggingToDecade = false;
+                this.shiftDrag = false;
                 this.dragStart = null;
                 this.dragAnchorEnd = null;
                 this.dragEnd = null;
@@ -909,10 +920,9 @@
 
             dispatchPreview: function () {
                 if (this.isDragging) {
-                    var min = Math.min(this.dragStart, this.dragAnchorEnd, this.dragEnd);
-                    var max = Math.max(this.dragStart, this.dragAnchorEnd, this.dragEnd);
+                    var range = this.dragRange();
                     window.dispatchEvent(
-                        new CustomEvent("year-preview", { detail: { active: true, start: min, end: max } })
+                        new CustomEvent("year-preview", { detail: { active: true, start: range.start, end: range.end } })
                     );
                 }
             },
@@ -952,34 +962,21 @@
             hasSelectedLeft: function (year) {
                 var position = year % 10;
                 if (position === 0) {
-                    var decadeStart = Math.floor(year / 10) * 10;
-                    return this.isDecadeSelected(decadeStart) || this.isDecadeInDragRange(decadeStart);
+                    return this.isDecadeSelected(year);
                 }
                 return this.isInRange(year - 1);
             },
 
             decadeHasSelectedAbove: function (decadeStart) {
                 var aboveDecade = decadeStart + 10;
-                return this.isDecadeSelected(aboveDecade) || this.isDecadeInDragRange(aboveDecade);
+                return this.yearExists(aboveDecade) && this.isDecadeSelected(aboveDecade);
             },
 
             decadeHasSelectedBelow: function (decadeStart) {
                 var belowDecade = decadeStart - 10;
-                return this.isDecadeSelected(belowDecade) || this.isDecadeInDragRange(belowDecade);
+                return this.yearExists(belowDecade) && this.isDecadeSelected(belowDecade);
             },
 
-            decadeHasSelectedRight: function (decadeStart) {
-                return this.isInRange(decadeStart);
-            },
-
-            hasSelectedDiagonalBR: function (year) {
-                var diagYear = year + 1 - 10;
-                var position = year % 10;
-                if (position === 9) {
-                    return false;
-                }
-                return this.yearExists(diagYear) && this.isInRange(diagYear);
-            },
         };
     }
 
@@ -1093,7 +1090,7 @@
             },
 
             hasYearFilter: function () {
-                return filters.start !== minYear || filters.end !== maxYear;
+                return filters.start > minYear || filters.end < maxYear;
             },
 
             clearYears: function () {

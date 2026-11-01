@@ -8,6 +8,8 @@ now renders the corpus's counts as `year-baseline-counts-data` for the grid
 to scale by, and the grid caps the opacity.
 """
 
+import unittest
+
 from django.core.cache import cache
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
@@ -26,7 +28,7 @@ class YearGridScaleTests(SimpleTestCase):
     def setUpClass(cls):
         super().setUpClass()
         if not node_available():
-            raise cls.skipException("Node is not installed")
+            raise unittest.SkipTest("Node is not installed")
         cls.output = run_node("year_grid_baseline.js")
 
     def test_the_page_baseline_sets_the_scale(self):
@@ -44,19 +46,113 @@ class YearGridScaleTests(SimpleTestCase):
     def test_a_count_above_the_scale_is_full_colour_not_invalid(self):
         self.assertEqual(self.output["opacityAboveScale"], "100%")
 
-    def test_a_tile_bridges_the_gap_to_a_year_with_no_count(self):
-        # A tile alone paints the gaps to its right and below, so a cell the
-        # grid filled in has to count as a neighbour, and a cell it never
-        # drew must not.
+    def test_a_neighbour_is_a_tile_the_grid_drew(self):
+        # A tile paints the gaps to its left and above alone, so a cell the
+        # grid filled in has to count as a neighbour, and a cell or a decade
+        # row it never drew must not, whatever the URL's range names.
         self.assertEqual(
             self.output["neighbours"],
             {
                 "rightOntoFilledCell": True,
                 "belowOntoFilledCell": True,
-                "cornerOntoFilledCell": True,
+                "aboveOntoFilledCell": True,
                 "rightOntoNoCell": False,
+                "decadeBelowRow": True,
+                "decadeAboveNoRow": False,
+                "decadeBelowNoRow": False,
+                "firstColumnLeftIsTheLabel": True,
             },
         )
+
+    def test_shift_extending_downward_keeps_the_anchors_end(self):
+        # The anchor was only its first year, so the 1970s then the 1960s gave
+        # 1960-1970 and lost the rest of the decade clicked first.
+        self.assertEqual(self.output["decadeThenLowerDecade"], [1960, 1979])
+        self.assertEqual(self.output["decadeThenLowerYear"], [1962, 1979])
+        self.assertEqual(self.output["yearThenLowerYear"], [1962, 1975])
+
+    def test_shift_inside_or_above_the_anchor_ends_at_the_pick(self):
+        self.assertEqual(self.output["decadeThenYearInside"], [1970, 1975])
+        self.assertEqual(self.output["decadeThenHigherYear"], [1960, 1975])
+
+    def test_shift_extends_what_a_drag_chose(self):
+        self.assertEqual(self.output["shiftAfterDrag"], [1961, 1992])
+        # A pick that overlaps the drag's low end still keeps its high end.
+        self.assertEqual(self.output["shiftOverlappingADrag"], [1960, 1985])
+        # No click reaches a tile here, and the last pick is still this one.
+        self.assertEqual(self.output["labelReleasedOffItsTile"], [1970, 1985])
+
+    def test_shift_extends_the_range_on_screen_however_it_got_there(self):
+        # An anchor kept apart from the filters went stale, or was missing, for
+        # a range from a link, a saved filter or the back button.
+        self.assertEqual(self.output["shiftFromARangeItDidNotPick"], [1970, 1985])
+
+    def test_a_shift_drag_needs_no_click(self):
+        # Released on another tile, the browser sends none.
+        self.assertEqual(self.output["shiftDragWithNoClick"], [1970, 1981])
+
+    def test_the_range_stays_lit_while_shift_is_pressed(self):
+        # It began to fade out under the press, and back in on the release.
+        self.assertEqual(
+            self.output["whileShiftIsDown"],
+            {"stillLit": True, "labelStillLit": False, "pressedLit": True},
+        )
+
+    def test_a_click_with_no_press_picks_as_the_keyboard_does(self):
+        self.assertEqual(
+            self.output["clickAlone"],
+            {"picked": [1970, 1979], "again": [1950, 1999]},
+        )
+
+    def test_a_full_gesture_is_applied_once_however_it_was_sent(self):
+        # Reading `detail` here selected the year and cleared it in one action.
+        self.assertEqual(self.output["fullGestureFromAssistiveTech"], [1975, 1975])
+
+    def test_a_label_stays_dark_under_a_shift_press_that_will_not_light_it(self):
+        # 1962-1979 is no decade, so it would fade in and straight back out.
+        self.assertFalse(self.output["shiftPressOnALabel"])
+
+    def test_a_drag_abandoned_off_the_grid_changes_nothing(self):
+        # Back on the tile, the release still sends a click, and it is no pick.
+        self.assertEqual(self.output["pressThenLeave"], [1975, 1975])
+
+    def test_a_press_ends_with_its_release_and_no_sooner(self):
+        self.assertEqual(
+            self.output["timing"],
+            {
+                # Released on another tile, nothing lingers for the next click
+                "bareClickPicks": [1980, 1980],
+                # A quick second press keeps its own, and its release ends it
+                "stillPressed": True,
+                "dragEnded": True,
+                "rightClickDrags": False,
+                "controlClickDrags": False,
+            },
+        )
+
+    def test_a_label_previews_what_the_release_will_do(self):
+        self.assertEqual(
+            self.output["labelDraggedOntoAYear"],
+            {"pressed": True, "dragged": False, "acrossDecades": [True, True]},
+        )
+
+    def test_a_second_click_on_a_lone_year_clears_it(self):
+        self.assertEqual(self.output["secondClickClears"], [1950, 1999])
+
+    def test_a_drag_across_the_whole_grid_is_the_bounds(self):
+        # It ended at the last decade's 9, past the last year, which every
+        # exact comparison read as a filter while the page reported none.
+        self.assertEqual(self.output["wholeDrag"], [1960, 1982])
+        # Past one end only, a decade keeps its 9, so its label stays lit.
+        self.assertEqual(self.output["partialDrag"], [1970, 1989])
+
+    def test_a_link_from_an_old_drag_lights_nothing(self):
+        self.assertTrue(self.output["oldLinkLightsNothing"])
+
+    def test_rows_run_newest_first(self):
+        # The gaps' ownership rests on it: a tile owns the gap above because the
+        # row above painted first. Ascending rows would bring back the hairlines.
+        self.assertEqual(self.output["rowOrder"], [1980, 1970, 1960])
 
 
 @music_site

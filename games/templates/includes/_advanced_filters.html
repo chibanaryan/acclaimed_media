@@ -85,7 +85,7 @@
             <button type="button" class="btn btn-primary btn-sm shrink-0" @click="filterOpen = true">
                 <span class="mdi mdi-tune" aria-hidden="true"></span>
                 Filters
-                <template x-if="filters.q || filters.genres.length > 0 || filters.platforms.length > 0 || (filters.series && filters.series.length > 0) || filters.start !== {{ min_year }} || filters.end !== {{ max_year }} || filters.hltb_preset || filters.hltb_min !== null">
+                <template x-if="hasNarrowingFilters()">
                     <span class="badge badge-xs badge-secondary">!</span>
                 </template>
             </button>
@@ -243,7 +243,7 @@
                             <span class="mdi text-base-content/70 ml-1" aria-hidden="true"
                                   :class="yearExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
                         </button>
-                        <button type="button" class="btn btn-ghost btn-xs ml-auto text-base-content/70 hover:text-error" @click.stop="resetYears()" title="Clear year filter" x-cloak x-show="filters.start !== {{ min_year }} || filters.end !== {{ max_year }}">
+                        <button type="button" class="btn btn-ghost btn-xs ml-auto text-base-content/70 hover:text-error" @click.stop="resetYears()" title="Clear year filter" x-cloak x-show="hasYearFilter()">
                             <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
                             <span class="text-xs">Clear</span>
                         </button>
@@ -355,7 +355,7 @@
                             <span class="mdi text-base-content/70 ml-1" aria-hidden="true"
                                   :class="hltbExpanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
                         </button>
-                        <button type="button" class="btn btn-ghost btn-xs ml-auto text-base-content/70 hover:text-error" @click.stop="resetHltb()" title="Clear playtime filter" x-cloak x-show="filters.hltb_preset || filters.hltb_min !== null">
+                        <button type="button" class="btn btn-ghost btn-xs ml-auto text-base-content/70 hover:text-error" @click.stop="resetHltb()" title="Clear playtime filter" x-cloak x-show="hasPlaytimeFilter()">
                             <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
                             <span class="text-xs">Clear</span>
                         </button>

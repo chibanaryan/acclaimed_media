@@ -27,7 +27,7 @@ def build_time_window(start_year, end_year, min_year, max_year):
     """A human-readable time window for headings and filenames.
 
     A range covering everything reads "All Time"; a whole decade reads "the
-    1990s"; a single year is itself.
+    1990s"; a single year is itself; any other range stops at the years there are.
     """
     if start_year is None or end_year is None:
         return ""
@@ -37,4 +37,10 @@ def build_time_window(start_year, end_year, min_year, max_year):
         return str(start_year)
     if start_year % 10 == 0 and end_year == start_year + 9:
         return f"the {start_year}s"
-    return f"{start_year}-{end_year}"
+    # A drag to a decade's label runs to its 9, past a last year of 2026, and
+    # a heading should not name years with nothing in them.
+    if end_year < min_year or start_year > max_year:
+        return f"{start_year}-{end_year}"
+    first = max(start_year, min_year)
+    last = min(end_year, max_year)
+    return str(first) if first == last else f"{first}-{last}"

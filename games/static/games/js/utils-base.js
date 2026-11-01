@@ -431,7 +431,7 @@ function seoCleanUrl(params, minYear, maxYear) {
     const p = new URLSearchParams(params.toString());
     const start = parseInt(p.get('start'));
     const end = parseInt(p.get('end'));
-    if (start === minYear && end === maxYear) {
+    if (start <= minYear && end >= maxYear) {
         p.delete('start');
         p.delete('end');
     }

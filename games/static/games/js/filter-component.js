@@ -374,16 +374,29 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
+        hasYearFilter() {
+            return this.filters.start > this.minYear || this.filters.end < this.maxYear;
+        },
+
+        hasPlaytimeFilter() {
+            return this.filters.hltb_min !== null || this.filters.hltb_max !== null;
+        },
+
+        /** What leaves games out of the list: a sort reorders, so it does not count. */
+        hasNarrowingFilters() {
+            return Boolean(
+                this.filters.q ||
+                this.filters.genres.length > 0 ||
+                this.filters.platforms.length > 0 ||
+                (this.filters.series && this.filters.series.length > 0) ||
+                this.hasYearFilter() ||
+                (this.filters.played && this.filters.played.length > 0) ||
+                this.hasPlaytimeFilter()
+            );
+        },
+
         hasActiveFilters() {
-            return this.filters.q ||
-                   this.filters.genres.length > 0 ||
-                   this.filters.platforms.length > 0 ||
-                   (this.filters.series && this.filters.series.length > 0) ||
-                   this.filters.start !== this.minYear ||
-                   this.filters.end !== this.maxYear ||
-                   (this.filters.played && this.filters.played.length > 0) ||
-                   this.filters.hltb_min !== null ||
-                   this.filters.hltb_max !== null ||
+            return this.hasNarrowingFilters() ||
                    (this.filters.sort && this.filters.sort !== 'rank') ||
                    (this.filters.sortDirection && this.filters.sortDirection !== 'asc');
         },
@@ -783,7 +796,10 @@ document.addEventListener('alpine:init', () => {
             if (start <= this.minYear && end >= this.maxYear) return 'All Time';
             if (start === end) return String(start);
             if (start % 10 === 0 && end === start + 9) return 'the ' + start + 's';
-            return start + '-' + end;
+            if (end < this.minYear || start > this.maxYear) return start + '-' + end;
+            const first = Math.max(start, this.minYear);
+            const last = Math.min(end, this.maxYear);
+            return first === last ? String(first) : first + '-' + last;
         },
 
         _buildPlatformSegment() {
@@ -837,9 +853,7 @@ document.addEventListener('alpine:init', () => {
         },
 
         _resultsDependOnHltbMode() {
-            return this.filters.hltb_min !== null ||
-                   this.filters.hltb_max !== null ||
-                   this.filters.sort === 'playtime';
+            return this.hasPlaytimeFilter() || this.filters.sort === 'playtime';
         },
 
         /**
@@ -869,8 +883,7 @@ document.addEventListener('alpine:init', () => {
             // The whole year range is no year filter, so it stays out of the
             // address: every filtered URL used to carry start=1971&end=2025,
             // and clearing a year left the visitor on /games/?start=...
-            if (Number(this.filters.start) === Number(this.minYear) &&
-                Number(this.filters.end) === Number(this.maxYear)) {
+            if (!this.hasYearFilter()) {
                 params.delete('start');
                 params.delete('end');
             }

@@ -7,6 +7,19 @@
   outright. The fill and gaps are now boxes fading `opacity`, which keeps
   running through a render; the gaps take 100 ms of the fill's 150, because
   green over the page stays green longer than green over amber
+- **The range's edges and neighbours.** A tile owns
+  the gaps to its left and above, since it paints over both, so no hairline at
+  fractional zoom and no stray pixel at an inner corner. Zero-count years are
+  grey by background, and music's sidebar no longer moves when the rank chart
+  appears
+- **Shift extends the range on screen.** The grid kept its own last pick, which
+  lost most of a decade when extending downward and went stale after a saved
+  filter or Back. A drag from the first decade to the last is now no filter
+- **Smaller filter fixes.** Headings stop at the last year, not a decade's 9;
+  the games Filters badge counts status and playtime; a tile answers a click
+  with no press, as a screen reader sends; music's heading row is a fixed
+  height, so neither a long title nor the rank chart moves the sidebar, and
+  its summary drops "most recommended" to keep the date on one line
 - **`MUSIC_ENABLED` is gone.** Production had it on, so the off state was dead
   code. `music/access.py`, the CSRF failure view and every hidden-section
   branch went with it. Readers see no change; music is now public in

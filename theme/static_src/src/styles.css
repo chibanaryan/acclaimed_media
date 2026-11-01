@@ -401,180 +401,147 @@
 
   /* Decade label (e.g., "1980s") */
   .year-grid-decade {
-    @apply w-[50px] min-w-[50px] relative isolate flex items-center justify-center py-1.5 px-1;
-    @apply bg-base-100 rounded-sm cursor-pointer font-semibold text-base-content/70;
-    @apply transition-[background-color] duration-150;
+    @apply w-[50px] min-w-[50px] flex items-center justify-center py-1.5 px-1;
+    @apply bg-base-100 font-semibold text-base-content/70;
   }
 
-  .year-grid-decade:hover {
-    @apply bg-base-content/20 text-base-content;
+  @media (hover: hover) {
+    .year-grid-decade:hover {
+      @apply bg-base-content/20 text-base-content;
+    }
   }
 
+  /* In range, the first cell beside it is too */
   .year-grid-decade.is-in-range {
+    --side-right: 1;
     @apply text-primary-content;
   }
 
   /* Year cell with heatmap background */
   .year-grid-cell {
     @apply flex-1 min-w-0 h-7 flex items-center justify-center;
-    @apply rounded-sm cursor-pointer relative isolate;
-    @apply transition-[background-color,filter,outline-color] duration-150;
     /* Golden amber heatmap with opacity-based intensity */
-    background-color: color-mix(in oklch, var(--color-heatmap) var(--heatmap-opacity, 10%), transparent);
+    --tile-heat: var(--color-heatmap);
+    background-color: color-mix(in oklch, var(--tile-heat) var(--heatmap-opacity, 10%), transparent);
   }
 
-  .year-grid-cell:hover {
-    @apply outline outline-2 outline-primary -outline-offset-2 z-[1];
+  /* Snaps on. A fade needs an outline at rest, which rings every cell in forced
+     colours and leaves a ghost behind keyboard focus */
+  @media (hover: hover) {
+    .year-grid-cell:hover {
+      @apply outline outline-2 outline-primary -outline-offset-2;
+    }
   }
 
-  /* A selected range reads as one shape, and draws as one fade. Each tile
-     carries four boxes in the primary colour: its fill over the heatmap colour,
-     the gaps to its right and below, and the corner between them, so each gap
-     is painted once. All four fade opacity and nothing else, because an opacity
-     fade runs off the main thread in every browser. A box-shadow, or a
-     background-color on a generated box, waits out the list render a filter
-     change sets off, and Clear left the gaps behind the finished tiles. For the
-     same reason text colour changes at once, not in a fade. Square corners
-     belong to the fill, not the tile, which stays round under it. A corner
-     squares up at once and rounds off only when the fade is over: rounding it
-     while the fill and gaps were still solid opened a star at each join.
-     The gaps fade in 100ms of the fill's 150ms: leaving first, arriving last.
+  /* A tile is a decade label or a year cell. A selected range reads as one shape
+     and draws as one fade because each tile carries four boxes in the primary
+     colour: its fill over the heatmap colour, the gaps to its left and above,
+     and the corner between them. Each gap has one owner, or half-opaque boxes
+     would stack, and it is the later tile: a tile paints over the ones before
+     it, so its boxes lie on top of both neighbours.
+
+     All four fade opacity, because an opacity fade runs off the main thread in
+     every browser. A box-shadow, or a background-color on a generated box, waits
+     out the list render a filter change sets off, and Clear left the gaps behind
+     the finished tiles. Text colour changes at once for the same reason.
+
+     The gaps take two thirds of the fill's fade, leaving first and arriving last.
      Over the page background the primary colour stays recognisably itself until
-     it is nearly gone, while over the heatmap it turns to tan by half way, so a
-     gap that kept the fill's exact timing looked as if it lingered.
-     The gap boxes reach a pixel past the 2px gap at each end, and a fill a pixel
-     past its tile on each side it shares with the range: at a fractional display
-     scale a box and its tile round to different device pixels, and the tile's
-     soft heatmap edge paints over its neighbour's boxes, so meeting exactly left
-     a hairline at every join.
+     it is nearly gone, while over the heatmap it turns tan by half way, so a gap
+     in exact step with the fill looked as if it lingered.
+
+     Two things happen in a step at the far end of a fade, where they cannot show.
+     A fill's corners square up at once and round off when it has gone, since
+     rounding them while it was solid opened a star at each join; the tile under
+     it stays round. A gap reaches a pixel over the tiles either side once it has
+     arrived and lets go at once: meeting exactly left a hairline at every join at
+     a fractional display scale, and an overlap held through a fade is a brighter
+     line, where two half-opaque boxes stack.
+
      The label's two boxes are anchored to the tile: the label is not positioned. */
-  .year-grid-cell,
-  .year-grid-decade {
+  .year-grid-tile {
+    --year-fade: 150ms;
     --year-fill: 0;
-    --gap-bridge-right: 0;
-    --gap-bridge-bottom: 0;
-    --gap-bridge-corner: 0;
-    --shared-top: 0;
-    --shared-left: 0;
-    --square-tl: 0;
-    --square-tr: 0;
-    --square-br: 0;
-    --square-bl: 0;
+    --side-top: 0;
+    --side-right: 0;
+    --side-bottom: 0;
+    --side-left: 0;
+    @apply rounded-sm cursor-pointer relative isolate transition-[background-color];
+    transition-duration: var(--year-fade);
   }
 
-  .year-grid-cell.is-in-range,
-  .year-grid-decade.is-in-range {
-    --year-fill: 1;
-  }
+  .year-grid-tile.is-in-range { --year-fill: 1; }
+  .year-grid-tile.sharp-top { --side-top: 1; }
+  .year-grid-tile.sharp-right { --side-right: 1; }
+  .year-grid-tile.sharp-bottom { --side-bottom: 1; }
+  .year-grid-tile.sharp-left { --side-left: 1; }
 
-  .year-grid-cell::before,
-  .year-grid-decade::before,
-  .year-grid-cell::after,
-  .year-grid-decade::after,
-  .year-grid-cell-label::before,
-  .year-grid-decade > span::before,
-  .year-grid-cell-label::after,
-  .year-grid-decade > span::after {
+  .year-grid-tile::before,
+  .year-grid-tile::after,
+  .year-grid-tile-label::before,
+  .year-grid-tile-label::after {
     content: "";
-    @apply absolute bg-primary pointer-events-none transition-opacity duration-150;
+    @apply absolute bg-primary pointer-events-none;
+    transition-timing-function: var(--default-transition-timing-function);
   }
-  .year-grid-cell::before,
-  .year-grid-decade::before {
-    @apply -z-10;
-    top: calc(-1px * var(--shared-top));
-    right: calc(-1px * var(--gap-bridge-right));
-    bottom: calc(-1px * var(--gap-bridge-bottom));
-    left: calc(-1px * var(--shared-left));
+
+  /* The fill. Each --round-* is 1 for a corner on two unshared sides, else 0 */
+  .year-grid-tile::before {
+    --round-tl: calc(1 - max(var(--side-top), var(--side-left)));
+    --round-tr: calc(1 - max(var(--side-top), var(--side-right)));
+    --round-br: calc(1 - max(var(--side-bottom), var(--side-right)));
+    --round-bl: calc(1 - max(var(--side-bottom), var(--side-left)));
+    @apply inset-0 -z-10;
     opacity: var(--year-fill);
-    border-top-left-radius: calc(var(--radius-sm) * (1 - var(--square-tl)));
-    border-top-right-radius: calc(var(--radius-sm) * (1 - var(--square-tr)));
-    border-bottom-right-radius: calc(var(--radius-sm) * (1 - var(--square-br)));
-    border-bottom-left-radius: calc(var(--radius-sm) * (1 - var(--square-bl)));
-    /* Steps, not fades. A corner rounds off once the fill has gone. The fill
-       reaches past its tile once it has arrived, or it would bring the gaps in
-       with it, and draws back at once, so the gaps can leave first. */
+    border-top-left-radius: calc(var(--radius-sm) * var(--round-tl));
+    border-top-right-radius: calc(var(--radius-sm) * var(--round-tr));
+    border-bottom-right-radius: calc(var(--radius-sm) * var(--round-br));
+    border-bottom-left-radius: calc(var(--radius-sm) * var(--round-bl));
     transition-property:
       opacity, border-top-left-radius, border-top-right-radius,
-      border-bottom-right-radius, border-bottom-left-radius,
-      top, right, bottom, left;
-    transition-duration: 150ms, 0s, 0s, 0s, 0s, 0s, 0s, 0s, 0s;
+      border-bottom-right-radius, border-bottom-left-radius;
+    transition-duration: var(--year-fade), 0s, 0s, 0s, 0s;
     transition-delay:
-      0s, calc(150ms * (1 - var(--square-tl))), calc(150ms * (1 - var(--square-tr))),
-      calc(150ms * (1 - var(--square-br))), calc(150ms * (1 - var(--square-bl))),
-      calc(150ms * var(--shared-top)), calc(150ms * var(--gap-bridge-right)),
-      calc(150ms * var(--gap-bridge-bottom)), calc(150ms * var(--shared-left));
-  }
-  .year-grid-cell::after,
-  .year-grid-decade::after {
-    @apply top-0 bottom-0 left-[calc(100%-1px)] w-1;
-    opacity: var(--gap-bridge-right);
-  }
-  .year-grid-cell-label::before,
-  .year-grid-decade > span::before {
-    @apply top-[calc(100%-1px)] left-0 right-0 h-1;
-    opacity: var(--gap-bridge-bottom);
-  }
-  .year-grid-cell-label::after,
-  .year-grid-decade > span::after {
-    @apply -right-[3px] -bottom-[3px] size-1;
-    opacity: var(--gap-bridge-corner);
-  }
-  .year-grid-cell.is-in-range.corner-br,
-  .year-grid-decade.is-in-range.corner-br {
-    --gap-bridge-corner: 1;
+      0s, calc(var(--year-fade) * var(--round-tl)), calc(var(--year-fade) * var(--round-tr)),
+      calc(var(--year-fade) * var(--round-br)), calc(var(--year-fade) * var(--round-bl));
   }
 
-  .year-grid-cell::after,
-  .year-grid-decade::after,
-  .year-grid-cell-label::before,
-  .year-grid-decade > span::before,
-  .year-grid-cell-label::after,
-  .year-grid-decade > span::after {
-    transition-duration: 100ms;
+  /* The gaps: --gap is 1 while this box is on */
+  .year-grid-tile::after,
+  .year-grid-tile-label::before,
+  .year-grid-tile-label::after {
+    opacity: var(--gap);
+    transition-property: opacity, box-shadow;
+    transition-duration: calc(var(--year-fade) * 2 / 3), 0s;
+    transition-delay: calc(var(--year-fade) / 3 * var(--gap)), calc(var(--year-fade) * var(--gap));
   }
-  .year-grid-cell.is-in-range.sharp-right::after,
-  .year-grid-decade.is-in-range.sharp-right::after,
-  .year-grid-cell.is-in-range.sharp-bottom .year-grid-cell-label::before,
-  .year-grid-decade.is-in-range.sharp-bottom > span::before,
-  .year-grid-cell.is-in-range.corner-br .year-grid-cell-label::after,
-  .year-grid-decade.is-in-range.corner-br > span::after {
-    transition-delay: 50ms;
+  .year-grid-tile::after {
+    --gap: var(--side-left);
+    @apply top-0 bottom-0 right-full w-0.5;
+    box-shadow: calc(-1px * var(--gap)) 0 var(--color-primary), calc(1px * var(--gap)) 0 var(--color-primary);
   }
-
-  /* Sides shared with the rest of the range: those corners of the fill go
-     square, and on the right and below the tile turns on the gap it owns */
-  .year-grid-cell.is-in-range.sharp-top,
-  .year-grid-decade.is-in-range.sharp-top {
-    --shared-top: 1;
-    --square-tl: 1;
-    --square-tr: 1;
+  .year-grid-tile-label::before {
+    --gap: var(--side-top);
+    @apply bottom-full left-0 right-0 h-0.5;
+    box-shadow: 0 calc(-1px * var(--gap)) var(--color-primary), 0 calc(1px * var(--gap)) var(--color-primary);
   }
-  .year-grid-cell.is-in-range.sharp-bottom,
-  .year-grid-decade.is-in-range.sharp-bottom {
-    --square-bl: 1;
-    --square-br: 1;
-    --gap-bridge-bottom: 1;
-  }
-  .year-grid-cell.is-in-range.sharp-left {
-    --shared-left: 1;
-    --square-tl: 1;
-    --square-bl: 1;
-  }
-  .year-grid-cell.is-in-range.sharp-right,
-  .year-grid-decade.is-in-range.sharp-right {
-    --square-tr: 1;
-    --square-br: 1;
-    --gap-bridge-right: 1;
+  .year-grid-tile-label::after {
+    /* Sharing both sides means the diagonal tile is in range: a range has no holes */
+    --gap: calc(var(--side-left) * var(--side-top));
+    @apply -left-0.5 -top-0.5 size-0.5;
+    box-shadow: 0 0 0 calc(1px * var(--gap)) var(--color-primary);
   }
 
   .year-grid-cell-empty {
     @apply !bg-transparent cursor-default;
   }
 
-  /* Unavailable year cell - grayscale but readable, clearly non-selected */
+  /* Unavailable year cell - grey but readable, clearly non-selected. Its
+     background, not a filter: a filter would grey the fill and gaps of a range
+     leaving this tile, while the tiles beside them fade green */
   .year-grid-cell.is-unavailable {
     @apply visible cursor-pointer pointer-events-auto;
-    filter: grayscale(100%);
+    --tile-heat: var(--color-base-content);
   }
 
   .year-grid-cell.is-unavailable .year-grid-cell-label {
@@ -582,7 +549,7 @@
   }
 
   .year-grid-cell.is-unavailable:hover {
-    filter: grayscale(50%);
+    @apply outline-base-content/40;
   }
 
   .year-grid-cell.is-unavailable:hover .year-grid-cell-label {
@@ -599,10 +566,17 @@
     text-shadow: 0 0 4px var(--color-base-100);
   }
 
-  /* Selected cells: inherit text-primary-content from parent */
   .year-grid-cell.is-in-range .year-grid-cell-label {
     @apply text-primary-content;
     text-shadow: none;  /* No shadow needed on solid background */
+  }
+
+  /* The primary outline would not show on a tile filled with primary, and the
+     gap boxes lie over a tile's outer pixel */
+  @media (hover: hover) {
+    .year-grid-tile.is-in-range:hover {
+      @apply outline outline-2 outline-primary-content/60 -outline-offset-3;
+    }
   }
 
   /* Header row with legend and hint */
@@ -1764,6 +1738,39 @@ html.quick-mark-game .played-button-wrapper:hover .played-button {
 [role="button"]:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 1px;
+}
+
+/* Later tiles paint over a tile, and a range's fill would swallow the ring */
+.year-grid-tile:not(.is-in-range):focus-visible {
+  z-index: 1;
+}
+
+/* Inside a range the ring above is the colour of what is around it */
+.year-grid-tile.is-in-range:focus-visible {
+  outline-color: var(--color-primary-content);
+  outline-offset: -3px;
+}
+
+/* Forced colours drop backgrounds and shadows, and with them the whole range */
+@media (forced-colors: active) {
+  .year-grid-tile {
+    --color-primary: Highlight;
+  }
+  .year-grid-tile::before,
+  .year-grid-tile::after,
+  .year-grid-tile-label::before,
+  .year-grid-tile-label::after {
+    forced-color-adjust: none;
+  }
+  .year-grid-tile.is-in-range .year-grid-tile-label {
+    forced-color-adjust: none;
+    color: HighlightText;
+  }
+  .year-grid-tile.is-in-range:focus-visible,
+  .year-grid-tile.is-in-range:hover {
+    forced-color-adjust: none;
+    outline-color: HighlightText;
+  }
 }
 
 /* Visitors who ask their OS for less motion get none: row and card entry

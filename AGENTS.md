@@ -384,31 +384,31 @@ its own class names. One rule block, both families; a fourth copy of the
 `.game-row` rules is what left album rows without a hover state.
 
 A selected year range reads as one shape, and fades as one, because each tile
-carries four generated boxes in the primary colour: its fill over the heatmap
-colour, the gaps to its right and below, and the corner between them
-(`::before` and `::after` on the tile and on its label). All four fade
-`opacity`, which runs off the main thread in every browser. A filter change's
-list render blocks that thread, so a fade on it waits: with box-shadow gaps, and
-again with `background-color` on the boxes, Clear finished the tiles at ~220 ms
-and started the gaps at ~550-640 ms (4x CPU). Text colour changes at once for
-the same reason. Square corners are the fill's, and the tile under it stays
-round: a corner squares up at once and rounds off only when the fade is over,
-since rounding it while the fill and gaps were solid opened a star at every
-join. The gaps take 100 ms of the fill's 150, leaving first and arriving last.
-In exact step they still looked as if they lingered: at 127 ms of a Clear the
-tile was `147,139,79`, already tan, and the gap `169,192,186`, still green,
-because the primary colour stays itself over the page background and turns
-muddy over the heatmap. 80 ms overshoots, and the range falls apart before it
-fades. Each gap has one owner because two half-opaque fills stack, and that is
-why `yearExists` counts the zero-count years `buildDecades` fills in. The gap
-boxes reach a pixel past the gap, and a fill a pixel past its tile on each side
-it shares, once it has arrived: meeting exactly left a hairline at every join at
-any fractional display scale (browser zoom 110%, Windows at 125%), and 1x and 2x
-hide that. A range is
-`.is-in-range`, not the shared `.is-selected`, whose ring and tint only source
-order would keep off. Measure all this from real frames after a real click, and
-look at them: freezing a transition takes the threads out of the picture, and a
-matching percentage is not a matching colour. Pinned by
+(a decade label or a year cell, `.year-grid-tile`) carries four generated boxes
+in the primary colour: its fill over the heatmap colour, the gaps to its left
+and above, and the corner between them. Each gap has one owner because two
+half-opaque boxes stack, and it is the later tile, which paints over both
+neighbours. That is why `yearExists` counts the zero-count years `buildDecades`
+fills in. All four fade `opacity`, which runs off the main thread in every
+browser. A filter change's list render blocks that thread, so a fade on it
+waits: with box-shadow gaps, and again with `background-color` on the boxes,
+Clear finished the tiles at ~220 ms and started the gaps at ~550-640 ms (4x
+CPU). Text colour changes at once for the same reason, and unavailable tiles
+are grey by background, since a `filter` would grey a leaving fill. The gaps
+take two thirds of the fill's fade, leaving first and arriving last. In exact
+step they still looked as if they lingered: at 127 ms of a Clear the tile was
+`147,139,79`, already tan, and the gap `169,192,186`, still green, because the
+primary colour stays itself over the page background and turns muddy over the
+heatmap. Gaps at 80 ms overshoot, and the range falls apart before it fades.
+Two things are steps at the far end of a fade: a fill's corners round off when it
+has gone, since rounding them while solid opened a star at every join, and a gap
+reaches a pixel over both neighbours once it has arrived, since meeting exactly
+left a hairline at any fractional display scale (browser zoom 110%, Windows at
+125%, which 1x and 2x hide). A range is `.is-in-range`, not the shared
+`.is-selected`, whose ring and tint only source order would keep off. Measure
+all this from real frames after a real click, and look at them: freezing a
+transition takes the threads out of the picture, and a matching percentage is
+not a matching colour. Pinned by
 `core/tests/test_static_bundles.py::YearGridGapsFadeWithTheirTilesTests`.
 
 Facet counts (the number beside a year cell or a genre row) are counted with
@@ -1667,6 +1667,8 @@ It reports and blocks nothing; enforcing it means moving the dict to
   Dropping it needs Alpine's CSP build.
 - `style-src` has `'unsafe-inline'` and no nonce: a nonce would disable it,
   and `style=""` attributes are everywhere.
+- `img-src` also takes `http://*.localhost:*` under `DEBUG`, where the sites
+  are separate plain-http origins and the landing page's covers cross them.
 - Reports go to Sentry's security endpoint, built from the DSN
   (`core.csp.sentry_report_uri`). Under test and on a developer's machine
   there is none (`SENTRY_ENABLED`).

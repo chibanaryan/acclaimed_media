@@ -3970,6 +3970,17 @@ class ViewHelperFunctionTests(TestCase):
         result = _build_time_window(None, None, 1970, 2024)
         self.assertEqual(result, "")
 
+    def test_build_time_window_stops_at_the_years_there_are(self):
+        """A drag to the last decade's label runs to its 9."""
+        from games.views import _build_time_window
+
+        self.assertEqual(_build_time_window(1990, 2029, 1970, 2026), "1990-2026")
+        self.assertEqual(_build_time_window(1960, 1985, 1971, 2026), "1971-1985")
+        self.assertEqual(_build_time_window(2026, 2029, 1970, 2026), "2026")
+        self.assertEqual(_build_time_window(2020, 2029, 1970, 2026), "the 2020s")
+        # Nothing to stop at: outside the corpus it says what was asked for.
+        self.assertEqual(_build_time_window(1900, 1950, 1970, 2026), "1900-1950")
+
     def test_build_time_window_all_time(self):
         """Test _build_time_window returns All Time for full range."""
         from games.views import _build_time_window

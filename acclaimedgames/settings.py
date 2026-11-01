@@ -484,6 +484,11 @@ LOGGING = {
 # - Forms: the Donate page's PayPal buttons, by path, as for www.google.com.
 # Reports go to Sentry's CSP endpoint, derived from the DSN.
 _CSP_STOP_PROPAGATION = handler_hash("event.stopPropagation()")
+_CSP_IMG_SRC = [CSP.SELF, "data:", "https:"]
+if DEBUG:
+    # The sites are separate origins on plain http here: the landing page's
+    # covers come from music.localhost, which `https:` does not cover
+    _CSP_IMG_SRC.append("http://*.localhost:*")
 SECURE_CSP_REPORT_ONLY = {
     "default-src": [CSP.SELF],
     "script-src": [
@@ -498,7 +503,7 @@ SECURE_CSP_REPORT_ONLY = {
         "https://cdn.jsdelivr.net/npm/marked/",
     ],
     "style-src": [CSP.SELF, CSP.UNSAFE_INLINE],
-    "img-src": [CSP.SELF, "data:", "https:"],
+    "img-src": _CSP_IMG_SRC,
     "font-src": [CSP.SELF, "data:"],
     "media-src": [CSP.SELF],
     "connect-src": [

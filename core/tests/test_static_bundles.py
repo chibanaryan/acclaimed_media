@@ -1111,125 +1111,168 @@ class YearGridGapsFadeWithTheirTilesTests(SimpleTestCase):
     """
 
     GRID_RULE = r"([^{}]*year-grid[^{}]*)\{([^{}]*)\}"
+    SOURCE = "theme/static_src/src/styles.css"
+    BUILT = "theme/static/css/dist/styles.css"
 
     def _source(self, relative_path):
         return (Path(settings.BASE_DIR) / relative_path).read_text()
 
-    def _rules(self):
-        built = self._source("theme/static/css/dist/styles.css")
-        return re.findall(self.GRID_RULE, built)
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        built = (Path(settings.BASE_DIR) / cls.BUILT).read_text()
+        cls.rules = re.findall(cls.GRID_RULE, built)
 
-    def test_the_state_classes_only_turn_the_boxes_on(self):
-        for path in (
-            "theme/static_src/src/styles.css",
-            "theme/static/css/dist/styles.css",
-        ):
-            with self.subTest(path=path):
-                source = self._source(path)
-                for name in ("right", "bottom", "corner"):
-                    self.assertRegex(source, rf"--gap-bridge-{name}:\s*1\b")
-                self.assertRegex(source, r"--year-fill:\s*1\b")
-                self.assertNotRegex(source, r"--gap-bridge-[a-z-]+:[^;}]*px")
+    def _compact_source(self):
+        # Neither the formatting nor the minifier's spelling is the contract,
+        # and CI's `css` job ties this file to the built one.
+        return re.sub(r"\s+", "", self._source(self.SOURCE))
 
-    def test_every_part_of_a_tile_fades_opacity(self):
-        rules = self._rules()
-        for selector, opacity in (
-            (".year-grid-cell:before", "--year-fill"),
-            (".year-grid-decade:before", "--year-fill"),
-            (".year-grid-cell:after", "--gap-bridge-right"),
-            (".year-grid-decade:after", "--gap-bridge-right"),
-            (".year-grid-cell-label:before", "--gap-bridge-bottom"),
-            (".year-grid-decade>span:before", "--gap-bridge-bottom"),
-            (".year-grid-cell-label:after", "--gap-bridge-corner"),
-            (".year-grid-decade>span:after", "--gap-bridge-corner"),
+    def _declarations(self, selector):
+        return " ".join(
+            body for selectors, body in self.rules if selector in selectors.split(",")
+        )
+
+    def test_the_state_classes_only_turn_flags_on(self):
+        for selector, flag in (
+            (".year-grid-tile.is-in-range", "--year-fill"),
+            (".year-grid-tile.sharp-top", "--side-top"),
+            (".year-grid-tile.sharp-right", "--side-right"),
+            (".year-grid-tile.sharp-bottom", "--side-bottom"),
+            (".year-grid-tile.sharp-left", "--side-left"),
         ):
             with self.subTest(selector=selector):
-                declarations = " ".join(
-                    body
-                    for selectors, body in rules
-                    if selector in selectors.split(",")
-                )
+                self.assertEqual(self._declarations(selector), f"{flag}:1")
+
+    def test_a_decade_in_range_always_meets_its_first_cell(self):
+        # No class says so: the first cell is in range whenever the label is,
+        # and a rounded corner there would open a notch at every join.
+        self.assertIn(
+            "--side-right:1", self._declarations(".year-grid-decade.is-in-range")
+        )
+
+    def test_every_part_of_a_tile_fades_opacity(self):
+        for selector, opacity in (
+            (".year-grid-tile:before", "--year-fill"),
+            (".year-grid-tile:after", "--gap"),
+            (".year-grid-tile-label:before", "--gap"),
+            (".year-grid-tile-label:after", "--gap"),
+        ):
+            with self.subTest(selector=selector):
+                declarations = self._declarations(selector)
                 self.assertIn(f"opacity:var({opacity})", declarations)
-                self.assertIn("transition-property:opacity", declarations)
+                self.assertRegex(declarations, r"transition-property:opacity\b")
+
+    def test_each_gap_box_answers_to_its_own_side(self):
+        # Swapped, a tile would light the gap on the side it does not share.
+        for selector, flag in (
+            (".year-grid-tile:after", "var(--side-left)"),
+            (".year-grid-tile-label:before", "var(--side-top)"),
+            (".year-grid-tile-label:after", "calc(var(--side-left)*var(--side-top))"),
+        ):
+            with self.subTest(selector=selector):
+                self.assertIn(
+                    f"--gap:{flag}", self._declarations(selector).replace(" ", "")
+                )
 
     def test_the_gaps_leave_first_and_arrive_last(self):
         # In exact step with the fill they read as lingering: the primary
         # colour stays green over the page background, and turns tan over the
-        # heatmap by half way. Both fades still span the fill's 150 ms.
-        source = self._source("theme/static_src/src/styles.css")
-        self.assertIn("transition-duration: 100ms;", source)
-        self.assertRegex(
-            source,
-            r"\.year-grid-cell\.is-in-range\.sharp-right::after,"
-            r"[^{}]*\{\s*transition-delay: 50ms;",
+        # heatmap by half way. Both fades still span the fill's whole length.
+        source = self._compact_source()
+        self.assertIn("transition-duration:calc(var(--year-fade)*2/3),0s;", source)
+        self.assertIn("transition-delay:calc(var(--year-fade)/3*var(--gap)),", source)
+
+    def test_the_boxes_share_the_tiles_curve(self):
+        # A transition-timing-function does not inherit, and without one the
+        # fill runs on the browser's `ease` over the heatmap's Tailwind curve.
+        self.assertIn(
+            "transition-timing-function:var(--default-transition-timing-function)",
+            self._declarations(".year-grid-tile:before"),
         )
 
-    def test_the_boxes_overlap_at_every_join(self):
+    def test_a_tile_owns_the_gaps_to_its_left_and_above(self):
+        # A later tile paints over the ones before it, so these boxes lie on top
+        # of both neighbours; test_rows_run_newest_first pins the other half.
+        self.assertIn("right:100%", self._declarations(".year-grid-tile:after"))
+        self.assertIn("bottom:100%", self._declarations(".year-grid-tile-label:before"))
+
+    def test_a_gap_overlaps_its_neighbours_only_at_rest(self):
         # Meeting exactly left a hairline at every join at a fractional display
-        # scale (browser zoom, or Windows scaling), and only there.
-        source = self._source("theme/static_src/src/styles.css")
-        self.assertIn("left-[calc(100%-1px)] w-1", source)
-        self.assertIn("top-[calc(100%-1px)] left-0 right-0 h-1", source)
-        self.assertIn("-right-[3px] -bottom-[3px] size-1", source)
-        for side, flag in (
-            ("top", "--shared-top"),
-            ("right", "--gap-bridge-right"),
-            ("bottom", "--gap-bridge-bottom"),
-            ("left", "--shared-left"),
+        # scale (browser zoom, or Windows scaling), and an overlap held through
+        # a fade stacks. So it is a pixel of shadow each way, scaled by the
+        # box's own flag, which steps on only when the fade has ended.
+        source = self._compact_source()
+        for shadow in (
+            "box-shadow:calc(-1px*var(--gap))0var(--color-primary),"
+            "calc(1px*var(--gap))0var(--color-primary);",
+            "box-shadow:0calc(-1px*var(--gap))var(--color-primary),"
+            "0calc(1px*var(--gap))var(--color-primary);",
+            "box-shadow:000calc(1px*var(--gap))var(--color-primary);",
+            "calc(var(--year-fade)/3*var(--gap)),calc(var(--year-fade)*var(--gap));",
         ):
-            with self.subTest(side=side):
-                self.assertIn(f"{side}: calc(-1px * var({flag}));", source)
+            with self.subTest(shadow=shadow):
+                self.assertIn(shadow, source)
 
     def test_a_range_fades_nothing_but_opacity(self):
         # Whatever fades in a range has to keep moving through a list render,
-        # or it lags the rest. The tile's own fades are the heatmap's and the
-        # hover's, which are no part of a range.
+        # or it lags the rest. A tile's own fade is the heatmap's, under the
+        # fill. The rest are steps of no length at the far end of a fade.
         steps = {
             "border-top-left-radius",
             "border-top-right-radius",
             "border-bottom-right-radius",
             "border-bottom-left-radius",
-            "top",
-            "right",
-            "bottom",
-            "left",
+            "box-shadow",
         }
-        tile = {"background-color", "filter", "outline-color"}
-        rules = self._rules()
-        self.assertTrue(rules)
-        for selectors, body in rules:
+        self.assertTrue(self.rules)
+        for selectors, body in self.rules:
             with self.subTest(selectors=selectors):
-                self.assertNotIn("box-shadow", body)
-                for listed in re.findall(r"transition-property:([^;]+)", body):
-                    names = set(listed.split(","))
-                    if ":before" in selectors or ":after" in selectors:
-                        if names & steps:
-                            # Not fades: zero-length, at the fade's far end
-                            self.assertEqual(names - steps, {"opacity"})
-                            self.assertRegex(
-                                body, r"transition-duration:[^;]*(,\s*0s){8}"
-                            )
-                        else:
-                            self.assertEqual(names, {"opacity"})
-                    else:
-                        self.assertLessEqual(names, tile, selectors)
+                boxes = ":before" in selectors or ":after" in selectors
+                self.assertNotIn("filter:", body)
+                if not boxes:
+                    self.assertNotIn("box-shadow", body)
+                listed = re.search(r"transition-property:([^;]+)", body)
+                if not listed:
+                    continue
+                names = listed.group(1).split(",")
+                if not boxes:
+                    self.assertEqual(names, ["background-color"])
+                    continue
+                self.assertEqual(set(names) - steps, {"opacity"})
+                durations = re.search(r"transition-duration:([^;]+)", body)
+                durations = durations.group(1).split(",")
+                # A shorter list cycles, and would fade what should step
+                self.assertEqual(len(durations), len(names))
+                for name, duration in zip(names, durations):
+                    if name in steps:
+                        self.assertEqual(duration.strip(), "0s", name)
 
     def test_a_corner_rounds_off_only_when_the_fill_has_gone(self):
         # Rounding a tile while the fill and gaps were solid opened a star
         # where four tiles meet, on Clear and on any range that shrank.
-        rules = self._rules()
-        for selectors, body in rules:
-            if ".is-in-range" in selectors:
+        for selectors, body in self.rules:
+            if ".is-in-range" in selectors or ".sharp-" in selectors:
                 with self.subTest(selectors=selectors):
                     self.assertNotIn("radius", body)
-        fill = " ".join(
-            body
-            for selectors, body in rules
-            if ".year-grid-cell:before" in selectors.split(",")
-        )
-        for corner in ("tl", "tr", "br", "bl"):
+        source = self._compact_source()
+        for corner, first, second in (
+            ("tl", "top", "left"),
+            ("tr", "top", "right"),
+            ("br", "bottom", "right"),
+            ("bl", "bottom", "left"),
+        ):
             with self.subTest(corner=corner):
-                self.assertRegex(fill, rf"transition-delay:[^;]*--square-{corner}\b")
+                self.assertIn(
+                    f"--round-{corner}:calc(1-max(var(--side-{first}),"
+                    f"var(--side-{second})));",
+                    source,
+                )
+                self.assertRegex(
+                    source,
+                    r"transition-delay:0s,[^;]*calc\(var\(--year-fade\)\*"
+                    rf"var\(--round-{corner}\)\)",
+                )
 
     def test_a_range_has_its_own_state_class(self):
         # The shared `.is-selected` brings a ring and a tint that only source
@@ -1240,17 +1283,130 @@ class YearGridGapsFadeWithTheirTilesTests(SimpleTestCase):
 
     def test_reduced_motion_waits_for_nothing(self):
         # The delays are on generated boxes, and would split a snap in two.
-        source = self._source("theme/static_src/src/styles.css")
         block = re.search(
-            r"@media \(prefers-reduced-motion: reduce\) \{(.*?)\n\}", source, re.S
+            r"@media \(prefers-reduced-motion: reduce\) \{(.*?)\n\}",
+            self._source(self.SOURCE),
+            re.S,
         ).group(1)
         self.assertIn("*::before", block)
         self.assertIn("*::after", block)
         self.assertIn("transition-delay: 0s !important", block)
 
-    def test_a_corner_has_one_owner(self):
-        template = self._source("core/templates/core/includes/_year_grid.html")
-        self.assertEqual(
-            set(re.findall(r"corner-[a-z]+", template)),
-            {"corner-br"},
+    def test_keyboard_focus_shows_inside_a_range(self):
+        # The shared ring is primary, as the fill and everything around it are.
+        self.assertRegex(
+            self._source(self.BUILT),
+            r"\.year-grid-tile\.is-in-range:focus-visible\{[^}]*"
+            r"outline-color:var\(--color-primary-content\)",
         )
+
+    def test_a_range_survives_forced_colours(self):
+        # They drop every background and shadow, which is all a range is.
+        block = re.search(
+            r"@media \(forced-colors: active\) \{(.*?)\n\}",
+            self._source(self.SOURCE),
+            re.S,
+        ).group(1)
+        self.assertIn("--color-primary: Highlight", block)
+        self.assertIn(".year-grid-tile::before", block)
+        self.assertIn("forced-color-adjust: none", block)
+        # And the focus ring would be replaced by the fill's own colour.
+        self.assertRegex(
+            block,
+            r"\.year-grid-tile\.is-in-range:focus-visible[^{]*\{[^}]*"
+            r"outline-color: HighlightText",
+        )
+
+    def test_both_kinds_of_tile_carry_the_shared_classes(self):
+        # Every part of a range hangs off these two, and a tile without them
+        # loses its fill or its gaps with no error anywhere.
+        template = self._source("core/templates/core/includes/_year_grid.html")
+        self.assertIn('class="year-grid-tile year-grid-decade"', template)
+        self.assertIn('class="year-grid-tile year-grid-cell"', template)
+        self.assertIn('<span class="year-grid-tile-label"', template)
+        self.assertIn('class="year-grid-cell-label year-grid-tile-label"', template)
+
+    def test_a_focused_tile_outside_a_range_stays_on_top(self):
+        # A later tile's fill would otherwise cover the ring's outer pixel.
+        self.assertIn(
+            "z-index:1",
+            self._declarations(".year-grid-tile:not(.is-in-range):focus-visible"),
+        )
+
+    def test_hover_shows_on_a_tile_in_a_range(self):
+        # Primary on primary shows nothing, and the gap boxes lie over a tile's
+        # outer pixel, so the outline sits further in, on labels and cells
+        # alike. Only with a real pointer: a tap would leave it stuck on.
+        hover = self._declarations(".year-grid-tile.is-in-range:hover")
+        self.assertIn("var(--color-primary-content)", hover)
+        self.assertIn("outline-offset", hover)
+        self.assertRegex(
+            self._source(self.SOURCE),
+            r"@media \(hover: hover\) \{\s*\.year-grid-tile\.is-in-range:hover",
+        )
+
+    def test_a_junction_is_filled_from_the_sides_alone(self):
+        # A range has no holes, so no class has to say so: a tile sharing its
+        # left and top sides has the tile between them in range too.
+        template = self._source("core/templates/core/includes/_year_grid.html")
+        self.assertNotIn("corner-", template)
+        self.assertIn(
+            "--gap: calc(var(--side-left) * var(--side-top));",
+            self._source(self.SOURCE),
+        )
+
+
+class BackMustNotAnnounceAResetTests(SimpleTestCase):
+    """The mobile sheet answers `year-reset` by assigning the whole range.
+
+    `_syncFromUrl` announced it after restoring the URL's years, so Back on a
+    filtered page wiped them from the filters once the sheet had been opened.
+    """
+
+    def test_sync_from_url_announces_nothing(self):
+        source = (
+            Path(settings.BASE_DIR) / "core/static/core/js/media-list-controls.js"
+        ).read_text()
+        body = source[source.index("_syncFromUrl() {") :]
+        body = body[: body.index("/**")]
+        self.assertNotIn("year-reset", body)
+
+
+class FiltersBadgeCountsWhatNarrowsTheListTests(SimpleTestCase):
+    """The mobile badge said nothing for a status or playtime filter alone."""
+
+    def _source(self, relative_path):
+        return (Path(settings.BASE_DIR) / relative_path).read_text()
+
+    def test_the_badge_and_the_year_clear_ask_the_component(self):
+        template = self._source("games/templates/includes/_advanced_filters.html")
+        self.assertIn('<template x-if="hasNarrowingFilters()">', template)
+        self.assertIn('x-show="hasYearFilter()"', template)
+
+    def test_every_narrowing_filter_counts_and_no_sort_does(self):
+        source = self._source("games/static/games/js/filter-component.js")
+        body = source[source.index("hasNarrowingFilters() {") :]
+        body = body[: body.index("hasActiveFilters() {")]
+        for name in ("played", "genres", "platforms", "series"):
+            with self.subTest(name=name):
+                self.assertIn(f"this.filters.{name}", body)
+        self.assertIn("this.hasYearFilter()", body)
+        self.assertIn("this.hasPlaytimeFilter()", body)
+        self.assertNotIn("sort", body)
+
+
+class MusicHeadingKeepsItsHeightTests(SimpleTestCase):
+    """The row followed its text, so a filter moved the sidebar under it."""
+
+    def test_the_row_fits_its_tallest_content_whatever_the_filter(self):
+        template = (
+            Path(settings.BASE_DIR) / "music/templates/music/home.html"
+        ).read_text()
+        # 2 lines of text-3xl (2.25rem) and 1 of text-sm (1.25rem), in rems so
+        # that it holds at any font size. The chart is shorter than that.
+        self.assertIn('style="min-height: 5.75rem;"', template)
+        self.assertIn('class="text-3xl font-bold line-clamp-2"', template)
+        self.assertIn('<p class="text-base-content/70 text-sm flex">', template)
+        # The counts give way on a narrow window; the date never does.
+        self.assertIn('<span class="truncate"', template)
+        self.assertIn('<span class="shrink-0 whitespace-pre">', template)

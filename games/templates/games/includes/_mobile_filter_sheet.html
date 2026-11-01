@@ -205,7 +205,7 @@
                     Playtime (HowLongToBeat)
                     <span class="mdi mdi-chevron-right text-xl transition-transform duration-200" aria-hidden="true" :class="{ 'rotate-90': expanded }"></span>
                 </button>
-                <template x-if="filters.hltb_preset || filters.hltb_min !== null">
+                <template x-if="hasPlaytimeFilter()">
                     <span class="badge badge-primary badge-sm ml-2"
                           x-text="filters.hltb_preset === 'short' ? '<10h' : filters.hltb_preset === 'medium' ? '10-30h' : filters.hltb_preset === 'long' ? '30h+' : (filters.hltb_min || 0) + '-' + (filters.hltb_max || '∞') + 'h'"></span>
                 </template>
@@ -215,7 +215,7 @@
                         class="btn btn-ghost btn-xs ml-2 text-base-content/70 hover:text-error"
                         title="Clear playtime filter"
                         x-cloak
-                        x-show="filters.hltb_preset || filters.hltb_min !== null">
+                        x-show="hasPlaytimeFilter()">
                     <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
                     <span class="text-xs">Clear</span>
                 </button>

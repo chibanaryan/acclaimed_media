@@ -116,18 +116,22 @@ var listenStatusOptions = JSON.parse(
      })">
 
 {# Page heading row - title on the left, matching the games layout widths #}
-<div id="search-heading" class="mb-4 hidden desktop:flex items-center gap-6" style="min-height: 80px;">
+{# Tall enough for a two-line title and the summary's line, and for the chart, so that neither moves the sidebar #}
+<div id="search-heading" class="mb-4 hidden desktop:flex items-center gap-6" style="min-height: 5.75rem;">
     <div class="min-w-0 flex-1 max-w-[calc(100%-357px-1.5rem)] flex flex-col justify-center">
         <h1 class="text-3xl font-bold line-clamp-2" id="search-title">
             <span id="search-title-text">{{ filter_title|default:"Most Acclaimed Albums" }}</span>
             <span class="ml-1">{% include 'music/includes/_beta_badge.html' %}</span>
         </h1>
-        <p class="text-base-content/70 text-sm">
-            The top {{ album_count|intcomma }} most recommended albums across
-            {{ list_count|intcomma }} critic lists from
-            {{ publication_count|intcomma }} publications.
+        {# One line, so the row keeps its height. The counts give way, not the date #}
+        <p class="text-base-content/70 text-sm flex">
+            <span class="truncate" title="The top {{ album_count|intcomma }} albums across {{ list_count|intcomma }} critic lists from {{ publication_count|intcomma }} publications.">
+                The top {{ album_count|intcomma }} albums across
+                {{ list_count|intcomma }} critic lists from
+                {{ publication_count|intcomma }} publications.
+            </span>
             {% if last_update %}
-            <span class="text-base-content/70">&middot; Updated: {{ last_update|date:"F j, Y" }}</span>
+            <span class="shrink-0 whitespace-pre"> &middot; Updated: {{ last_update|date:"F j, Y" }}</span>
             {% endif %}
         </p>
     </div>
