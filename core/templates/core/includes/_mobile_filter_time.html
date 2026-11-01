@@ -3,7 +3,6 @@
 {# Props: min_year, max_year from context #}
 
 <div x-data="mobileTimeFilterComponent({ filters, minYear: {{ min_year }}, maxYear: {{ max_year }} })"
-     @year-reset.window="filters.start = {{ min_year }}; filters.end = {{ max_year }};"
      class="space-y-3">
 
     {# Accordion Header #}
@@ -16,7 +15,7 @@
             <span class="mdi mdi-chevron-right text-xl transition-transform duration-200" aria-hidden="true" :class="{ 'rotate-90': expanded }"></span>
         </button>
         <template x-if="hasYearFilter()">
-            <span class="badge badge-primary badge-sm ml-2 whitespace-nowrap" x-text="filters.start === filters.end ? String.fromCharCode(39) + String(filters.start).slice(-2) : String.fromCharCode(39) + String(filters.start).slice(-2) + '-' + String.fromCharCode(39) + String(filters.end).slice(-2)"></span>
+            <span class="badge badge-primary badge-sm ml-2 whitespace-nowrap" x-text="shownStart() === shownEnd() ? String.fromCharCode(39) + String(shownStart()).slice(-2) : String.fromCharCode(39) + String(shownStart()).slice(-2) + '-' + String.fromCharCode(39) + String(shownEnd()).slice(-2)"></span>
         </template>
         <div class="flex-1"></div>
         <button type="button"
@@ -70,50 +69,51 @@
             </template>
         </div>
 
-        {# Single Year Select #}
-        <div x-show="mode === 'year'" class="space-y-3">
+        {# Single Year Select. Built only while open: every option carries effects #}
+        <template x-if="mode === 'year'">
+        <div class="space-y-3">
             <div>
                 <label class="text-xs text-base-content/70 mb-2 block">Select Year</label>
-                <select x-model.number="filters.start"
-                        aria-label="Year"
-                        @change="filters.end = filters.start; debouncedFilterUpdate()"
+                <select aria-label="Year"
+                        @change="pickYear($event.target.value); debouncedFilterUpdate()"
                         class="select select-bordered w-full">
-                    <option value="{{ min_year }}">All Years</option>
-                    <template x-for="year in Array.from({length: {{ max_year }} - {{ min_year }} + 1}, (_, i) => {{ max_year }} - i)" :key="year">
-                        <option :value="year" x-text="year"></option>
+                    <option value="" :selected="!hasYearFilter()">All Years</option>
+                    <template x-if="hasYearFilter() && singleYear() === null">
+                        <option value="" disabled selected>A range</option>
+                    </template>
+                    <template x-for="year in years" :key="year">
+                        <option :value="year" :selected="year === singleYear()" x-text="year"></option>
                     </template>
                 </select>
             </div>
         </div>
+        </template>
 
         {# Year Range Dropdowns #}
-        <div x-show="mode === 'range'" class="space-y-4">
+        <template x-if="mode === 'range'">
+        <div class="space-y-4">
             <div class="grid grid-cols-2 gap-3">
                 {# Start Year #}
                 <div>
                     <label class="text-xs text-base-content/70 mb-2 block">From</label>
-                    <select x-ref="startYear"
-                            aria-label="From year"
-                            x-model.number="filters.start"
-                            @change="if (filters.start > filters.end) filters.end = filters.start; debouncedFilterUpdate()"
+                    <select aria-label="From year"
+                            @change="pickFrom($event.target.value); debouncedFilterUpdate()"
                             class="select select-bordered w-full">
-                        {% for year in year_range reversed %}
-                        <option value="{{ year }}">{{ year }}</option>
-                        {% endfor %}
+                        <template x-for="year in years" :key="year">
+                            <option :value="year" :selected="year === shownStart()" x-text="year"></option>
+                        </template>
                     </select>
                 </div>
 
                 {# End Year #}
                 <div>
                     <label class="text-xs text-base-content/70 mb-2 block">To</label>
-                    <select x-ref="endYear"
-                            aria-label="To year"
-                            x-model.number="filters.end"
-                            @change="if (filters.end < filters.start) filters.start = filters.end; debouncedFilterUpdate()"
+                    <select aria-label="To year"
+                            @change="pickTo($event.target.value); debouncedFilterUpdate()"
                             class="select select-bordered w-full">
-                        {% for year in year_range reversed %}
-                        <option value="{{ year }}">{{ year }}</option>
-                        {% endfor %}
+                        <template x-for="year in years" :key="year">
+                            <option :value="year" :selected="year === shownEnd()" x-text="year"></option>
+                        </template>
                     </select>
                 </div>
             </div>
@@ -121,16 +121,17 @@
             {# Quick preset buttons #}
             <div class="flex flex-wrap gap-2 justify-center">
                 <button type="button"
-                        @click="filters.start = new Date().getFullYear() - 5; filters.end = new Date().getFullYear() - 1; debouncedFilterUpdate();"
+                        @click="pickLast(5); debouncedFilterUpdate();"
                         class="btn btn-outline btn-xs">
                     Last 5 years
                 </button>
                 <button type="button"
-                        @click="filters.start = new Date().getFullYear() - 10; filters.end = new Date().getFullYear() - 1; debouncedFilterUpdate();"
+                        @click="pickLast(10); debouncedFilterUpdate();"
                         class="btn btn-outline btn-xs">
                     Last 10 years
                 </button>
             </div>
         </div>
+        </template>
     </div>
 </div>

@@ -375,7 +375,9 @@ document.addEventListener('alpine:init', () => {
         },
 
         hasYearFilter() {
-            return this.filters.start > this.minYear || this.filters.end < this.maxYear;
+            return !isWholeYearRange(
+                this.filters.start, this.filters.end, this.minYear, this.maxYear
+            );
         },
 
         hasPlaytimeFilter() {
@@ -701,7 +703,9 @@ document.addEventListener('alpine:init', () => {
         },
 
         _buildDynamicTitle() {
-            const timeWindow = this._buildTimeWindow();
+            const timeWindow = buildTimeWindow(
+                this.filters.start, this.filters.end, this.minYear, this.maxYear
+            );
             const platformLabel = this._buildPlatformSegment();
             let genreLabel = '';
             let seriesLabel = '';
@@ -787,19 +791,6 @@ document.addEventListener('alpine:init', () => {
             }
 
             return titleParts;
-        },
-
-        _buildTimeWindow() {
-            const start = this.filters.start;
-            const end = this.filters.end;
-            if (!start || !end) return '';
-            if (start <= this.minYear && end >= this.maxYear) return 'All Time';
-            if (start === end) return String(start);
-            if (start % 10 === 0 && end === start + 9) return 'the ' + start + 's';
-            if (end < this.minYear || start > this.maxYear) return start + '-' + end;
-            const first = Math.max(start, this.minYear);
-            const last = Math.min(end, this.maxYear);
-            return first === last ? String(first) : first + '-' + last;
         },
 
         _buildPlatformSegment() {
@@ -903,7 +894,6 @@ document.addEventListener('alpine:init', () => {
         resetYears() {
             this.filters.start = this.minYear;
             this.filters.end = this.maxYear;
-            this.$dispatch('year-reset');
             if (this.initialized) this.debouncedFilterUpdate();
         },
 
@@ -969,6 +959,7 @@ document.addEventListener('alpine:init', () => {
             this.filters.series = [];
             this.filters.played = [];
             this.filters.sort = 'rank';
+            this.filters.sortDirection = 'asc';
             this.filters.hltb_mode = 'main';
             this.filters.hltb_preset = '';
             this.filters.hltb_min = null;
@@ -976,7 +967,6 @@ document.addEventListener('alpine:init', () => {
             this.$dispatch('platforms-reset');
             this.$dispatch('genres-reset');
             this.$dispatch('series-reset');
-            this.$dispatch('year-reset');
             window.dispatchEvent(new CustomEvent('hltb-reset'));
             if (this.initialized) this.debouncedFilterUpdate();
             window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -991,7 +981,6 @@ document.addEventListener('alpine:init', () => {
             this.filters.genres = [];
             this.filters.platforms = [id];
             this.$dispatch('genres-reset');
-            this.$dispatch('year-reset');
             if (this.initialized) this.debouncedFilterUpdate();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         },
@@ -1005,7 +994,6 @@ document.addEventListener('alpine:init', () => {
             this.filters.genres = [];
             this.filters.platforms = ids;
             this.$dispatch('genres-reset');
-            this.$dispatch('year-reset');
             if (this.initialized) this.debouncedFilterUpdate();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         },
@@ -1019,7 +1007,6 @@ document.addEventListener('alpine:init', () => {
             this.filters.genres = [id];
             this.filters.platforms = [];
             this.$dispatch('platforms-reset');
-            this.$dispatch('year-reset');
             if (this.initialized) this.debouncedFilterUpdate();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         },
@@ -1033,7 +1020,6 @@ document.addEventListener('alpine:init', () => {
             this.filters.genres = ids;
             this.filters.platforms = [];
             this.$dispatch('platforms-reset');
-            this.$dispatch('year-reset');
             if (this.initialized) this.debouncedFilterUpdate();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         },

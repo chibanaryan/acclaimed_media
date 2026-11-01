@@ -72,20 +72,6 @@ function joinNames(names) {
     return names.slice(0, -1).join(', ') + ', and ' + names[names.length - 1];
 }
 
-/** The heading's time window, as core/services/titles.py builds it. */
-function buildTimeWindow(start, end, minYear, maxYear) {
-    if (start === null || end === null || start === undefined || end === undefined) {
-        return '';
-    }
-    if (start <= minYear && end >= maxYear) return 'All Time';
-    if (start === end) return String(start);
-    if (start % 10 === 0 && end === start + 9) return 'the ' + start + 's';
-    if (end < minYear || start > maxYear) return start + '-' + end;
-    const first = Math.max(start, minYear);
-    const last = Math.min(end, maxYear);
-    return first === last ? String(first) : first + '-' + last;
-}
-
 function mediaListControlsData(config) {
     const settings = config || {};
     const stored = readJsonScript(settings.filtersDataId || 'filters-data', null);
@@ -379,7 +365,6 @@ function mediaListControlsData(config) {
         resetYears() {
             this.filters.start = this.minYear;
             this.filters.end = this.maxYear;
-            window.dispatchEvent(new CustomEvent('year-reset'));
             this.debouncedFilterUpdate();
         },
 
@@ -400,7 +385,6 @@ function mediaListControlsData(config) {
                 const artists = form.querySelector('[name="artists"]');
                 if (artists) artists.value = '';
             }
-            window.dispatchEvent(new CustomEvent('year-reset'));
             window.dispatchEvent(new CustomEvent('genres-reset'));
             this.commit();
         },
@@ -418,8 +402,8 @@ function mediaListControlsData(config) {
         },
 
         hasYearFilter() {
-            return (
-                this.filters.start > this.minYear || this.filters.end < this.maxYear
+            return !isWholeYearRange(
+                this.filters.start, this.filters.end, this.minYear, this.maxYear
             );
         },
 
@@ -492,16 +476,12 @@ function mediaListControlsData(config) {
             if (artists) artists.value = '';
 
             this.savedFiltersOpen = false;
-            // Deliberately *not* announcing `year-reset` / `genres-reset`
-            // here. The mobile sheet's two subcomponents answer those by
-            // clearing `filters.start`, `filters.end` and `filters.genres`
-            // outright (see core/includes/_mobile_filter_time.html and
-            // _mobile_filter_genres.html), and the sheet shares this
-            // component's state at every width - so telling the sidebar to
-            // refresh wiped the very state just restored, leaving the sort
-            // applied and the genre and years silently dropped. The grid
-            // and the tree both derive their selected state from `filters`
-            // reactively, so they follow without being told.
+            // Deliberately *not* announcing `genres-reset` here. The mobile
+            // sheet answers it by clearing `filters.genres` outright (see
+            // core/includes/_mobile_filter_genres.html), and the sheet shares
+            // this component's state at every width, so telling the sidebar to
+            // refresh wiped the very state just restored. The tree derives its
+            // selected state from `filters` reactively, so it follows untold.
             this.commit();
             this._clearApplyingFlagSoon();
         },

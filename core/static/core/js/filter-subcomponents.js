@@ -698,10 +698,9 @@
                 return decadeStart >= range.start && decadeStart + 9 <= range.end;
             },
 
-            /** Past either end counts: a drag to the last decade ends at its 9. */
             isWholeRange: function (range) {
                 var checked = range || filters;
-                return checked.start <= minYear && checked.end >= maxYear;
+                return isWholeYearRange(checked.start, checked.end, minYear, maxYear);
             },
 
             /** A range covering everything is spelled as the bounds. */
@@ -1069,6 +1068,9 @@
             expanded: JSON.parse(localStorage.getItem("mobileFilterExpanded_time") || "true"),
             mode: "decade",
             decades: buildDecades(minYear, maxYear),
+            years: Array.from({ length: maxYear - minYear + 1 }, function (_, i) {
+                return maxYear - i;
+            }),
 
             isDecadeSelected: function (decade) {
                 return Number(filters.start) === decade.start && Number(filters.end) === decade.end;
@@ -1090,7 +1092,52 @@
             },
 
             hasYearFilter: function () {
-                return filters.start > minYear || filters.end < maxYear;
+                return !isWholeYearRange(filters.start, filters.end, minYear, maxYear);
+            },
+
+            /**
+             * A decade runs 2020-2029 past a last year of 2026, so show the
+             * years there are. A range with none of them stays as it was asked.
+             */
+            shownStart: function () {
+                return filters.end < minYear ? filters.start : Math.max(filters.start, minYear);
+            },
+
+            shownEnd: function () {
+                return filters.start > maxYear ? filters.end : Math.min(filters.end, maxYear);
+            },
+
+            /** The year the Year select can honestly show, if the range is one. */
+            singleYear: function () {
+                var year = this.shownStart();
+                return year === this.shownEnd() && year >= minYear && year <= maxYear ? year : null;
+            },
+
+            /** One year, or "All Years", whose value is empty. */
+            pickYear: function (value) {
+                if (value === "") {
+                    this.clearYears();
+                    return;
+                }
+                filters.start = Number(value);
+                filters.end = filters.start;
+            },
+
+            /** Each end pushes the other along rather than leave a range inside out. */
+            pickFrom: function (value) {
+                filters.start = Number(value);
+                filters.end = Math.max(filters.start, filters.end);
+            },
+
+            pickTo: function (value) {
+                filters.end = Number(value);
+                filters.start = Math.min(filters.start, filters.end);
+            },
+
+            /** The latest complete years there are, which on music stop well short of now. */
+            pickLast: function (count) {
+                filters.end = Math.min(new Date().getFullYear() - 1, maxYear);
+                filters.start = Math.max(filters.end - count + 1, minYear);
             },
 
             clearYears: function () {
@@ -1098,27 +1145,9 @@
                 filters.end = maxYear;
             },
 
-            syncRangeSelects: function () {
-                var self = this;
-                setTimeout(function () {
-                    if (self.$refs.startYear) {
-                        self.$refs.startYear.value = filters.start;
-                    }
-                    if (self.$refs.endYear) {
-                        self.$refs.endYear.value = filters.end;
-                    }
-                }, 50);
-            },
-
             init: function () {
-                var self = this;
                 this.$watch("expanded", function (val) {
                     localStorage.setItem("mobileFilterExpanded_time", JSON.stringify(val));
-                });
-                this.$watch("mode", function (val) {
-                    if (val === "range") {
-                        self.syncRangeSelects();
-                    }
                 });
             },
         };

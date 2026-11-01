@@ -87,7 +87,7 @@ the production-only install, the manifest-storage renders and the browser
 smoke test, none of which the pre-commit hook runs. Deploy a green commit:
 
 ```bash
-gh run list --branch main --limit 1
+gh run list --workflow ci.yml --branch main --limit 1
 gh run watch <run id> --exit-status
 ```
 

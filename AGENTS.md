@@ -675,17 +675,15 @@ change. The whole feature is inert unless the page passes a
 
 Four things worth knowing before changing any of it:
 
-- **Applying a saved filter must not announce `year-reset` or
-  `genres-reset`.** Those events do not mean "refresh yourselves":
-  `core/includes/_mobile_filter_time.html` answers `year-reset` by assigning
-  the full year range and `_mobile_filter_genres.html` answers
-  `genres-reset` by assigning `[]`, and **the mobile sheet shares the
-  rankings page's Alpine state at every width, desktop included**. So
-  dispatching them after restoring a combination wiped it: the sort and its
-  direction survived while the genre and the years were silently dropped,
-  and the heading went on naming the unfiltered page. The grid and the tree
-  derive their selected state from `filters` reactively and need no
-  telling. Pinned by
+- **Applying a saved filter must not announce `genres-reset`.** That event
+  does not mean "refresh yourselves": `_mobile_filter_genres.html` answers it
+  by assigning `[]`, and **the mobile sheet shares the rankings page's Alpine
+  state at every width, desktop included**. So dispatching it after restoring
+  a combination wiped it: the sort and its direction survived while the genre
+  was silently dropped, and the heading went on naming the unfiltered page.
+  `year-reset` did the same to the years, here and on Back, and went on
+  2026-11-01. The grid and the tree derive their selected state from `filters`
+  reactively and need no telling. Pinned by
   `core/tests/test_static_bundles.py::ApplyingASavedFilterMustNotAnnounceAResetTests`.
 - **`applyingSavedFilter` was a hook with nothing on the other end.**
   `core/includes/_year_grid.html` has always passed `isApplyingSavedFilter`

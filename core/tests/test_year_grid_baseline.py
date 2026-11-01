@@ -136,6 +136,31 @@ class YearGridScaleTests(SimpleTestCase):
             {"pressed": True, "dragged": False, "acrossDecades": [True, True]},
         )
 
+    def test_the_mobile_sheet_shows_the_years_there_are(self):
+        self.assertEqual(
+            self.output["sheet"],
+            {
+                # A range or a year outside the data shows "A range", not a year
+                "singleYear": [1990, None, None, 2026],
+                # Each end pushes the other along
+                "fromPastTo": [1990, 1990],
+                "toBeforeFrom": [1975, 1975],
+                # Complete years, and the data's latest where those stop earlier
+                "lastFiveOfOldData": [2015, 2019],
+                "lastFiveOfCurrentData": True,
+                "lastHundredOfOldData": [1952, 2019],
+                "pastTheEnd": [2020, 2026],
+                "beforeTheStart": [1971, 1979],
+                # Nothing to stop at: as the heading does, say what was asked
+                "aboveEverything": [2030, 2035],
+                "belowEverything": [1900, 1950],
+                "firstYearAndLast": [2026, 1971],
+                # "All Years" clears, and the first year is a year like any other
+                "allYears": [1971, 2026],
+                "firstYear": [1971, 1971],
+            },
+        )
+
     def test_a_second_click_on_a_lone_year_clears_it(self):
         self.assertEqual(self.output["secondClickClears"], [1950, 1999])
 

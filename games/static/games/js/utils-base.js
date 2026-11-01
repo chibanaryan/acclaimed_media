@@ -400,6 +400,27 @@ function normalizeUrl(url) {
 }
 
 /**
+ * Whether a range covers every year there is. A drag to the last decade's label
+ * ends at its 9, past a last year of 2026, so this cannot compare exactly.
+ */
+function isWholeYearRange(start, end, minYear, maxYear) {
+    return !(start > minYear || end < maxYear);
+}
+
+/** The heading's time window, as core/services/titles.py builds it. */
+function buildTimeWindow(start, end, minYear, maxYear) {
+    const unknown = year => year === null || year === undefined || Number.isNaN(year);
+    if (unknown(start) || unknown(end)) return '';
+    if (isWholeYearRange(start, end, minYear, maxYear)) return 'All Time';
+    if (start === end) return String(start);
+    if (start % 10 === 0 && end === start + 9) return 'the ' + start + 's';
+    const overlaps = end >= minYear && start <= maxYear;
+    const first = overlaps ? Math.max(start, minYear) : start;
+    const last = overlaps ? Math.min(end, maxYear) : end;
+    return first === last ? String(first) : first + '-' + last;
+}
+
+/**
  * Reads the SEO clean-URL map embedded by the home page template
  * (#seo-urls-data json_script). Cached after first parse.
  * @returns {Object|null} {genres: {id: slug}, platforms: {id: slug},
@@ -431,7 +452,7 @@ function seoCleanUrl(params, minYear, maxYear) {
     const p = new URLSearchParams(params.toString());
     const start = parseInt(p.get('start'));
     const end = parseInt(p.get('end'));
-    if (start <= minYear && end >= maxYear) {
+    if (isWholeYearRange(start, end, minYear, maxYear)) {
         p.delete('start');
         p.delete('end');
     }

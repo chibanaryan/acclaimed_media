@@ -69,6 +69,15 @@ const pages = [
                     if (button) button.click();
                 });
                 await new Promise(resolve => setTimeout(resolve, 800));
+                // And the year selects only once their mode is open
+                for (const mode of ['Year', 'Range']) {
+                    await page.evaluate(label => {
+                        const button = [...document.querySelectorAll('button')]
+                            .find(b => b.offsetParent && b.textContent.trim() === label);
+                        if (button) button.click();
+                    }, mode);
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                }
             }
             problems.push(...await page.evaluate(() => window.__csp));
             if (problems.length) {

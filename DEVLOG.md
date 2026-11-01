@@ -19,6 +19,11 @@
   database once (`--migrate-new`), and puts the venv on the session's `PATH`.
   `.claude/launch.json` is Conductor's Run button, `runserver` on a free port,
   and `.claude/worktrees/` is gitignored
+- **A shared whole-range check and one client time window.** Both live in
+  `utils-base.js` now. `year-reset`, which only ever wiped restored years, is
+  gone. The mobile sheet shows the years there are, "All Years" clears the year
+  rather than narrowing to the first one, and From and To work on music, where
+  they had always been empty
 
 ## 2026-10-31
 

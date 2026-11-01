@@ -287,25 +287,17 @@ class SavedFilterPartialsAreSharedTests(SimpleTestCase):
 
 
 class ApplyingASavedFilterMustNotAnnounceAResetTests(SimpleTestCase):
-    """Applying a saved filter must not announce `year-reset`/`genres-reset`.
+    """Applying a saved filter must not announce `genres-reset`.
 
-    Those two events do not mean "refresh yourselves". The mobile sheet's
-    subcomponents answer them by clearing the state outright -
-    `core/includes/_mobile_filter_time.html` assigns the full year range and
-    `_mobile_filter_genres.html` assigns `[]` - and the sheet shares the
-    rankings page's Alpine state at every width, desktop included.
-
-    So dispatching them *after* restoring a stored combination wiped it:
-    the sort and its direction survived, while the genre and the year range
-    silently did not, and the heading went on naming the unfiltered page.
-    Caught in a real browser, because every server-side test passed and the
-    stored JSON was correct throughout.
-
-    The selected state in both controls is derived from `filters`
-    reactively, so neither needs telling.
+    The event does not mean "refresh yourselves": the mobile sheet shares the
+    rankings page's state at every width, and answers it by assigning `[]`, so
+    dispatching it dropped the genre just restored while the heading went on
+    naming the unfiltered page. Caught in a real browser, because every
+    server-side test passed and the stored JSON was correct throughout. The tree
+    derives its selected state from `filters` reactively, so it needs no telling.
     """
 
-    RESET_EVENTS = ("year-reset", "genres-reset")
+    RESET_EVENTS = ("genres-reset",)
 
     def _apply_body(self, relative_path):
         source = (Path(settings.BASE_DIR) / relative_path).read_text()
@@ -321,18 +313,13 @@ class ApplyingASavedFilterMustNotAnnounceAResetTests(SimpleTestCase):
             line for line in body[:end].split("\n") if not line.strip().startswith("//")
         )
 
-    def test_the_mobile_subcomponents_really_do_clear_on_reset(self):
-        # The premise of the rule above. If these ever stop clearing state,
-        # the rule stops being necessary and this suite should be revisited.
-        time_sheet = (
-            Path(settings.BASE_DIR)
-            / "core/templates/core/includes/_mobile_filter_time.html"
-        ).read_text()
+    def test_the_genre_sheet_really_does_clear_on_reset(self):
+        # The premise of the rule above. If this ever stops clearing state, the
+        # rule stops being necessary and this suite should be revisited.
         genre_sheet = (
             Path(settings.BASE_DIR)
             / "core/templates/core/includes/_mobile_filter_genres.html"
         ).read_text()
-        self.assertIn('@year-reset.window="filters.start', time_sheet)
         self.assertIn('@genres-reset.window="filters.genres = []', genre_sheet)
 
     def test_applying_drops_an_artist_the_page_was_opened_with(self):
@@ -1356,20 +1343,24 @@ class YearGridGapsFadeWithTheirTilesTests(SimpleTestCase):
         )
 
 
-class BackMustNotAnnounceAResetTests(SimpleTestCase):
-    """The mobile sheet answers `year-reset` by assigning the whole range.
+class NothingAnnouncesAYearResetTests(SimpleTestCase):
+    """The event's one listener assigned the whole range, and it did no more.
 
-    `_syncFromUrl` announced it after restoring the URL's years, so Back on a
-    filtered page wiped them from the filters once the sheet had been opened.
+    Every dispatcher had already set the bounds, so all it could do was wipe
+    years just restored: a saved filter's, and then Back's once the mobile
+    sheet had been opened.
     """
 
-    def test_sync_from_url_announces_nothing(self):
-        source = (
-            Path(settings.BASE_DIR) / "core/static/core/js/media-list-controls.js"
-        ).read_text()
-        body = source[source.index("_syncFromUrl() {") :]
-        body = body[: body.index("/**")]
-        self.assertNotIn("year-reset", body)
+    def test_the_event_is_gone(self):
+        for path in (
+            "core/static/core/js/media-list-controls.js",
+            "games/static/games/js/filter-component.js",
+            "core/templates/core/includes/_mobile_filter_time.html",
+        ):
+            with self.subTest(path=path):
+                self.assertNotIn(
+                    "year-reset", (Path(settings.BASE_DIR) / path).read_text()
+                )
 
 
 class FiltersBadgeCountsWhatNarrowsTheListTests(SimpleTestCase):
@@ -1393,6 +1384,40 @@ class FiltersBadgeCountsWhatNarrowsTheListTests(SimpleTestCase):
         self.assertIn("this.hasYearFilter()", body)
         self.assertIn("this.hasPlaytimeFilter()", body)
         self.assertNotIn("sort", body)
+
+
+class ClearAllResetsTheSortDirectionTests(SimpleTestCase):
+    """It reset the sort and left the list reversed, with the URL's dir=desc."""
+
+    def test_the_direction_is_reset_with_the_sort(self):
+        source = (
+            Path(settings.BASE_DIR) / "games/static/games/js/filter-component.js"
+        ).read_text()
+        body = source[source.index("resetAllFilters() {") :]
+        body = body[: body.index("this.$dispatch")]
+        self.assertIn("this.filters.sortDirection = 'asc';", body)
+
+
+class MobileSheetBuildsItsOwnYearOptionsTests(SimpleTestCase):
+    """Only games set `year_range`, so From and To were empty on music.
+
+    The options come from the component now, once the sheet is open: three
+    server-rendered lists cost ~7 KB on every rankings page. They mark
+    themselves selected, because a select's `:value` runs before an `x-for` has
+    made anything to select. What they show is pinned in test_year_grid_baseline.
+    """
+
+    def test_every_select_lists_the_components_years(self):
+        template = (
+            Path(settings.BASE_DIR)
+            / "core/templates/core/includes/_mobile_filter_time.html"
+        ).read_text()
+        self.assertEqual(template.count('x-for="year in years"'), 3)
+        # Only the open mode's selects exist: every option carries effects.
+        self.assertIn("""<template x-if="mode === 'year'">""", template)
+        self.assertIn("""<template x-if="mode === 'range'">""", template)
+        self.assertNotIn("year_range", template)
+        self.assertIn('<option value="" :selected="!hasYearFilter()">', template)
 
 
 class MusicHeadingKeepsItsHeightTests(SimpleTestCase):

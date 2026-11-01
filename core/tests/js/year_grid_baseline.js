@@ -28,12 +28,13 @@ globalThis.CustomEvent = class { constructor(type, init) { this.type = type; thi
 globalThis.addEventListener = noop;
 globalThis.removeEventListener = noop;
 globalThis.dispatchEvent = noop;
+globalThis.localStorage = { getItem: () => null, setItem: noop };
 
 const factories = {};
 globalThis.Alpine = { data: (name, factory) => { factories[name] = factory; } };
-vm.runInThisContext(
-    fs.readFileSync(path.join(root, 'core/static/core/js/filter-subcomponents.js'), 'utf8')
-);
+for (const file of ['games/static/games/js/utils-base.js', 'core/static/core/js/filter-subcomponents.js']) {
+    vm.runInThisContext(fs.readFileSync(path.join(root, file), 'utf8'), { filename: file });
+}
 documentListeners['alpine:init'].forEach(handler => handler());
 
 const filtered = [{ year: 1970, count: 1 }, { year: 1971, count: 0 }, { year: 1972, count: 0 }];
@@ -233,8 +234,61 @@ const afterTheRelease = async () => {
     };
 };
 
+// The mobile sheet, for ranges past either end and for none in the years there are.
+const sheet = (start, end) => {
+    const filters = { start, end };
+    const component = factories.mobileTimeFilterComponent({ filters, minYear: 1971, maxYear: 2026 });
+    return { filters, component };
+};
+const sheetCases = () => {
+    const shown = (start, end) => {
+        const { component } = sheet(start, end);
+        return [component.shownStart(), component.shownEnd()];
+    };
+    const allYears = sheet(1990, 1999);
+    allYears.component.pickYear('');
+    const firstYear = sheet(1971, 2026);
+    firstYear.component.pickYear('1971');
+    const picked = (start, end, act) => {
+        const { filters, component } = sheet(start, end);
+        act(component);
+        return [filters.start, filters.end];
+    };
+    return {
+        singleYear: [sheet(1990, 1990), sheet(1990, 1999), sheet(1900, 1900), sheet(2026, 2029)].map(
+            ({ component }) => component.singleYear()
+        ),
+        fromPastTo: picked(1980, 1985, component => component.pickFrom('1990')),
+        toBeforeFrom: picked(1980, 1985, component => component.pickTo('1975')),
+        lastFiveOfOldData: (() => {
+            const filters = { start: 1952, end: 2019 };
+            factories.mobileTimeFilterComponent({ filters, minYear: 1952, maxYear: 2019 }).pickLast(5);
+            return [filters.start, filters.end];
+        })(),
+        lastFiveOfCurrentData: (() => {
+            const lastYear = new Date().getFullYear();
+            const filters = { start: 1971, end: lastYear };
+            factories.mobileTimeFilterComponent({ filters, minYear: 1971, maxYear: lastYear }).pickLast(5);
+            return filters.end === lastYear - 1 && filters.start === lastYear - 5;
+        })(),
+        lastHundredOfOldData: (() => {
+            const filters = { start: 1952, end: 2019 };
+            factories.mobileTimeFilterComponent({ filters, minYear: 1952, maxYear: 2019 }).pickLast(100);
+            return [filters.start, filters.end];
+        })(),
+        pastTheEnd: shown(2020, 2029),
+        beforeTheStart: shown(1970, 1979),
+        aboveEverything: shown(2030, 2035),
+        belowEverything: shown(1900, 1950),
+        firstYearAndLast: sheet(1971, 2026).component.years.filter(year => year === 1971 || year === 2026),
+        allYears: [allYears.filters.start, allYears.filters.end],
+        firstYear: [firstYear.filters.start, firstYear.filters.end],
+    };
+};
+
 afterTheRelease().then(timing => process.stdout.write(JSON.stringify({
     timing,
+    sheet: sheetCases(),
     neighbours: {
         rightOntoFilledCell: gappy.hasSelectedRight(1970),
         belowOntoFilledCell: gappy.hasSelectedBelow(1981),

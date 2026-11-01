@@ -38,9 +38,9 @@ def build_time_window(start_year, end_year, min_year, max_year):
     if start_year % 10 == 0 and end_year == start_year + 9:
         return f"the {start_year}s"
     # A drag to a decade's label runs to its 9, past a last year of 2026, and
-    # a heading should not name years with nothing in them.
-    if end_year < min_year or start_year > max_year:
-        return f"{start_year}-{end_year}"
-    first = max(start_year, min_year)
-    last = min(end_year, max_year)
+    # a heading should not name years with nothing in them. A range with nothing
+    # in it at all says what was asked for.
+    overlaps = end_year >= min_year and start_year <= max_year
+    first = max(start_year, min_year) if overlaps else start_year
+    last = min(end_year, max_year) if overlaps else end_year
     return str(first) if first == last else f"{first}-{last}"
