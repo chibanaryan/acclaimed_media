@@ -26,6 +26,9 @@ Use these skills for common workflows:
 Import the music ranking release with `python manage.py import_music_data`,
 then populate its metadata with `/music-metadata`
 (`python manage.py fetch_album_metadata`).
+`python manage.py import_games_data` loads the games release from the
+command line, as the staff import page does; both default to the files in
+`acclaimedgames/test_input_files/`.
 
 ### Review before merging
 
@@ -1987,13 +1990,17 @@ opening on the landing page.
 A Claude Code **cloud session** (claude.ai/code, `CLAUDE_CODE_REMOTE=true`)
 is a fresh Linux clone with nothing to link or copy, and it cannot reach the
 Mac's checkout, whose venv would not run there anyway. So the same hook runs
-`scripts/setup_cloud.sh` first: it builds a venv on `.python-version`'s
-Python with `uv`, migrates a new `db.sqlite3`, and loads the release files in
-`acclaimedgames/test_input_files/`, about 20 s with uv's download cache warm.
-That is the rankings alone, with no covers, genres, playtimes or accounts:
-the fetchers and `sync_from_prod` need credentials the session does not
-have. Later starts cost ~2 s and print nothing. No environment setup script
-is needed.
+`scripts/setup_cloud.sh` in the main checkout first: it builds a venv on
+`.python-version`'s Python with `uv`, migrates a new `db.sqlite3`, and loads
+the release files in `acclaimedgames/test_input_files/` (`import_games_data`,
+`import_music_data`), about 20 s with uv's download cache warm. A worktree in
+the session then links and copies them as usual. That is the rankings alone,
+with no covers, genres, playtimes or accounts: the fetchers and
+`sync_from_prod` need credentials the session does not have. Later starts
+boot nothing and print nothing, unless a lock file or `.python-version`
+changed, which re-syncs the venv; a migration a branch adds later still needs
+`manage.py migrate`. A failure is printed to the session, not hidden. No
+environment setup script is needed.
 
 The shared venv lives in the main checkout and is built on Homebrew's
 `python@3.14`, kept on the patch release production runs (check with

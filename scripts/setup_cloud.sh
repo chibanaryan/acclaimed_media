@@ -8,85 +8,96 @@
 #
 #   - venv/ on .python-version's Python, from both locks, with uv
 #   - db.sqlite3, migrated, holding the release files checked into
-#     acclaimedgames/test_input_files/: the games and album rankings
+#     acclaimedgames/test_input_files/ (import_games_data, import_music_data)
 #
 # The data is the rankings alone. Covers, genres, playtimes and accounts come
 # from the metadata fetchers or `sync_from_prod`, neither of which runs here.
 #
-# scripts/setup_worktree.sh, the SessionStart hook, runs it whenever
-# CLAUDE_CODE_REMOTE is true, before it puts the venv on PATH, so a cloud
-# session needs no environment setup script. It provisions the checkout it is
-# run in, not the one it lives in, as setup_worktree.sh does.
+# scripts/setup_worktree.sh, the SessionStart hook, runs it in the main
+# checkout whenever CLAUDE_CODE_REMOTE is true, before it links a worktree to
+# that venv and copies it that database, and before it puts the venv on PATH.
+# It provisions the checkout it is run in, not the one it lives in.
 #
-# Idempotent, and silent when there is nothing to do, because the hook runs on
-# every start, resume, /clear and /compact: a venv that already has Django is
-# kept, and each section is imported only while it is empty, so a re-run after
-# a failure picks up where it stopped. About 2 s once provisioned.
+# The hook runs on every start, resume, /clear and /compact, so once
+# provisioned this boots nothing and prints nothing:
+#   - the venv is rebuilt when its Python is not .python-version's, and
+#     re-synced when either lock or .python-version changes (a stamp in the
+#     venv records the last sync);
+#   - the database is set up once, recorded by a marker in the git directory.
+#     A branch that adds a migration later needs `manage.py migrate`, as a
+#     worktree does.
 
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
 PY_VERSION="$(cat .python-version)"
+STAMP=venv/.setup-cloud-stamp
+WANT_STAMP="$(cat .python-version requirements.txt requirements-dev.txt | sha256sum | cut -d' ' -f1)"
+DONE="$(git rev-parse --absolute-git-dir)/setup-cloud-done"
 
-if ! command -v uv >/dev/null 2>&1; then
-    export PATH="$HOME/.local/bin:$PATH"
-fi
-if ! command -v uv >/dev/null 2>&1; then
-    echo "Installing uv"
-    python3 -m pip install --quiet --user uv
-fi
+ensure_uv() {
+    if ! command -v uv >/dev/null 2>&1; then
+        export PATH="$HOME/.local/bin:$PATH"
+    fi
+    if ! command -v uv >/dev/null 2>&1; then
+        echo "Installing uv"
+        # A distro's Python refuses --user installs (PEP 668) unless told to.
+        python3 -m pip install --quiet --user uv 2>/dev/null \
+            || python3 -m pip install --quiet --user --break-system-packages uv
+    fi
+}
 
-if ! venv/bin/python -c 'import django' >/dev/null 2>&1; then
+venv_python="$(venv/bin/python -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || true)"
+
+if [ "$venv_python" != "$PY_VERSION" ]; then
     echo "Building venv on Python $PY_VERSION"
-    uv python install "$PY_VERSION"
+    ensure_uv
+    uv python install --quiet "$PY_VERSION"
     rm -rf venv
     uv venv --quiet --python "$PY_VERSION" venv
-    uv pip install --quiet --python venv/bin/python \
-        -r requirements.txt -r requirements-dev.txt
 fi
 
-export DEBUG=True
+if [ "$(cat "$STAMP" 2>/dev/null || true)" != "$WANT_STAMP" ]; then
+    echo "Installing requirements.txt and requirements-dev.txt"
+    ensure_uv
+    uv pip install --quiet --python venv/bin/python \
+        -r requirements.txt -r requirements-dev.txt
+    echo "$WANT_STAMP" >"$STAMP"
+fi
 
-venv/bin/python manage.py migrate --noinput --skip-checks >/dev/null
+if [ -f db.sqlite3 ] && [ -f "$DONE" ]; then
+    exit 0
+fi
+# Cleared first: a failed run leaves a migrated db.sqlite3 behind, which with
+# an old marker would read as finished and never be retried.
+rm -f "$DONE"
 
-venv/bin/python manage.py shell -v 0 <<'EOF'
+# One Django boot for all three steps. DEBUG gives settings its development
+# SECRET_KEY, as runserver's DEBUG=True does.
+DEBUG=True venv/bin/python manage.py shell -v 0 <<'EOF'
+from contextlib import redirect_stdout
 from io import StringIO
-from pathlib import Path
 
 from django.core.management import call_command
 
 from games.models import Game
-from games.services.import_handler import import_batch
 from music.models import Album
 
-release = Path("acclaimedgames/test_input_files")
+# Data migrations print() their progress past `stdout=`, so catch that too.
+with redirect_stdout(StringIO()):
+    call_command("migrate", interactive=False, skip_checks=True, stdout=StringIO())
 
-imported = False
-
+# Each section is imported only while it is empty, so a re-run after a failure
+# picks up where it stopped.
 if not Game.objects.exists():
     print("Importing the games release")
-    imported = True
-    files = {
-        "platforms_file": "PlatformDB.txt",
-        "lists_file": "SourceLists.txt",
-        "games_file": "Top1400.txt",
-        "memberships_file": "GamePositions.txt",
-    }
-    handles = {key: open(release / name, "rb") for key, name in files.items()}
-    try:
-        ok, message = import_batch(handles)
-    finally:
-        for handle in handles.values():
-            handle.close()
-    if not ok:
-        raise SystemExit(f"Games import failed: {message}")
-
+    call_command("import_games_data", stdout=StringIO())
 if not Album.objects.exists():
     print("Importing the music release")
-    imported = True
     call_command("import_music_data", stdout=StringIO())
 
-if imported:
-    print(f"Ready: {Game.objects.count()} games, {Album.objects.count()} albums")
+print(f"Database ready: {Game.objects.count()} games, {Album.objects.count()} albums")
 EOF
+
+touch "$DONE"

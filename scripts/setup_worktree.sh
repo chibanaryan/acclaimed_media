@@ -8,8 +8,8 @@
 #
 # Idempotent, and a no-op in the main checkout, so it is safe to call from a
 # worktree manager's setup hook or a SessionStart hook on every session. The
-# exception is a Claude Code cloud session, which has no main checkout to
-# share from: there it hands over to scripts/setup_cloud.sh.
+# exception is a Claude Code cloud session, whose main checkout starts with
+# nothing to share: there scripts/setup_cloud.sh provisions it first.
 #
 #   scripts/setup_worktree.sh               provision the current worktree
 #   scripts/setup_worktree.sh --no-migrate  skip applying this branch's migrations
@@ -129,13 +129,24 @@ activate_venv() {
 }
 trap activate_venv EXIT
 
-# A Claude Code cloud session is a fresh Linux clone with no main checkout of
-# ours to link or copy from, so it builds its own venv and database instead,
-# before the main-checkout exit below and before activate_venv looks for the
-# venv. A failure warns rather than aborting, so the rest still runs.
+# A Claude Code cloud session is a fresh Linux clone, so its main checkout has
+# no venv or database for a worktree to link or copy. Build them there first:
+# before the main-checkout exit below, before a worktree links to them, and
+# before activate_venv looks for the venv.
+#
+# A failure warns rather than aborting, so the rest still runs, and the
+# warning goes to stdout: a SessionStart hook's stdout reaches the session,
+# while its stderr is not shown when it exits 0.
 if [ "${CLAUDE_CODE_REMOTE:-}" = true ]; then
-    "$ROOT/scripts/setup_cloud.sh" \
-        || echo "  WARNING: scripts/setup_cloud.sh failed - run it to see why" >&2
+    if cloud_output="$(cd "$ROOT" && "$ROOT/scripts/setup_cloud.sh" 2>&1)"; then
+        if [ -n "$cloud_output" ]; then
+            echo "$cloud_output"
+        fi
+    else
+        echo "WARNING: scripts/setup_cloud.sh failed, so the venv or the" \
+            "database may be missing. Its last output:"
+        echo "$cloud_output" | tail -n 20
+    fi
 fi
 
 if [ "$WORKTREE" = "$ROOT" ]; then

@@ -1,7 +1,11 @@
 import unittest
+from io import StringIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest import mock
 
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 
 from .. import models, utils
@@ -932,3 +936,65 @@ class RefreshAllMetadataCommandTests(TestCase):
     def test_wikipedia_genre_normalization(self):
         """Test that Wikipedia genres are normalized to canonical forms."""
         pass
+
+
+class ImportGamesDataCommandTests(TestCase):
+    """``import_games_data`` loads the four release files, as the import page does."""
+
+    FILES = {
+        "platforms": ("PlatformDB.txt", "PC\tPersonal Computer\r\n"),
+        "lists": (
+            "SourceLists.txt",
+            "Edge\t2024\tAll Time\tTop 100 Games\thttps://example.com/list\r\n",
+        ),
+        "games": (
+            "Top1400.txt",
+            "1\tFirst Game\t1990\tPC\t101\tQ1\r\n"
+            "2\tSecond Game\t1995\tPC\t102\tQ2\r\n",
+        ),
+        "positions": ("GamePositions.txt", "0:1\r\n0:2\r\n"),
+    }
+
+    def setUp(self):
+        self.dir = Path(self.enterContext(TemporaryDirectory()))
+        self.paths = {}
+        for key, (name, text) in self.FILES.items():
+            (self.dir / name).write_text(text, encoding="utf-8", newline="")
+            self.paths[key] = str(self.dir / name)
+
+    def run_command(self):
+        out = StringIO()
+        call_command("import_games_data", stdout=out, **self.paths)
+        return out.getvalue()
+
+    def test_imports_the_four_files(self):
+        output = self.run_command()
+        self.assertEqual(
+            list(models.Game.objects.order_by("rank").values_list("name", "rank")),
+            [("First Game", 1), ("Second Game", 2)],
+        )
+        self.assertEqual(models.ListMembership.objects.count(), 2)
+        self.assertIn("Games: 2 created", output)
+        self.assertIn("Games: 2 | Platforms: 1 | Lists: 1 | Memberships: 2", output)
+
+    def test_a_missing_file_is_named(self):
+        self.paths["games"] = str(self.dir / "Missing.txt")
+        with self.assertRaisesMessage(CommandError, "--games file not found"):
+            self.run_command()
+        self.assertFalse(models.Game.objects.exists())
+
+    def test_a_failed_import_fails_the_command(self):
+        with mock.patch(
+            "games.management.commands.import_games_data.import_batch",
+            return_value=(False, "Games import failed: bad row"),
+        ):
+            with self.assertRaisesMessage(CommandError, "bad row"):
+                self.run_command()
+
+    def test_the_defaults_are_the_checked_in_release(self):
+        from games.management.commands import import_games_data
+
+        parser = import_games_data.Command().create_parser("manage.py", "x")
+        defaults = vars(parser.parse_args([]))
+        for key in self.FILES:
+            self.assertTrue(Path(defaults[key]).is_file(), defaults[key])
