@@ -1982,7 +1982,9 @@ database, as Conductor does once at creation; a branch that adds a migration
 later still needs `manage.py migrate`. It also writes the venv onto `PATH`
 through `$CLAUDE_ENV_FILE`, so `python` and `pytest` in a session are the
 venv's, in the main checkout too. The worktrees live in `.claude/worktrees/`,
-which is gitignored.
+which is gitignored. Conductor's Run button is `.claude/launch.json` in the
+desktop app: `runserver` on a free port the app picks and passes as `$PORT`,
+opening on the landing page.
 
 The shared venv lives in the main checkout and is built on Homebrew's
 `python@3.14`, kept on the patch release production runs (check with
