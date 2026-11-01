@@ -907,6 +907,15 @@ def import_batch_with_progress(data: Dict[str, Any]):
         yield f"data: {json.dumps({'event': 'error', 'message': IMPORT_FAILED})}\n\n"
 
 
+class _BatchFailed(Exception):
+    """Raised inside import_batch's transaction to roll it back, carrying
+    the (success, message) result to return once it has."""
+
+    def __init__(self, result: Tuple[bool, str]):
+        super().__init__(result[1])
+        self.result = result
+
+
 def import_batch(data: Dict[str, Any]) -> Tuple[bool, str]:
     """
     Import multiple files in the correct order with transaction safety.
@@ -943,12 +952,14 @@ def import_batch(data: Dict[str, Any]) -> Tuple[bool, str]:
                 if not file_obj:
                     continue
 
-                # Validate prerequisites
+                # Both failures raise rather than return: a return leaves the
+                # atomic block normally, which commits every file imported so
+                # far - and import_games deletes all the games before its
+                # first row, so a bad row lost them.
                 validation_error = _validate_prerequisites(import_type)
                 if validation_error:
-                    return validation_error
+                    raise _BatchFailed(validation_error)
 
-                # Import the file
                 try:
                     f = TextIOWrapper(file_obj, encoding="utf-8")
                     success, message = handler(f)
@@ -957,7 +968,9 @@ def import_batch(data: Dict[str, Any]) -> Tuple[bool, str]:
                     if field_name == "games_file":
                         games_file_imported = True
                 except Exception as e:
-                    return (False, f"{display_name} import failed: {e}")
+                    raise _BatchFailed(
+                        (False, f"{display_name} import failed: {e}")
+                    ) from e
 
         # If we get here, all imports succeeded
         if not results:
@@ -974,6 +987,8 @@ def import_batch(data: Dict[str, Any]) -> Tuple[bool, str]:
         summary = "\n".join(results)
         return (True, summary)
 
+    except _BatchFailed as failed:
+        return failed.result
     except Exception as e:
         return (False, f"Import transaction failed: {e}")
 

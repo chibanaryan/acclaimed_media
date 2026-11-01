@@ -21,8 +21,8 @@
 # The hook runs on every start, resume, /clear and /compact, so once
 # provisioned this boots nothing and prints nothing:
 #   - the venv is rebuilt when its Python is not .python-version's, and
-#     re-synced when either lock or .python-version changes (a stamp in the
-#     venv records the last sync);
+#     synced to the locks when either lock or .python-version changes (a
+#     stamp in the venv records the last sync);
 #   - the database is set up once, recorded by a marker in the git directory.
 #     A branch that adds a migration later needs `manage.py migrate`, as a
 #     worktree does.
@@ -32,6 +32,9 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 PY_VERSION="$(cat .python-version)"
+# The venv is compared on major.minor, which is all a patch-pinned
+# .python-version (3.14.6) can be checked against without a rebuild per start.
+PY_MINOR="$(echo "$PY_VERSION" | cut -d. -f1,2)"
 STAMP=venv/.setup-cloud-stamp
 WANT_STAMP="$(cat .python-version requirements.txt requirements-dev.txt | sha256sum | cut -d' ' -f1)"
 DONE="$(git rev-parse --absolute-git-dir)/setup-cloud-done"
@@ -50,7 +53,7 @@ ensure_uv() {
 
 venv_python="$(venv/bin/python -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || true)"
 
-if [ "$venv_python" != "$PY_VERSION" ]; then
+if [ "$venv_python" != "$PY_MINOR" ]; then
     echo "Building venv on Python $PY_VERSION"
     ensure_uv
     uv python install --quiet "$PY_VERSION"
@@ -59,10 +62,12 @@ if [ "$venv_python" != "$PY_VERSION" ]; then
 fi
 
 if [ "$(cat "$STAMP" 2>/dev/null || true)" != "$WANT_STAMP" ]; then
-    echo "Installing requirements.txt and requirements-dev.txt"
+    echo "Syncing the venv to requirements.txt and requirements-dev.txt"
     ensure_uv
-    uv pip install --quiet --python venv/bin/python \
-        -r requirements.txt -r requirements-dev.txt
+    # sync, not install: a package the locks dropped is removed, as a fresh
+    # Heroku build would not have it either.
+    uv pip sync --quiet --python venv/bin/python \
+        requirements.txt requirements-dev.txt
     echo "$WANT_STAMP" >"$STAMP"
 fi
 

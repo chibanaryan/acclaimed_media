@@ -1475,6 +1475,41 @@ class ImportDataTests(TestCase):
         self.assertFalse(success)
         self.assertIn("failed", message.lower())
 
+    def test_a_bad_row_rolls_the_whole_batch_back(self):
+        # import_games deletes every game before its first row, so a failure
+        # that commits loses the stored games along with the new platform.
+        models.Platform.objects.get_or_create(code="PC", defaults={"name": "PC"})
+        stored, _ = utils.import_batch(
+            {"games_file": SimpleUploadedFile("g", b"1\tKept\t1990\tPC\t1\tQ1\r\n")}
+        )
+        self.assertTrue(stored)
+        success, message = utils.import_batch(
+            {
+                "platforms_file": SimpleUploadedFile("p", b"N64\tNintendo 64\r\n"),
+                "games_file": SimpleUploadedFile(
+                    "g", b"1\tNew\t1990\tPC\t1\tQ1\r\n2\tShort row\r\n"
+                ),
+            }
+        )
+        self.assertFalse(success)
+        self.assertIn("Games import failed", message)
+        self.assertEqual(list(models.Game.objects.values_list("name")), [("Kept",)])
+        self.assertFalse(models.Platform.objects.filter(code="N64").exists())
+
+    def test_a_failed_prerequisite_rolls_back_the_files_before_it(self):
+        models.Platform.objects.all().delete()
+        success, message = utils.import_batch(
+            {
+                "lists_file": SimpleUploadedFile(
+                    "l", b"Edge\t2024\tAll Time\tTop 100\thttps://example.com\r\n"
+                ),
+                "memberships_file": SimpleUploadedFile("m", b"0:1\r\n"),
+            }
+        )
+        self.assertFalse(success)
+        self.assertIn("No games found", message)
+        self.assertFalse(models.List.objects.exists())
+
     def test_import_batch_exception_in_transaction(self):
         """Test import_batch exception in transaction block (lines 374-375)."""
 
