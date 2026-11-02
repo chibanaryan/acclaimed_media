@@ -44,7 +44,7 @@ django==6.1.2
     #   django-tailwind
     #   djangorestframework
     #   sentry-sdk
-django-allauth==65.20.1
+django-allauth==65.21.0
     # via -r requirements.in
 django-cors-headers==4.9.0
     # via -r requirements.in
