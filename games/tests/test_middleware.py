@@ -173,6 +173,32 @@ class HTMXPushURLMiddlewareTest(TestCase):
 
         self.assertEqual(response["HX-Push-URL"], "/developers/?q=nintendo")
 
+    def test_a_load_more_page_is_not_pushed(self):
+        """An `?append=true` page is rows to append, not an address.
+
+        Pushed, a server Load More left `/?page=2&append=true` in history, and
+        Back or a reload onto it rendered the rows alone, with no page.
+        """
+        request = self.factory.get("/?page=2&append=true")
+        request.META["HTTP_HX_REQUEST"] = "true"
+
+        response = self.middleware(request)
+
+        self.assertEqual(response["HX-Push-URL"], "false")
+
+    def test_a_load_more_page_keeps_a_header_its_view_set(self):
+        request = self.factory.get("/?page=2&append=true")
+        request.META["HTTP_HX_REQUEST"] = "true"
+
+        def get_response_with_header(request):
+            response = HttpResponse("OK")
+            response["HX-Push-URL"] = "/custom/url/"
+            return response
+
+        response = HTMXPushURLMiddleware(get_response_with_header)(request)
+
+        self.assertEqual(response["HX-Push-URL"], "/custom/url/")
+
     def test_does_not_add_header_for_non_htmx_requests(self):
         """Test that HX-Push-URL header is not added for regular requests."""
         request = self.factory.get("/games/")

@@ -463,6 +463,44 @@ Load More and the list/grid toggle work either way, and jump-to-rank once the
 engine is there: it seeds itself from what the server rendered (`attach()` and
 `_syncRendererWithPage()`) rather than re-rendering the page on load.
 
+Four rules keep the server path and the engine from stepping on each other,
+each pinned by `scripts/browser_smoke.js`:
+
+- **Only `commit()` renders.** The engine's form listener and the form's
+  `hx-trigger="submit, change[!!detail]"` answer only the `change` that
+  `mediaListControls.commit()` sends, which carries a `detail` (htmx passes a
+  filter only when it is exactly `true`). A field's own `change` - the search
+  box's, on blur - re-rendered during the next click's mousedown, and the
+  click landed on nothing.
+- **htmx never answers Back on this page.** Its `onpopstate` swaps the whole
+  body back in for an entry it pushed, from a snapshot that holds the DOM
+  Alpine built (an Alpine error per `x-for` clone) or, once the engine is
+  ready, leaving the engine on a detached form. `music/home.html` replaces it
+  after htmx installs it: once the engine is ready the engine's popstate
+  listener answers every entry, and until then, or if it never loads, an
+  entry htmx pushed is reloaded. The form saves no snapshots
+  (`hx-history="false"`), nor is it restored by the browser
+  (`autocomplete="off"`). Clearing old snapshots instead missed tabs still on
+  the old markup, which went on saving them. `core/tests/test_static_bundles.py`
+  fails if a vendored htmx stops assigning `window.onpopstate`. And
+  `HTMXPushURLMiddleware` pushes no `?append=true` page, which is rows to
+  append, not an address.
+- **Taking over, the engine renders the form's filters if they are not the
+  ones the list was rendered with** (`formAhead`): what a filter request that
+  failed before then leaves behind. It compares with
+  `#album-rendered-filters`, the server's echo of the request, not with the
+  URL, which the server cleans up (`?artists=Prince` is `prince`, a repeated
+  parameter its last value), and leaves out a search still being typed.
+  Putting the form back on the URL instead lost a click in flight and the
+  search being typed.
+- **The jump box waits for the engine**, which alone answers it: it renders
+  disabled (`jump_awaits_engine`) and the bundle switches it on.
+
+A status change under a status filter takes out only the row that left and
+moves the later positions up one (`dropIfFilteredOut`,
+`AlbumListRenderer.removeItem`), re-rendering nothing, so quick-mark costs the
+same 900 rows down as at the top.
+
 Two payload fields exist to keep the client and the server agreeing exactly:
 
 - `nn` is `name_normalized`, the `unidecode(name)` column the server's `q`

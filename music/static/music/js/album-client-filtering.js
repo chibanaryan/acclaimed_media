@@ -200,7 +200,33 @@ class AlbumClientSideFiltering {
      */
     readFilters(form) {
         const data = new FormData(form);
-        const text = name => (data.get(name) || '').toString().trim();
+        return AlbumClientSideFiltering.parseFilters(name => data.get(name));
+    }
+
+    /**
+     * The filter state the server rendered the list with, in readFilters'
+     * shape, or null if the page carries none. Not the URL's: the server
+     * echoes `?artists=Prince` as `prince`, and a repeated parameter as its
+     * last value, which the form's fields were rendered from too. Only an
+     * htmx swap rewrites it, so it describes the list only until the engine
+     * first renders: the takeover is its one reader.
+     * @returns {?Object}
+     */
+    renderedFilters() {
+        const rendered = document.getElementById('album-rendered-filters');
+        if (!rendered) return null;
+        return AlbumClientSideFiltering.parseFilters(name => rendered.dataset[name]);
+    }
+
+    /**
+     * The filter state from a field reader, one rule for the form and the
+     * server's record of what it rendered. Static, as readFilters needs no
+     * instance: core/tests/js/filter_parity.js calls it unbound.
+     * @param {function(string): ?string} get
+     * @returns {Object}
+     */
+    static parseFilters(get) {
+        const text = name => (get(name) || '').toString().trim();
         const number = name => {
             const parsed = parseInt(text(name), 10);
             return Number.isFinite(parsed) ? parsed : undefined;
@@ -273,6 +299,47 @@ class AlbumClientSideFiltering {
             viewMode: this.viewMode
         });
 
+        this._updatePaging();
+        this._publishFacets(filters, albums);
+    }
+
+    /**
+     * Take an album out of the list once a status change has left it outside
+     * the filters, without moving the reader.
+     *
+     * Re-rendering from the top, as a filter change does, put a reader who
+     * had loaded down to row 300 back at row 1. Instead its row and card
+     * come off the page and the positions after them move up one, with
+     * nothing re-rendered, so a quick-mark click costs the same at row 900
+     * as at row 1. Read fresh each time from the engine and the page,
+     * whichever of the server or the engine drew the rows.
+     * @param {Object} filters
+     * @param {number} albumId
+     */
+    dropIfFilteredOut(filters, albumId) {
+        if (!this.isInitialized) return;
+        const container = document.getElementById('album-list-container');
+        if (!container) return;
+
+        const { albums } = this.engine.apply(filters);
+        // Still in, under another status the filter also takes
+        if (albums.some(album => album.id === albumId)) return;
+
+        this.currentFilters = filters;
+        const synced = this.renderer.currentItems && this.renderer.currentItems.length;
+        const removed = this.renderer.removeItem(container, albumId, this._showRank());
+        if (!loadedAlbumCount()) {
+            // Nothing left on the page: start the list again, or say it is empty
+            this.applyFilters(filters);
+            return;
+        }
+
+        if (synced) {
+            this.renderer.currentItems = albums;
+            if (removed) this.renderer.windowEnd -= 1;
+        } else {
+            this._syncRendererWithPage();
+        }
         this._updatePaging();
         this._publishFacets(filters, albums);
     }
@@ -431,7 +498,8 @@ class AlbumClientSideFiltering {
         const query = params.toString();
         const base = window.albumRankingsUrl || window.location.pathname;
         const url = query ? `${base}?${query}` : base;
-        // The debounced commit and the typing timer both answer one search
+        // Already there: a submit, or a commit that changed nothing the URL
+        // spells, would otherwise leave a second entry for Back to step over.
         if (url === window.location.pathname + window.location.search) return;
         window.history[replace ? 'replaceState' : 'pushState']({}, '', url);
     }
@@ -547,12 +615,18 @@ function loadedAlbumCount() {
 }
 
 /**
- * Wire the jump-to-rank boxes in the results header.
+ * Wire the jump-to-rank boxes in the results header, and switch them on.
  *
  * The controls partial renders a pair of them, one for each breakpoint, so
  * the handlers are delegated from the document rather than bound per input.
  */
 function initAlbumJumpToRank(csf) {
+    // Rendered disabled (`jump_awaits_engine`), because only the engine can
+    // answer them: without its data the box took a number and ignored Enter.
+    document.querySelectorAll('[data-awaits-engine]').forEach(control => {
+        control.disabled = false;
+    });
+
     const jump = input => {
         const target = parseInt(input.value, 10);
         if (!Number.isFinite(target) || target < 1 || target > csf.matchCount()) {
@@ -662,8 +736,8 @@ function initAlbumFiltering() {
 
     // A genre clicked in a row filters by it, as it does on the games
     // rankings page. Bound before init resolves so the click works either
-    // way: the select is the filter's single source of truth, and a plain
-    // change event is what both HTMX and the engine below listen for.
+    // way: the select is the filter's single source of truth, and a change
+    // with a detail is what both HTMX and the engine below listen for.
     document.addEventListener('add-genre', event => {
         const select = form.querySelector('[name="genres"]');
         const genreId = event.detail && event.detail.genreId;
@@ -677,7 +751,7 @@ function initAlbumFiltering() {
         }));
 
         if (!ready) {
-            select.dispatchEvent(new Event('change', { bubbles: true }));
+            select.dispatchEvent(new CustomEvent('change', { bubbles: true, detail: {} }));
             return;
         }
         const highlight = parseInt(event.detail.itemId, 10);
@@ -687,11 +761,13 @@ function initAlbumFiltering() {
     // A toggle can change whether a row still belongs in the results.
     // media-tracking.js has already updated the Sets the engine reads by the
     // time this fires, so re-filtering is all that is needed.
-    window.addEventListener('album-status-changed', () => {
+    window.addEventListener('album-status-changed', event => {
         if (!ready) return;
         const filters = csf.readFilters(form);
         if (!filters.listened.length) return;
-        rerender({ push: false, highlightId: currentHighlight() });
+        const albumId = parseInt(event.detail && event.detail.id, 10);
+        if (!Number.isFinite(albumId)) return;
+        csf.dropIfFilteredOut(filters, albumId);
     });
 
     // A `?highlight=` link from album detail lands on the album, as it does
@@ -739,24 +815,21 @@ function initAlbumFiltering() {
             csf.loadPrevious();
         });
 
-        // The controls mark a burst's trailing commit, which the user
-        // experiences as the same change: one history entry, not two.
-        form.addEventListener('change', event => rerender({
-            replace: Boolean(event.detail && event.detail.historyReplace)
-        }));
+        // Only a change with a detail, which is commit()'s: every control
+        // writes the form through it, a search included. A field's own
+        // change carries none, and the search box's fires as it loses
+        // focus - so answering it re-rendered during the mousedown of
+        // whatever was clicked next, and the click landed on nothing. The controls also
+        // mark a burst's trailing commit, which the user experiences as the
+        // same change: one history entry, not two.
+        form.addEventListener('change', event => {
+            if (!event.detail) return;
+            rerender({ replace: Boolean(event.detail.historyReplace) });
+        });
         form.addEventListener('submit', event => {
             event.preventDefault();
             rerender();
         });
-
-        let typingTimer = null;
-        const search = form.querySelector('input[name="q"]');
-        if (search) {
-            search.addEventListener('input', () => {
-                clearTimeout(typingTimer);
-                typingTimer = setTimeout(() => rerender(), 350);
-            });
-        }
 
         // The list/grid toggle lives in the results header, outside this
         // form, and announces itself rather than reaching in here.
@@ -766,6 +839,10 @@ function initAlbumFiltering() {
 
         initAlbumJumpToRank(csf);
 
+        // Back and Forward are the engine's from here, every entry htmx
+        // pushed included: the page took popstate from htmx (music/home.html),
+        // whose answer was to swap the whole body back in and leave all of
+        // this wired to a form no longer on the page.
         window.addEventListener('popstate', () => {
             // The URL moved under us; re-read it into the form and re-render.
             // A landing page's bare path stands for its own filters
@@ -781,12 +858,13 @@ function initAlbumFiltering() {
             rerender({ push: false, highlightId: currentHighlight() });
         });
 
-        // Nothing is re-rendered on load: the server already rendered this
-        // exact filter state, and re-rendering would only make the page
+        // Nothing is re-rendered on load: the server already rendered the
+        // form's filter state, and re-rendering would only make the page
         // flicker. The engine takes over from the next interaction - except
         // to answer what the load overtook, which would otherwise land on top
-        // of the engine's renders or go unanswered, and to page down to a
-        // highlighted album the server did not render.
+        // of the engine's renders or go unanswered, to render a form a
+        // failed request left ahead of the list (formAhead, below), and to
+        // page down to a highlighted album the server did not render.
         // Finished requests can still be listed: one whose element was
         // swapped out reports its end to that element alone, and one whose
         // swap threw never reports it. The second's button is still on the
@@ -805,8 +883,26 @@ function initAlbumFiltering() {
         const pageRequest = inFlight.some(([, element]) =>
             element.isConnected && element.matches('.load-more-button')
         );
-        if (filterRequest) {
-            rerender();
+        // A filter request that failed before now (a 429, a 500, the
+        // network) left the form on the filters it asked for, while the list
+        // stayed on the ones it was rendered with, and Load More then
+        // appended the form's rows to the server's. The sidebar says what
+        // the reader last asked for, so that is what the engine renders.
+        // Compared, not remembered: both states are on the page. Except a
+        // search still being typed, which its own commit will answer.
+        const typing = document.activeElement &&
+            // Either search box: the sidebar's and the mobile sheet's
+            document.activeElement.matches('[data-filter-search]');
+        const comparable = filters => JSON.stringify(
+            typing ? Object.assign({}, filters, { q: '' }) : filters
+        );
+        const rendered = csf.renderedFilters();
+        const formAhead = Boolean(rendered) &&
+            comparable(csf.readFilters(form)) !== comparable(rendered);
+        if (filterRequest || formAhead) {
+            // Not pushed mid-search: the query is half typed, and its commit,
+            // still to come, pushes the whole one
+            rerender({ push: !typing });
         } else if (pageRequest) {
             csf.loadMore();
         }

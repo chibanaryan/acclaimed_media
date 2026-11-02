@@ -270,6 +270,43 @@ class AlbumListRenderer extends BaseMediaListRenderer {
      * Fill the rank pair, matching the server's show_rank handling.
      * @private
      */
+    /**
+     * Take an album's row halves and card off the page, moving every later
+     * position up one when the rank column shows positions, without
+     * re-rendering anything. The renderer's window is the caller's to move.
+     * @param {HTMLElement} container
+     * @param {number} albumId
+     * @param {string} showRank - 'alltime', 'filtered' or 'none'
+     * @returns {boolean} Whether the album was on the page
+     */
+    removeItem(container, albumId, showRank) {
+        const removed = ['', '-mobile', '-grid']
+            .map(suffix => document.getElementById(`music-${albumId}${suffix}`))
+            .filter(element => element && container.contains(element));
+        if (!removed.length) return false;
+
+        if (showRank === 'filtered') {
+            // Each kind with the slot its position is in, as filled above
+            [
+                ['.media-row-wrapper', 'rank', ''],
+                ['.media-card-mobile', 'rank-mobile', '#'],
+                ['.media-card-grid', 'rank-grid', '#']
+            ].forEach(([selector, slot, prefix]) => {
+                const all = Array.from(container.querySelectorAll(selector));
+                const at = all.findIndex(element => removed.includes(element));
+                if (at === -1) return;
+                all.slice(at + 1).forEach(element => {
+                    const rank = element.querySelector(`[data-slot="${slot}"]`);
+                    const position = rank && parseInt(rank.textContent.replace('#', ''), 10);
+                    if (Number.isFinite(position)) rank.textContent = `${prefix}${position - 1}`;
+                });
+            });
+        }
+
+        removed.forEach(element => element.remove());
+        return true;
+    }
+
     _fillRanks(row, album, index, showRank, slot, globalSlot) {
         if (showRank === 'none') return;
 

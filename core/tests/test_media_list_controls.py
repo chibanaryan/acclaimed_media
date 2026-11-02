@@ -88,6 +88,21 @@ class ControlsPartialTests(TestCase):
             render_controls(show_jump_to_rank=False).select(".jump-to-rank-input")
         )
 
+    def test_the_jump_box_can_wait_for_an_engine(self):
+        # Music's jump box is answered by its client engine alone, so it is
+        # rendered off and the engine switches it on. Games' works without
+        # its engine and is left alone.
+        controls = ".jump-to-rank-input, .jump-to-rank-btn"
+        waiting = render_controls(jump_awaits_engine=True).select(controls)
+        self.assertEqual(len(waiting), 4)
+        for control in waiting:
+            with self.subTest(control=control.name):
+                self.assertTrue(control.has_attr("disabled"))
+                self.assertTrue(control.has_attr("data-awaits-engine"))
+        for control in render_controls().select(controls):
+            with self.subTest(control=control.name, default=True):
+                self.assertFalse(control.has_attr("disabled"))
+
     def test_both_count_lines_are_addressable(self):
         # A client-side renderer has to update the desktop and the mobile
         # line; querySelector would only ever find the first.

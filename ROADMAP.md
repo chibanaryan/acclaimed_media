@@ -6,50 +6,18 @@ What is left, why it matters, and what it costs. Ordered within each group.
 ## Open bugs (found 2026-11-01)
 
 Found while shipping v905's filter-engine work and the music metadata refresh
-that followed. None is a regression from v905. Most are on music's rankings
-page, in `music/static/music/js/album-client-filtering.js`. That file's
-`change` listener has broken three times when given state, so keep any fix
-there stateless and pin it in `scripts/browser_smoke.js` first.
+that followed, and in fixing the first list (2026-11-02, `DEVLOG.md`). None
+is a regression from v905.
+`music/static/music/js/album-client-filtering.js`'s `change` listener has
+broken three times when given state, so keep any fix there stateless and pin
+it in `scripts/browser_smoke.js` first.
 
-1. **Clicking out of the music search box can swallow the click.** The search
-   input's native `change` fires on blur and reaches the form's `change`
-   listener, which re-renders the list during the mousedown. Type "love", wait
-   for results, then click Load More or an album: the first click does nothing.
-   Likely fix: ignore a `change` with no `detail`, since `mediaListControls`'
-   `commit()` is the path that should render. Small.
-2. **Each music search renders twice.** Alpine's `@input.debounce.350ms`
-   commit and the bundle's own typing timer (`search.addEventListener('input',
-   ...)`) both answer it. `pushUrl` skips the second history entry since v905,
-   but the 100-row render, the facet counts and the chart morph still run
-   twice. Likely fix: drop the typing timer, which matters only if Alpine fails
-   to load. Small.
-3. **Marking an album under a status filter resets the list.** On
-   `/?listened=no`, Load More to row 300, then mark #250 (or use quick-mark):
-   `album-status-changed` re-renders the first 100 rows and the reader loses
-   their place. With `?highlight=N` still in the URL it also scrolls back to N.
-   Fix: remove just the row that left the filter. Medium.
-4. **A failed music filter request leaves the form ahead of the list.** If an
-   HTMX filter request fails (429, 500, network) before the engine is ready,
-   the form holds the new filters while the URL and list hold the old. The next
-   Load More runs `_syncRendererWithPage`, which adopts the form's filters at
-   the server's row count and appends another filter's rows. Fix: re-render, or
-   reset the form, on `htmx:responseError` / `htmx:sendError`. Medium.
-5. **Back onto an entry HTMX pushed may detach music's engine.** Unreproduced,
-   from reading htmx 1.9.10. Click a decade before the engine loads, so HTMX
-   pushes the entry; once the engine is ready, press Back. htmx's
-   `restoreHistory` swaps the body, and the bundle's listeners stay on the old,
-   detached form, so later changes would not reach the engine and Load More
-   could fire twice. Reproduce first. A likely fix is turning off htmx's
-   history snapshot once the engine owns the page. Medium.
-6. **Music's jump box does nothing if the bundle fails.** `initAlbumJumpToRank`
-   runs only after the engine loads, so with no data the box takes input and
-   ignores Enter. Hide or disable it until the engine is ready. Small.
-7. **Never tested on real assistive tech or a real iPhone.** The year grid
+1. **Never tested on real assistive tech or a real iPhone.** The year grid
    and the mobile sheet were checked in Chrome, WebKit and Firefox, plus
    Chrome's accessibility tree, but never with VoiceOver, NVDA or iOS Safari.
    `docs/ASSISTIVE_TECH_CHECKLIST.md` is the script: run it, record the
    results there, and file what fails here.
-8. **The music Wikidata pass reads only English labels** (found 2026-11-02).
+2. **The music Wikidata pass reads only English labels** (found 2026-11-02).
    Wikidata has moved some names to the language-neutral `mul` label, and
    `music/wikidata.py` reads `labels.en` alone. So `fetch_labels` drops
    punk rock (Q3071), rapcore and Reprise Records from every album's
@@ -58,7 +26,7 @@ there stateless and pin it in `scripts/browser_smoke.js` first.
    `musicbrainz_id` or `wikipedia_title`. Fall back to `mul` (request
    `languages=en|mul`), then check `rebuild_album_genres --dry-run --report`.
    Small.
-9. **Games: a server jump overtaken by a filter change still jumps.** Before
+3. **Games: a server jump overtaken by a filter change still jumps.** Before
    the engine is ready, jump to 500, so the server fetches pages 2-5; the
    engine loads and a genre is picked, re-rendering at #1. When the pages
    land, `jumpToRankServerSide` finds its button gone and calls
@@ -66,30 +34,48 @@ there stateless and pin it in `scripts/browser_smoke.js` first.
    the top. Drop it, as a late Load More page is dropped, unless whatever
    replaced the list knows it is the same one. Found in review, 2026-11-02.
    Small.
-10. **Games: other re-renders still drop an in-flight server Load More.** The
-    engine's takeover and a view toggle answer it; a client jump
-    (`refreshClientLoadMore` replaces the button) and the played-filter
-    re-render on `game-status-changed` do not, so the page is dropped and the
-    click goes unanswered. Both answers also restart from 100 rows, so a click
-    for rows 201-300 gets 101-200. One owner for the hand-off, around
-    `performClientUpdate`, would cover every caller. Found in review,
-    2026-11-02. Small.
-11. **The mobile sheet's decade buttons do not say which is selected.** In
-    `core/includes/_mobile_filter_time.html` the Decade / Year / Range switch
-    and the decade buttons show their state by colour alone (`btn-primary`),
-    with no `aria-pressed`, where the sidebar's year grid and the sheet's genre
-    rows carry it. Found by reading the markup, not with a screen reader;
-    item 7's checklist expects it to fail. Small.
-12. **A music filter change does not cancel a Load More in flight.** Without
-    the engine (before it loads, or if it fails), click Load More and then
-    change a filter before the page arrives: the filter render lands, then the
-    stale page appends into the detached old list, and its out-of-band
-    `#load-more-container` replaces the new filter's button with the old
-    one's, e.g. "All 120 results loaded" over a list of 100. Found reviewing
-    the takeover fix; the engine aborts it if it is still in flight when the
-    engine takes over (`scripts/browser_smoke.js`, "Load More swapped out").
-    Likely fix: a shared `hx-sync` scope on the form and the Load More button,
-    so a filter request replaces the page request. Small.
+4. **Games: other re-renders still drop an in-flight server Load More.** The
+   engine's takeover and a view toggle answer it; a client jump
+   (`refreshClientLoadMore` replaces the button) and the played-filter
+   re-render on `game-status-changed` do not, so the page is dropped and the
+   click goes unanswered. Both answers also restart from 100 rows, so a click
+   for rows 201-300 gets 101-200. One owner for the hand-off, around
+   `performClientUpdate`, would cover every caller. Found in review,
+   2026-11-02. Small.
+5. **The mobile sheet's decade buttons do not say which is selected.** In
+   `core/includes/_mobile_filter_time.html` the Decade / Year / Range switch
+   and the decade buttons show their state by colour alone (`btn-primary`),
+   with no `aria-pressed`, where the sidebar's year grid and the sheet's genre
+   rows carry it. Found by reading the markup, not with a screen reader;
+   item 1's checklist expects it to fail. Small.
+6. **A music filter change does not cancel a Load More in flight.** Without
+   the engine (before it loads, or if it fails), click Load More and then
+   change a filter before the page arrives: the filter render lands, then the
+   stale page appends into the detached old list, and its out-of-band
+   `#load-more-container` replaces the new filter's button with the old
+   one's, e.g. "All 120 results loaded" over a list of 100. Found reviewing
+   the takeover fix; the engine aborts it if it is still in flight when the
+   engine takes over (`scripts/browser_smoke.js`, "Load More swapped out").
+   Likely fix: a shared `hx-sync` scope on the form and the Load More button,
+   so a filter request replaces the page request. Small.
+7. **htmx's snapshot restore may break Alpine on other pages too** (found
+   2026-11-02, unverified). On music's rankings page, Back onto an entry htmx
+   pushed restored a snapshot of the DOM Alpine had built and threw an
+   Alpine error per `x-for` clone, the site menu's included; that page now
+   takes popstate from htmx (AGENTS.md, "Music client-side filtering").
+   Every other `hx-push-url` page - the artist and list searches, the
+   paginations, the blog - saves the same snapshots. Reproduce on
+   `/artists/` (search, then Back) before changing anything. Medium.
+8. **A failed filter request is still left ahead of the list in two
+   cases.** The engine renders the form's filters as it takes over, but not
+   while a search box has focus (a search still being typed must not be
+   pushed half-typed), and not at all if the engine never loads. Either
+   leaves the sidebar on filters the list does not show until the next
+   change. Small.
+9. **A `?page=N` music rankings link assumes it starts at row 1.**
+   `renderer.adopt` sets the window from 0, so the engine's Load More and
+   jump on a server-rendered page 2 repeat or skip rows. Nothing links to
+   `?page=` any more, since Load More no longer pushes it. Small.
 
 The browser harnesses used for v905 are in the ashgabat worktree's
 `.context/ygrid/`, which is gitignored and so exists only there:

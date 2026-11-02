@@ -363,6 +363,18 @@ class AlbumHomePageViewTests(MusicDataMixin, TestCase):
         response = self.client.get(reverse("music:home"), {"append": "true"})
         self.assertTemplateUsed(response, "music/includes/_album_list_append.html")
 
+    def test_a_load_more_page_pushes_no_address(self):
+        # Through the whole middleware stack, as the button's htmx request
+        # goes: its address reloaded as bare rows.
+        for name in ("music:home", "music:artist-list"):
+            with self.subTest(view=name):
+                response = self.client.get(
+                    reverse(name),
+                    {"page": "1", "append": "true"},
+                    HTTP_HX_REQUEST="true",
+                )
+                self.assertEqual(response["HX-Push-URL"], "false")
+
     def test_full_page_request_uses_the_base_template(self):
         response = self.client.get(reverse("music:home"))
         self.assertTemplateUsed(response, "music/home.html")
@@ -1454,6 +1466,60 @@ class ClientSideFilteringContextTests(MusicDataMixin, TestCase):
         response = self.client.get(reverse("music:home"))
         self.assertContains(response, 'id="desktop-row-template"')
         self.assertContains(response, 'id="mobile-row-template"')
+
+    def test_the_jump_box_waits_for_the_engine(self):
+        # Only the engine answers it; without the data it took a number and
+        # ignored Enter. The bundle switches on `[data-awaits-engine]`.
+        response = self.client.get(reverse("music:home"))
+        boxes = re.findall(
+            r'<input type="number"[^>]*jump-to-rank-input[^>]*>',
+            response.content.decode(),
+        )
+        self.assertEqual(len(boxes), 2)
+        for box in boxes:
+            with self.subTest(box=box):
+                self.assertIn("disabled data-awaits-engine", box)
+
+    def test_the_form_answers_only_commits_and_keeps_no_snapshot(self):
+        # A field's own change - the search box's, as it loses focus - asked for the
+        # page again, as did a keyup trigger beside the commit's change. And
+        # htmx's snapshot holds the DOM Alpine built, which threw on Back,
+        # so the page answers htmx's entries itself, reloading until the
+        # engine is ready.
+        response = self.client.get(reverse("music:home"))
+        form = re.search(r'<form id="album-filters"[^>]*>', response.content.decode())
+        self.assertIn('hx-trigger="submit, change[!!detail]"', form.group(0))
+        self.assertIn('hx-history="false"', form.group(0))
+        self.assertContains(response, "Object.defineProperty(window, 'onpopstate', {")
+        self.assertContains(
+            response, "if (!engine || !engine.isReady()) window.location.reload();"
+        )
+
+    def test_the_form_is_not_restored_by_the_browser(self):
+        # Firefox puts a reloaded form's fields back as they were, so after
+        # Back reloads an htmx entry the hidden fields named the filters the
+        # reader had left, and the engine took them for a failed request's.
+        response = self.client.get(reverse("music:home"))
+        form = re.search(r'<form id="album-filters"[^>]*>', response.content.decode())
+        self.assertIn('autocomplete="off"', form.group(0))
+
+    def test_the_list_records_the_filters_it_was_rendered_with(self):
+        # What the engine compares the form with as it takes over: the
+        # server's echo, which spells ?artists=The-Beatles as the form does.
+        response = self.client.get(
+            reverse("music:home"), {"artists": "The-Beatles", "start": "1960"}
+        )
+        rendered = re.search(
+            r'<div id="album-rendered-filters"[^>]*>', response.content.decode()
+        ).group(0)
+        self.assertIn('data-artists="the-beatles"', rendered)
+        self.assertIn('data-start="1960"', rendered)
+        self.assertIn('data-sort="rank"', rendered)
+        # And again in a swap, which is what a later takeover reads
+        partial = self.client.get(
+            reverse("music:home"), {"start": "1970"}, HTTP_HX_REQUEST="true"
+        )
+        self.assertContains(partial, 'data-start="1970"')
 
 
 class MusicCacheInvalidationTests(MusicDataMixin, TestCase):

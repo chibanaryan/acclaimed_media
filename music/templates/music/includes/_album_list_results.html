@@ -16,6 +16,15 @@
 <script type="application/json" id="rank-distribution-update">{{ rank_distribution|tojson }}</script>
 {% endif %}
 
+{# The filters this list was rendered with, as the form's fields spell them: #}
+{# the same echo of the request the sidebar's fields were rendered from. A #}
+{# filter request that fails leaves this behind the form, which is how the #}
+{# client engine tells, taking over, that the form is ahead of the list. #}
+<div id="album-rendered-filters" hidden
+     data-q="{{ current_q }}" data-start="{{ current_start }}" data-end="{{ current_end }}"
+     data-artists="{{ current_artists }}"{% if genre_tree %} data-genres="{{ current_genres }}"{% endif %}
+     data-listened="{{ current_listened }}" data-sort="{{ current_sort }}" data-dir="{{ current_dir }}"></div>
+
 {# The heading describes the filter state and sits outside this container, #}
 {# so an HTMX swap carries it back out of band. Only in a swap: rendered #}
 {# into the first page load these are two more copies of the heading. #}
@@ -25,8 +34,9 @@
 {% endif %}
 
 {# Sort, direction, view toggle and jump-to-rank. mediaListControls on #}
-{# home.html supplies the Alpine contract this partial binds to. #}
-{% include 'core/includes/_media_list_controls.html' with sort_options=sort_options default_sort_label='Rank' item_noun='Album' quick_mark_scope='album' quick_mark_options=quick_mark_options %}
+{# home.html supplies the Alpine contract this partial binds to. The jump #}
+{# box is the client engine's alone, so it waits for it, disabled. #}
+{% include 'core/includes/_media_list_controls.html' with sort_options=sort_options default_sort_label='Rank' item_noun='Album' quick_mark_scope='album' quick_mark_options=quick_mark_options jump_awaits_engine=True %}
 
 {% if albums %}
 {# Set the initial view mode from localStorage before paint, as the games #}

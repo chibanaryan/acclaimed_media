@@ -975,7 +975,7 @@ class AlbumFilterClicksApplyAtOnceTests(SimpleTestCase):
 
     def test_a_burst_replaces_its_history_entry(self):
         engine = self._source("music/static/music/js/album-client-filtering.js")
-        self.assertIn("event.detail && event.detail.historyReplace", engine)
+        self.assertIn("Boolean(event.detail.historyReplace)", engine)
         self.assertIn("window.history[replace ? 'replaceState' : 'pushState']", engine)
         bundle = self._source(
             "music/static/music/js/music-client-side-filtering.bundle.min.js"
@@ -1532,3 +1532,78 @@ class FilteredTabTitlesTests(SimpleTestCase):
                     self.assertIn("window.tabTitleSuffix", source)
                     self.assertIn("shortTitle(", source)
                     self.assertNotIn("_initialDocumentTitle", source)
+
+
+class AlbumEngineTakesThePageOverCleanlyTests(SimpleTestCase):
+    """What the album engine taking the page over must not break.
+
+    Each was found on v905's page and is pinned in a browser by
+    `scripts/browser_smoke.js`; these keep the code from losing them, in
+    the minified copies too, since those are what the page loads.
+    """
+
+    ENGINE = "music/static/music/js/album-client-filtering.js"
+    BUNDLE = "music/static/music/js/music-client-side-filtering.bundle.min.js"
+
+    def _source(self, relative_path):
+        return (Path(settings.BASE_DIR) / relative_path).read_text()
+
+    def test_only_a_commit_re_renders(self):
+        # The search box's own change fires as it loses focus, and a re-render during
+        # the next mousedown swallowed that click.
+        engine = self._source(self.ENGINE)
+        listener = engine.split("form.addEventListener('change',", 1)[1][:200]
+        self.assertIn("if (!event.detail) return;", listener)
+
+    def test_one_search_renders_once(self):
+        # Alpine's debounced commit answers a search; a typing timer of the
+        # bundle's own answered it a second time.
+        engine = self._source(self.ENGINE)
+        self.assertNotIn("typingTimer", engine)
+        self.assertNotIn("addEventListener('input'", engine)
+        self.assertNotIn('addEventListener("input"', self._source(self.BUNDLE))
+
+    def test_a_status_change_takes_out_only_its_row(self):
+        engine = self._source(self.ENGINE)
+        listener = engine.split("window.addEventListener('album-status-changed'", 1)[1]
+        self.assertIn("csf.dropIfFilteredOut(filters, albumId);", listener[:500])
+        # One row out and the later positions moved up, not the page
+        # re-rendered: a quick-mark click 900 rows down cost 900 rows.
+        method = engine.split("    dropIfFilteredOut(filters, albumId) {", 1)[1]
+        method = method[: method.index("\n    }\n")]
+        self.assertIn("this.renderer.removeItem(", method)
+        self.assertNotIn("showRange(", method)
+        renderer = self._source("music/static/music/js/album-list-renderer.js")
+        self.assertIn("    removeItem(container, albumId, showRank) {", renderer)
+        bundle = self._source(self.BUNDLE)
+        self.assertIn("dropIfFilteredOut(", bundle)
+        self.assertIn("removeItem(", bundle)
+
+    def test_taking_over_renders_a_form_left_ahead_of_the_url(self):
+        # A filter request that failed before the engine loaded left the form
+        # on its filters and the list on the URL's; Load More mixed the two.
+        # Against what the server rendered, not the URL, which it echoes
+        # cleaned up; and not a search still being typed.
+        engine = self._source(self.ENGINE)
+        self.assertIn(
+            "comparable(csf.readFilters(form)) !== comparable(rendered)", engine
+        )
+        self.assertIn("const rendered = csf.renderedFilters();", engine)
+        self.assertIn("matches('[data-filter-search]')", engine)
+        self.assertIn("if (filterRequest || formAhead) {", engine)
+        bundle = self._source(self.BUNDLE)
+        self.assertIn("album-rendered-filters", bundle)
+        self.assertIn("[data-filter-search]", bundle)
+
+    def test_htmx_still_takes_popstate_through_the_property(self):
+        # music/home.html keeps htmx from answering Back by swallowing its
+        # `window.onpopstate` assignment. An htmx that listened instead would
+        # restore its snapshots again, and nothing else would fail.
+        htmx = self._source("games/static/games/js/vendor/htmx.min.js")
+        self.assertIn("window.onpopstate=function(e){if(e.state&&e.state.htmx)", htmx)
+        self.assertNotIn('addEventListener("popstate"', htmx)
+
+    def test_the_engine_switches_the_jump_box_on(self):
+        for path in (self.ENGINE, self.BUNDLE):
+            with self.subTest(path=path):
+                self.assertIn("[data-awaits-engine]", self._source(path))

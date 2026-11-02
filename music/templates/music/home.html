@@ -46,6 +46,27 @@ document.addEventListener('DOMContentLoaded', function() {
 <script nonce="{{ csp_nonce }}">
 window.albumLandingPath = "{{ landing_path|default:''|escapejs }}";
 window.albumLandingSearch = "{{ landing_search|default:''|escapejs }}";
+
+// htmx answers Back onto an entry it pushed by restoring its snapshot of the
+// page, and a snapshot holds the DOM Alpine built, so restoring one threw an
+// Alpine error per x-for clone. The form saves none now (hx-history="false"),
+// but earlier visits and tabs still on the old markup did, and htmx reads a
+// stored one before anything else. So htmx does not get popstate here: the
+// handler it assigns to window.onpopstate is swallowed, whenever htmx loads,
+// since this runs first. Once the client engine is ready its own popstate
+// listener answers every entry (album-client-filtering.js); until then, or
+// on a page whose engine failed to load, an entry htmx pushed is reloaded.
+Object.defineProperty(window, 'onpopstate', {
+    configurable: true,
+    get: function() { return null; },
+    set: function() {}
+});
+window.addEventListener('popstate', function(event) {
+    if (!event.state || !event.state.htmx) return;
+    var engine = typeof getAlbumClientSideFiltering === 'function'
+        ? getAlbumClientSideFiltering() : null;
+    if (!engine || !engine.isReady()) window.location.reload();
+});
 </script>
 {% if enable_client_filtering %}
 {% comment %}
@@ -186,14 +207,24 @@ var listenStatusOptions = JSON.parse(
     {# No Alpine directives on this div: it may be x-ignored and initialised #}
     {# later (see _defer_hidden_sidebar.html). The form's fields are written #}
     {# by commit() directly, so the form works while it is ignored. #}
+    {# `change[!!detail]`: only commit()'s change, which carries a detail (htmx #}
+    {# wants a filter to be exactly true). The search box's own change fires #}
+    {# when it loses focus, and asked for the page again. #}
+    {# hx-history="false": htmx's snapshot holds the DOM Alpine built, and #}
+    {# restoring it on Back threw an Alpine error per x-for clone; nothing #}
+    {# here restores one now (see extra_head), so none is saved. #}
+    {# autocomplete="off": Firefox puts a reloaded form's fields back, which #}
+    {# then named filters other than the ones the page was rendered with. #}
     <div id="album-filter-sidebar" class="hidden desktop:block desktop:w-[357px] desktop:shrink-0">
         <form id="album-filters"
               hx-get="{% url 'music:home' %}"
               hx-target="#album-results-container"
               hx-swap="innerHTML"
               hx-push-url="true"
+              hx-history="false"
+              autocomplete="off"
               hx-indicator="#album-loading"
-              hx-trigger="submit, change, keyup changed delay:350ms from:find input[name='q']"
+              hx-trigger="submit, change[!!detail]"
               class="bg-base-200 rounded-lg p-4">
 
             {# Filters header, with the same actions the games sidebar has #}
@@ -238,7 +269,7 @@ var listenStatusOptions = JSON.parse(
                     <span class="font-bold text-base">Search</span>
                 </div>
                 <label class="input input-bordered input-sm w-full bg-base-100">
-                    <input type="search" name="q" value="{{ current_q }}" x-model="filters.q"
+                    <input type="search" name="q" value="{{ current_q }}" x-model="filters.q" data-filter-search
                            @input.debounce.350ms="debouncedFilterUpdate()"
                            class="grow" placeholder="Album or artist" autocomplete="off">
                 </label>

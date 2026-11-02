@@ -47,6 +47,42 @@
   "Want to Play" and every chosen status on the server too, as the client
   always did
 
+Then the six open bugs v905 left on music's rankings page, each pinned by a
+check in `scripts/browser_smoke.js` that failed before its fix:
+
+- **A click out of the search box lands.** The search box's own `change`
+  fires on blur, and the engine re-rendered on it during the mousedown, so the
+  Load More or album under the pointer was replaced and the first click did
+  nothing. The engine, and the form's `hx-trigger` (`change[!!detail]`), now
+  answer only `commit()`'s change, which carries a detail; before the engine
+  loaded, the blur had also asked the server for the page again
+- **A search renders once.** The bundle's own typing timer answered each
+  search beside Alpine's commit, and so did a `keyup` trigger on the form
+- **Marking an album under a status filter keeps the reader's place.** The
+  list re-rendered from row 1 (and scrolled back to any `?highlight=`). Now
+  only the row that left comes off the page and the later positions move up
+  one, with nothing re-rendered; an album that still matches costs nothing
+- **A failed filter request no longer mixes two lists.** A 429, 500 or
+  network error before the engine loaded left the form on the filters asked
+  for while the list and the URL stayed on the old ones, and the engine's
+  first Load More appended the form's rows to the server's. Taking over, the
+  engine now compares the form with the filters the list was rendered with
+  and, if they differ, renders the form's: what the sidebar says the reader
+  last asked for. Putting the form back instead lost a click still in flight
+  and the search being typed, and comparing with the URL redrew the page on
+  any link the server echoes cleaned up
+- **Back onto an entry htmx pushed.** htmx swapped the whole body back in,
+  leaving the engine wired to a detached form, so filter changes reached no
+  engine and Load More answered twice. Before the engine was ready, htmx's
+  snapshot held the DOM Alpine had built, and restoring it threw an Alpine
+  error per `x-for` clone. The page now takes popstate from htmx: the engine
+  answers Back once ready, an htmx entry is reloaded until then, and the form
+  saves no snapshots (`hx-history="false"`). A server Load More no longer
+  pushes its `?page=2&append=true` address (`HTMXPushURLMiddleware` answers
+  `false`), which reloaded as bare rows; that went for the artists list too
+- **The jump box waits for the engine**, disabled, since nothing else answers
+  it: with the bundle failed it took a number and ignored Enter
+
 ## 2026-11-01
 
 - **An album without a Wikidata id can be marked.** Tracking rows are keyed on

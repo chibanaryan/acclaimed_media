@@ -249,9 +249,11 @@ class HTMXPushURLMiddleware:
             # Django's HttpResponse headers are case-insensitive
             hx_push_url = response.get("HX-Push-URL")
             if not hx_push_url:
-                # Build the full URL with query parameters
-                full_url = request.get_full_path()
-                response["HX-Push-URL"] = full_url
+                # The full URL with query parameters, except for a Load More
+                # page, which is rows to append rather than an address:
+                # pushed, Back or a reload onto it rendered the rows alone.
+                append = request.GET.get("append") == "true"
+                response["HX-Push-URL"] = "false" if append else request.get_full_path()
 
         return response
 
