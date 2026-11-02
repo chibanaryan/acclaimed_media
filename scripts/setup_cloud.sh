@@ -9,6 +9,7 @@
 #   - venv/ on .python-version's Python, from both locks, with uv
 #   - db.sqlite3, migrated, holding the release files checked into
 #     acclaimedgames/test_input_files/ (import_games_data, import_music_data)
+#   - the git pre-commit hooks, which a clone does not carry
 #
 # The data is the rankings alone. Covers, genres, playtimes and accounts come
 # from the metadata fetchers or `sync_from_prod`, neither of which runs here.
@@ -69,6 +70,17 @@ if [ "$(cat "$STAMP" 2>/dev/null || true)" != "$WANT_STAMP" ]; then
     uv pip sync --quiet --python venv/bin/python \
         requirements.txt requirements-dev.txt
     echo "$WANT_STAMP" >"$STAMP"
+fi
+
+# The pre-commit hooks (.pre-commit-config.yaml: black, flake8, the pytest
+# gate). A fresh clone has none, so a cloud session's commits skipped them all
+# until 2026-11-02. --git-path follows a worktree or core.hooksPath to the
+# directory git actually reads. Checked on every start, and installed only when
+# missing, so this stays silent once done.
+HOOK="$(git rev-parse --path-format=absolute --git-path hooks)/pre-commit"
+if ! grep -qs "pre-commit" "$HOOK"; then
+    echo "Installing the pre-commit hooks"
+    venv/bin/pre-commit install >/dev/null
 fi
 
 if [ -f db.sqlite3 ] && [ -f "$DONE" ]; then

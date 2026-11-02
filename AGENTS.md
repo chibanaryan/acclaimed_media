@@ -2049,9 +2049,11 @@ A Claude Code **cloud session** (claude.ai/code, `CLAUDE_CODE_REMOTE=true`)
 is a fresh Linux clone with nothing to link or copy, and it cannot reach the
 Mac's checkout, whose venv would not run there anyway. So the same hook runs
 `scripts/setup_cloud.sh` in the main checkout first: it builds a venv on
-`.python-version`'s Python with `uv`, migrates a new `db.sqlite3`, and loads
+`.python-version`'s Python with `uv`, migrates a new `db.sqlite3`, loads
 the release files in `acclaimedgames/test_input_files/` (`import_games_data`,
-`import_music_data`), about 20 s with uv's download cache warm. A worktree in
+`import_music_data`), about 20 s with uv's download cache warm, and runs
+`pre-commit install`, since a clone has no hooks: until 2026-11-02 a cloud
+session's commits skipped black, flake8 and the pytest gate. A worktree in
 the session then links and copies them as usual. That is the rankings alone,
 with no covers, genres, playtimes or accounts: the fetchers and
 `sync_from_prod` need credentials the session does not have. Later starts
