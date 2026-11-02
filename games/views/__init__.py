@@ -20,6 +20,7 @@ from .filter_titles import (
     _build_platform_segment,
     _build_genre_subtitle,
     _build_filter_title,
+    _page_titles,
 )
 from .download import (
     download_games_csv,
@@ -91,6 +92,7 @@ __all__ = [
     "_build_platform_segment",
     "_build_genre_subtitle",
     "_build_filter_title",
+    "_page_titles",
     "download_games_csv",
     "_order_games",
     "HomePageView",

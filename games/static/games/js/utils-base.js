@@ -370,6 +370,34 @@ function buildTimeWindow(start, end, minYear, maxYear) {
 }
 
 /**
+ * A filtered page's tab title, "Rock · 1960s · Heard", as
+ * core/services/titles.py short_title builds it: the filters alone, since
+ * the site suffix names the site. All Time is said only when nothing else is.
+ */
+function shortTitle(subjects, timeWindow, statuses) {
+    const parts = (subjects || []).filter(Boolean);
+    let window_ = timeWindow || '';
+    if (window_ === 'All Time' && (parts.length || statuses)) window_ = '';
+    if (window_.startsWith('the ')) window_ = window_.slice(4);
+    return parts.concat([window_, statuses || '']).filter(Boolean).join(' · ') ||
+        'All Time';
+}
+
+/**
+ * The document title for a rankings heading. A page whose filters narrow
+ * nothing, or a landing page (`indexed`), is one search engines index, so it
+ * keeps the keyword form ("Most Acclaimed Albums of All Time | Acclaimed
+ * Media"); any other gets the short form and the site's name, as the server
+ * renders it.
+ */
+function rankingsDocumentTitle(heading, short, indexed) {
+    if (indexed || short === 'All Time') {
+        return 'Most Acclaimed ' + heading + (window.documentTitleSuffix || '');
+    }
+    return short + (window.shortTitleSuffix || '');
+}
+
+/**
  * Reads the SEO clean-URL map embedded by the home page template
  * (#seo-urls-data json_script). Cached after first parse.
  * @returns {Object|null} {genres: {id: slug}, platforms: {id: slug},

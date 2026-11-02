@@ -152,7 +152,7 @@ class LandingPageViewTests(LandingPageDataMixin, TestCase):
             "<title>Most Acclaimed Action Games of All Time " "| Acclaimed Media",
             html,
         )
-        self.assertIn("Most Acclaimed Action Games of All Time</h1>", html)
+        self.assertIn(">Action Games of All Time</h1>", html)
         self.assertIn(
             'rel="canonical" href="https://games.acclaimedmedia.org/games/action/"',
             html,

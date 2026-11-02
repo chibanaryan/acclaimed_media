@@ -154,31 +154,40 @@ def _artist_names(raw, artists):
     return titles.join_names(chosen) if chosen else ""
 
 
-def _filter_title(params, min_year=None, max_year=None, genres=None, artists=None):
-    """A natural page title describing the current filter state.
+def _page_titles(params, min_year=None, max_year=None, genres=None, artists=None):
+    """The rankings page's three titles for the current filter state.
 
-    Composed the way ``games.views._build_filter_title`` composes its own:
+    ``heading`` is the on-page heading, "Rock Albums by Prince of the 1980s:
+    Heard"; ``keyword`` is "Most Acclaimed " and the heading, for the
+    ``<title>`` of an indexed URL, ``og:title``, the ItemList and the CSV
+    filename; ``short`` is "Rock · Prince · 1980s · Heard", the tab of a
+    filtered page (``titles.keyword_title`` / ``short_title``).
+
+    Composed the way ``games.views._filter_title_parts`` composes games':
     the selected genres fold into the noun phrase, the year range becomes an
     "of ..." suffix, and an artist reads as "by ...". It used to know only
     about the search box and the year range, so filtering by genre left the
     heading saying "Most Acclaimed Albums" and nothing else.
+    ``mediaListControls.buildTitle`` / ``buildShortTitle`` compose the same
+    three in the browser.
 
     Deliberately avoids "best"/"top" phrasing, matching the games pages.
     """
     query = params.get("q")
     if query:
-        return f"Albums matching \u201c{query}\u201d"
+        heading = f"Albums matching \u201c{query}\u201d"
+        return {"heading": heading, "keyword": heading, "short": heading}
 
-    genre_label = ""
+    genre_names = []
     selected_genres = parse_id_list(params.get("genres"))
     if selected_genres and genres:
         names = {genre["id"]: genre["name"] for genre in genres}
-        chosen = [names[genre_id] for genre_id in selected_genres if genre_id in names]
-        if chosen:
-            genre_label = f" {titles.join_names(chosen)}"
+        genre_names = [
+            names[genre_id] for genre_id in selected_genres if genre_id in names
+        ]
+    genre_label = titles.join_names(genre_names)
 
     artist_names = _artist_names(params.get("artists"), artists)
-    artist_label = f" by {artist_names}" if artist_names else ""
 
     start = parse_int(params.get("start"))
     end = parse_int(params.get("end"))
@@ -194,25 +203,35 @@ def _filter_title(params, min_year=None, max_year=None, genres=None, artists=Non
     else:
         window = ""
 
-    time_suffix = f" of {window}" if window else ""
-
-    # Games appends ": Played" by hand and so handles only one value, which
-    # is a latent bug there since the parameter is multi-select. Join them.
+    # Games appended ": Played" by hand and so handled only one value until
+    # the parameter became multi-select. Join them.
     statuses = _parse_status_list(params.get("listened"), config.LISTEN_FILTER_VALUES)
-    status_suffix = ""
-    if statuses:
-        chosen = [
+    status_label = titles.join_names(
+        [
             option["title"]
             for option in config.LISTEN_STATUS_OPTIONS
             if option["value"] in statuses
         ]
-        status_suffix = f": {titles.join_names(chosen)}"
-
-    title = (
-        f"Most Acclaimed{genre_label} Albums{artist_label}"
-        f"{time_suffix}{status_suffix}"
     )
-    return " ".join(title.split())
+
+    heading = " ".join(
+        (
+            f"{genre_label} Albums"
+            f"{f' by {artist_names}' if artist_names else ''}"
+            f"{f' of {window}' if window else ''}"
+            f"{f': {status_label}' if status_label else ''}"
+        ).split()
+    )
+    return {
+        "heading": heading,
+        "keyword": titles.keyword_title(heading),
+        "short": titles.short_title([genre_label, artist_names], window, status_label),
+    }
+
+
+def _filter_title(params, min_year=None, max_year=None, genres=None, artists=None):
+    """The on-page heading for the current filter state (``_page_titles``)."""
+    return _page_titles(params, min_year, max_year, genres, artists)["heading"]
 
 
 def _tracked_album_ids(user, cache_key, queryset):
@@ -847,13 +866,22 @@ class AlbumHomePageView(RobustPaginationMixin, ListView):
             self.request.GET.get(param)
             for param in ("q", "start", "end", "genres", "listened")
         )
-        context["filter_title"] = _filter_title(
+        page_titles = _page_titles(
             self.request.GET,
             min_year=min_year,
             max_year=max_year,
             genres=genres,
             artists=context["artists"],
         )
+        context["filter_title"] = page_titles["heading"]
+        context["keyword_title"] = page_titles["keyword"]
+        context["short_title"] = page_titles["short"]
+        # A filtered URL's canonical link is the bare path, so its <title>
+        # is never indexed and can be the short one a tab has room for. The
+        # test is what the title says rather than ``is_filtered``, as the
+        # client's is (``mediaListControls._applyTitle``), so the two agree
+        # on a URL such as a full-range ``?start=&end=``.
+        context["use_keyword_title"] = page_titles["short"] == titles.ALL_TIME
         # What the heading says of them, for the client to keep saying it
         # once it composes the heading itself.
         context["current_artist_label"] = _artist_names(
@@ -954,11 +982,13 @@ class MusicLandingPageView(AlbumHomePageView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         # The natural filter title doubles as the page title, so the landing
-        # page and the same filters chosen by hand read identically.
-        context["seo_title"] = context["filter_title"]
+        # page and the same filters chosen by hand read identically. A
+        # landing page is indexed, so its <title> keeps the keyword form.
+        context["seo_title"] = context["keyword_title"]
+        context["use_keyword_title"] = True
         context["seo_meta_description"] = self.seo["meta_description"]
         context["itemlist_json"] = seo.itemlist_json(
-            context["filter_title"],
+            context["keyword_title"],
             (
                 (album.name, album.get_absolute_url())
                 for album in list(context["albums"])[: landing_pages.TOP_N]
@@ -1062,13 +1092,14 @@ class AlbumDownloadView(View):
             default="rank",
         )
 
-        title = _filter_title(
+        # The file leaves the site, so its name keeps the keyword form.
+        title = _page_titles(
             request.GET,
             min_year=min_year,
             max_year=max_year,
             genres=_cached_genre_options(),
             artists=_cached_artist_options(),
-        )
+        )["keyword"]
         filename = f"{slugify(title) or 'acclaimed-albums'}.csv"
 
         response = HttpResponse(content_type="text/csv")

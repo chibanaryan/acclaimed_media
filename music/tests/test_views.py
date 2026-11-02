@@ -16,7 +16,7 @@ from games.models import SiteMetadata
 from music import config, models, views
 from music.api import views as music_api_views
 from music.services import caching, landing_pages, listening_stats
-from music.views import _filter_title, group_list_appearances
+from music.views import _filter_title, _page_titles, group_list_appearances
 from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 
 
@@ -397,12 +397,10 @@ class FilterTitleTests(TestCase):
     ARTISTS = [{"id": 7, "name": "The Beatles", "slug": "the-beatles"}]
 
     def test_unfiltered(self):
-        self.assertEqual(
-            _filter_title({}, **self.BOUNDS), "Most Acclaimed Albums of All Time"
-        )
+        self.assertEqual(_filter_title({}, **self.BOUNDS), "Albums of All Time")
 
     def test_with_no_bounds_it_omits_the_time_window(self):
-        self.assertEqual(_filter_title({}), "Most Acclaimed Albums")
+        self.assertEqual(_filter_title({}), "Albums")
 
     def test_a_search_query_wins_over_a_year_range(self):
         title = _filter_title(
@@ -413,19 +411,19 @@ class FilterTitleTests(TestCase):
     def test_a_single_year(self):
         self.assertEqual(
             _filter_title({"start": "1966", "end": "1966"}, **self.BOUNDS),
-            "Most Acclaimed Albums of 1966",
+            "Albums of 1966",
         )
 
     def test_a_full_decade_reads_as_a_decade(self):
         self.assertEqual(
             _filter_title({"start": "1970", "end": "1979"}, **self.BOUNDS),
-            "Most Acclaimed Albums of the 1970s",
+            "Albums of the 1970s",
         )
 
     def test_an_arbitrary_range_reads_as_a_range(self):
         self.assertEqual(
             _filter_title({"start": "1965", "end": "1972"}, **self.BOUNDS),
-            "Most Acclaimed Albums of 1965-1972",
+            "Albums of 1965-1972",
         )
 
     def test_one_sided_ranges_fill_from_the_data(self):
@@ -433,23 +431,23 @@ class FilterTitleTests(TestCase):
         # edge of the data, which is also what the queryset does.
         self.assertEqual(
             _filter_title({"start": "1990"}, **self.BOUNDS),
-            "Most Acclaimed Albums of 1990-2019",
+            "Albums of 1990-2019",
         )
         self.assertEqual(
             _filter_title({"end": "1990"}, **self.BOUNDS),
-            "Most Acclaimed Albums of 1955-1990",
+            "Albums of 1955-1990",
         )
 
     def test_a_genre_folds_into_the_phrase(self):
         self.assertEqual(
             _filter_title({"genres": "1"}, genres=self.GENRES, **self.BOUNDS),
-            "Most Acclaimed Rock Albums of All Time",
+            "Rock Albums of All Time",
         )
 
     def test_several_genres_read_as_a_list(self):
         self.assertEqual(
             _filter_title({"genres": "1,2"}, genres=self.GENRES, **self.BOUNDS),
-            "Most Acclaimed Rock and Soul Albums of All Time",
+            "Rock and Soul Albums of All Time",
         )
 
     def test_an_artist_reads_as_a_credit(self):
@@ -458,7 +456,7 @@ class FilterTitleTests(TestCase):
             _filter_title(
                 {"artists": "the-beatles"}, artists=self.ARTISTS, **self.BOUNDS
             ),
-            "Most Acclaimed Albums by The Beatles of All Time",
+            "Albums by The Beatles of All Time",
         )
 
     def test_a_genre_and_a_decade_together(self):
@@ -468,13 +466,13 @@ class FilterTitleTests(TestCase):
                 genres=self.GENRES,
                 **self.BOUNDS,
             ),
-            "Most Acclaimed Rock Albums of the 1970s",
+            "Rock Albums of the 1970s",
         )
 
     def test_an_unknown_id_is_ignored_rather_than_shown(self):
         self.assertEqual(
             _filter_title({"genres": "999"}, genres=self.GENRES, **self.BOUNDS),
-            "Most Acclaimed Albums of All Time",
+            "Albums of All Time",
         )
 
     def test_the_title_avoids_best_and_top_phrasing(self):
@@ -488,6 +486,68 @@ class FilterTitleTests(TestCase):
                 title = _filter_title(params).lower()
                 self.assertNotIn("best", title)
                 self.assertNotIn("top ", title)
+
+
+class PageTitlesTests(TestCase):
+    """The keyword and short forms beside the heading (``_page_titles``).
+
+    The keyword form keeps "Most Acclaimed" for the URLs search engines
+    index; the short one is a filtered page's tab, the filters alone.
+    """
+
+    BOUNDS = FilterTitleTests.BOUNDS
+    GENRES = FilterTitleTests.GENRES
+    ARTISTS = FilterTitleTests.ARTISTS
+
+    def titles(self, params):
+        return _page_titles(
+            params, genres=self.GENRES, artists=self.ARTISTS, **self.BOUNDS
+        )
+
+    def test_unfiltered(self):
+        self.assertEqual(
+            self.titles({}),
+            {
+                "heading": "Albums of All Time",
+                "keyword": "Most Acclaimed Albums of All Time",
+                "short": "All Time",
+            },
+        )
+
+    def test_every_filter_reads_in_heading_order(self):
+        result = self.titles(
+            {
+                "genres": "1,2",
+                "artists": "the-beatles",
+                "start": "1960",
+                "end": "1969",
+                "listened": "yes,want",
+            }
+        )
+        self.assertEqual(
+            result["heading"],
+            "Rock and Soul Albums by The Beatles of the 1960s: "
+            "Want to Listen and Heard",
+        )
+        self.assertEqual(result["keyword"], "Most Acclaimed " + result["heading"])
+        self.assertEqual(
+            result["short"],
+            "Rock and Soul \u00b7 The Beatles \u00b7 1960s \u00b7 "
+            "Want to Listen and Heard",
+        )
+
+    def test_all_time_is_left_out_beside_another_filter(self):
+        self.assertEqual(self.titles({"genres": "1"})["short"], "Rock")
+        self.assertEqual(self.titles({"listened": "own"})["short"], "Owned")
+
+    def test_a_range_reads_as_itself(self):
+        self.assertEqual(
+            self.titles({"start": "1965", "end": "1972"})["short"], "1965-1972"
+        )
+
+    def test_a_search_is_its_heading_in_every_form(self):
+        result = self.titles({"q": "kid a"})
+        self.assertEqual(set(result.values()), {"Albums matching \u201ckid a\u201d"})
 
 
 class AlbumDetailViewTests(MusicDataMixin, TestCase):

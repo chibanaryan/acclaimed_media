@@ -17,7 +17,7 @@ from games.services.game_filters import (
 )
 
 from ._helpers import _get_year_bounds
-from .filter_titles import _build_filter_title
+from .filter_titles import _page_titles
 from .rankings import _order_games
 
 
@@ -146,15 +146,15 @@ def download_games_csv(request):
         "hltb_min": hltb_min,
         "hltb_max": hltb_max,
     }
-    filter_title = _build_filter_title(
+    filter_title = _page_titles(
         filters_for_title,
         genres_lookup,
         platforms_lookup_list,
         min_year,
         max_year,
         series_list=series_list,
-    )
-    # Use the page title directly as the filename (slugified)
+    )["keyword"]
+    # The keyword title as the filename (slugified): the file leaves the site
     filename_base = slugify(filter_title) or "acclaimed-games"
     filename = f"{filename_base}.csv"
 

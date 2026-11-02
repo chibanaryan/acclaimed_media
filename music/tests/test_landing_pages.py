@@ -123,8 +123,33 @@ class GenreLandingViewTests(LandingFixtureMixin, TestCase):
         )
         self.assertContains(
             response,
-            '<span id="search-title-text">Most Acclaimed Rock Albums of All Time'
-            "</span>",
+            '<span id="search-title-text">Rock Albums of All Time</span>',
+        )
+
+    def test_the_same_filter_chosen_by_hand_gets_the_short_tab_title(self):
+        # Its canonical link is the bare page, so its <title> is never
+        # indexed: the tab says the filter and the site, and og:title, which
+        # a shared link shows out of context, keeps the keyword form.
+        response = self.client.get(reverse("music:home"), {"genres": self.rock.id})
+        self.assertContains(
+            response, "<title>Rock | Music | Acclaimed Media</title>", html=False
+        )
+        self.assertContains(
+            response,
+            '<meta property="og:title" content="Most Acclaimed Rock Albums of '
+            'All Time | Acclaimed Media">',
+            html=False,
+        )
+        self.assertContains(
+            response, '<span id="search-title-text">Rock Albums of All Time</span>'
+        )
+
+    def test_the_bare_page_keeps_the_keyword_title(self):
+        response = self.client.get(reverse("music:home"), {"sort": "name"})
+        self.assertContains(
+            response,
+            "<title>Most Acclaimed Albums of All Time | Acclaimed Media</title>",
+            html=False,
         )
 
     def test_the_page_is_self_canonical(self):

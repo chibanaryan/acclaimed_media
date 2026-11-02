@@ -25,7 +25,8 @@ def media_type(request):
 
     ``site_key`` is the site the host names (core/sites.py): ``"root"`` for
     the landing page, ``"games"`` or ``"music"``; ``site_home_url`` is that
-    site's front page. ``media_type`` follows it,
+    site's front page; ``short_title_suffix`` names the site after a short
+    tab title. ``media_type`` follows it,
     except that the staff-only books section, which lives on the games host,
     is told apart by its URL namespace. Every page on a site is that site's,
     the shared ones (About, Contact, sign-in) included, so they keep the
@@ -40,10 +41,15 @@ def media_type(request):
         kind = "books"
     else:
         kind = site
+    name = sites.TITLE_NAMES.get(site)
     return {
         "site_key": site,
         "media_type": kind,
         "site_home_url": sites.site_reverse(site, sites.HOME_VIEWS[site]),
+        # What a short rankings title ends with: "All Time | Music | ..."
+        "short_title_suffix": (
+            f" | {name} | Acclaimed Media" if name else " | Acclaimed Media"
+        ),
     }
 
 

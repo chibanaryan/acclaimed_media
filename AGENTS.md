@@ -1443,8 +1443,34 @@ Facet cache keys hash every filter parameter except the skipped dimension's
 
 ## The rankings heading and the tab title
 
-Both sections compose a heading from the filter state and reuse it as the
-document title. Two traps, both of which have bitten:
+Both sections compose a title from the filter state, in three forms
+(2026-11-02; `_page_titles` in `music/views.py` and
+`games/views/filter_titles.py`, `titles.keyword_title` / `short_title` in
+`core/services/titles.py`):
+
+| Form | Example | Where |
+|---|---|---|
+| heading | "Rock Albums of the 1960s: Heard" | the H1, desktop and mobile |
+| keyword | "Most Acclaimed Rock Albums of the 1960s" | the `<title>` of an indexed URL, `og:title`, the ItemList, the CSV filename |
+| short | "Rock · 1960s · Heard" | the `<title>` of any other URL, and a saved filter's default name |
+
+The "Most Acclaimed" prefix was on every title until James asked for it to
+go: every tab read "Most Acclaimed Al..." whatever the filter, and a
+complex filter made a long heading. It matters to search only where Google
+indexes the page. A filtered URL's canonical link is the bare path, so its
+own title is never indexed, and gets the short form and the site's name,
+`" | Music | Acclaimed Media"` (`short_title_suffix`, from
+`sites.TITLE_NAMES`), since the short form has no noun to say which site it
+is. The bare page and the SEO landing pages keep the keyword form and
+`" | Acclaimed Media"`; so does `og:title`, which a shared link shows out
+of context. "Indexed" is decided by what the title says - the short form is
+"All Time" - not by the query string, so the server and the client
+(`rankingsDocumentTitle` in `utils-base.js`) agree on a URL such as a
+full-range `?start=&end=`. Games also counts the landing URL the client
+pushes (`/games/1990s/`). `scripts/browser_smoke.js` checks both sides
+render the same title and heading after a client-side filter change.
+
+Two traps, both of which have bitten:
 
 - **A genre clicked in a row does not go through the filter component.**
   `album-client-filtering.js` answers `add-genre` by writing the hidden
@@ -1459,10 +1485,10 @@ document title. Two traps, both of which have bitten:
   minified copies included.
 - **The document title is not free on either path.** `games/home.html` used
   `seo_title`, which only the SEO landing views set, so the tab title never
-  moved. It now falls back to `filter_title`, as music's always did. Nothing
-  set `document.title` during client-side filtering in either section;
-  `base.html` publishes one `window.documentTitleSuffix` and both filter
-  components rebuild `heading + suffix`.
+  moved. Nothing set `document.title` during client-side filtering in
+  either section; `base.html` publishes `window.documentTitleSuffix` and
+  `window.shortTitleSuffix`, and both filter components rebuild the title
+  through `rankingsDocumentTitle`.
 
 There are no `?v=N` cache-busters to bump. Production's manifest storage
 hashes every static name, so changed JS is a new URL, and development
@@ -1483,7 +1509,9 @@ Three sites, one app, since 2026-10-30:
 
 There is one name for all of it, **Acclaimed Media**: every title suffix,
 `og:site_name`, the JSON-LD, the emails and `Site.name` (migration `0123`).
-Neither site names itself. The favicons are still the old Acclaimed Video
+Neither site names itself, except in the short tab title of a filtered
+rankings page ("1990s | Music | Acclaimed Media"; see "The rankings heading
+and the tab title"). The favicons are still the old Acclaimed Video
 Games artwork until a new one is drawn, and a page without artwork of its
 own has no `og:image`: the old default was removed. Mail still goes to
 and from `contact@acclaimedvideogames.com`, the address Titan and Brevo have

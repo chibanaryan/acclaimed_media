@@ -3,13 +3,15 @@
 {% load humanize %}
 {% load static %}
 
-{# `seo_title` is set only by the SEO landing views; `filter_title` is #}
-{# the heading this page composes from the filter state, so the tab #}
-{# title tracks the filters as the album page's does. #}
-{% block title %}{% firstof seo_title filter_title as page_title %}{% if page_title %}{{ page_title }} | Acclaimed Media{% else %}Most Acclaimed Video Games of All Time | Acclaimed Media{% endif %}{% endblock %}
+{# `seo_title` is set only by the SEO landing views. An indexed URL - the #}
+{# bare page or a landing page - is titled "Most Acclaimed ..." for search; #}
+{# a filtered one, whose canonical link is the bare path, gets the short #}
+{# title a tab has room for, with the site's name, as the album page does. #}
+{# og:title is always the keyword one. #}
+{% block title %}{% if use_keyword_title or not short_title %}{% firstof seo_title keyword_title "Most Acclaimed Video Games of All Time" %} | Acclaimed Media{% else %}{{ short_title }}{{ short_title_suffix }}{% endif %}{% endblock %}
 
 {% block meta_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}{{ block.super }}{% endif %}{% endblock %}
-{% block og_title %}{% firstof seo_title filter_title as page_title %}{% if page_title %}{{ page_title }} | Acclaimed Media{% else %}{{ block.super }}{% endif %}{% endblock %}
+{% block og_title %}{% firstof seo_title keyword_title as page_title %}{% if page_title %}{{ page_title }} | Acclaimed Media{% else %}{{ block.super }}{% endif %}{% endblock %}
 {% block og_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}{{ block.super }}{% endif %}{% endblock %}
 {% block structured_data %}{% if itemlist_json %}{{ itemlist_json|safe }}{% else %}{{ block.super }}{% endif %}{% endblock %}
 

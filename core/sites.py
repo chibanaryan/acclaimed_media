@@ -26,6 +26,9 @@ MUSIC = "music"
 SUBDOMAIN_SITES = (GAMES, MUSIC)
 # Each site's front page, by URL name in its own URLconf
 HOME_VIEWS = {ROOT: "landing", GAMES: "home", MUSIC: "music:home"}
+# The name a short tab title carries ("1990s | Music | Acclaimed Media"),
+# which has no noun of its own to say which site it is on
+TITLE_NAMES = {GAMES: "Games", MUSIC: "Music"}
 
 # Base domains a site label may sit under: production's apex, and localhost
 # for development

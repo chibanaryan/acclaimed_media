@@ -15,7 +15,7 @@ from django.views.generic import ListView, TemplateView
 from core import sites
 from core.cache_helpers import batched_cache_reads, cache_get, cache_set
 from core.mixins import AnonymousResponseCacheMixin, RobustPaginationMixin
-from core.services import ranking, seo
+from core.services import ranking, seo, titles
 from core.services.query_params import parse_int
 from games import config, models, utils
 from games.cache import (
@@ -41,7 +41,7 @@ from ._helpers import (
     _get_want_to_play_game_ids,
     _get_year_bounds,
 )
-from .filter_titles import _build_filter_title
+from .filter_titles import _page_titles
 
 GENRES_CACHE_KEY = f"search_wikipedia_genres_list_with_counts:{config.CACHE_VERSION}"
 SERIES_CACHE_KEY = f"search_series_list_with_counts:{config.CACHE_VERSION}"
@@ -424,9 +424,17 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
             int(highlight_str) if highlight_str and highlight_str.isdigit() else None
         )
         context["is_filtered"] = True  # GameSearch is always filtered
-        context["filter_title"] = _build_filter_title(
+        page_titles = _page_titles(
             filters, genres, platforms, min_year, max_year, series_list
         )
+        context["filter_title"] = page_titles["heading"]
+        context["keyword_title"] = page_titles["keyword"]
+        context["short_title"] = page_titles["short"]
+        # A filtered URL's canonical link is the bare path, so its <title> is
+        # never indexed and can be the short one a tab has room for. Decided
+        # by what the title says, as the client decides it
+        # (``rankingsDocumentTitle``), so the two cannot disagree.
+        context["use_keyword_title"] = page_titles["short"] == titles.ALL_TIME
         # Genre subtitle not needed for single-select mode
         context["genre_subtitle"] = ""
 
@@ -666,11 +674,13 @@ class SeoRankingPageView(HomePageView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         # The natural filter title doubles as the page title so the SEO
-        # routes stay consistent with the interactively filtered page
-        context["seo_title"] = context["filter_title"]
+        # routes stay consistent with the interactively filtered page. A
+        # landing page is indexed, so its <title> keeps the keyword form.
+        context["seo_title"] = context["keyword_title"]
+        context["use_keyword_title"] = True
         context["seo_meta_description"] = self.seo["meta_description"]
         context["itemlist_json"] = _landing_itemlist_json(
-            context["filter_title"], list(context["games"])[: landing_pages.TOP_N]
+            context["keyword_title"], list(context["games"])[: landing_pages.TOP_N]
         )
         return context
 

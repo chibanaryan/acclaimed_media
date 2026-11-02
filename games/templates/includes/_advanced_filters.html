@@ -61,7 +61,7 @@
         {# Left: Title area (matches game results width), vertically centered #}
         <div class="min-w-0 flex-1 max-w-[calc(100%-357px-1.5rem)] flex flex-col justify-center">
             <h1 class="text-3xl font-bold line-clamp-2" id="search-title">
-                {{ filter_title|default:"Most Acclaimed Video Games of All Time" }}
+                {{ filter_title|default:"Video Games of All Time" }}
             </h1>
             {% if genre_subtitle %}
                 <p class="text-base font-semibold text-base-content/85 -mt-1 truncate" id="genre-subtitle">
@@ -80,7 +80,7 @@
          x-data="mobileFilterSheet()"
          x-effect="document.body.classList.toggle('filter-sheet-open', filterOpen)">
         <div class="relative z-10 bg-base-200 border-b border-base-content/10 py-4 mb-4 -mx-4 px-4 flex items-center justify-between gap-3">
-            <h1 class="text-lg font-bold flex-1 min-w-0" id="search-title-mobile">{{ filter_title|default:"Most Acclaimed Video Games of All Time" }}</h1>
+            <h1 class="text-lg font-bold flex-1 min-w-0" id="search-title-mobile">{{ filter_title|default:"Video Games of All Time" }}</h1>
             {% include 'core/includes/_quick_mark_picker.html' with scope='game' options=quick_mark_options mobile=True %}
             <button type="button" class="btn btn-primary btn-sm shrink-0" @click="filterOpen = true">
                 <span class="mdi mdi-tune" aria-hidden="true"></span>

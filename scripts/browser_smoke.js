@@ -15,7 +15,9 @@
  * data. These are the failures no Python test sees: a template binding that
  * only throws in the browser, or an inline script the CSP would refuse. It also
  * checks that Back survives a filter change made while the engine loads,
- * and that a year range the corpus does not reach shows and can be cleared.
+ * that a year range the corpus does not reach shows and can be cleared, and
+ * that the titles the engine writes are the ones the server renders.
+ * SMOKE_ONLY_CHECKS=1 skips the page sweep and runs just those checks.
  */
 const puppeteer = require('puppeteer-core');
 
@@ -27,7 +29,7 @@ const chrome = process.env.CHROME_PATH ||
     (process.platform === 'darwin'
         ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
         : '/usr/bin/google-chrome');
-const pages = [
+const pages = process.env.SMOKE_ONLY_CHECKS ? [] : [
     root + '/', root + '/page/no-such-page/',
     ...['/', '/games/1990s/', '/game/smoke-game-1/', '/developers/',
         '/developers/?sort=name', '/developers/nintendo/', '/lists/', '/blog/',
@@ -208,6 +210,74 @@ async function checkRangeOutsideTheCorpus(page, site) {
     return null;
 }
 
+/**
+ * The tab title and the heading the engine writes after a filter change must
+ * be the ones the server renders for the URL it pushed: the server picks the
+ * keyword or the short title, and the two sides compose each separately.
+ * Then Clear All must bring back the keyword title of the bare page. Answers
+ * as above.
+ */
+async function checkTitlesMatchTheServer(page, { site, ready, heading }) {
+    await page.setViewport({ width: 1440, height: 900 });
+    await page.goto(site + '/', { waitUntil: 'networkidle2' });
+    const bare = await page.title();
+    const decade = await page.waitForSelector('.year-grid-decade[title^="1990s:"]');
+    await decade.click();
+    await page.waitForFunction(ready, { timeout: 15000 }, decade);
+    // Music pushes /?start=1990&end=1999; games its landing page, /games/1990s/
+    await page.waitForFunction(() => /start=1990|1990s/.test(location.href));
+    await sleep(800);
+    const compare = async () => page.evaluate(async selector => {
+        const html = await (await fetch(location.href)).text();
+        const server = new DOMParser().parseFromString(html, 'text/html');
+        const text = doc => doc.querySelector(selector).textContent.trim();
+        return {
+            url: location.href,
+            client: [document.title, text(document)],
+            server: [server.title, text(server)],
+        };
+    }, heading);
+    const filtered = await compare();
+    if (filtered.client.join() !== filtered.server.join()) {
+        return `${filtered.url}: the page says ${JSON.stringify(filtered.client)}, ` +
+            `the server ${JSON.stringify(filtered.server)}`;
+    }
+    // A landing page keeps the keyword title, and a filtered URL is short
+    const expected = location => (/\?/.test(location)
+        ? /^1990s \| \w+ \| Acclaimed Media$/
+        : /^Most Acclaimed .* of the 1990s \| Acclaimed Media$/);
+    if (!expected(filtered.url).test(filtered.client[0])) {
+        return `${filtered.url} is titled ${filtered.client[0]}`;
+    }
+    await press(page, /^Clear All( Filters)?$/);
+    await page.waitForFunction(() => !/start=|1990s/.test(location.href));
+    await sleep(800);
+    const title = await page.title();
+    return title === bare ? null : `Clear All left the tab titled ${title}, not ${bare}`;
+}
+
+/**
+ * Back onto a landing page's path must give it the keyword title the server
+ * renders there, not the short one a filtered URL gets. Answers as above.
+ */
+async function checkBackToALandingPageTitle(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    await page.goto(music + '/genres/smoke-rock/', { waitUntil: 'networkidle2' });
+    const landing = await page.title();
+    const decade = await page.waitForSelector('.year-grid-decade');
+    await page.waitForFunction(
+        element => Alpine.$data(element)._clientEngineReady(), {}, decade
+    );
+    await decade.click();
+    await page.waitForFunction(() => /start=/.test(location.search));
+    await sleep(800);
+    await page.goBack();
+    await page.waitForFunction(() => !location.search);
+    await sleep(800);
+    const title = await page.title();
+    return title === landing ? null : `Back to the landing page titled it ${title}`;
+}
+
 (async () => {
     const browser = await puppeteer.launch({
         executablePath: chrome,
@@ -282,6 +352,7 @@ async function checkRangeOutsideTheCorpus(page, site) {
             // Any filter: the engine re-renders it, as it does not a bare page
             loadMorePath: '/?sort=name',
             rows: '#game-list-container .game-row-wrapper',
+            heading: '#search-title',
         },
         music: {
             site: music,
@@ -290,6 +361,7 @@ async function checkRangeOutsideTheCorpus(page, site) {
             ready: element => Alpine.$data(element)._clientEngineReady(),
             loadMorePath: '/',
             rows: '#album-list-container .media-row-wrapper',
+            heading: '#search-title-text',
         },
     };
     for (const [name, engine] of Object.entries(engines)) {
@@ -297,12 +369,15 @@ async function checkRangeOutsideTheCorpus(page, site) {
             page => checkBackAcrossEngineLoad(page, engine));
         await report(`${name} Load More across the engine load`,
             page => checkLoadMoreAcrossEngineLoad(page, engine));
+        await report(`${name} titles match the server's`,
+            page => checkTitlesMatchTheServer(page, engine));
     }
     for (const path of ['/?q=smoke', '/genres/smoke-rock/?utm_source=smoke']) {
         await report(`music keeps ${path}`,
             page => checkEngineLeavesTheUrlAlone(page, music + path));
     }
     await report('music search adds one entry', checkSearchAddsOneEntry);
+    await report('music Back to a landing page title', checkBackToALandingPageTitle);
     await report('games empty range', page => checkRangeOutsideTheCorpus(page, games));
     await report('music empty range', page => checkRangeOutsideTheCorpus(page, music));
     await browser.close();

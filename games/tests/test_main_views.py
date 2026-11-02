@@ -4312,6 +4312,111 @@ class CSVDownloadHLTBTests(TestCase):
         self.assertIn("Test Game", content)
 
 
+class GamePageTitlesTests(TestCase):
+    """The heading's keyword and short forms (``_page_titles``).
+
+    The keyword form keeps "Most Acclaimed" for the URLs search engines
+    index; the short one is a filtered page's tab, the filters alone.
+    """
+
+    GENRES = [{"id": 1, "name": "Action"}, {"id": 2, "name": "Puzzle"}]
+    PLATFORMS = [{"id": 5, "name": "Nintendo Switch", "code": "NSW"}]
+
+    def titles(self, **filters):
+        from games.views import _page_titles
+
+        return _page_titles(filters, self.GENRES, self.PLATFORMS, 1970, 2024)
+
+    def test_unfiltered(self):
+        self.assertEqual(
+            self.titles(start=1970, end=2024),
+            {
+                "heading": "Video Games of All Time",
+                "keyword": "Most Acclaimed Video Games of All Time",
+                "short": "All Time",
+            },
+        )
+
+    def test_every_filter_reads_in_heading_order(self):
+        result = self.titles(
+            start=1990,
+            end=1999,
+            platforms=["5"],
+            genres=["1", "2"],
+            hltb_min=0,
+            hltb_max=10,
+            played="want,yes",
+        )
+        self.assertEqual(
+            result["heading"],
+            "Short (<10 Hour) Nintendo Switch Action and Puzzle Games "
+            "of the 1990s: Want to Play and Played",
+        )
+        self.assertEqual(result["keyword"], "Most Acclaimed " + result["heading"])
+        self.assertEqual(
+            result["short"],
+            "Short (<10 Hour) \u00b7 Nintendo Switch \u00b7 Action and Puzzle "
+            "\u00b7 1990s \u00b7 Want to Play and Played",
+        )
+
+    def test_the_implicit_video_is_never_a_segment(self):
+        self.assertEqual(self.titles(start=1998, end=1998)["short"], "1998")
+        self.assertEqual(
+            self.titles(start=1970, end=2024, genres=["1"])["short"], "Action"
+        )
+
+    def test_a_played_list_reads_like_the_parameter(self):
+        # The CSV passes a list, the page a comma-joined string; until the
+        # short titles each read only an exact "yes" or "no".
+        self.assertEqual(
+            self.titles(played=["want"])["heading"], "Video Games: Want to Play"
+        )
+        self.assertEqual(self.titles(played="no,yes")["short"], "Untracked and Played")
+
+    def test_the_remaining_playtime_shapes(self):
+        cases = [
+            ({"hltb_min": 12, "hltb_max": 12}, "~12 Hour"),
+            ({"hltb_min": 0, "hltb_max": None}, "0+ Hour"),
+            ({"hltb_min": 20, "hltb_mode": "completionist"}, "20+ Hour (100%)"),
+            ({"hltb_min": None, "hltb_max": 8}, "<8 Hour"),
+        ]
+        for filters, label in cases:
+            with self.subTest(filters=filters):
+                self.assertEqual(self.titles(**filters)["short"], label)
+
+
+class GamePageTitleRenderTests(TestCase):
+    """Which form each rankings URL's <title> takes."""
+
+    def setUp(self):
+        clear_all_caches()
+        game = Game.objects.create(name="Tetris", rank=1, year_of_release=1984)
+        self.action_genre, _ = WikipediaGenre.objects.get_or_create(
+            name="Action", defaults={"slug": "action"}
+        )
+        game.wikipedia_genres.add(self.action_genre)
+
+    def test_the_bare_page_keeps_the_keyword_title(self):
+        response = self.client.get(reverse("home"))
+        self.assertContains(
+            response,
+            "<title>Most Acclaimed Video Games of All Time | Acclaimed Media</title>",
+            html=False,
+        )
+
+    def test_a_filtered_page_gets_the_short_title_and_the_site_name(self):
+        response = self.client.get(reverse("home"), {"genres": self.action_genre.id})
+        self.assertContains(
+            response, "<title>Action | Games | Acclaimed Media</title>", html=False
+        )
+        self.assertContains(
+            response,
+            '<meta property="og:title" content="Most Acclaimed Action Games of '
+            'All Time | Acclaimed Media">',
+            html=False,
+        )
+
+
 class BuildFilterTitleHLTBTests(TestCase):
     """Test _build_filter_title with HLTB labels."""
 
@@ -4566,14 +4671,15 @@ class HomePageDocumentTitleTest(TestCase):
         self.assertIn("Action", self._title(f"/?genres={self.genre.id}"))
 
     def test_the_document_title_matches_the_heading(self):
-        # The two are composed from the same `filter_title`, so a divergence
-        # means one of them stopped reading it.
+        # The two are composed from the same pieces (`_page_titles`): the
+        # heading in full, the tab in its short form with the site's name.
         url = f"/?genres={self.genre.id}"
         html = self.client.get(url).content.decode()
         heading = re.search(
             r'id="search-title"[^>]*>\s*(.*?)\s*</h1>', html, re.S
         ).group(1)
-        self.assertTrue(self._title(url).startswith(heading))
+        self.assertEqual(heading, "Action Games of All Time")
+        self.assertEqual(self._title(url), "Action | Games | Acclaimed Media")
 
     def test_a_year_range_reaches_the_document_title(self):
         self.assertIn("1990s", self._title("/?start=1990&end=1999"))

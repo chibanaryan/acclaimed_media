@@ -497,7 +497,7 @@ document.addEventListener('alpine:init', () => {
         },
 
         saveCurrentFilters() {
-            this.saveFilterName = this._buildDynamicTitle();
+            this.saveFilterName = this._buildShortTitle();
             this.saveFilterError = '';
             this.saveFilterSaving = false;
             this.saveFilterModalOpen = true;
@@ -664,31 +664,31 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
-        _buildDynamicTitle() {
-            const timeWindow = buildTimeWindow(
-                this.filters.start, this.filters.end, this.minYear, this.maxYear
-            );
-            const platformLabel = this._buildPlatformSegment();
-            let genreLabel = '';
-            let seriesLabel = '';
+        /**
+         * The heading's pieces, from the filter state. Mirrors
+         * `games.views.filter_titles._filter_title_parts`.
+         * @private
+         */
+        _titleParts() {
+            let platform = this._buildPlatformSegment();
+            if (platform === 'Video') platform = '';
+
+            let genres = '';
             if (this.filters.genres && this.filters.genres.length > 0) {
                 const genreNames = this.filters.genres
                     .map(gid => this.genres.find(g => String(g.id) === String(gid)))
                     .filter(g => g)
                     .map(g => g.name);
-                if (genreNames.length > 0) {
-                    genreLabel = ' ' + this._joinNames(genreNames);
-                }
+                genres = this._joinNames(genreNames);
             }
 
+            let series = '';
             if (this.filters.series && this.filters.series.length === 1) {
-                const series = this.seriesList.find(s => String(s.id) === String(this.filters.series[0]));
-                if (series) {
-                    seriesLabel = series.name;
-                }
+                const found = this.seriesList.find(s => String(s.id) === String(this.filters.series[0]));
+                if (found) series = found.name;
             }
 
-            let hltbLabel = '';
+            let playtime = '';
             if (this.filters.hltb_min !== null || this.filters.hltb_max !== null) {
                 let timeDesc = '';
                 const mode = this.filters.hltb_mode || 'main';
@@ -716,43 +716,44 @@ document.addEventListener('alpine:init', () => {
                     timeDesc = '<' + max + ' Hour';
                 }
 
-                if (timeDesc) {
-                    hltbLabel = ' ' + timeDesc + modeSuffix;
-                }
+                if (timeDesc) playtime = timeDesc + modeSuffix;
             }
 
-            const timeSuffix = timeWindow ? ' of ' + timeWindow : '';
-            let platform = platformLabel;
-
-            if ((genreLabel || seriesLabel || hltbLabel) && platform === 'Video') {
-                platform = '';
-            }
-
-            let titleParts = 'Most Acclaimed';
-            if (hltbLabel) titleParts += hltbLabel;
-            if (platform) titleParts += ' ' + platform;
-            if (genreLabel) titleParts += genreLabel;
-            if (seriesLabel) titleParts += ' ' + seriesLabel;
-            titleParts += ' Games' + timeSuffix;
-
-            // Handle array-based played filter for title
+            // In GAME_STATUS_OPTIONS' order, joined as the server joins them
             const played = this.filters.played;
-            if (Array.isArray(played) && played.length > 0) {
-                const statusLabels = [];
-                if (played.includes('yes')) statusLabels.push('Played');
-                if (played.includes('want')) statusLabels.push('Want to Play');
-                if (played.includes('no')) statusLabels.push('Untracked');
-                if (statusLabels.length > 0) {
-                    titleParts += ': ' + statusLabels.join(' + ');
-                }
-            } else if (typeof played === 'string' && played) {
-                // Backwards compatibility for string values
-                if (played === 'yes') titleParts += ': Played';
-                else if (played === 'want') titleParts += ': Want to Play';
-                else if (played === 'no') titleParts += ': Untracked';
-            }
+            const playedValues = Array.isArray(played)
+                ? played
+                : (typeof played === 'string' && played ? played.split(',') : []);
+            const statuses = this._joinNames(
+                [['no', 'Untracked'], ['want', 'Want to Play'], ['yes', 'Played']]
+                    .filter(([value]) => playedValues.includes(value))
+                    .map(([, title]) => title)
+            );
 
-            return titleParts;
+            return {
+                subjects: [playtime, platform, genres, series],
+                timeWindow: buildTimeWindow(
+                    this.filters.start, this.filters.end, this.minYear, this.maxYear
+                ),
+                statuses,
+            };
+        },
+
+        /** The on-page heading: "Nintendo Switch Action Games of the 1990s". */
+        _buildDynamicTitle() {
+            const parts = this._titleParts();
+            const subjects = parts.subjects.filter(Boolean);
+            // "Video Games" when nothing names the kind of game
+            const noun = subjects.length ? 'Games' : 'Video Games';
+            return subjects.concat([noun]).join(' ') +
+                (parts.timeWindow ? ' of ' + parts.timeWindow : '') +
+                (parts.statuses ? ': ' + parts.statuses : '');
+        },
+
+        /** A filtered page's tab title: "Nintendo Switch · Action · 1990s". */
+        _buildShortTitle() {
+            const parts = this._titleParts();
+            return shortTitle(parts.subjects, parts.timeWindow, parts.statuses);
         },
 
         _buildPlatformSegment() {
@@ -1178,12 +1179,18 @@ document.addEventListener('alpine:init', () => {
             if (mobileTitle) {
                 mobileTitle.textContent = dynamicTitle;
             }
-            // The server composes the document title from this same heading,
+            // The server composes the document title from the same pieces,
             // so it has to follow the heading here as well - otherwise the
             // tab, a bookmark and a shared link all keep whatever the filter
             // state was at page load.
+            // A state with a clean landing URL (/games/1990s/) is pushed as
+            // that page, which is indexed and so keeps its keyword title.
             if (window.documentTitleSuffix) {
-                document.title = dynamicTitle + window.documentTitleSuffix;
+                document.title = rankingsDocumentTitle(
+                    dynamicTitle,
+                    this._buildShortTitle(),
+                    !this._filterUrl().includes('?')
+                );
             }
 
             if (state.facets) {

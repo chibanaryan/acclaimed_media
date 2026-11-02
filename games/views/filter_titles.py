@@ -1,12 +1,10 @@
 """The rankings heading's wording, composed from the filter state."""
 
 from core.services import titles
+from games import config
 
 # Both heading helpers now live in core, so the album rankings page composes
 # its heading the same way this one does.
-_join_names = titles.join_names
-
-
 _join_names = titles.join_names
 _build_time_window = titles.build_time_window
 
@@ -154,93 +152,130 @@ def _build_genre_subtitle(selected_genre_ids, option, genres):
     return f"Genre: {connector.join(genre_names)}"
 
 
-def _build_filter_title(
+# Status labels, in the filter's own order, as the client's `_titleParts` reads
+# them; titled from GAME_STATUS_OPTIONS so the heading says what the filter says.
+_STATUS_TITLES = tuple(
+    (option["value"], option["title"]) for option in config.GAME_STATUS_OPTIONS
+)
+
+
+def _playtime_label(filters):
+    """The heading's playtime words: "Short (<10 Hour)", "20+ Hour (100%)"."""
+    hltb_mode = filters.get("hltb_mode", "main")
+    hltb_min = filters.get("hltb_min")
+    hltb_max = filters.get("hltb_max")
+    if hltb_min is None and hltb_max is None:
+        return ""
+
+    mode_suffix = " (100%)" if hltb_mode == "completionist" else ""
+    # Recognize preset patterns from min/max values
+    # Short: 0-10, Medium: 10-30, Long: 30+
+    if hltb_min == 0 and hltb_max == 10:
+        time_desc = "Short (<10 Hour)"
+    elif hltb_min == 10 and hltb_max == 30:
+        time_desc = "Medium (10-30 Hour)"
+    elif hltb_min == 30 and hltb_max is None:
+        time_desc = "Long (30+ Hour)"
+    # Custom ranges
+    elif hltb_min == 0 and hltb_max is not None:
+        time_desc = f"<{int(hltb_max)} Hour"
+    elif hltb_min is not None and hltb_max is not None:
+        if hltb_min == hltb_max:
+            time_desc = f"~{int(hltb_min)} Hour"
+        else:
+            time_desc = f"{int(hltb_min)}-{int(hltb_max)} Hour"
+    elif hltb_min is not None:
+        time_desc = f"{int(hltb_min)}+ Hour"
+    else:
+        time_desc = f"<{int(hltb_max)} Hour"
+    return f"{time_desc}{mode_suffix}"
+
+
+def _filter_title_parts(
     filters, genres, platforms, min_year, max_year, series_list=None
 ):
-    """Compose the heading text based on filters."""
-    start_year = filters.get("start")
-    end_year = filters.get("end")
-    time_window = _build_time_window(start_year, end_year, min_year, max_year)
+    """The pieces the rankings titles are composed of (``_page_titles``)."""
     platform_label = _build_platform_segment(
         filters.get("platforms", []), platforms, include_games=False
     )
-    # Fold selected genres into the title after platform
+    if platform_label == "Video":
+        platform_label = ""
+
     genre_label = ""
     selected_genres = filters.get("genres") or []
     if selected_genres:
         name_lookup = {str(g["id"]): g["name"] for g in genres}
-        genre_names = [
-            name_lookup.get(str(gid), "").strip()
-            for gid in selected_genres
-            if name_lookup.get(str(gid), "").strip()
-        ]
-        if genre_names:
-            genre_label = f" {_join_names(genre_names)}"
+        genre_label = _join_names(
+            [
+                name_lookup.get(str(gid), "").strip()
+                for gid in selected_genres
+                if name_lookup.get(str(gid), "").strip()
+            ]
+        )
 
     # If exactly one series is selected, fold it into the title
     series_label = ""
     selected_series = filters.get("series") or []
     if len(selected_series) == 1 and series_list:
         name_lookup = {str(s["id"]): s["name"] for s in series_list}
-        series_name = name_lookup.get(str(selected_series[0]), "").strip()
-        if series_name:
-            series_label = f" {series_name}"
+        series_label = name_lookup.get(str(selected_series[0]), "").strip()
 
-    # Build HLTB playtime label
-    hltb_label = ""
-    hltb_mode = filters.get("hltb_mode", "main")
-    hltb_min = filters.get("hltb_min")
-    hltb_max = filters.get("hltb_max")
+    # The parameter is multi-select ("yes,want"); this used to read only an
+    # exact "yes" or "no", so any other choice left the heading saying nothing.
+    played = filters.get("played") or ""
+    if isinstance(played, str):
+        played = played.split(",")
+    status_label = _join_names(
+        [title for value, title in _STATUS_TITLES if value in played]
+    )
 
-    if hltb_min is not None or hltb_max is not None:
-        mode_suffix = " (100%)" if hltb_mode == "completionist" else ""
-        time_desc = ""
+    return {
+        "playtime": _playtime_label(filters),
+        "platform": platform_label,
+        "genres": genre_label,
+        "series": series_label,
+        "window": _build_time_window(
+            filters.get("start"), filters.get("end"), min_year, max_year
+        ),
+        "statuses": status_label,
+    }
 
-        # Recognize preset patterns from min/max values
-        # Short: 0-10, Medium: 10-30, Long: 30+
-        if hltb_min == 0 and hltb_max == 10:
-            time_desc = "Short (<10 Hour)"
-        elif hltb_min == 10 and hltb_max == 30:
-            time_desc = "Medium (10-30 Hour)"
-        elif hltb_min == 30 and hltb_max is None:
-            time_desc = "Long (30+ Hour)"
-        # Custom ranges
-        elif hltb_min == 0 and hltb_max is not None:
-            time_desc = f"<{int(hltb_max)} Hour"
-        elif hltb_min is not None and hltb_max is not None:
-            if hltb_min == hltb_max:
-                time_desc = f"~{int(hltb_min)} Hour"
-            else:
-                time_desc = f"{int(hltb_min)}-{int(hltb_max)} Hour"
-        elif hltb_min is not None:
-            time_desc = f"{int(hltb_min)}+ Hour"
-        elif hltb_max is not None:
-            time_desc = f"<{int(hltb_max)} Hour"
 
-        if time_desc:
-            hltb_label = f"{time_desc}{mode_suffix}"
+def _page_titles(filters, genres, platforms, min_year, max_year, series_list=None):
+    """The rankings page's three titles, as ``music.views._page_titles``.
 
-    # Omit "Video" prefix when genre, series, or playtime is selected
-    if platform_label == "Video" and (genre_label or series_label or hltb_label):
-        platform_label = ""
+    ``heading`` is "Short (<10 Hour) Nintendo Switch Action Games of the
+    1990s: Played"; ``keyword`` prefixes it with "Most Acclaimed" for the
+    indexed ``<title>``, ``og:title``, the ItemList and the CSV filename;
+    ``short`` is "Short (<10 Hour) · Nintendo Switch · Action · 1990s ·
+    Played" for a filtered page's tab. ``filterComponent._titleParts`` and its
+    two composers build the same in the browser.
+    """
+    parts = _filter_title_parts(
+        filters, genres, platforms, min_year, max_year, series_list
+    )
+    subjects = [parts[key] for key in ("playtime", "platform", "genres", "series")]
+    # "Video Games" when nothing names the kind of game
+    noun = "Games" if any(subjects) else "Video Games"
+    heading = " ".join(
+        (
+            " ".join(subjects)
+            + f" {noun}"
+            + (f" of {parts['window']}" if parts["window"] else "")
+            + (f": {parts['statuses']}" if parts["statuses"] else "")
+        ).split()
+    )
+    return {
+        "heading": heading,
+        "keyword": titles.keyword_title(heading),
+        "short": titles.short_title(subjects, parts["window"], parts["statuses"]),
+    }
 
-    time_suffix = f" of {time_window}" if time_window else ""
 
-    # Add played status suffix
-    played_suffix = ""
-    played = filters.get("played")
-    if played == "yes":
-        played_suffix = ": Played"
-    elif played == "no":
-        played_suffix = ": Untracked"
-
-    # Build title with playtime before platform
-    # Add space after hltb_label only if it exists
-    if hltb_label:
-        title = (
-            f"Most Acclaimed {hltb_label} "
-            f"{platform_label}{genre_label}{series_label} Games"
-        )
-    else:
-        title = f"Most Acclaimed {platform_label}{genre_label}{series_label} Games"
-    return " ".join(f"{title}{time_suffix}{played_suffix}".split())
+def _build_filter_title(
+    filters, genres, platforms, min_year, max_year, series_list=None
+):
+    """Compose the on-page heading from the filters (``_page_titles``)."""
+    return _page_titles(filters, genres, platforms, min_year, max_year, series_list)[
+        "heading"
+    ]
