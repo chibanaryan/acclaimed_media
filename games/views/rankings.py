@@ -41,7 +41,7 @@ from ._helpers import (
     _get_want_to_play_game_ids,
     _get_year_bounds,
 )
-from .filter_titles import _build_filter_title
+from .filter_titles import _build_filter_title, _build_tab_title
 
 GENRES_CACHE_KEY = f"search_wikipedia_genres_list_with_counts:{config.CACHE_VERSION}"
 SERIES_CACHE_KEY = f"search_series_list_with_counts:{config.CACHE_VERSION}"
@@ -425,6 +425,9 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         )
         context["is_filtered"] = True  # GameSearch is always filtered
         context["filter_title"] = _build_filter_title(
+            filters, genres, platforms, min_year, max_year, series_list
+        )
+        context["tab_title"] = _build_tab_title(
             filters, genres, platforms, min_year, max_year, series_list
         )
         # Genre subtitle not needed for single-select mode

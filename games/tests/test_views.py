@@ -533,6 +533,93 @@ class FilterTitleTests(TestCase):
         self.assertIn("<5 Hour", title)
 
 
+class TabTitleTests(TestCase):
+    """A filtered page's tab lists its facets; an unfiltered one has none."""
+
+    EMPTY = {
+        "q": "",
+        "start": 1980,
+        "end": 2020,
+        "genres": [],
+        "platforms": [],
+        "series": [],
+        "played": "",
+        "hltb_mode": "main",
+        "hltb_min": None,
+        "hltb_max": None,
+    }
+    GENRES = [{"id": 3, "name": "Action"}]
+    # Two, or the one selected would be the whole Nintendo group
+    PLATFORMS = [
+        {"id": 1, "code": "SW", "name": "Nintendo Switch"},
+        {"id": 2, "code": "NES", "name": "NES"},
+    ]
+    SERIES = [{"id": 9, "name": "Zelda"}]
+
+    def _tab(self, **filters):
+        return views._build_tab_title(
+            {**self.EMPTY, **filters},
+            self.GENRES,
+            self.PLATFORMS,
+            1980,
+            2020,
+            self.SERIES,
+        )
+
+    def test_unfiltered_has_none(self):
+        self.assertEqual(self._tab(), "")
+
+    def test_the_facets_in_order(self):
+        self.assertEqual(
+            self._tab(
+                q="link",
+                hltb_min=0,
+                hltb_max=10,
+                platforms=["1"],
+                genres=["3"],
+                series=["9"],
+                start=1990,
+                end=1999,
+                played="yes,want",
+            ),
+            "\u201clink\u201d \u00b7 Short (<10 Hour) \u00b7 Nintendo Switch"
+            " \u00b7 Action \u00b7 Zelda \u00b7 1990s \u00b7 Played + Want to Play",
+        )
+
+    def test_several_series_are_not_named(self):
+        # As in the heading, which names a series only when it is the one
+        self.assertEqual(self._tab(series=["9", "10"]), "")
+
+
+class PlayedLabelTests(TestCase):
+    """The played statuses read the same on the server as on the client.
+
+    The server's heading named only "yes" and "no", as one value, while the
+    parameter is multi-select and filter-component.js joined every status
+    with " + ": "Want to Play" never reached a server-rendered heading.
+    """
+
+    def test_every_status_is_named_in_order(self):
+        self.assertEqual(
+            views.filter_titles._played_label("no,yes,want"),
+            "Played + Want to Play + Untracked",
+        )
+
+    def test_a_list_reads_as_the_string_does(self):
+        self.assertEqual(views.filter_titles._played_label(["want"]), "Want to Play")
+
+    def test_nothing_chosen(self):
+        self.assertEqual(views.filter_titles._played_label(""), "")
+        self.assertEqual(views.filter_titles._played_label(None), "")
+
+    def test_the_heading_takes_them(self):
+        filters = {**TabTitleTests.EMPTY, "played": "want"}
+        self.assertEqual(
+            views._build_filter_title(filters, [], [], 1980, 2020),
+            "Most Acclaimed Video Games of All Time: Want to Play",
+        )
+
+
 class PlatformSegmentTests(TestCase):
     """Tests for _build_platform_segment helper."""
 

@@ -1,6 +1,7 @@
 """The rankings heading's wording, composed from the filter state."""
 
 from core.services import titles
+from games import config
 
 # Both heading helpers now live in core, so the album rankings page composes
 # its heading the same way this one does.
@@ -154,6 +155,75 @@ def _build_genre_subtitle(selected_genre_ids, option, genres):
     return f"Genre: {connector.join(genre_names)}"
 
 
+def _playtime_label(filters):
+    """The playtime range as the heading names it ("Short (<10 Hour)"), or ""."""
+    hltb_mode = filters.get("hltb_mode", "main")
+    hltb_min = filters.get("hltb_min")
+    hltb_max = filters.get("hltb_max")
+    if hltb_min is None and hltb_max is None:
+        return ""
+
+    mode_suffix = " (100%)" if hltb_mode == "completionist" else ""
+    time_desc = ""
+
+    # Recognize preset patterns from min/max values
+    # Short: 0-10, Medium: 10-30, Long: 30+
+    if hltb_min == 0 and hltb_max == 10:
+        time_desc = "Short (<10 Hour)"
+    elif hltb_min == 10 and hltb_max == 30:
+        time_desc = "Medium (10-30 Hour)"
+    elif hltb_min == 30 and hltb_max is None:
+        time_desc = "Long (30+ Hour)"
+    # Custom ranges
+    elif hltb_min == 0 and hltb_max is not None:
+        time_desc = f"<{int(hltb_max)} Hour"
+    elif hltb_min is not None and hltb_max is not None:
+        if hltb_min == hltb_max:
+            time_desc = f"~{int(hltb_min)} Hour"
+        else:
+            time_desc = f"{int(hltb_min)}-{int(hltb_max)} Hour"
+    elif hltb_min is not None:
+        time_desc = f"{int(hltb_min)}+ Hour"
+    elif hltb_max is not None:
+        time_desc = f"<{int(hltb_max)} Hour"
+
+    return f"{time_desc}{mode_suffix}" if time_desc else ""
+
+
+# The played filter's values in the order the heading names them, as
+# filter-component.js `_playedLabel` does; their titles are the options'
+PLAYED_TITLE_ORDER = ("yes", "want", "no")
+
+
+def _played_label(played):
+    """The played filter's statuses ("Played + Want to Play"), or ""."""
+    if isinstance(played, str):
+        played = played.split(",")
+    chosen = set(played or [])
+    titles_by_value = {
+        option["value"]: option["title"] for option in config.GAME_STATUS_OPTIONS
+    }
+    return " + ".join(
+        titles_by_value[value] for value in PLAYED_TITLE_ORDER if value in chosen
+    )
+
+
+def _selected_names(selected_ids, items):
+    """The names of the selected ``items`` (dicts with ``id`` and ``name``)."""
+    name_lookup = {str(item["id"]): item["name"] for item in items}
+    names = (name_lookup.get(str(item_id), "").strip() for item_id in selected_ids)
+    return [name for name in names if name]
+
+
+def _series_name(filters, series_list):
+    """The series' name when exactly one is selected, which is when titles name it."""
+    selected_series = filters.get("series") or []
+    if len(selected_series) != 1 or not series_list:
+        return ""
+    names = _selected_names(selected_series, series_list)
+    return names[0] if names else ""
+
+
 def _build_filter_title(
     filters, genres, platforms, min_year, max_year, series_list=None
 ):
@@ -165,60 +235,14 @@ def _build_filter_title(
         filters.get("platforms", []), platforms, include_games=False
     )
     # Fold selected genres into the title after platform
-    genre_label = ""
-    selected_genres = filters.get("genres") or []
-    if selected_genres:
-        name_lookup = {str(g["id"]): g["name"] for g in genres}
-        genre_names = [
-            name_lookup.get(str(gid), "").strip()
-            for gid in selected_genres
-            if name_lookup.get(str(gid), "").strip()
-        ]
-        if genre_names:
-            genre_label = f" {_join_names(genre_names)}"
+    genre_names = _selected_names(filters.get("genres") or [], genres)
+    genre_label = f" {_join_names(genre_names)}" if genre_names else ""
 
     # If exactly one series is selected, fold it into the title
-    series_label = ""
-    selected_series = filters.get("series") or []
-    if len(selected_series) == 1 and series_list:
-        name_lookup = {str(s["id"]): s["name"] for s in series_list}
-        series_name = name_lookup.get(str(selected_series[0]), "").strip()
-        if series_name:
-            series_label = f" {series_name}"
+    series_name = _series_name(filters, series_list)
+    series_label = f" {series_name}" if series_name else ""
 
-    # Build HLTB playtime label
-    hltb_label = ""
-    hltb_mode = filters.get("hltb_mode", "main")
-    hltb_min = filters.get("hltb_min")
-    hltb_max = filters.get("hltb_max")
-
-    if hltb_min is not None or hltb_max is not None:
-        mode_suffix = " (100%)" if hltb_mode == "completionist" else ""
-        time_desc = ""
-
-        # Recognize preset patterns from min/max values
-        # Short: 0-10, Medium: 10-30, Long: 30+
-        if hltb_min == 0 and hltb_max == 10:
-            time_desc = "Short (<10 Hour)"
-        elif hltb_min == 10 and hltb_max == 30:
-            time_desc = "Medium (10-30 Hour)"
-        elif hltb_min == 30 and hltb_max is None:
-            time_desc = "Long (30+ Hour)"
-        # Custom ranges
-        elif hltb_min == 0 and hltb_max is not None:
-            time_desc = f"<{int(hltb_max)} Hour"
-        elif hltb_min is not None and hltb_max is not None:
-            if hltb_min == hltb_max:
-                time_desc = f"~{int(hltb_min)} Hour"
-            else:
-                time_desc = f"{int(hltb_min)}-{int(hltb_max)} Hour"
-        elif hltb_min is not None:
-            time_desc = f"{int(hltb_min)}+ Hour"
-        elif hltb_max is not None:
-            time_desc = f"<{int(hltb_max)} Hour"
-
-        if time_desc:
-            hltb_label = f"{time_desc}{mode_suffix}"
+    hltb_label = _playtime_label(filters)
 
     # Omit "Video" prefix when genre, series, or playtime is selected
     if platform_label == "Video" and (genre_label or series_label or hltb_label):
@@ -226,13 +250,8 @@ def _build_filter_title(
 
     time_suffix = f" of {time_window}" if time_window else ""
 
-    # Add played status suffix
-    played_suffix = ""
-    played = filters.get("played")
-    if played == "yes":
-        played_suffix = ": Played"
-    elif played == "no":
-        played_suffix = ": Untracked"
+    played = _played_label(filters.get("played"))
+    played_suffix = f": {played}" if played else ""
 
     # Build title with playtime before platform
     # Add space after hltb_label only if it exists
@@ -244,3 +263,29 @@ def _build_filter_title(
     else:
         title = f"Most Acclaimed {platform_label}{genre_label}{series_label} Games"
     return " ".join(f"{title}{time_suffix}{played_suffix}".split())
+
+
+def _build_tab_title(filters, genres, platforms, min_year, max_year, series_list=None):
+    """The document title's text for a filtered page, or "" for an unfiltered one.
+
+    The facets alone ("Nintendo Switch · Action · 1990s"), for the template
+    to put the section's suffix after; ``_build_filter_title`` keeps the
+    heading, the phrase an unfiltered page is searched for.
+    """
+    query = filters.get("q") or ""
+    platform_label = _build_platform_segment(
+        filters.get("platforms", []), platforms, include_games=False
+    )
+    return titles.short_title(
+        [
+            f"\u201c{query}\u201d" if query else "",
+            _playtime_label(filters),
+            "" if platform_label == "Video" else platform_label,
+            _join_names(_selected_names(filters.get("genres") or [], genres)),
+            _series_name(filters, series_list),
+            titles.short_time_window(
+                filters.get("start"), filters.get("end"), min_year, max_year
+            ),
+            _played_label(filters.get("played")),
+        ]
+    )

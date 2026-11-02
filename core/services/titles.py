@@ -44,3 +44,24 @@ def build_time_window(start_year, end_year, min_year, max_year):
     first = max(start_year, min_year) if overlaps else start_year
     last = min(end_year, max_year) if overlaps else end_year
     return str(first) if first == last else f"{first}-{last}"
+
+
+# The tab title of a filtered page lists its facets, the distinguishing part
+# first, where the heading phrases them as a sentence. Only the indexable
+# pages - unfiltered, or a landing page showing its own filters - need the
+# heading's "Most Acclaimed ..." wording in the tab: every query-string state
+# canonicalizes to its bare path, so its title is never what a search shows.
+SHORT_TITLE_SEPARATOR = " · "
+
+
+def short_time_window(start_year, end_year, min_year, max_year):
+    """``build_time_window`` for a tab title: "1990s", and nothing for all time."""
+    window = build_time_window(start_year, end_year, min_year, max_year)
+    if window == "All Time":
+        return ""
+    return window.removeprefix("the ")
+
+
+def short_title(parts):
+    """Join a filtered page's facet labels, leaving out the empty ones."""
+    return SHORT_TITLE_SEPARATOR.join(part for part in parts if part)

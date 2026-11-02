@@ -4,11 +4,13 @@
 {# Head blocks follow the games rankings page: the heading doubles as the #}
 {# page title, with the same site suffix, and as the og/twitter titles. #}
 {# A landing page (/music/genres/<slug>/, /music/<decade>s/) sets seo_title #}
-{# to the same heading, plus its own description and ItemList. #}
-{% block title %}{% firstof seo_title filter_title "Most Acclaimed Albums" %} | Acclaimed Media{% endblock %}
+{# to the same heading, plus its own description and ItemList. A filtered #}
+{# page's tab lists only its facets (`tab_title`): its URL canonicalizes to #}
+{# the bare path, so the heading's wording earns nothing in a tab there. #}
+{% block title %}{% if seo_title %}{{ seo_title }} | Acclaimed Media{% elif tab_title %}{{ tab_title }}{{ tab_title_suffix }}{% else %}{% firstof filter_title "Most Acclaimed Albums" %} | Acclaimed Media{% endif %}{% endblock %}
 
 {% block meta_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}The top {{ album_count }} most recommended albums across {{ list_count }} critic lists from {{ publication_count }} publications.{% endif %}{% endblock %}
-{% block og_title %}{% firstof seo_title filter_title "Most Acclaimed Albums" %} | Acclaimed Media{% endblock %}
+{% block og_title %}{% if seo_title %}{{ seo_title }} | Acclaimed Media{% elif tab_title %}{{ tab_title }}{{ tab_title_suffix }}{% else %}{% firstof filter_title "Most Acclaimed Albums" %} | Acclaimed Media{% endif %}{% endblock %}
 {% block og_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}Album rankings aggregated from {{ list_count }} published critics' lists.{% endif %}{% endblock %}
 {% block structured_data %}{% if itemlist_json %}{{ itemlist_json|safe }}{% else %}{{ block.super }}{% endif %}{% endblock %}
 

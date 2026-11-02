@@ -30,8 +30,13 @@ def media_type(request):
     is told apart by its URL namespace. Every page on a site is that site's,
     the shared ones (About, Contact, sign-in) included, so they keep the
     sidebar of the site the visitor is on.
+
+    ``tab_title_suffix`` follows a filtered rankings page's tab title, which
+    lists only its facets and so names the section the tab is showing.
     """
     from core import sites
+
+    section = {sites.GAMES: "Games", sites.MUSIC: "Music"}
 
     site = sites.request_site(request)
     resolver_match = getattr(request, "resolver_match", None)
@@ -44,6 +49,11 @@ def media_type(request):
         "site_key": site,
         "media_type": kind,
         "site_home_url": sites.site_reverse(site, sites.HOME_VIEWS[site]),
+        "tab_title_suffix": (
+            f" | {section[site]} | Acclaimed Media"
+            if site in section
+            else " | Acclaimed Media"
+        ),
     }
 
 

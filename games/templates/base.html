@@ -17,9 +17,10 @@
     {# Note: 'unsafe-eval' is required for Alpine.js x-data expressions #}
     <title>{% block title %}Acclaimed Media{% endblock %}</title>
     {# The site suffix a filterable page appends to its heading to rebuild #}
-    {# the document title client-side. One definition, so the server and #}
-    {# the two filter components cannot drift on the separator. #}
-    <script nonce="{{ csp_nonce }}">window.documentTitleSuffix = ' | Acclaimed Media';</script>
+    {# the document title client-side, and the one a filtered page's #}
+    {# shorter tab title takes, which names the section. One definition each, #}
+    {# so the server and the two filter components cannot drift. #}
+    <script nonce="{{ csp_nonce }}">window.documentTitleSuffix = ' | Acclaimed Media'; window.tabTitleSuffix = '{{ tab_title_suffix|escapejs }}';</script>
 
     {# CRITICAL: Early preload for LCP images - must be before other resources #}
     {% block early_preload %}{% endblock %}

@@ -749,20 +749,15 @@ function mediaListControlsData(config) {
         },
 
         /**
-         * The heading, composed from the filter state.
+         * The filter state's labels, which the heading and the tab title share.
          *
-         * Mirrors `music.views._filter_title`, as games' `_buildDynamicTitle`
-         * mirrors its own server-side builder. The heading sits outside the
+         * Mirrors `music.views._title_parts`. The heading sits outside the
          * swapped results container, so neither path gets it for free: the
          * server sends it back out of band, and this sets it directly when
          * filtering happens in the browser.
+         * @private
          */
-        buildTitle() {
-            if (this.filters.q) {
-                return `${settings.titleSearchNoun || 'Items'} matching \u201c` +
-                    `${this.filters.q}\u201d`;
-            }
-
+        _titleParts() {
             const names = this.filters.genres
                 .map(id => {
                     const genre = this.genres.find(
@@ -771,8 +766,44 @@ function mediaListControlsData(config) {
                     return genre ? genre.name : null;
                 })
                 .filter(Boolean);
-            const genreLabel = names.length ? ' ' + joinNames(names) : '';
 
+            // Mirrors the status labels `_title_parts` names. Without them
+            // the title would change the moment filtering moved from the
+            // server to the browser.
+            const statuses = this.filters[statusKey] || [];
+            const labels = (settings.statusOptions || [])
+                .filter(option => statuses.includes(option.value))
+                .map(option => option.title);
+
+            // No control picks artists, so their names come with the field
+            // the page rendered them into (`_title_parts`'s artists).
+            const form = this._form();
+            const field = form && form.querySelector('[name="artists"]');
+            const artists = field && field.value && field.dataset.label
+                ? field.dataset.label
+                : '';
+
+            return {
+                query: this.filters.q || '',
+                genres: joinNames(names),
+                artists,
+                statuses: joinNames(labels)
+            };
+        },
+
+        /**
+         * The heading, composed from the filter state.
+         *
+         * Mirrors `music.views._filter_title`, as games' `_buildDynamicTitle`
+         * mirrors its own server-side builder.
+         */
+        buildTitle(parts = this._titleParts()) {
+            if (parts.query) {
+                return `${settings.titleSearchNoun || 'Items'} matching \u201c` +
+                    `${parts.query}\u201d`;
+            }
+
+            const genreLabel = parts.genres ? ' ' + parts.genres : '';
             const window_ = buildTimeWindow(
                 this.filters.start,
                 this.filters.end,
@@ -780,43 +811,56 @@ function mediaListControlsData(config) {
                 this.maxYear
             );
             const timeSuffix = window_ ? ' of ' + window_ : '';
-
-            // Mirrors the status suffix `_filter_title` appends. Without it
-            // the heading would change the moment filtering moved from the
-            // server to the browser.
-            const statuses = this.filters[statusKey] || [];
-            const labels = (settings.statusOptions || [])
-                .filter(option => statuses.includes(option.value))
-                .map(option => option.title);
-            const statusSuffix = labels.length ? ': ' + joinNames(labels) : '';
-
-            // No control picks artists, so their names come with the field
-            // the page rendered them into (`_filter_title`'s "by ...").
-            const form = this._form();
-            const artists = form && form.querySelector('[name="artists"]');
-            const artistLabel = artists && artists.value && artists.dataset.label
-                ? ' by ' + artists.dataset.label
-                : '';
+            const statusSuffix = parts.statuses ? ': ' + parts.statuses : '';
+            const artistLabel = parts.artists ? ' by ' + parts.artists : '';
 
             const noun = settings.titleNoun || 'Items';
             return `Most Acclaimed${genreLabel} ${noun}${artistLabel}` +
                 `${timeSuffix}${statusSuffix}`;
         },
 
-        /** @private */
-        _applyTitle() {
-            const title = this.buildTitle();
+        /**
+         * A filtered page's tab title without its suffix, or '' when nothing
+         * filters. Mirrors `music.views._tab_title`.
+         */
+        buildTabTitle(parts = this._titleParts()) {
+            return shortTitle([
+                parts.query ? `\u201c${parts.query}\u201d` : '',
+                parts.genres,
+                parts.artists,
+                shortTimeWindow(
+                    this.filters.start,
+                    this.filters.end,
+                    this.minYear,
+                    this.maxYear
+                ),
+                parts.statuses
+            ]);
+        },
+
+        /**
+         * The heading, and the tab title a reload of the address would give.
+         *
+         * A filter change always lands on the rankings path (`/?...`), where
+         * a filtered page's tab lists its facets. Only Back can reach a
+         * landing page's own path, which keeps the heading it is indexed by.
+         * Nothing is kept from the page's load: a title remembered for "the
+         * state the page was served for" came back for any state with the
+         * same facets, the landing page's heading included on /?genres=...
+         * @private
+         */
+        _applyTitle({ onLandingPath = false } = {}) {
+            const parts = this._titleParts();
+            const title = this.buildTitle(parts);
             ['search-title-text', 'search-title-mobile-text'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.textContent = title;
             });
-            // The document title is composed from the same heading
-            // server-side, so it has to follow the heading here too -
-            // otherwise the tab, a bookmark and a shared link all keep
-            // whatever the filter state was when the page was loaded.
-            if (window.documentTitleSuffix) {
-                document.title = title + window.documentTitleSuffix;
-            }
+            if (!window.documentTitleSuffix) return;
+            const tabTitle = onLandingPath ? '' : this.buildTabTitle(parts);
+            document.title = tabTitle
+                ? tabTitle + (window.tabTitleSuffix || '')
+                : title + window.documentTitleSuffix;
         },
 
         /**
@@ -861,6 +905,8 @@ function mediaListControlsData(config) {
             // Nothing queued before Back may apply after it.
             if (this._leadingCommit) this._leadingCommit.cancel();
             // On a landing page's path the path itself is the filter
+            const onLandingPath = Boolean(settings.landingPath) &&
+                window.location.pathname === settings.landingPath;
             const params = landingFilterParams(
                 settings.landingPath, settings.landingSearch
             );
@@ -879,7 +925,7 @@ function mediaListControlsData(config) {
                 .filter(Boolean);
             this.filters.sort = params.get('sort') || this.defaultSort;
             this.filters.sortDirection = params.get('dir') || 'asc';
-            this._applyTitle();
+            this._applyTitle({ onLandingPath });
         }
     };
 }

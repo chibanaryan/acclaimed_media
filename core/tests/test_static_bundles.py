@@ -1093,7 +1093,8 @@ class AFullYearRangeStaysOutOfTheAddressTests(SimpleTestCase):
         ):
             with self.subTest(path=path):
                 source = self._source(path)
-                start = source.index("_filterUrl()")
+                # The definition, not the first call
+                start = re.search(r"_filterUrl\(\)\s*\{", source).start()
                 body = source[start : start + 900]
                 self.assertIn('delete("start")', body.replace("'", '"'))
 
@@ -1502,3 +1503,32 @@ class MusicHeadingKeepsItsHeightTests(SimpleTestCase):
         # The counts give way on a narrow window; the date never does.
         self.assertIn('<span class="truncate"', template)
         self.assertIn('<span class="shrink-0 whitespace-pre">', template)
+
+
+class FilteredTabTitlesTests(SimpleTestCase):
+    """Both filter components give a filtered page the short tab title.
+
+    The server titles a filtered page by its facets and the section
+    ("Rock · 1990s | Music | Acclaimed Media"), and a landing page or an
+    unfiltered one by its heading. A component that went on writing
+    `heading + documentTitleSuffix` would put the long title back on the
+    first filter change. Neither may keep the title the page loaded with:
+    restoring it for "the same facets" named a landing page on /?genres=...
+    and, after a bfcache Back, a filter long cleared. The pages load only the
+    minified copies, so those are read too; scripts/browser_smoke.js checks
+    the titles themselves against a reload.
+    """
+
+    FILES = (
+        "core/static/core/js/media-list-controls",
+        "games/static/games/js/filter-component",
+    )
+
+    def test_each_component_writes_the_short_title_and_keeps_none_from_load(self):
+        for name in self.FILES:
+            for suffix in (".js", ".min.js"):
+                with self.subTest(file=name + suffix):
+                    source = (Path(settings.BASE_DIR) / (name + suffix)).read_text()
+                    self.assertIn("window.tabTitleSuffix", source)
+                    self.assertIn("shortTitle(", source)
+                    self.assertNotIn("_initialDocumentTitle", source)

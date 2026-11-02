@@ -154,6 +154,50 @@ def _artist_names(raw, artists):
     return titles.join_names(chosen) if chosen else ""
 
 
+def _title_parts(params, min_year=None, max_year=None, genres=None, artists=None):
+    """The filter state's labels, which the heading and the tab title share.
+
+    The time window comes as the ``(start, end, min, max)`` that
+    ``titles.build_time_window`` and ``short_time_window`` take, or ``None``
+    when there are no years to describe.
+    """
+    selected_genres = parse_id_list(params.get("genres"))
+    genre_names = []
+    if selected_genres and genres:
+        names = {genre["id"]: genre["name"] for genre in genres}
+        genre_names = [
+            names[genre_id] for genre_id in selected_genres if genre_id in names
+        ]
+
+    start = parse_int(params.get("start"))
+    end = parse_int(params.get("end"))
+    if min_year is not None and max_year is not None:
+        years = (
+            start if start is not None else min_year,
+            end if end is not None else max_year,
+            min_year,
+            max_year,
+        )
+    elif start is not None and end is not None:
+        years = (start, end, start, end)
+    else:
+        years = None
+
+    statuses = _parse_status_list(params.get("listened"), config.LISTEN_FILTER_VALUES)
+    status_titles = [
+        option["title"]
+        for option in config.LISTEN_STATUS_OPTIONS
+        if option["value"] in statuses
+    ]
+    return {
+        "query": params.get("q") or "",
+        "genres": titles.join_names(genre_names),
+        "artists": _artist_names(params.get("artists"), artists),
+        "years": years,
+        "statuses": titles.join_names(status_titles),
+    }
+
+
 def _filter_title(params, min_year=None, max_year=None, genres=None, artists=None):
     """A natural page title describing the current filter state.
 
@@ -165,54 +209,41 @@ def _filter_title(params, min_year=None, max_year=None, genres=None, artists=Non
 
     Deliberately avoids "best"/"top" phrasing, matching the games pages.
     """
-    query = params.get("q")
-    if query:
-        return f"Albums matching \u201c{query}\u201d"
+    parts = _title_parts(params, min_year, max_year, genres, artists)
+    if parts["query"]:
+        return f"Albums matching \u201c{parts['query']}\u201d"
 
-    genre_label = ""
-    selected_genres = parse_id_list(params.get("genres"))
-    if selected_genres and genres:
-        names = {genre["id"]: genre["name"] for genre in genres}
-        chosen = [names[genre_id] for genre_id in selected_genres if genre_id in names]
-        if chosen:
-            genre_label = f" {titles.join_names(chosen)}"
-
-    artist_names = _artist_names(params.get("artists"), artists)
-    artist_label = f" by {artist_names}" if artist_names else ""
-
-    start = parse_int(params.get("start"))
-    end = parse_int(params.get("end"))
-    if min_year is not None and max_year is not None:
-        window = titles.build_time_window(
-            start if start is not None else min_year,
-            end if end is not None else max_year,
-            min_year,
-            max_year,
-        )
-    elif start is not None and end is not None:
-        window = titles.build_time_window(start, end, start, end)
-    else:
-        window = ""
-
+    genre_label = f" {parts['genres']}" if parts["genres"] else ""
+    artist_label = f" by {parts['artists']}" if parts["artists"] else ""
+    window = titles.build_time_window(*parts["years"]) if parts["years"] else ""
     time_suffix = f" of {window}" if window else ""
-
-    # Games appends ": Played" by hand and so handles only one value, which
-    # is a latent bug there since the parameter is multi-select. Join them.
-    statuses = _parse_status_list(params.get("listened"), config.LISTEN_FILTER_VALUES)
-    status_suffix = ""
-    if statuses:
-        chosen = [
-            option["title"]
-            for option in config.LISTEN_STATUS_OPTIONS
-            if option["value"] in statuses
-        ]
-        status_suffix = f": {titles.join_names(chosen)}"
+    # The status filter is multi-select, so every chosen status is named.
+    status_suffix = f": {parts['statuses']}" if parts["statuses"] else ""
 
     title = (
         f"Most Acclaimed{genre_label} Albums{artist_label}"
         f"{time_suffix}{status_suffix}"
     )
     return " ".join(title.split())
+
+
+def _tab_title(params, min_year=None, max_year=None, genres=None, artists=None):
+    """The document title's text for a filtered page, or "" for an unfiltered one.
+
+    The facets alone ("Rock · 1990s · Heard"), for the template to put
+    the section's suffix after. An unfiltered page keeps the heading, which
+    is the phrase it is searched for (``core.services.titles``).
+    """
+    parts = _title_parts(params, min_year, max_year, genres, artists)
+    return titles.short_title(
+        [
+            f"\u201c{parts['query']}\u201d" if parts["query"] else "",
+            parts["genres"],
+            parts["artists"],
+            titles.short_time_window(*parts["years"]) if parts["years"] else "",
+            parts["statuses"],
+        ]
+    )
 
 
 def _tracked_album_ids(user, cache_key, queryset):
@@ -848,6 +879,13 @@ class AlbumHomePageView(RobustPaginationMixin, ListView):
             for param in ("q", "start", "end", "genres", "listened")
         )
         context["filter_title"] = _filter_title(
+            self.request.GET,
+            min_year=min_year,
+            max_year=max_year,
+            genres=genres,
+            artists=context["artists"],
+        )
+        context["tab_title"] = _tab_title(
             self.request.GET,
             min_year=min_year,
             max_year=max_year,

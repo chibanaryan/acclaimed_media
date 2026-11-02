@@ -664,95 +664,127 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
+        /** The playtime range as the heading names it, as `_playtime_label` does. */
+        _playtimeLabel() {
+            const min = this.filters.hltb_min;
+            const max = this.filters.hltb_max;
+            if (min === null && max === null) return '';
+            const mode = this.filters.hltb_mode || 'main';
+            const modeSuffix = mode === 'completionist' ? ' (100%)' : '';
+            let timeDesc = '';
+
+            if (min === 0 && max === 10) {
+                timeDesc = 'Short (<10 Hour)';
+            } else if (min === 10 && max === 30) {
+                timeDesc = 'Medium (10-30 Hour)';
+            } else if (min === 30 && max === null) {
+                timeDesc = 'Long (30+ Hour)';
+            } else if (min === 0 && max !== null) {
+                timeDesc = '<' + max + ' Hour';
+            } else if (min !== null && max !== null) {
+                if (min === max) {
+                    timeDesc = '~' + min + ' Hour';
+                } else {
+                    timeDesc = min + '-' + max + ' Hour';
+                }
+            } else if (min !== null) {
+                timeDesc = min + '+ Hour';
+            } else if (max !== null) {
+                timeDesc = '<' + max + ' Hour';
+            }
+            return timeDesc ? timeDesc + modeSuffix : '';
+        },
+
+        /** The played filter's statuses, as `_played_label` names them. */
+        _playedLabel() {
+            const played = this.filters.played;
+            // A string is the pre-array form of the same comma-joined values
+            const chosen = Array.isArray(played)
+                ? played
+                : String(played || '').split(',');
+            return [['yes', 'Played'], ['want', 'Want to Play'], ['no', 'Untracked']]
+                .filter(([value]) => chosen.includes(value))
+                .map(([, title]) => title)
+                .join(' + ');
+        },
+
+        _selectedGenreNames() {
+            return (this.filters.genres || [])
+                .map(gid => this.genres.find(g => String(g.id) === String(gid)))
+                .filter(g => g)
+                .map(g => g.name);
+        },
+
+        /** The series' name when exactly one is selected, which is when titles name it. */
+        _selectedSeriesName() {
+            if (!this.filters.series || this.filters.series.length !== 1) return '';
+            const series = this.seriesList.find(s => String(s.id) === String(this.filters.series[0]));
+            return series ? series.name : '';
+        },
+
         _buildDynamicTitle() {
             const timeWindow = buildTimeWindow(
                 this.filters.start, this.filters.end, this.minYear, this.maxYear
             );
-            const platformLabel = this._buildPlatformSegment();
-            let genreLabel = '';
-            let seriesLabel = '';
-            if (this.filters.genres && this.filters.genres.length > 0) {
-                const genreNames = this.filters.genres
-                    .map(gid => this.genres.find(g => String(g.id) === String(gid)))
-                    .filter(g => g)
-                    .map(g => g.name);
-                if (genreNames.length > 0) {
-                    genreLabel = ' ' + this._joinNames(genreNames);
-                }
-            }
-
-            if (this.filters.series && this.filters.series.length === 1) {
-                const series = this.seriesList.find(s => String(s.id) === String(this.filters.series[0]));
-                if (series) {
-                    seriesLabel = series.name;
-                }
-            }
-
-            let hltbLabel = '';
-            if (this.filters.hltb_min !== null || this.filters.hltb_max !== null) {
-                let timeDesc = '';
-                const mode = this.filters.hltb_mode || 'main';
-                const modeSuffix = mode === 'completionist' ? ' (100%)' : '';
-                const min = this.filters.hltb_min;
-                const max = this.filters.hltb_max;
-
-                if (min === 0 && max === 10) {
-                    timeDesc = 'Short (<10 Hour)';
-                } else if (min === 10 && max === 30) {
-                    timeDesc = 'Medium (10-30 Hour)';
-                } else if (min === 30 && max === null) {
-                    timeDesc = 'Long (30+ Hour)';
-                } else if (min === 0 && max !== null) {
-                    timeDesc = '<' + max + ' Hour';
-                } else if (min !== null && max !== null) {
-                    if (min === max) {
-                        timeDesc = '~' + min + ' Hour';
-                    } else {
-                        timeDesc = min + '-' + max + ' Hour';
-                    }
-                } else if (min !== null) {
-                    timeDesc = min + '+ Hour';
-                } else if (max !== null) {
-                    timeDesc = '<' + max + ' Hour';
-                }
-
-                if (timeDesc) {
-                    hltbLabel = ' ' + timeDesc + modeSuffix;
-                }
-            }
+            const genreNames = this._selectedGenreNames();
+            const genreLabel = genreNames.length ? ' ' + this._joinNames(genreNames) : '';
+            const seriesLabel = this._selectedSeriesName();
+            const hltbLabel = this._playtimeLabel();
 
             const timeSuffix = timeWindow ? ' of ' + timeWindow : '';
-            let platform = platformLabel;
+            let platform = this._buildPlatformSegment();
 
             if ((genreLabel || seriesLabel || hltbLabel) && platform === 'Video') {
                 platform = '';
             }
 
             let titleParts = 'Most Acclaimed';
-            if (hltbLabel) titleParts += hltbLabel;
+            if (hltbLabel) titleParts += ' ' + hltbLabel;
             if (platform) titleParts += ' ' + platform;
             if (genreLabel) titleParts += genreLabel;
             if (seriesLabel) titleParts += ' ' + seriesLabel;
             titleParts += ' Games' + timeSuffix;
 
-            // Handle array-based played filter for title
-            const played = this.filters.played;
-            if (Array.isArray(played) && played.length > 0) {
-                const statusLabels = [];
-                if (played.includes('yes')) statusLabels.push('Played');
-                if (played.includes('want')) statusLabels.push('Want to Play');
-                if (played.includes('no')) statusLabels.push('Untracked');
-                if (statusLabels.length > 0) {
-                    titleParts += ': ' + statusLabels.join(' + ');
-                }
-            } else if (typeof played === 'string' && played) {
-                // Backwards compatibility for string values
-                if (played === 'yes') titleParts += ': Played';
-                else if (played === 'want') titleParts += ': Want to Play';
-                else if (played === 'no') titleParts += ': Untracked';
-            }
+            const played = this._playedLabel();
+            if (played) titleParts += ': ' + played;
 
             return titleParts;
+        },
+
+        /**
+         * A filtered page's tab title without its suffix, or '' when nothing
+         * filters. Mirrors `games.views.filter_titles._build_tab_title`.
+         */
+        _buildTabTitle() {
+            const query = this.filters.q || '';
+            const platform = this._buildPlatformSegment();
+            return shortTitle([
+                query ? '\u201c' + query + '\u201d' : '',
+                this._playtimeLabel(),
+                platform === 'Video' ? '' : platform,
+                this._joinNames(this._selectedGenreNames()),
+                this._selectedSeriesName(),
+                shortTimeWindow(
+                    this.filters.start, this.filters.end, this.minYear, this.maxYear
+                ),
+                this._playedLabel()
+            ]);
+        },
+
+        /**
+         * The document title a reload of the URL these filters go to would
+         * give: the facets, unless that URL is a landing page (`_filterUrl`
+         * pushes /games/1990s/ for the 1990s) or nothing filters, when it is
+         * the heading. Nothing is kept from the page's load: a title
+         * remembered for "the state the page was served for" came back for
+         * any state with the same facets, whatever URL it went to.
+         */
+        _documentTitle(heading) {
+            const tabTitle = this._buildTabTitle();
+            const url = this._filterUrl();
+            const landing = url.startsWith('/games/') && !url.includes('?');
+            if (tabTitle && !landing) return tabTitle + (window.tabTitleSuffix || '');
+            return heading + window.documentTitleSuffix;
         },
 
         _buildPlatformSegment() {
@@ -1123,6 +1155,11 @@ document.addEventListener('alpine:init', () => {
                 if (historyMethod) {
                     this._writeHistory(historyMethod, pushUrl, filterKey);
                 }
+                // The client render sets the tab with the heading; this path
+                // has to as well, or the tab lags until the engine loads.
+                if (window.documentTitleSuffix) {
+                    document.title = this._documentTitle(this._buildDynamicTitle());
+                }
             } catch (err) {
                 if (err.name !== 'AbortError') {
                     console.error('Error fetching results:', err);
@@ -1191,7 +1228,7 @@ document.addEventListener('alpine:init', () => {
             // tab, a bookmark and a shared link all keep whatever the filter
             // state was at page load.
             if (window.documentTitleSuffix) {
-                document.title = dynamicTitle + window.documentTitleSuffix;
+                document.title = this._documentTitle(dynamicTitle);
             }
 
             if (state.facets) {

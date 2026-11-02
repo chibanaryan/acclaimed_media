@@ -369,6 +369,18 @@ function buildTimeWindow(start, end, minYear, maxYear) {
     return first === last ? String(first) : first + '-' + last;
 }
 
+/** A tab title's time window, as titles.short_time_window builds it. */
+function shortTimeWindow(start, end, minYear, maxYear) {
+    const window_ = buildTimeWindow(start, end, minYear, maxYear);
+    if (window_ === 'All Time') return '';
+    return window_.startsWith('the ') ? window_.slice(4) : window_;
+}
+
+/** A filtered page's facet labels for its tab, as titles.short_title joins them. */
+function shortTitle(parts) {
+    return parts.filter(Boolean).join(' \u00b7 ');
+}
+
 /**
  * Reads the SEO clean-URL map embedded by the home page template
  * (#seo-urls-data json_script). Cached after first parse.

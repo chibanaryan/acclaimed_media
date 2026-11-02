@@ -37,6 +37,15 @@
   rendered once and read by one `landingFilterParams`, and the dead code is
   gone. `docs/ASSISTIVE_TECH_CHECKLIST.md` is the VoiceOver/NVDA/iPhone script
   for ROADMAP open bug 7, which stays open until it is run
+- **A filtered page's tab names its facets.** "Rock · 1990s · Heard | Music |
+  Acclaimed Media" rather than "Most Acclaimed Rock Albums of the 1990s:
+  Heard | Acclaimed Media", on music and games alike (James's request). A
+  filtered URL canonicalizes to its bare path, so its title is never
+  indexed; the home page and the landing pages, which are, keep the heading
+  as their title. The on-page heading is unchanged, and the client titles
+  every state as a reload of its address would. The games heading names
+  "Want to Play" and every chosen status on the server too, as the client
+  always did
 
 ## 2026-11-01
 

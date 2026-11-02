@@ -5,11 +5,13 @@
 
 {# `seo_title` is set only by the SEO landing views; `filter_title` is #}
 {# the heading this page composes from the filter state, so the tab #}
-{# title tracks the filters as the album page's does. #}
-{% block title %}{% firstof seo_title filter_title as page_title %}{% if page_title %}{{ page_title }} | Acclaimed Media{% else %}Most Acclaimed Video Games of All Time | Acclaimed Media{% endif %}{% endblock %}
+{# title tracks the filters as the album page's does. A filtered page's tab #}
+{# lists only its facets (`tab_title`): its URL canonicalizes to the bare #}
+{# path, so the heading's wording earns nothing in a tab there. #}
+{% block title %}{% if not seo_title and tab_title %}{{ tab_title }}{{ tab_title_suffix }}{% else %}{% firstof seo_title filter_title as page_title %}{% if page_title %}{{ page_title }} | Acclaimed Media{% else %}Most Acclaimed Video Games of All Time | Acclaimed Media{% endif %}{% endif %}{% endblock %}
 
 {% block meta_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}{{ block.super }}{% endif %}{% endblock %}
-{% block og_title %}{% firstof seo_title filter_title as page_title %}{% if page_title %}{{ page_title }} | Acclaimed Media{% else %}{{ block.super }}{% endif %}{% endblock %}
+{% block og_title %}{% if not seo_title and tab_title %}{{ tab_title }}{{ tab_title_suffix }}{% else %}{% firstof seo_title filter_title as page_title %}{% if page_title %}{{ page_title }} | Acclaimed Media{% else %}{{ block.super }}{% endif %}{% endif %}{% endblock %}
 {% block og_description %}{% if seo_meta_description %}{{ seo_meta_description }}{% else %}{{ block.super }}{% endif %}{% endblock %}
 {% block structured_data %}{% if itemlist_json %}{{ itemlist_json|safe }}{% else %}{{ block.super }}{% endif %}{% endblock %}
 

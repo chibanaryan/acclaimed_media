@@ -4565,15 +4565,33 @@ class HomePageDocumentTitleTest(TestCase):
     def test_a_genre_filter_reaches_the_document_title(self):
         self.assertIn("Action", self._title(f"/?genres={self.genre.id}"))
 
-    def test_the_document_title_matches_the_heading(self):
-        # The two are composed from the same `filter_title`, so a divergence
-        # means one of them stopped reading it.
-        url = f"/?genres={self.genre.id}"
+    def test_a_filtered_title_lists_its_facets_and_names_the_section(self):
+        # A filtered URL canonicalizes to the bare path, so its title is
+        # never indexed and the heading's "Most Acclaimed ... Games of"
+        # wording only crowds the tab. The heading itself keeps it.
+        url = f"/?genres={self.genre.id}&start=1990&end=1999"
         html = self.client.get(url).content.decode()
         heading = re.search(
             r'id="search-title"[^>]*>\s*(.*?)\s*</h1>', html, re.S
         ).group(1)
-        self.assertTrue(self._title(url).startswith(heading))
+        self.assertEqual(heading, "Most Acclaimed Action Games of the 1990s")
+        self.assertEqual(
+            self._title(url), "Action \u00b7 1990s | Games | Acclaimed Media"
+        )
+        self.assertIn(
+            '<meta property="og:title" content="Action \u00b7 1990s | Games |'
+            ' Acclaimed Media">',
+            html,
+        )
+
+    def test_an_unfiltered_page_keeps_the_heading_it_is_searched_for(self):
+        for url in ("/", "/?sort=year&dir=desc"):
+            with self.subTest(url=url):
+                clear_all_caches()
+                self.assertEqual(
+                    self._title(url),
+                    "Most Acclaimed Video Games of All Time | Acclaimed Media",
+                )
 
     def test_a_year_range_reaches_the_document_title(self):
         self.assertIn("1990s", self._title("/?start=1990&end=1999"))
@@ -4605,6 +4623,10 @@ class HomePageDocumentTitleTest(TestCase):
         # page for them to read.
         html = self.client.get("/").content.decode()
         self.assertIn("window.documentTitleSuffix = ' | Acclaimed Media';", html)
+        self.assertIn(
+            "window.tabTitleSuffix = ' | Games | Acclaimed Media';",
+            html,
+        )
 
 
 class EmptyResultCanBeLeftTests(TestCase):

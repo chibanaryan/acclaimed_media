@@ -17,8 +17,9 @@
  * checks that Back survives a filter change made while the engine loads,
  * that a server Load More survives the engine's takeover and a view toggle,
  * that music's takeover aborts only the requests it answers, that a games
- * jump filters once and Clear All after it adds no history entry, and that a
- * year range the corpus does not reach shows and can be cleared.
+ * jump filters once and Clear All after it adds no history entry, that a
+ * year range the corpus does not reach shows and can be cleared, and that
+ * the tab title reads as a reload of the address would.
  */
 const puppeteer = require('puppeteer-core');
 
@@ -380,6 +381,59 @@ async function checkRangeOutsideTheCorpus(page, site) {
     return null;
 }
 
+/**
+ * The tab says what a reload of the address would: a filtered page lists its
+ * facets and its section, and a landing page or an unfiltered one keeps its
+ * heading. Each step's title is checked against the server's for the URL it
+ * left. A title the page kept from load came back for any state with the same
+ * facets, which on music's /?genres=... named the landing page it had left.
+ * Answers as above.
+ */
+async function checkTabTitleMatchesAReload(page, site, path, steps) {
+    await page.setViewport({ width: 1440, height: 900 });
+    const ready = async () => {
+        const decade = await page.waitForSelector('.year-grid-decade[title^="1990s:"]');
+        await page.waitForFunction(element => {
+            const data = Alpine.$data(element);
+            return data.clientFilterReady ||
+                (data._clientEngineReady && data._clientEngineReady());
+        }, {}, decade);
+        return decade;
+    };
+    await page.goto(site + path, { waitUntil: 'networkidle2' });
+    const decade = await ready();
+    const served = () => page.evaluate(async () => {
+        const html = await (await fetch(location.href)).text();
+        return new DOMParser().parseFromString(html, 'text/html').title;
+    });
+    const flip = () => page.evaluate(() => [...document.querySelectorAll('button')]
+        .find(b => b.offsetParent && b.getAttribute('@click') === 'toggleSortDirection()')
+        .click());
+    const actions = {
+        'the 1990s': () => decade.click(),
+        'no 1990s': () => decade.click(),
+        'a flipped sort': flip,
+        'the sort back': flip,
+        'the grid': () => page.evaluate(() => [...document.querySelectorAll('button')]
+            .find(b => b.offsetParent && b.getAttribute('@click') === "setViewMode('grid')")
+            .click()),
+        'Clear All': () => press(page, /^Clear All/),
+        Back: () => page.goBack(),
+    };
+    let short = false;
+    for (const step of steps) {
+        await actions[step]();
+        await sleep(800);
+        const [shown, expected] = [await page.title(), await served()];
+        if (shown !== expected) {
+            return `${site}${path} after ${step}: the tab read "${shown}", ` +
+                `a reload of ${page.url()} "${expected}"`;
+        }
+        short = short || / \| (Music|Games) \| Acclaimed Media$/.test(shown);
+    }
+    return short ? null : `${site}${path}: no step gave the short tab title`;
+}
+
 (async () => {
     const browser = await puppeteer.launch({
         executablePath: chrome,
@@ -483,6 +537,22 @@ async function checkRangeOutsideTheCorpus(page, site) {
     await report('music row POST across the engine load',
         page => checkRowPostSurvivesTheTakeover(page, engines.music));
     await report('music search adds one entry', checkSearchAddsOneEntry);
+    await report('music tab title on a landing page',
+        page => checkTabTitleMatchesAReload(page, music, '/genres/smoke-rock/',
+            ['the 1990s', 'no 1990s', 'Back', 'Back']));
+    // No control picks an artist, so only Back brings one back, and the
+    // title reads it from the form field the filtering bundle rewrites
+    await report('music tab title with an artist',
+        page => checkTabTitleMatchesAReload(page, music, '/?artists=smoke-band',
+            ['Clear All', 'Back']));
+    await report('games tab title on a landing page',
+        page => checkTabTitleMatchesAReload(page, games, '/games/smoke-action/',
+            ['a flipped sort', 'the sort back', 'the 1990s', 'Back', 'Back']));
+    // A landing path with a query: the engine moves the address to
+    // /games/?... as it takes over, and the tab has to follow it there
+    await report('games tab title on a landing page with a query',
+        page => checkTabTitleMatchesAReload(page, games, '/games/smoke-action/?sort=name',
+            ['the grid', 'the 1990s', 'Back']));
     await report('games empty range', page => checkRangeOutsideTheCorpus(page, games));
     await report('music empty range', page => checkRangeOutsideTheCorpus(page, music));
     await browser.close();

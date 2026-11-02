@@ -16,7 +16,7 @@ from games.models import SiteMetadata
 from music import config, models, views
 from music.api import views as music_api_views
 from music.services import caching, landing_pages, listening_stats
-from music.views import _filter_title, group_list_appearances
+from music.views import _filter_title, _tab_title, group_list_appearances
 from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 
 
@@ -488,6 +488,87 @@ class FilterTitleTests(TestCase):
                 title = _filter_title(params).lower()
                 self.assertNotIn("best", title)
                 self.assertNotIn("top ", title)
+
+
+class TabTitleTests(TestCase):
+    """A filtered page's tab lists its facets, the distinguishing part first.
+
+    Its URL canonicalizes to the bare path, so nothing searches for its
+    title, and "Most Acclaimed ... Albums of" only pushed the facets out of
+    a narrow tab. An unfiltered page has none, and keeps the heading.
+    """
+
+    BOUNDS = FilterTitleTests.BOUNDS
+    GENRES = FilterTitleTests.GENRES
+    ARTISTS = FilterTitleTests.ARTISTS
+
+    def test_unfiltered_has_none(self):
+        self.assertEqual(_tab_title({}, **self.BOUNDS), "")
+        self.assertEqual(_tab_title({"sort": "year", "dir": "desc"}), "")
+
+    def test_a_range_covering_everything_is_no_facet(self):
+        self.assertEqual(
+            _tab_title({"start": "1900", "end": "2030"}, **self.BOUNDS), ""
+        )
+
+    def test_the_facets_in_order(self):
+        title = _tab_title(
+            {
+                "q": "kid",
+                "genres": "1,2",
+                "artists": "the-beatles",
+                "start": "1960",
+                "end": "1969",
+                "listened": "own,yes",
+            },
+            genres=self.GENRES,
+            artists=self.ARTISTS,
+            **self.BOUNDS,
+        )
+        self.assertEqual(
+            title,
+            "\u201ckid\u201d \u00b7 Rock and Soul \u00b7 The Beatles \u00b7 1960s"
+            " \u00b7 Heard and Owned",
+        )
+
+    def test_a_window_reads_as_the_heading_has_it_without_the_article(self):
+        for params, expected in [
+            ({"start": "1966", "end": "1966"}, "1966"),
+            ({"start": "1965", "end": "1972"}, "1965-1972"),
+            ({"start": "1990"}, "1990-2019"),
+        ]:
+            with self.subTest(params=params):
+                self.assertEqual(_tab_title(params, **self.BOUNDS), expected)
+
+
+class DocumentTitleViewTests(MusicDataMixin, TestCase):
+    def _head_titles(self, params=None):
+        html = self.client.get(reverse("music:home"), params or {}).content.decode()
+        title = re.search(r"<title>(.*?)</title>", html, re.S).group(1).strip()
+        og = re.search(r'<meta property="og:title" content="([^"]*)"', html).group(1)
+        return html, title, og
+
+    def test_a_filtered_page_lists_its_facets_and_names_the_section(self):
+        html, title, og = self._head_titles(
+            {"genres": str(self.rock.id), "start": "1960", "end": "1969"}
+        )
+        self.assertEqual(title, "Rock \u00b7 1960s | Music | Acclaimed Media")
+        self.assertEqual(og, title)
+        # The heading keeps its sentence
+        self.assertIn("Most Acclaimed Rock Albums of the 1960s", html)
+
+    def test_an_unfiltered_page_keeps_the_heading_it_is_searched_for(self):
+        for params in ({}, {"sort": "year"}):
+            with self.subTest(params=params):
+                _, title, og = self._head_titles(params)
+                self.assertEqual(
+                    title, "Most Acclaimed Albums of All Time | Acclaimed Media"
+                )
+                self.assertEqual(og, title)
+
+    def test_the_client_side_suffix_is_published(self):
+        html, _, _ = self._head_titles()
+        self.assertIn("window.tabTitleSuffix = ' | Music | Acclaimed Media';", html)
 
 
 class AlbumDetailViewTests(MusicDataMixin, TestCase):

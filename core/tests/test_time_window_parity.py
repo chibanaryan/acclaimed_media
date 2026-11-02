@@ -44,6 +44,20 @@ class TimeWindowParityTests(SimpleTestCase):
     def test_the_client_matches_the_server(self):
         self.assertEqual(self.output["windows"], self.expected)
 
+    def test_the_tab_title_window_matches_the_server(self):
+        # A filtered page's tab title names the window too, without the
+        # article and without "All Time", which filters nothing.
+        expected = [titles.short_time_window(*case) for case in CASES]
+        self.assertEqual(self.output["shortWindows"], expected)
+        self.assertEqual(expected[:4], ["", "", "1975", "1990s"])
+
+    def test_the_tab_title_joins_the_facets_as_the_server_does(self):
+        self.assertEqual(
+            self.output["shortTitle"],
+            titles.short_title(["Rock", "", "1990s", None, "Heard"]),
+        )
+        self.assertEqual(self.output["shortTitle"], "Rock \u00b7 1990s \u00b7 Heard")
+
     def test_the_cases_mean_what_they_say(self):
         self.assertEqual(
             self.expected,
