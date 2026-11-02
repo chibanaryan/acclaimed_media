@@ -108,6 +108,15 @@ class CanonicalizeTests(SimpleTestCase):
             gn.Canonical("Industrial", ("Electronic",)),
         )
 
+    def test_rap_crossovers_share_one_leaf(self):
+        """Rapcore sits with rap rock and rap metal, as the Beastie Boys do."""
+        for label in ("rap rock", "rap metal", "rapcore"):
+            with self.subTest(label=label):
+                self.assertEqual(
+                    gn.canonicalize(label),
+                    gn.Canonical("Alternative Metal", ("Metal",)),
+                )
+
     def test_a_root_alias_means_only_the_root(self):
         self.assertEqual(gn.canonicalize("rock music"), gn.Canonical(None, ("Rock",)))
         self.assertEqual(gn.canonicalize("hip-hop"), gn.Canonical(None, ("Hip Hop",)))
@@ -595,6 +604,7 @@ class RealVocabularyTests(SimpleTestCase):
         "quiet storm",
         "rap metal",
         "rap rock",
+        "rapcore",
         "rapping",
         "reggae",
         "reggae fusion",

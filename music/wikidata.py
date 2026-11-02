@@ -23,6 +23,11 @@ from music.services.http_client import RateLimitedClient
 
 logger = logging.getLogger(__name__)
 
+# The label languages read, in order of preference. Wikidata has moved some
+# names that are the same in every language to the language-neutral ``mul``
+# label and dropped the ``en`` one: Radiohead, Rihanna, punk rock (Q3071).
+LABEL_LANGUAGES = ("en", "mul")
+
 # Wikidata time precision codes. 11 is a day, 10 a month, 9 a year.
 PRECISION_DAY = 11
 PRECISION_MONTH = 10
@@ -91,6 +96,16 @@ def _entity_ids(claims: Dict[str, Any], prop: str) -> List[str]:
         for value in _claim_values(claims, prop)
         if isinstance(value, dict) and "id" in value
     ]
+
+
+def _label(entity: Dict[str, Any]) -> Optional[str]:
+    """The entity's English label, else its language-neutral one."""
+    labels = entity.get("labels", {})
+    for language in LABEL_LANGUAGES:
+        label = (labels.get(language) or {}).get("value")
+        if label:
+            return label
+    return None
 
 
 def _parse_time_value(value: Any) -> Optional[date]:
@@ -170,7 +185,7 @@ class WikidataClient(RateLimitedClient):
                 "ids": "|".join(batch),
                 "props": props,
                 "format": "json",
-                "languages": "en",
+                "languages": "|".join(LABEL_LANGUAGES),
             }
             if extra_params:
                 params.update(extra_params)
@@ -239,21 +254,20 @@ class WikidataClient(RateLimitedClient):
             return None
 
     def fetch_labels(self, qids: Iterable[str]) -> Dict[str, str]:
-        """Map QIDs to their English labels, skipping any that have none.
+        """Map QIDs to their labels (see ``_label``), skipping any that have none.
 
-        Two genre entities in this corpus carry no English label at all
-        (Q3071, Q3930216), so a caller must be ready for a missing key rather
-        than assume the QID round-trips to a name.
+        A caller must be ready for a missing key rather than assume the QID
+        round-trips to a name.
         """
         entities = self.fetch_entities(qids, props="labels")
 
         labels: Dict[str, str] = {}
         for qid, entity in entities.items():
-            label = (entity.get("labels", {}).get("en") or {}).get("value")
+            label = _label(entity)
             if label:
                 labels[qid] = label
             else:
-                logger.info("Wikidata entity %s has no English label", qid)
+                logger.info("Wikidata entity %s has no English or mul label", qid)
         return labels
 
     def fetch_artists(self, qids: Iterable[str]) -> Dict[str, ArtistMetadata]:
@@ -261,7 +275,10 @@ class WikidataClient(RateLimitedClient):
 
         Taking P434 from the same request is what lets ``Artist.musicbrainz_id``
         be filled without a single MusicBrainz call; the enwiki sitelink is
-        what tells same-named artists' slugs apart.
+        what tells same-named artists' slugs apart. The name is read but not
+        stored, so an artist with no usable label still resolves: skipping
+        them cost 27 artists, Radiohead among them, their ids until the
+        ``mul`` fallback.
         """
         entities = self.fetch_entities(
             qids, props="labels|claims|sitelinks", extra_params={"sitefilter": "enwiki"}
@@ -269,13 +286,12 @@ class WikidataClient(RateLimitedClient):
 
         artists: Dict[str, ArtistMetadata] = {}
         for qid, entity in entities.items():
-            label = (entity.get("labels", {}).get("en") or {}).get("value")
-            if not label:
-                logger.info("Skipping artist %s: no English label", qid)
+            if "missing" in entity:
+                logger.warning("Wikidata has no entity %s", qid)
                 continue
             artists[qid] = ArtistMetadata(
                 wikidata_id=qid,
-                name=label,
+                name=_label(entity) or "",
                 musicbrainz_id=_first_claim_value(
                     entity.get("claims", {}),
                     config.WIKIDATA_ARTIST_MUSICBRAINZ_PROPERTY,

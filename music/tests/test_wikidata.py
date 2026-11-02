@@ -184,6 +184,15 @@ class FetchEntitiesTests(WikidataClientTestCase):
         self.assertEqual(params["sitefilter"], "enwiki")
         self.assertEqual(params["format"], "json")
 
+    def test_english_and_the_language_neutral_labels_are_requested(self):
+        """Wikidata has moved some names (Radiohead, punk rock) to ``mul``."""
+        client = self.build()
+        with mock.patch.object(
+            client, "get_json", return_value={"entities": {}}
+        ) as get:
+            client.fetch_entities(["Q1"])
+        self.assertEqual(get.call_args.kwargs["params"]["languages"], "en|mul")
+
     def test_no_ids_means_no_requests(self):
         client = self.build()
         with mock.patch.object(client, "get_json") as get:
@@ -279,17 +288,35 @@ class FetchLabelsTests(WikidataClientTestCase):
         with mock.patch.object(client, "fetch_entities", return_value=entities):
             self.assertEqual(client.fetch_labels(["Q11399"]), {"Q11399": "rock music"})
 
-    def test_an_entity_with_no_english_label_is_omitted(self):
-        """Q3071 (punk rock) genuinely has no English label."""
+    def test_a_language_neutral_label_stands_in_for_a_missing_english_one(self):
+        """Q3071 (punk rock) carries its name only as ``mul``."""
+        client = self.build()
+        entities = {"Q3071": {"labels": {"mul": {"value": "punk rock"}}}}
+        with mock.patch.object(client, "fetch_entities", return_value=entities):
+            self.assertEqual(client.fetch_labels(["Q3071"]), {"Q3071": "punk rock"})
+
+    def test_the_english_label_wins_over_the_language_neutral_one(self):
         client = self.build()
         entities = {
-            "Q3071": {"labels": {"de": {"value": "Punk"}}},
+            "Q1": {"labels": {"en": {"value": "english"}, "mul": {"value": "mul"}}}
+        }
+        with mock.patch.object(client, "fetch_entities", return_value=entities):
+            self.assertEqual(client.fetch_labels(["Q1"]), {"Q1": "english"})
+
+    def test_an_entity_with_neither_label_is_omitted(self):
+        client = self.build()
+        entities = {
+            "Q1": {"labels": {"de": {"value": "Punk"}}},
             "Q9759": {"labels": {"en": {"value": "blues"}}},
         }
         with mock.patch.object(client, "fetch_entities", return_value=entities):
-            self.assertEqual(
-                client.fetch_labels(["Q3071", "Q9759"]), {"Q9759": "blues"}
-            )
+            self.assertEqual(client.fetch_labels(["Q1", "Q9759"]), {"Q9759": "blues"})
+
+    def test_a_null_english_label_falls_through_to_the_language_neutral_one(self):
+        client = self.build()
+        entities = {"Q1": {"labels": {"en": None, "mul": {"value": "punk rock"}}}}
+        with mock.patch.object(client, "fetch_entities", return_value=entities):
+            self.assertEqual(client.fetch_labels(["Q1"]), {"Q1": "punk rock"})
 
     def test_a_null_english_label_is_omitted(self):
         client = self.build()
@@ -350,10 +377,54 @@ class FetchArtistsTests(WikidataClientTestCase):
         self.assertEqual(artist.name, "Someone")
         self.assertIsNone(artist.musicbrainz_id)
 
-    def test_an_artist_with_no_english_label_is_skipped(self):
+    def test_an_artist_named_only_in_mul_still_resolves(self):
+        """Radiohead (Q44190) has no ``en`` label, only ``mul``."""
+        client = self.build()
+        entities = {
+            "Q44190": {
+                "labels": {"mul": {"value": "Radiohead"}},
+                "claims": {
+                    config.WIKIDATA_ARTIST_MUSICBRAINZ_PROPERTY: [
+                        entity_claim("a74b1b7f-71a5-4011-9441-d0b5e4122711")
+                    ]
+                },
+                "sitelinks": {"enwiki": {"title": "Radiohead"}},
+            }
+        }
+        with mock.patch.object(client, "fetch_entities", return_value=entities):
+            artist = client.fetch_artists(["Q44190"])["Q44190"]
+        self.assertEqual(
+            artist,
+            ArtistMetadata(
+                wikidata_id="Q44190",
+                name="Radiohead",
+                musicbrainz_id="a74b1b7f-71a5-4011-9441-d0b5e4122711",
+                wikipedia_title="Radiohead",
+            ),
+        )
+
+    def test_an_artist_with_no_usable_label_still_resolves(self):
+        """Nothing stores the label, so its absence must not cost the ids."""
+        client = self.build()
+        entities = {
+            "Q1": {
+                "labels": {"ja": {"value": "someone"}},
+                "claims": {
+                    config.WIKIDATA_ARTIST_MUSICBRAINZ_PROPERTY: [entity_claim("mbid")]
+                },
+                "sitelinks": {"enwiki": {"title": "Someone (band)"}},
+            }
+        }
+        with mock.patch.object(client, "fetch_entities", return_value=entities):
+            artist = client.fetch_artists(["Q1"])["Q1"]
+        self.assertEqual(artist.name, "")
+        self.assertEqual(artist.musicbrainz_id, "mbid")
+        self.assertEqual(artist.wikipedia_title, "Someone (band)")
+
+    def test_a_missing_artist_entity_is_skipped(self):
         client = self.build()
         with mock.patch.object(
-            client, "fetch_entities", return_value={"Q1": {"labels": {}}}
+            client, "fetch_entities", return_value={"Q1": {"id": "Q1", "missing": ""}}
         ):
             self.assertEqual(client.fetch_artists(["Q1"]), {})
 

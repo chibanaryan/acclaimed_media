@@ -2,6 +2,17 @@
 
 ## 2026-11-02
 
+- **The music Wikidata pass reads language-neutral labels.** Wikidata has
+  moved some names to the `mul` label and dropped the `en` one, which was
+  all the pass read, so it skipped 27 artists (Radiohead, Rihanna, 50 Cent,
+  Lil Wayne) and dropped punk rock, rapcore and Reprise Records. It now falls
+  back to `mul`, and no longer skips an artist for having no label at all,
+  since only its ids are stored. On local data the 27 gain their MusicBrainz
+  ids and 28 artists their Wikipedia titles, no artist slug changes, five albums gain
+  Punk (*My Aim Is True*, *Licensed to Ill*, *Some Girls*, *Violent
+  Femmes*, *Puberty 2*), and "rapcore" joins "rap rock" under Alternative
+  Metal, which adds it to *Licensed to Ill*. Production gets it on Sunday's
+  scheduled run
 - **The weekly music job no longer fails on 'Old Nobody'.** The Wikidata pass
   raised for the one album the release gives no QID, and logged it as an
   error, which filed ACCLAIMED-VIDEO-GAMES-A7. It is now counted as skipped

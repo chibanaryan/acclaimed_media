@@ -289,7 +289,13 @@ GENRE_VOCABULARY: Dict[str, Dict[str, Tuple[str, ...]]] = {
     "Metal": {
         "Heavy Metal": ("traditional heavy metal", "nwobhm", "glam metal"),
         "Thrash Metal": ("thrash", "speed metal", "groove metal"),
-        "Alternative Metal": ("funk metal", "nu metal", "rap metal", "rap rock"),
+        "Alternative Metal": (
+            "funk metal",
+            "nu metal",
+            "rap metal",
+            "rap rock",
+            "rapcore",
+        ),
         "Doom Metal": ("traditional doom metal",),
     },
     "Reggae": {

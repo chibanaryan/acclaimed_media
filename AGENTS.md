@@ -1259,7 +1259,12 @@ and requires them equal.
 
 The Wikidata pass no longer touches album credits. It reads each artist's
 MusicBrainz id (P434) and English Wikipedia title off the artist's own QID
-and stores only those.
+and stores only those, so an artist with no label is not skipped. A genre's
+or a record label's name is the `en` label, else the language-neutral `mul`
+one (`wikidata.LABEL_LANGUAGES`): Wikidata has moved names that read the
+same in every language there and dropped their `en` label. Until 2026-11-02
+the pass read `en` alone, dropped punk rock, and skipped 27 artists,
+Radiohead and Rihanna among them.
 
 ## Music Metadata Pipeline
 

@@ -17,16 +17,7 @@ it in `scripts/browser_smoke.js` first.
    Chrome's accessibility tree, but never with VoiceOver, NVDA or iOS Safari.
    `docs/ASSISTIVE_TECH_CHECKLIST.md` is the script: run it, record the
    results there, and file what fails here.
-2. **The music Wikidata pass reads only English labels** (found 2026-11-02).
-   Wikidata has moved some names to the language-neutral `mul` label, and
-   `music/wikidata.py` reads `labels.en` alone. So `fetch_labels` drops
-   punk rock (Q3071), rapcore and Reprise Records from every album's
-   Wikidata genres and label, and `fetch_artists` skips 27 artists outright -
-   Radiohead, Rihanna, 50 Cent, Lil Wayne - which therefore have no
-   `musicbrainz_id` or `wikipedia_title`. Fall back to `mul` (request
-   `languages=en|mul`), then check `rebuild_album_genres --dry-run --report`.
-   Small.
-3. **Games: a server jump overtaken by a filter change still jumps.** Before
+2. **Games: a server jump overtaken by a filter change still jumps.** Before
    the engine is ready, jump to 500, so the server fetches pages 2-5; the
    engine loads and a genre is picked, re-rendering at #1. When the pages
    land, `jumpToRankServerSide` finds its button gone and calls
@@ -34,7 +25,7 @@ it in `scripts/browser_smoke.js` first.
    the top. Drop it, as a late Load More page is dropped, unless whatever
    replaced the list knows it is the same one. Found in review, 2026-11-02.
    Small.
-4. **Games: other re-renders still drop an in-flight server Load More.** The
+3. **Games: other re-renders still drop an in-flight server Load More.** The
    engine's takeover and a view toggle answer it; a client jump
    (`refreshClientLoadMore` replaces the button) and the played-filter
    re-render on `game-status-changed` do not, so the page is dropped and the
@@ -42,13 +33,13 @@ it in `scripts/browser_smoke.js` first.
    for rows 201-300 gets 101-200. One owner for the hand-off, around
    `performClientUpdate`, would cover every caller. Found in review,
    2026-11-02. Small.
-5. **The mobile sheet's decade buttons do not say which is selected.** In
+4. **The mobile sheet's decade buttons do not say which is selected.** In
    `core/includes/_mobile_filter_time.html` the Decade / Year / Range switch
    and the decade buttons show their state by colour alone (`btn-primary`),
    with no `aria-pressed`, where the sidebar's year grid and the sheet's genre
    rows carry it. Found by reading the markup, not with a screen reader;
    item 1's checklist expects it to fail. Small.
-6. **A music filter change does not cancel a Load More in flight.** Without
+5. **A music filter change does not cancel a Load More in flight.** Without
    the engine (before it loads, or if it fails), click Load More and then
    change a filter before the page arrives: the filter render lands, then the
    stale page appends into the detached old list, and its out-of-band
@@ -58,7 +49,7 @@ it in `scripts/browser_smoke.js` first.
    engine takes over (`scripts/browser_smoke.js`, "Load More swapped out").
    Likely fix: a shared `hx-sync` scope on the form and the Load More button,
    so a filter request replaces the page request. Small.
-7. **htmx's snapshot restore may break Alpine on other pages too** (found
+6. **htmx's snapshot restore may break Alpine on other pages too** (found
    2026-11-02, unverified). On music's rankings page, Back onto an entry htmx
    pushed restored a snapshot of the DOM Alpine had built and threw an
    Alpine error per `x-for` clone, the site menu's included; that page now
@@ -66,13 +57,13 @@ it in `scripts/browser_smoke.js` first.
    Every other `hx-push-url` page - the artist and list searches, the
    paginations, the blog - saves the same snapshots. Reproduce on
    `/artists/` (search, then Back) before changing anything. Medium.
-8. **A failed filter request is still left ahead of the list in two
+7. **A failed filter request is still left ahead of the list in two
    cases.** The engine renders the form's filters as it takes over, but not
    while a search box has focus (a search still being typed must not be
    pushed half-typed), and not at all if the engine never loads. Either
    leaves the sidebar on filters the list does not show until the next
    change. Small.
-9. **A `?page=N` music rankings link assumes it starts at row 1.**
+8. **A `?page=N` music rankings link assumes it starts at row 1.**
    `renderer.adopt` sets the window from 0, so the engine's Load More and
    jump on a server-rendered page 2 repeat or skip rows. Nothing links to
    `?page=` any more, since Load More no longer pushes it. Small.
