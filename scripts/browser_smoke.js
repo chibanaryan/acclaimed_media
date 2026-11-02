@@ -16,9 +16,9 @@
  * only throws in the browser, or an inline script the CSP would refuse. It also
  * checks that Back survives a filter change made while the engine loads,
  * that a server Load More survives the engine's takeover and a view toggle,
- * that a games jump filters once and Clear All after it adds no history
- * entry, and that a year range the corpus does not reach shows and can be
- * cleared.
+ * that music's takeover aborts only the requests it answers, that a games
+ * jump filters once and Clear All after it adds no history entry, and that a
+ * year range the corpus does not reach shows and can be cleared.
  */
 const puppeteer = require('puppeteer-core');
 
@@ -219,6 +219,102 @@ async function checkLoadMoreAcrossViewToggle(page) {
 }
 
 /**
+ * A music Load More whose button a filter change swaps out before the engine
+ * is ready: its afterRequest fires on the detached button, out of the
+ * engine's hearing, so the takeover once took the finished request for one
+ * still to answer and appended a page nobody asked for, and could not abort
+ * one still on its way. `landed` lets the page's response arrive before the
+ * engine does, or holds it until after. Answers as above.
+ */
+async function checkDetachedLoadMoreAcrossEngineLoad(page, engine, landed) {
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = await holdEngineLoad(page, engine, request =>
+        request.url().includes('append=true'));
+    await page.goto(music + '/', { waitUntil: 'load' });
+    const button = await page.waitForSelector('.load-more-button');
+    const decade = await page.waitForSelector('.year-grid-decade');
+    await sleep(1000);
+    await button.click();
+    const missing = await bothHeld(held, music);
+    if (missing) return missing;
+    // A server filter render, which replaces the results and the button
+    await page.evaluate(() => {
+        const form = document.getElementById('album-filters');
+        form.querySelector('[name="dir"]').value = 'desc';
+        form.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.waitForFunction(() => location.search.includes('dir=desc'));
+    // What the Load More container holds: the next page's URL, or its text
+    const nextPage = () => page.$eval('.load-more-container', box => {
+        const more = box.querySelector('.load-more-button');
+        return more ? more.getAttribute('hx-get') : box.textContent.trim();
+    });
+    await page.waitForFunction(() => {
+        const more = document.querySelector('.load-more-container .load-more-button');
+        return more && (more.getAttribute('hx-get') || '').includes('dir=desc');
+    });
+    if (landed) {
+        await held.server.continue();
+        // Landed once its out-of-band container has replaced the live one
+        await page.waitForFunction(() => {
+            const more = document.querySelector('.load-more-container .load-more-button');
+            return !more || !(more.getAttribute('hx-get') || '').includes('dir=desc');
+        });
+    }
+    const rows = '#album-list-container .media-row-wrapper';
+    const before = await page.$$eval(rows, found => found.length);
+    await releaseAfterEngine(page, held, engine, decade);
+    await sleep(800);
+    const after = await page.$$eval(rows, found => found.length);
+    if (after !== before) return `the takeover turned ${before} rows into ${after}`;
+    // Landed, its out-of-band button has already replaced the live one (an
+    // older race, ROADMAP). Aborted, it cannot: the button is still the one
+    // the descending render drew.
+    if (landed) return null;
+    const next = await nextPage();
+    return next && next.includes('dir=desc') ? null : `the stale page left "${next}"`;
+}
+
+/**
+ * The takeover aborts the filter and Load More requests it overtakes, and
+ * nothing else: a row's listen-status POST in flight as the engine loads has
+ * to reach the server and answer. A stand-in button posts from inside the
+ * results, as a row's does, and the POST is held across the takeover.
+ * Answers as above.
+ */
+async function checkRowPostSurvivesTheTakeover(page, engine) {
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = await holdEngineLoad(page, engine, request =>
+        request.method() === 'POST' && request.url().includes('smoke-post'));
+    await page.goto(music + '/', { waitUntil: 'load' });
+    const decade = await page.waitForSelector('.year-grid-decade');
+    await sleep(1000);
+    await page.evaluate(() => {
+        const button = document.createElement('button');
+        button.id = 'smoke-post';
+        button.setAttribute('hx-post', '/healthz/?smoke-post');
+        button.setAttribute('hx-swap', 'none');
+        button.addEventListener('htmx:afterRequest', event => {
+            window.smokePostStatus = event.detail.successful
+                ? event.detail.xhr.status : 'failed';
+        });
+        document.getElementById('album-list-container').prepend(button);
+        htmx.process(button);
+        button.click();
+    });
+    const missing = await bothHeld(held, music);
+    if (missing) return missing;
+    // Answered rather than continued: /healthz/ takes no POST
+    const post = held.server;
+    held.server = { continue: () => Promise.resolve() };
+    await releaseAfterEngine(page, held, engine, decade);
+    await post.respond({ status: 204, body: '' }).catch(() => {});
+    await page.waitForFunction(() => window.smokePostStatus !== undefined);
+    const status = await page.evaluate(() => window.smokePostStatus);
+    return status === 204 ? null : `the takeover left a row's POST ${status}`;
+}
+
+/**
  * Music's engine takes the page over without touching it: a URL it read as
  * unrendered would be replaced, and with it the search. On a phone, with the
  * data already held, the engine beats Alpine to the form. Answers as above.
@@ -380,6 +476,12 @@ async function checkRangeOutsideTheCorpus(page, site) {
         await report(`music keeps ${path}`,
             page => checkEngineLeavesTheUrlAlone(page, music + path));
     }
+    for (const landed of [true, false]) {
+        await report(`music Load More swapped out, ${landed ? 'landed' : 'in flight'}`,
+            page => checkDetachedLoadMoreAcrossEngineLoad(page, engines.music, landed));
+    }
+    await report('music row POST across the engine load',
+        page => checkRowPostSurvivesTheTakeover(page, engines.music));
     await report('music search adds one entry', checkSearchAddsOneEntry);
     await report('games empty range', page => checkRangeOutsideTheCorpus(page, games));
     await report('music empty range', page => checkRangeOutsideTheCorpus(page, music));

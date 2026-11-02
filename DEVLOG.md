@@ -29,6 +29,14 @@
 - **A games jump filters the corpus once.** It filtered three times, and the
   first client Load More and a `?highlight=` jump twice; each now reuses the
   list `getCurrentState` filtered
+- **Tidier music filtering takeover, and an assistive-tech checklist.** The
+  engine takes over an overtaken filter request or Load More by tracking those
+  two from htmx's `beforeSend`/`afterRequest`, not the spinner's
+  `htmx-request` class, which moving the spinner would silently have defeated;
+  a row's listen-status POST is never touched. A landing page's path is
+  rendered once and read by one `landingFilterParams`, and the dead code is
+  gone. `docs/ASSISTIVE_TECH_CHECKLIST.md` is the VoiceOver/NVDA/iPhone script
+  for ROADMAP open bug 7, which stays open until it is run
 
 ## 2026-11-01
 

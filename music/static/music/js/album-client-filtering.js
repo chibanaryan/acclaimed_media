@@ -257,14 +257,14 @@ class AlbumClientSideFiltering {
      * @param {number} [options.highlightId]
      */
     applyFilters(filters, options = {}) {
-        if (!this.isInitialized) return null;
+        if (!this.isInitialized) return;
 
         this.currentFilters = filters;
-        const { albums, total } = this.engine.apply(filters);
+        const { albums } = this.engine.apply(filters);
         const showRank = this._isFiltered(filters) ? 'filtered' : 'alltime';
 
         const container = document.getElementById('album-list-container');
-        if (!container) return null;
+        if (!container) return;
 
         this.renderer.reset();
         this.renderer.render(albums, container, {
@@ -275,7 +275,6 @@ class AlbumClientSideFiltering {
 
         this._updatePaging();
         this._publishFacets(filters, albums);
-        return { total };
     }
 
     /**
@@ -354,6 +353,7 @@ class AlbumClientSideFiltering {
 
     /** How many albums the current filters match. */
     matchCount() {
+        if (!this.isInitialized) return 0;
         this._syncRendererWithPage();
         return this.renderer.currentItems.length;
     }
@@ -438,20 +438,6 @@ class AlbumClientSideFiltering {
 }
 
 /**
- * The filter params the current URL stands for.
- *
- * A landing page's own path implies its filters with no query string, and
- * Back can return to that bare path, so on it the page's params
- * (`window.albumLandingSearch`) count, beside any such as ?utm_source=.
- */
-function albumUrlParams() {
-    return mergedFilterParams(
-        window.location.pathname === window.albumLandingPath
-            ? window.albumLandingSearch : ''
-    );
-}
-
-/**
  * Scroll to the Nth row currently on the page and flash it.
  *
  * Positional, like the games page's equivalent: the box takes a position in
@@ -462,10 +448,8 @@ function scrollToAlbumPosition(position) {
     const container = document.getElementById('album-list-container');
     const isGrid = container && container.classList.contains('view-grid');
     // After a jump the first rendered row is at windowStart, not the top.
-    const csf = getAlbumClientSideFiltering();
-    const offset = csf.isReady() && csf.renderer.currentItems.length
-        ? csf.renderer.windowStart
-        : 0;
+    // Only ever called after jumpTo(), so the renderer holds the result set.
+    const offset = getAlbumClientSideFiltering().renderer.windowStart;
     const index = position - 1 - offset;
 
     let target = null;
@@ -504,7 +488,7 @@ function scrollToAlbumPosition(position) {
  * rankings page does: the highlight fades after a couple of seconds, or as
  * soon as the reader hovers another row.
  * @param {number} albumId
- * @param {string} [viewMode] - see loadedAlbumCount
+ * @param {string} [viewMode] - see albumViewIsGrid
  * @returns {boolean} Whether the album is on the page
  */
 function scrollToAlbumById(albumId, viewMode) {
@@ -552,14 +536,11 @@ function albumViewIsGrid(viewMode) {
     return Boolean(container && container.classList.contains('view-grid'));
 }
 
-/**
- * How many rows are on the page now, in whichever view is showing.
- * @param {string} [viewMode] - 'list' or 'grid'; read off the container if omitted
- */
-function loadedAlbumCount(viewMode) {
+/** How many rows are on the page now, in whichever view is showing. */
+function loadedAlbumCount() {
     const container = document.getElementById('album-list-container');
     if (!container) return 0;
-    const selector = albumViewIsGrid(viewMode)
+    const selector = albumViewIsGrid()
         ? '.media-card-grid'
         : '.media-row.desktop';
     return container.querySelectorAll(selector).length;
@@ -645,6 +626,28 @@ function initAlbumFiltering() {
     form.addEventListener('htmx:beforeRequest', suppressHtmx);
     results.addEventListener('htmx:beforeRequest', suppressHtmx);
 
+    // The filter and Load More requests the server is still answering when
+    // the engine takes over, which the takeover below aborts and answers
+    // itself. Read from htmx's own events, not the spinner's htmx-request
+    // class, which moving the spinner would silently stop finding; and only
+    // those two, so a row's listen-status POST is never aborted. beforeSend,
+    // because it fires only for a request that is really going out. Keyed on
+    // the xhr: when the asker has been swapped out, htmx re-fires
+    // afterRequest on an ancestor as its `elt`.
+    const pending = new Map();
+    const track = event => {
+        const asker = event.detail.elt;
+        if (asker !== form && !asker.matches('.load-more-button')) return;
+        pending.set(event.detail.xhr, asker);
+    };
+    const untrack = event => pending.delete(event.detail.xhr);
+    const tracking = on => [form, results].forEach(element => {
+        const method = on ? 'addEventListener' : 'removeEventListener';
+        element[method]('htmx:beforeSend', track);
+        element[method]('htmx:afterRequest', untrack);
+    });
+    tracking(true);
+
     const currentHighlight = () => {
         const highlight = new URLSearchParams(window.location.search).get('highlight');
         const parsed = parseInt(highlight, 10);
@@ -711,7 +714,12 @@ function initAlbumFiltering() {
     }
 
     csf.init().then(async ok => {
-        if (!ok) return;
+        if (!ok) {
+            // HTMX keeps the page, and nothing will read the record
+            tracking(false);
+            pending.clear();
+            return;
+        }
         ready = true;
         csf.attach(form);
 
@@ -760,7 +768,10 @@ function initAlbumFiltering() {
 
         window.addEventListener('popstate', () => {
             // The URL moved under us; re-read it into the form and re-render.
-            const params = albumUrlParams();
+            // A landing page's bare path stands for its own filters
+            const params = landingFilterParams(
+                window.albumLandingPath, window.albumLandingSearch
+            );
             [
                 'q', 'start', 'end', 'artists', 'genres', 'listened', 'sort', 'dir'
             ].forEach(name => {
@@ -776,11 +787,24 @@ function initAlbumFiltering() {
         // to answer what the load overtook, which would otherwise land on top
         // of the engine's renders or go unanswered, and to page down to a
         // highlighted album the server did not render.
-        const filterRequest = document.querySelector('#album-loading.htmx-request');
-        const pageRequest = document.querySelector('.load-more-button.htmx-request');
-        // htmx reports these as errors in the console; nothing has gone wrong
-        if (filterRequest) htmx.trigger(form, 'htmx:abort');
-        if (pageRequest) htmx.trigger(pageRequest, 'htmx:abort');
+        // Finished requests can still be listed: one whose element was
+        // swapped out reports its end to that element alone, and one whose
+        // swap threw never reports it. The second's button is still on the
+        // page, so isConnected below would not drop it.
+        const inFlight = [...pending].filter(
+            ([xhr]) => xhr.readyState !== XMLHttpRequest.DONE
+        );
+        tracking(false);
+        pending.clear();
+        // On the xhr itself: htmx answers htmx:abort only from an element
+        // still in the page. htmx reports these as errors in the console;
+        // nothing has gone wrong
+        inFlight.forEach(([xhr]) => xhr.abort());
+        const filterRequest = inFlight.some(([, element]) => element === form);
+        // A button that has left the page asked for a list that has gone too
+        const pageRequest = inFlight.some(([, element]) =>
+            element.isConnected && element.matches('.load-more-button')
+        );
         if (filterRequest) {
             rerender();
         } else if (pageRequest) {

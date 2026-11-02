@@ -504,6 +504,19 @@ function mergedFilterParams(implied) {
 }
 
 /**
+ * The filter params on a page with a landing path: on that bare path, which
+ * Back can return to with no query string, the path's own filters count too.
+ * @param {string} landingPath - The landing page's path, or '' for none
+ * @param {string} landingSearch - What it stands for, as a query string
+ * @returns {URLSearchParams}
+ */
+function landingFilterParams(landingPath, landingSearch) {
+    return mergedFilterParams(
+        landingPath && window.location.pathname === landingPath ? landingSearch : ''
+    );
+}
+
+/**
  * The page's filter params: the query string, plus whatever filter a clean
  * SEO path implies. A filter state with its own landing page is pushed as
  * that path (/games/2010s/), with no query string, so anything reading the

@@ -559,12 +559,27 @@ class LandingPagesPushOntoTheRankingsUrlTests(SimpleTestCase):
         self.assertNotIn("query ? `?${query}`", push)
 
     def test_both_popstate_readers_know_the_landing_path(self):
+        # One rule, in utils-base.js, rather than a copy in each reader.
+        helper = self._source("games/static/games/js/utils-base.js")
+        self.assertIn(
+            "function landingFilterParams(landingPath, landingSearch)", helper
+        )
         filtering = self._source("music/static/music/js/album-client-filtering.js")
-        self.assertIn("window.albumLandingSearch", filtering)
-        self.assertIn("const params = albumUrlParams();", filtering)
+        popstate = filtering.split("addEventListener('popstate'", 1)[1][:600]
+        self.assertIn("landingFilterParams(", popstate)
+        self.assertIn("window.albumLandingSearch", popstate)
         controls = self._source("core/static/core/js/media-list-controls.js")
         sync = controls.split("_syncFromUrl() {", 1)[1][:700]
+        self.assertIn("landingFilterParams(", sync)
         self.assertIn("settings.landingSearch", sync)
+
+    def test_the_landing_path_is_rendered_once(self):
+        # The controls take the page's globals rather than a second copy
+        template = self._source("music/templates/music/home.html")
+        self.assertEqual(template.count("landing_path"), 1)
+        self.assertEqual(template.count("landing_search"), 1)
+        self.assertIn("landingPath: window.albumLandingPath,", template)
+        self.assertIn("landingSearch: window.albumLandingSearch,", template)
 
     def test_the_minified_copies_carry_it(self):
         for path, needle in (
@@ -574,6 +589,7 @@ class LandingPagesPushOntoTheRankingsUrlTests(SimpleTestCase):
                 "albumLandingSearch",
             ),
             ("core/static/core/js/media-list-controls.min.js", "landingSearch"),
+            ("games/static/games/js/utils-base.min.js", "landingFilterParams"),
         ):
             with self.subTest(path=path):
                 self.assertIn(needle, self._source(path))
@@ -965,6 +981,27 @@ class AlbumFilterClicksApplyAtOnceTests(SimpleTestCase):
             "music/static/music/js/music-client-side-filtering.bundle.min.js"
         )
         self.assertIn("historyReplace", bundle)
+
+    def test_the_takeover_finds_requests_by_their_events(self):
+        # It read the spinner's htmx-request class, so moving the spinner
+        # would have silently stopped it aborting an overtaken request.
+        engine = self._source("music/static/music/js/album-client-filtering.js")
+        self.assertNotIn(".htmx-request", engine)
+        self.assertIn("element[method]('htmx:afterRequest', untrack);", engine)
+        self.assertIn("element[method]('htmx:beforeSend', track);", engine)
+        # Only the form's and Load More's, never a row's listen-status POST
+        self.assertIn(
+            "if (asker !== form && !asker.matches('.load-more-button')) return;",
+            engine,
+        )
+        # A detached asker's request may have finished unheard, and htmx's
+        # own abort cannot reach it (scripts/browser_smoke.js runs both).
+        self.assertIn("xhr.readyState !== XMLHttpRequest.DONE", engine)
+        self.assertIn("inFlight.forEach(([xhr]) => xhr.abort());", engine)
+        bundle = self._source(
+            "music/static/music/js/music-client-side-filtering.bundle.min.js"
+        )
+        self.assertIn("htmx:afterRequest", bundle)
 
 
 class MobileFilterSheetIsSharedTests(SimpleTestCase):

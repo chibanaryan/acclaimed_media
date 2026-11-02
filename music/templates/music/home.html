@@ -39,6 +39,12 @@ document.addEventListener('DOMContentLoaded', function() {
 {% endblock %}
 
 {% block extra_head %}
+{# On a landing page, what its bare path stands for on Back. Read by the #}
+{# controls below as well as the bundle, so outside the bundle's flag. #}
+<script nonce="{{ csp_nonce }}">
+window.albumLandingPath = "{{ landing_path|default:''|escapejs }}";
+window.albumLandingSearch = "{{ landing_search|default:''|escapejs }}";
+</script>
 {% if enable_client_filtering %}
 {% comment %}
 Client-side filtering. The whole corpus is ~38 KB gzipped, so the bundle
@@ -48,11 +54,8 @@ fails to, the HTMX form below keeps filtering server-side.
 <script nonce="{{ csp_nonce }}">
 window.albumDataVersion = "{{ album_data_version }}";
 window.albumDataUrl = "{% url 'music-api:album-all-data' %}";
-// Where filter changes are pushed, whichever URL the page was entered by,
-// and - on a landing page - what its bare path stands for on Back.
+// Where filter changes are pushed, whichever URL the page was entered by.
 window.albumRankingsUrl = "{% url 'music:home' %}";
-window.albumLandingPath = "{{ landing_path|default:''|escapejs }}";
-window.albumLandingSearch = "{{ landing_search|default:''|escapejs }}";
 // This page filters in place, so the base template's redirect fallback for
 // a genre clicked in a row must stay out of the way.
 window.listFilterActive = true;
@@ -110,8 +113,8 @@ var listenStatusOptions = JSON.parse(
          statusOptions: listenStatusOptions,
          savedFiltersUrl: '{% url 'music-api:saved-filter-list' %}',
          maxSavedFilters: {{ max_saved_filters }},
-         landingPath: '{{ landing_path|default:''|escapejs }}',
-         landingSearch: '{{ landing_search|default:''|escapejs }}',
+         landingPath: window.albumLandingPath,
+         landingSearch: window.albumLandingSearch,
          clientEngine: () => typeof getAlbumClientSideFiltering === 'function' ? getAlbumClientSideFiltering() : null
      })">
 

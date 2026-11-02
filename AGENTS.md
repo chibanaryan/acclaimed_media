@@ -2097,7 +2097,7 @@ Four layers, from automatic to manual:
   | `audit` | `pip-audit` on both locks, `npm audit --audit-level=high` |
   | `css` | rebuilds the CSS and fails if it differs from the committed file |
   | `js` | `scripts/minify_js.sh --check`: the same for the minified JS and bundles |
-  | `browser` | `scripts/browser_smoke.js`: Chrome over the main pages, failing on a JS, Alpine or CSP error, plus Back and Load More across the engine load, and a year range outside the corpus and leaving it |
+  | `browser` | `scripts/browser_smoke.js`: Chrome over the main pages, failing on a JS, Alpine or CSP error, plus Back and Load More across the engine load, music's takeover leaving a row's POST alone, and a year range outside the corpus and leaving it |
 
   `css` exists because Heroku runs only the Python buildpack, so the
   committed `theme/static/css/dist/styles.css` is what ships. An npm bump

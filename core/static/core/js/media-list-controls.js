@@ -861,9 +861,8 @@ function mediaListControlsData(config) {
             // Nothing queued before Back may apply after it.
             if (this._leadingCommit) this._leadingCommit.cancel();
             // On a landing page's path the path itself is the filter
-            const params = mergedFilterParams(
-                window.location.pathname === settings.landingPath
-                    ? settings.landingSearch : ''
+            const params = landingFilterParams(
+                settings.landingPath, settings.landingSearch
             );
             const number = (name, fallback) => {
                 const parsed = parseInt(params.get(name), 10);

@@ -44,20 +44,12 @@ there stateless and pin it in `scripts/browser_smoke.js` first.
 6. **Music's jump box does nothing if the bundle fails.** `initAlbumJumpToRank`
    runs only after the engine loads, so with no data the box takes input and
    ignores Enter. Hide or disable it until the engine is ready. Small.
-7. **Cleanups left in `album-client-filtering.js`.**
-   - `loadedAlbumCount`'s `viewMode` parameter, the zero-offset branch in
-     `scrollToAlbumPosition`, and `applyFilters`' `return { total }` are dead.
-   - `matchCount` has no `isInitialized` guard, unlike its neighbours.
-   - The takeover finds in-flight requests by the `htmx-request` class on
-     `#album-loading` and `.load-more-button`, so moving the spinner silently
-     disables it.
-   - The landing path and search are rendered twice in `music/home.html`
-     (`window.albumLanding*` and `mediaListControls`' settings), and read by
-     two copies of one rule (`albumUrlParams`, `_syncFromUrl`).
-8. **Never tested on real assistive tech or a real iPhone.** The year grid
+7. **Never tested on real assistive tech or a real iPhone.** The year grid
    and the mobile sheet were checked in Chrome, WebKit and Firefox, plus
    Chrome's accessibility tree, but never with VoiceOver, NVDA or iOS Safari.
-9. **The music Wikidata pass reads only English labels** (found 2026-11-02).
+   `docs/ASSISTIVE_TECH_CHECKLIST.md` is the script: run it, record the
+   results there, and file what fails here.
+8. **The music Wikidata pass reads only English labels** (found 2026-11-02).
    Wikidata has moved some names to the language-neutral `mul` label, and
    `music/wikidata.py` reads `labels.en` alone. So `fetch_labels` drops
    punk rock (Q3071), rapcore and Reprise Records from every album's
@@ -66,15 +58,15 @@ there stateless and pin it in `scripts/browser_smoke.js` first.
    `musicbrainz_id` or `wikipedia_title`. Fall back to `mul` (request
    `languages=en|mul`), then check `rebuild_album_genres --dry-run --report`.
    Small.
-10. **Games: a server jump overtaken by a filter change still jumps.** Before
-    the engine is ready, jump to 500, so the server fetches pages 2-5; the
-    engine loads and a genre is picked, re-rendering at #1. When the pages
-    land, `jumpToRankServerSide` finds its button gone and calls
-    `jumpToRankClientSide(csf, 500)` on the genre's list, undoing the reset to
-    the top. Drop it, as a late Load More page is dropped, unless whatever
-    replaced the list knows it is the same one. Found in review, 2026-11-02.
-    Small.
-11. **Games: other re-renders still drop an in-flight server Load More.** The
+9. **Games: a server jump overtaken by a filter change still jumps.** Before
+   the engine is ready, jump to 500, so the server fetches pages 2-5; the
+   engine loads and a genre is picked, re-rendering at #1. When the pages
+   land, `jumpToRankServerSide` finds its button gone and calls
+   `jumpToRankClientSide(csf, 500)` on the genre's list, undoing the reset to
+   the top. Drop it, as a late Load More page is dropped, unless whatever
+   replaced the list knows it is the same one. Found in review, 2026-11-02.
+   Small.
+10. **Games: other re-renders still drop an in-flight server Load More.** The
     engine's takeover and a view toggle answer it; a client jump
     (`refreshClientLoadMore` replaces the button) and the played-filter
     re-render on `game-status-changed` do not, so the page is dropped and the
@@ -82,6 +74,22 @@ there stateless and pin it in `scripts/browser_smoke.js` first.
     for rows 201-300 gets 101-200. One owner for the hand-off, around
     `performClientUpdate`, would cover every caller. Found in review,
     2026-11-02. Small.
+11. **The mobile sheet's decade buttons do not say which is selected.** In
+    `core/includes/_mobile_filter_time.html` the Decade / Year / Range switch
+    and the decade buttons show their state by colour alone (`btn-primary`),
+    with no `aria-pressed`, where the sidebar's year grid and the sheet's genre
+    rows carry it. Found by reading the markup, not with a screen reader;
+    item 7's checklist expects it to fail. Small.
+12. **A music filter change does not cancel a Load More in flight.** Without
+    the engine (before it loads, or if it fails), click Load More and then
+    change a filter before the page arrives: the filter render lands, then the
+    stale page appends into the detached old list, and its out-of-band
+    `#load-more-container` replaces the new filter's button with the old
+    one's, e.g. "All 120 results loaded" over a list of 100. Found reviewing
+    the takeover fix; the engine aborts it if it is still in flight when the
+    engine takes over (`scripts/browser_smoke.js`, "Load More swapped out").
+    Likely fix: a shared `hx-sync` scope on the form and the Load More button,
+    so a filter request replaces the page request. Small.
 
 The browser harnesses used for v905 are in the ashgabat worktree's
 `.context/ygrid/`, which is gitignored and so exists only there:
