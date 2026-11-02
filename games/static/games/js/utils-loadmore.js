@@ -124,13 +124,16 @@ function initJumpToRank() {
 /**
  * Get the current game list state from the best available source
  * Priority: CSF renderer state > data attributes > DOM count
- * @returns {Object} { total, loaded, filters, showRank, csf }
+ * @returns {Object} { total, loaded, filters, showRank, csf, games }, where
+ *     `games` is the engine's filtered list, or null without the engine: the
+ *     filtering is the costly part, so callers take it from here
  */
 function getCurrentState() {
     const filters = getFiltersFromURL();
     let total = null;
     let loaded = 0;
     let csf = null;
+    let games = null;
 
     // Try to get state from CSF (most authoritative when available)
     if (typeof getClientSideFiltering === 'function') {
@@ -139,6 +142,7 @@ function getCurrentState() {
             const result = csf.applyFilters(filters);
             if (result) {
                 total = result.total;
+                games = result.games;
             }
             // Once the renderer owns the list, how far down it reaches
             if (csf.renderer && csf.renderer.currentItems && csf.renderer.currentItems.length > 0) {
@@ -147,7 +151,8 @@ function getCurrentState() {
                     loaded: csf.renderer.windowEnd,
                     filters,
                     showRank: hasActiveFilters(filters, csf) ? 'filtered' : 'alltime',
-                    csf
+                    csf,
+                    games
                 };
             }
         }
@@ -172,7 +177,7 @@ function getCurrentState() {
 
     const showRank = hasActiveFilters(filters, csf) ? 'filtered' : 'alltime';
 
-    return { total: total || 0, loaded, filters, showRank, csf };
+    return { total: total || 0, loaded, filters, showRank, csf, games };
 }
 
 /**
@@ -275,7 +280,8 @@ async function handleJumpToRank(input) {
     const csf = csfReady ? state.csf : await waitForClientSideFiltering(3000);
     if (csf) {
         try {
-            jumpToRankClientSide(csf, targetRank);
+            // A state read before the engine was ready has no games
+            jumpToRankClientSide(csf, targetRank, csfReady ? state : getCurrentState());
             input.value = '';
             return;
         } catch (err) {
@@ -299,8 +305,9 @@ async function handleJumpToRank(input) {
  * extends them; see BaseMediaListRenderer.planJump.
  * @param {Object} csf - The ready ClientSideFiltering instance
  * @param {number} targetRank - 1-based position in the current result set
+ * @param {Object} [state] - getCurrentState() read with the engine ready
  */
-function jumpToRankClientSide(csf, targetRank) {
+function jumpToRankClientSide(csf, targetRank, state = getCurrentState()) {
     const gameListContainer = document.getElementById('game-list-container');
 
     if (!gameListContainer) {
@@ -308,28 +315,26 @@ function jumpToRankClientSide(csf, targetRank) {
         return;
     }
 
-    const { filters, showRank, loaded } = getCurrentState();
+    const { showRank, loaded, games } = state;
 
     // Determine view mode from CSF or container class
     const viewMode = csf.getViewMode ? csf.getViewMode() :
                      (gameListContainer.classList.contains('view-grid') ? 'grid' : 'list');
 
-    // Get filtered games from engine
-    const result = csf.applyFilters(filters);
-    if (!result || !result.games) {
+    if (!games) {
         console.error('[JumpToRank CSF] No games returned from filter');
         return;
     }
 
     // Validated against the list as it was, if the engine has changed it since
-    if (targetRank > result.total) return;
+    if (targetRank > games.length) return;
 
     const renderer = csf.renderer;
     if (renderer.currentItems && renderer.currentItems.length) {
-        renderer.currentItems = result.games;
+        renderer.currentItems = games;
     } else {
         // Taking over the server's rows
-        renderer.adopt(result.games, loaded);
+        renderer.adopt(games, loaded);
     }
     renderer._currentViewMode = viewMode;
 
@@ -598,8 +603,7 @@ function handleLoadMoreCSF(csf) {
     if (!gameListContainer) return;
 
     // Get authoritative state
-    const currentState = getCurrentState();
-    const { filters, showRank, loaded } = currentState;
+    const { showRank, loaded, games } = getCurrentState();
 
     // Determine view mode from CSF or container class
     const viewMode = csf.getViewMode ? csf.getViewMode() :
@@ -608,12 +612,10 @@ function handleLoadMoreCSF(csf) {
     // Initialize renderer state if not already done (taking over from server-rendered content)
     const renderer = csf.renderer;
     if (!renderer.currentItems || renderer.currentItems.length === 0) {
-        // Get the filtered games from the engine
-        const result = csf.applyFilters(filters);
-        if (!result || !result.games) return;
+        if (!games) return;
 
         // Set the renderer's state based on what's already loaded
-        renderer.adopt(result.games, loaded);
+        renderer.adopt(games, loaded);
     }
 
     // Ensure renderer knows the current view mode
@@ -748,15 +750,14 @@ function jumpToHighlightedGame(gameId) {
         }
 
         // Apply current filters and find the game's position
-        var filters = getFiltersFromURL();
-        var result = csf.applyFilters(filters);
-        if (!result || !result.games) {
+        var state = getCurrentState();
+        if (!state.games) {
             console.warn('[JumpToHighlight] No games in filtered results');
             return;
         }
 
         // Find the game's position in filtered results (1-based)
-        var position = result.games.findIndex(function(g) {
+        var position = state.games.findIndex(function(g) {
             return g.id === gameId;
         }) + 1;
 
@@ -766,7 +767,7 @@ function jumpToHighlightedGame(gameId) {
         }
 
         // Use jumpToRankClientSide directly (same as Jump to Rank)
-        jumpToRankClientSide(csf, position);
+        jumpToRankClientSide(csf, position, state);
 
         // After loading, scroll to the specific game by ID
         setTimeout(function() {

@@ -1856,14 +1856,19 @@ every click's INP under 200 ms even at 4x. Four things mattered:
   finishes loading it takes over: it cancels what is queued, aborts a server
   render in flight, and pushes if the filters are not the ones the URL last
   got (`_urlFilterKey`, kept by `_writeHistory`, the one place a URL is
-  written), since replacing would lose the page Back should reach.
+  written), since replacing would lose the page Back should reach. A push
+  of the filters `_urlFilterKey` already holds becomes a replace, so Clear
+  All from a jumped list no longer pushes `/` over `/`.
   `scripts/browser_smoke.js` holds the engine's data and that render to pin it.
   Music's engine aborts an HTMX filter request or Load More it overtakes and
   answers it. It keeps no record of what it last rendered: three attempts at
   skipping a repeated commit each broke something (a typed search, a `?q=`
   link, Clear All on a jumped list). Only `pushUrl` guards, statelessly, against
   pushing the URL it is on: a search used to leave two entries. A games Load More or server jump whose button has gone is dropped
-  (`utils-loadmore.js`) and answered by the engine.
+  (`utils-loadmore.js`) and answered by the engine. Whatever replaced the
+  button answers: the engine's takeover, unless it rendered a change, and a
+  list/grid toggle (`setViewMode`). The page landing later cannot tell a
+  toggle from a jump or a filter change, so it never answers.
 - **Sidebar bindings scanned the page's reactive arrays.** Every
   platform, genre and series row called `find()`/`filter()` over
   `platforms`/`genres`/`seriesList`. Each scan read, and subscribed to,

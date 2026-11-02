@@ -866,8 +866,16 @@ document.addEventListener('alpine:init', () => {
             return params.toString();
         },
 
-        /** Every URL write, so that the engine can tell what reached the URL. */
+        /**
+         * Every URL write, so that the engine can tell what reached the URL.
+         * A push of the filters the URL already holds replaces it instead:
+         * Clear All from a jumped list re-renders the same filters, and pushed
+         * `/` over `/`. Not skipped, since the URL may still carry a highlight.
+         */
         _writeHistory(method, url, key = this._filterKey()) {
+            if (method === 'pushState' && key === this._urlFilterKey) {
+                method = 'replaceState';
+            }
             window.history[method]({}, '', url);
             this._urlFilterKey = key;
         },
@@ -1391,7 +1399,14 @@ document.addEventListener('alpine:init', () => {
                 // A view is not a filter: re-render, leave the URL alone. It
                 // used to replaceState with _filterUrl(), which on an
                 // unfiltered page wrote /games/?start=..&end=.. over `/`.
+                const pageLoading = document.querySelector('.load-more-button.is-loading');
                 this.performClientUpdate({ historyMethod: null });
+                // The render replaced the button a server page was on its way
+                // to, so the page is dropped; the list is the same one, so the
+                // engine answers the click, as it does when it takes over.
+                if (pageLoading && !pageLoading.isConnected) {
+                    handleLoadMoreCSF(this._csf);
+                }
             } else if (mode === 'grid') {
                 // Until the bundle renders a grid, grid mode shows the server's
                 // rows (styles.css hides them only once a .game-grid exists).

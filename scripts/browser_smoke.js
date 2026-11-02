@@ -15,7 +15,10 @@
  * data. These are the failures no Python test sees: a template binding that
  * only throws in the browser, or an inline script the CSP would refuse. It also
  * checks that Back survives a filter change made while the engine loads,
- * and that a year range the corpus does not reach shows and can be cleared.
+ * that a server Load More survives the engine's takeover and a view toggle,
+ * that a games jump filters once and Clear All after it adds no history
+ * entry, and that a year range the corpus does not reach shows and can be
+ * cleared.
  */
 const puppeteer = require('puppeteer-core');
 
@@ -140,6 +143,79 @@ async function checkLoadMoreAcrossEngineLoad(page, engine) {
     await sleep(800);
     const count = await page.$$eval(rows, found => found.length);
     return count === Math.min(200, total) ? null : `${site}: ${count} rows of ${total}`;
+}
+
+/** Starts the games engine, as focusing a jump box does, and waits for it. */
+async function startGamesEngine(page) {
+    const component = await page.waitForSelector('[x-data*="filterComponent"]');
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('acclaimed:need-csf')));
+    await page.waitForFunction(element => Alpine.$data(element).clientFilterReady, {}, component);
+    return component;
+}
+
+/**
+ * A games jump filtered the whole corpus three times, where once gives it every
+ * game it needs. And Clear All from a jumped list, whose filters it leaves as
+ * they were, pushed `/` over `/`, so Back needed two presses. Answers as above.
+ */
+async function checkJumpThenClearAll(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    await page.goto(games + '/', { waitUntil: 'networkidle2' });
+    await startGamesEngine(page);
+    await page.evaluate(() => {
+        const csf = getClientSideFiltering();
+        const applyFilters = csf.applyFilters.bind(csf);
+        window.__filterPasses = 0;
+        csf.applyFilters = (...args) => {
+            window.__filterPasses += 1;
+            return applyFilters(...args);
+        };
+    });
+    const box = (await page.evaluateHandle(() => [...document.querySelectorAll(
+        '.jump-to-rank-input')].find(input => input.offsetParent))).asElement();
+    await box.type('110');
+    await box.press('Enter');
+    await sleep(500);
+    const passes = await page.evaluate(() => window.__filterPasses);
+    if (passes !== 1) return `games: a jump filtered the corpus ${passes} times`;
+    const entries = await page.evaluate(() => history.length);
+    await press(page, /^Clear All$/);
+    await sleep(800);
+    const added = await page.evaluate(() => history.length) - entries;
+    if (added !== 0) return `games: Clear All after a jump added ${added} history entries`;
+    const start = await page.evaluate(() => getClientSideFiltering().renderer.windowStart);
+    return start === 0 ? null : `games: Clear All left the list starting at #${start + 1}`;
+}
+
+/**
+ * A view toggle once the engine is ready re-renders the list, and with it the
+ * Load More button a server page was on its way to, so the page was dropped
+ * and the click went unanswered. Answers as above.
+ */
+async function checkLoadMoreAcrossViewToggle(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    let held = null;
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        if (request.url().includes('append=true')) {
+            held = request;
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(games + '/', { waitUntil: 'networkidle2' });
+    const button = await page.waitForSelector('.load-more-button');
+    const total = Number(await page.$eval('.jump-to-rank-input', box => box.dataset.total));
+    await button.click();
+    for (let tries = 0; !held && tries < 200; tries += 1) await sleep(50);
+    if (!held) return 'games: Load More sent no server request';
+    const component = await startGamesEngine(page);
+    await page.evaluate(element => Alpine.$data(element).setViewMode('grid'), component);
+    await held.continue();
+    await sleep(800);
+    const ids = await page.$$eval('.game-card-grid', found => found.map(card => card.id));
+    if (new Set(ids).size !== ids.length) return 'games: a card is shown twice';
+    return ids.length === Math.min(200, total) ? null : `games: ${ids.length} cards of ${total}`;
 }
 
 /**
@@ -298,6 +374,8 @@ async function checkRangeOutsideTheCorpus(page, site) {
         await report(`${name} Load More across the engine load`,
             page => checkLoadMoreAcrossEngineLoad(page, engine));
     }
+    await report('games jump then Clear All', checkJumpThenClearAll);
+    await report('games Load More across a view toggle', checkLoadMoreAcrossViewToggle);
     for (const path of ['/?q=smoke', '/genres/smoke-rock/?utm_source=smoke']) {
         await report(`music keeps ${path}`,
             page => checkEngineLeavesTheUrlAlone(page, music + path));

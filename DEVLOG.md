@@ -18,6 +18,17 @@
 - **The 37 undated albums were re-checked and stay undated.** Wikidata's
   P577 is still year-precision for every one, and none of their MusicBrainz
   releases gives a month in the album's year
+- **Clear All after a games jump adds no history entry.** It re-renders the
+  same filters to bring the list back to #1, and pushed `/` over `/`, so Back
+  needed two presses. A push of the filters the URL already holds now
+  replaces it
+- **A games Load More survives a view toggle.** Once the engine was ready, a
+  list/grid toggle replaced the button a server page was on its way to, so
+  the page was dropped and the click went unanswered. The toggle now has the
+  engine answer it, as the engine's own takeover already did
+- **A games jump filters the corpus once.** It filtered three times, and the
+  first client Load More and a `?highlight=` jump twice; each now reuses the
+  list `getCurrentState` filtered
 
 ## 2026-11-01
 

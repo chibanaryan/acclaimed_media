@@ -44,40 +44,44 @@ there stateless and pin it in `scripts/browser_smoke.js` first.
 6. **Music's jump box does nothing if the bundle fails.** `initAlbumJumpToRank`
    runs only after the engine loads, so with no data the box takes input and
    ignores Enter. Hide or disable it until the engine is ready. Small.
-7. **Games: Clear All from a jumped list adds a duplicate history entry**
-   (`/` pushed over `/`). Fix: `_writeHistory` in `filter-component.js` skips a
-   push whose key equals `_urlFilterKey`. Small.
-8. **Games: a server Load More is dropped if the list/grid toggle re-renders
-   meanwhile.** On a bare `/`, Load More before the engine loads, then toggle
-   the view as it lands: the button is replaced, so `appendPageResults` drops
-   the page and the click goes unanswered. Rare, and a second click works.
+7. **Cleanups left in `album-client-filtering.js`.**
+   - `loadedAlbumCount`'s `viewMode` parameter, the zero-offset branch in
+     `scrollToAlbumPosition`, and `applyFilters`' `return { total }` are dead.
+   - `matchCount` has no `isInitialized` guard, unlike its neighbours.
+   - The takeover finds in-flight requests by the `htmx-request` class on
+     `#album-loading` and `.load-more-button`, so moving the spinner silently
+     disables it.
+   - The landing path and search are rendered twice in `music/home.html`
+     (`window.albumLanding*` and `mediaListControls`' settings), and read by
+     two copies of one rule (`albumUrlParams`, `_syncFromUrl`).
+8. **Never tested on real assistive tech or a real iPhone.** The year grid
+   and the mobile sheet were checked in Chrome, WebKit and Firefox, plus
+   Chrome's accessibility tree, but never with VoiceOver, NVDA or iOS Safari.
+9. **The music Wikidata pass reads only English labels** (found 2026-11-02).
+   Wikidata has moved some names to the language-neutral `mul` label, and
+   `music/wikidata.py` reads `labels.en` alone. So `fetch_labels` drops
+   punk rock (Q3071), rapcore and Reprise Records from every album's
+   Wikidata genres and label, and `fetch_artists` skips 27 artists outright -
+   Radiohead, Rihanna, 50 Cent, Lil Wayne - which therefore have no
+   `musicbrainz_id` or `wikipedia_title`. Fall back to `mul` (request
+   `languages=en|mul`), then check `rebuild_album_genres --dry-run --report`.
    Small.
-9. **Games: jump to rank filters the whole corpus three times**
-   (`getCurrentState` twice and `jumpToRankClientSide` once, in
-   `utils-loadmore.js`). Have `getCurrentState` return the games it filtered.
-   Small.
-10. **Cleanups left in `album-client-filtering.js`.**
-    - `loadedAlbumCount`'s `viewMode` parameter, the zero-offset branch in
-      `scrollToAlbumPosition`, and `applyFilters`' `return { total }` are dead.
-    - `matchCount` has no `isInitialized` guard, unlike its neighbours.
-    - The takeover finds in-flight requests by the `htmx-request` class on
-      `#album-loading` and `.load-more-button`, so moving the spinner silently
-      disables it.
-    - The landing path and search are rendered twice in `music/home.html`
-      (`window.albumLanding*` and `mediaListControls`' settings), and read by
-      two copies of one rule (`albumUrlParams`, `_syncFromUrl`).
-11. **Never tested on real assistive tech or a real iPhone.** The year grid
-    and the mobile sheet were checked in Chrome, WebKit and Firefox, plus
-    Chrome's accessibility tree, but never with VoiceOver, NVDA or iOS Safari.
-12. **The music Wikidata pass reads only English labels** (found 2026-11-02).
-    Wikidata has moved some names to the language-neutral `mul` label, and
-    `music/wikidata.py` reads `labels.en` alone. So `fetch_labels` drops
-    punk rock (Q3071), rapcore and Reprise Records from every album's
-    Wikidata genres and label, and `fetch_artists` skips 27 artists outright -
-    Radiohead, Rihanna, 50 Cent, Lil Wayne - which therefore have no
-    `musicbrainz_id` or `wikipedia_title`. Fall back to `mul` (request
-    `languages=en|mul`), then check `rebuild_album_genres --dry-run --report`.
+10. **Games: a server jump overtaken by a filter change still jumps.** Before
+    the engine is ready, jump to 500, so the server fetches pages 2-5; the
+    engine loads and a genre is picked, re-rendering at #1. When the pages
+    land, `jumpToRankServerSide` finds its button gone and calls
+    `jumpToRankClientSide(csf, 500)` on the genre's list, undoing the reset to
+    the top. Drop it, as a late Load More page is dropped, unless whatever
+    replaced the list knows it is the same one. Found in review, 2026-11-02.
     Small.
+11. **Games: other re-renders still drop an in-flight server Load More.** The
+    engine's takeover and a view toggle answer it; a client jump
+    (`refreshClientLoadMore` replaces the button) and the played-filter
+    re-render on `game-status-changed` do not, so the page is dropped and the
+    click goes unanswered. Both answers also restart from 100 rows, so a click
+    for rows 201-300 gets 101-200. One owner for the hand-off, around
+    `performClientUpdate`, would cover every caller. Found in review,
+    2026-11-02. Small.
 
 The browser harnesses used for v905 are in the ashgabat worktree's
 `.context/ygrid/`, which is gitignored and so exists only there:
