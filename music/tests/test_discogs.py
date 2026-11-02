@@ -180,6 +180,18 @@ class FetchMasterTests(DiscogsClientTestCase):
         with mock.patch.object(client, "get_json", return_value=None):
             self.assertIsNone(client.fetch_master(999))
 
+    def test_a_404_is_told_apart_from_a_throttle(self):
+        """The Discogs pass replaces a master only on a 404."""
+        client = self.build()
+        for status in (404, 429):
+            with self.subTest(status=status):
+                response = headers_response({})
+                response.status_code = status
+                self.session.get.return_value = response
+                with mock.patch("music.services.http_client.time.sleep"):
+                    self.assertIsNone(client.fetch_master(999))
+                self.assertEqual(client.last_status, status)
+
     def test_a_non_dict_payload_is_none(self):
         client = self.build()
         with mock.patch.object(client, "get_json", return_value=["unexpected"]):

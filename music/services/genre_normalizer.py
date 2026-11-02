@@ -92,7 +92,7 @@ GENRE_VOCABULARY: Dict[str, Dict[str, Tuple[str, ...]]] = {
         "Power Pop": (),
         "Britpop": ("post-britpop",),
         "Grunge": (),
-        "New Wave": (),
+        "New Wave": ("neue deutsche welle",),
         "Goth Rock": ("gothic rock", "deathrock", "gothic"),
         "Soft Rock": ("yacht rock",),
         "Roots Rock": ("heartland rock", "pub rock", "swamp rock"),
@@ -102,7 +102,7 @@ GENRE_VOCABULARY: Dict[str, Dict[str, Tuple[str, ...]]] = {
         "Country Rock": ("alternative country", "alt-country", "cosmic country"),
         "Beat Music": ("mod", "mod revival", "merseybeat", "british rhythm & blues"),
         "Math Rock": (),
-        "Stoner Rock": (),
+        "Stoner Rock": ("stoner metal",),
         "Slowcore": (),
         "Surf Rock": ("surf", "surf punk"),
     },
@@ -179,6 +179,7 @@ GENRE_VOCABULARY: Dict[str, Dict[str, Tuple[str, ...]]] = {
             "gqom",
             "microhouse",
             "french electro",
+            "euro house",
         ),
         "Techno": ("deep techno", "minimal", "ambient techno", "acid techno"),
         "Electro": (),
@@ -213,12 +214,17 @@ GENRE_VOCABULARY: Dict[str, Dict[str, Tuple[str, ...]]] = {
     "Soul": {
         "Neo Soul": (),
         "Psychedelic Soul": (),
-        "Southern Soul": ("deep soul",),
+        "Southern Soul": ("deep soul", "memphis soul"),
         "Blue-Eyed Soul": (),
         "Gospel": ("devotional song",),
     },
     "R&B": {
-        "Contemporary R&B": ("alternative r&b", "quiet storm", "hip-hop soul"),
+        "Contemporary R&B": (
+            "alternative r&b",
+            "quiet storm",
+            "hip-hop soul",
+            "urban contemporary",
+        ),
         "Rhythm & Blues": (
             "new orleans rhythm and blues",
             "new orleans r&b",
@@ -342,6 +348,7 @@ ROOT_ALIASES: Dict[str, Tuple[str, ...]] = {
         "electronic rock",
         "british rock",
         "french rock",
+        "german rock",
         "latin rock",
         "chicano rock",
     ),
@@ -351,6 +358,7 @@ ROOT_ALIASES: Dict[str, Tuple[str, ...]] = {
         "brill building",
         "sophisti-pop",
         "hyperpop",
+        "bubblegum bass",
         # Not Dream Pop: that hangs from Rock, which filed Bon Iver under it.
         "ambient pop",
     ),
@@ -534,6 +542,9 @@ DROPPED_LABELS: Tuple[str, ...] = (
     "ballet",
     "brass band",
     "broken transmission",
+    # A subject, not a sound: Discogs files it beside Krautrock on Ton
+    # Steine Scherben, and it would say the same of Public Enemy.
+    "political",
     # A genre, but MusicBrainz puts it on Marty Robbins, and as Latin it
     # took Discogs' "Folk, World, & Country" as a second vote for World.
     "tejano",

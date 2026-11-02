@@ -56,29 +56,7 @@ there stateless and pin it in `scripts/browser_smoke.js` first.
    (`getCurrentState` twice and `jumpToRankClientSide` once, in
    `utils-loadmore.js`). Have `getCurrentState` return the games it filtered.
    Small.
-10. **The music Wikidata pass logs an error for 'Old Nobody' on every run.** It
-    is the one album with no QID, and `metadata_service` logs "Wikidata pass
-    failed" with a traceback instead of skipping it, so every Sunday job
-    reports a failure and may file a Sentry issue (not checked). Skip albums
-    without a QID in the pass. Small.
-11. **Ten genre labels are unclassified**, so they add nothing until they are:
-    Neue Deutsche Welle (Wikidata and MusicBrainz) and Euro House (Discogs and
-    MusicBrainz) each come from two sources; German rock, urban contemporary
-    and Memphis soul from Wikidata; stoner metal and bubblegum bass from
-    MusicBrainz; Political from Discogs. Classify each in
-    `music/services/genre_normalizer.py` and add it to `RealVocabularyTests`'
-    lists, then check `rebuild_album_genres --dry-run --report`. Small.
-12. **Nine albums have no Discogs data.** Seven have no Discogs master on
-    Wikidata (I Never Loved a Man the Way I Love You, On the Beach, Damn,
-    Freedom, DS2, Old Nobody, Ella Fitzgerald Sings the George and Ira Gershwin
-    Song Book). Two point at masters that now 404: The Raincoats (87851) and
-    The Magnolia Electric Co. (365195). All nine still have genres. The fix is
-    on Wikidata, or a per-album override. Small.
-13. **37 albums have no release date.** The year still shows and filters; they
-    sort last within their year under Release Date. Neither Wikidata P577 nor
-    MusicBrainz gave a day or month. Check whether the sources have improved.
-    Small.
-14. **Cleanups left in `album-client-filtering.js`.**
+10. **Cleanups left in `album-client-filtering.js`.**
     - `loadedAlbumCount`'s `viewMode` parameter, the zero-offset branch in
       `scrollToAlbumPosition`, and `applyFilters`' `return { total }` are dead.
     - `matchCount` has no `isInitialized` guard, unlike its neighbours.
@@ -88,9 +66,18 @@ there stateless and pin it in `scripts/browser_smoke.js` first.
     - The landing path and search are rendered twice in `music/home.html`
       (`window.albumLanding*` and `mediaListControls`' settings), and read by
       two copies of one rule (`albumUrlParams`, `_syncFromUrl`).
-15. **Never tested on real assistive tech or a real iPhone.** The year grid
+11. **Never tested on real assistive tech or a real iPhone.** The year grid
     and the mobile sheet were checked in Chrome, WebKit and Firefox, plus
     Chrome's accessibility tree, but never with VoiceOver, NVDA or iOS Safari.
+12. **The music Wikidata pass reads only English labels** (found 2026-11-02).
+    Wikidata has moved some names to the language-neutral `mul` label, and
+    `music/wikidata.py` reads `labels.en` alone. So `fetch_labels` drops
+    punk rock (Q3071), rapcore and Reprise Records from every album's
+    Wikidata genres and label, and `fetch_artists` skips 27 artists outright -
+    Radiohead, Rihanna, 50 Cent, Lil Wayne - which therefore have no
+    `musicbrainz_id` or `wikipedia_title`. Fall back to `mul` (request
+    `languages=en|mul`), then check `rebuild_album_genres --dry-run --report`.
+    Small.
 
 The browser harnesses used for v905 are in the ashgabat worktree's
 `.context/ygrid/`, which is gitignored and so exists only there:

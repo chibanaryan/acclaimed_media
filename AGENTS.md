@@ -1227,9 +1227,17 @@ and stores only those.
 
 Run `/music-metadata` (`python manage.py fetch_album_metadata`) after an import.
 Nearly every album carries a Wikidata QID, which supplies the Discogs and
-MusicBrainz identifiers the other sources are keyed by, so nothing is matched
-on title. One the release gives no QID gets no metadata (no cover, genres or
-external ids) until the release adds one.
+MusicBrainz identifiers the other sources are keyed by. Two fallbacks fill
+its gaps. An album with no MusicBrainz release group (P436) is searched for
+by title and artist in the cover pass. An album with no Discogs master
+(P1954), or one Discogs now 404s, takes the master its MusicBrainz release
+group links (`MusicBrainzClient.fetch_discogs_master_id`), and
+`Album.discogs_master_id` follows the master the data came from. On
+2026-11-02 that filled all nine albums Discogs had nothing for, two of them
+on dead Wikidata masters, which the Wikidata pass writes back every week;
+the Discogs pass then pays one 404 and one MusicBrainz request for each, and
+relinks the stored row. The Wikidata pass skips an album the release gives
+no QID ('Old Nobody') rather than failing on it.
 
 Four passes, selectable, because their costs differ by two orders of magnitude:
 Wikidata is ~25 batched requests (seconds), cover art ~1000 downloads (~18 min),

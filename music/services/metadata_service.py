@@ -118,7 +118,8 @@ class AlbumMetadataService:
         # How many already-enriched albums the MusicBrainz pass re-fetches
         # anyway, oldest first; see _stalest_musicbrainz.
         self.refresh_stale = refresh_stale
-        # Opened only if the cover pass needs the release-level fallback.
+        # Opened only if the cover pass needs the release-level fallback or
+        # the Discogs pass needs a master Wikidata cannot give.
         self._musicbrainz_client = None
 
     # ----------------------------------------------------------------- utils
@@ -189,6 +190,12 @@ class AlbumMetadataService:
         self._save_artist_ids(artists)
 
         for index, album in enumerate(albums, start=1):
+            # An album the release gives no QID ('Old Nobody') has nothing to
+            # look up. It is not a failure: counted as one, it filed a Sentry
+            # issue every Sunday (ACCLAIMED-VIDEO-GAMES-A7).
+            if not album.wikidata_qids:
+                result.skipped += 1
+                continue
             try:
                 with transaction.atomic():
                     self._save_wikidata(album, metadata, labels)
@@ -322,6 +329,7 @@ class AlbumMetadataService:
 
         albums = [a for a in albums if a.musicbrainz_release_group_id]
         if not albums:
+            self._close_musicbrainz()
             return result
 
         self._notify("start", {"pass": "covers", "total": len(albums)})
@@ -383,9 +391,7 @@ class AlbumMetadataService:
                     },
                 )
 
-        if self._musicbrainz_client is not None:
-            self._musicbrainz_client.close()
-            self._musicbrainz_client = None
+        self._close_musicbrainz()
 
         self._notify("complete", {"pass": "covers", "processed": result.processed})
         return result
@@ -486,13 +492,19 @@ class AlbumMetadataService:
     def _musicbrainz(self) -> MusicBrainzClient:
         """The shared MusicBrainz client, opened on first use.
 
-        Opened lazily because the common path through the cover pass never
-        needs it, and opening it would impose the 1 req/sec pacing on a pass
-        that otherwise runs at five times that.
+        Opened lazily because the common paths through the cover and Discogs
+        passes never need it, and opening it would impose the 1 req/sec
+        pacing on a pass that otherwise runs at five times that. Each pass
+        closes it as it ends (``_close_musicbrainz``).
         """
         if self._musicbrainz_client is None:
             self._musicbrainz_client = MusicBrainzClient()
         return self._musicbrainz_client
+
+    def _close_musicbrainz(self) -> None:
+        if self._musicbrainz_client is not None:
+            self._musicbrainz_client.close()
+            self._musicbrainz_client = None
 
     def _store_known_cover(self, album, record, client) -> bool:
         """Download the bytes for a cover whose identifiers are already known."""
@@ -683,80 +695,131 @@ class AlbumMetadataService:
     # ---------------------------------------------------------- discogs pass
 
     def run_discogs(self, albums: Iterable[models.Album]) -> PassResult:
-        """Fetch and store Discogs masters, whose styles feed the genre rebuild."""
+        """Fetch and store Discogs masters, whose styles feed the genre rebuild.
+
+        The master id is Wikidata's (P1954), read by the Wikidata pass. Where
+        it has none, or Discogs no longer has the one it names, the album's
+        MusicBrainz release group usually links one; see
+        ``_musicbrainz_master``.
+        """
         result = PassResult(name="Discogs")
         albums = list(albums)
-        without_master = [a for a in albums if not a.discogs_master_id]
-        albums = [a for a in albums if a.discogs_master_id]
-
-        for album in without_master:
-            result.errors.append(f"{album.name}: no Discogs master ID")
-
         if not albums:
             return result
 
         self._notify("start", {"pass": "discogs", "total": len(albums)})
 
-        with DiscogsClient() as client:
-            for index, album in enumerate(albums, start=1):
-                existing = models.DiscogsAlbumData.objects.filter(
-                    album=album, master_id=album.discogs_master_id
-                ).first()
-
-                if existing is not None and not self.force:
-                    self._link_discogs(album, existing)
-                    result.skipped += 1
-                    continue
-
-                orphan = models.DiscogsAlbumData.objects.filter(
-                    master_id=album.discogs_master_id, album__isnull=True
-                ).first()
-                if orphan is not None and not self.force:
-                    orphan.album = album
-                    orphan.save()
-                    self._link_discogs(album, orphan)
-                    result.adopted += 1
-                    continue
-
-                master = client.fetch_master(album.discogs_master_id)
-                if master is None:
-                    result.errors.append(
-                        f"{album.name}: Discogs master "
-                        f"{album.discogs_master_id} not found"
+        try:
+            with DiscogsClient() as client:
+                for index, album in enumerate(albums, start=1):
+                    had_stored_master = bool(album.discogs_master_id)
+                    master_id = album.discogs_master_id or self._musicbrainz_master(
+                        album
                     )
-                    self._notify(
-                        "error",
-                        {
-                            "pass": "discogs",
-                            "name": album.name,
-                            "message": "master not found",
-                        },
-                    )
-                    continue
+                    if not master_id:
+                        # The release gives 'Old Nobody' no QID, so no source
+                        # knows it; reporting it would fail every run.
+                        if album.wikidata_qids:
+                            result.errors.append(f"{album.name}: no Discogs master ID")
+                        else:
+                            result.skipped += 1
+                        continue
 
-                record = existing or models.DiscogsAlbumData(
-                    album=album, master_id=master.master_id
-                )
-                record.title = fit(models.DiscogsAlbumData, "title", master.title)
-                record.main_release_year = master.year
-                record.genres = master.genres
-                record.styles = master.styles
-                record.save()
+                    outcome = self._store_discogs(album, master_id, client)
+                    # Only a 404 means the master is gone: a throttle or a 5xx
+                    # keeps it, to be tried again next run. Wikidata puts a
+                    # dead id back every week, so one costs a 404 and a
+                    # MusicBrainz request per run until Wikidata is corrected,
+                    # and then it mends itself.
+                    if (
+                        outcome is None
+                        and had_stored_master
+                        and client.last_status == 404
+                    ):
+                        replacement = self._musicbrainz_master(album)
+                        if replacement and replacement != master_id:
+                            outcome = self._store_discogs(album, replacement, client)
+                    if outcome is None:
+                        result.errors.append(
+                            f"{album.name}: Discogs master {master_id} not found"
+                        )
+                        self._notify(
+                            "error",
+                            {
+                                "pass": "discogs",
+                                "name": album.name,
+                                "message": "master not found",
+                            },
+                        )
+                        continue
 
-                self._link_discogs(album, record)
-                result.processed += 1
-                self._notify(
-                    "progress",
-                    {
-                        "pass": "discogs",
-                        "current": index,
-                        "total": len(albums),
-                        "name": album.name,
-                    },
-                )
+                    setattr(result, outcome, getattr(result, outcome) + 1)
+                    if outcome == "processed":
+                        self._notify(
+                            "progress",
+                            {
+                                "pass": "discogs",
+                                "current": index,
+                                "total": len(albums),
+                                "name": album.name,
+                            },
+                        )
+        finally:
+            self._close_musicbrainz()
 
         self._notify("complete", {"pass": "discogs", "processed": result.processed})
         return result
+
+    def _store_discogs(self, album, master_id, client) -> Optional[str]:
+        """Link, adopt or fetch master ``master_id`` for this album.
+
+        Returns the ``PassResult`` counter it earned, or None when Discogs
+        has no such master. The album's ``discogs_master_id`` follows the
+        master its data came from, so the "Data provided by Discogs" link
+        goes where the data is.
+        """
+        existing = models.DiscogsAlbumData.objects.filter(
+            album=album, master_id=master_id
+        ).first()
+        orphan = None
+        if existing is None:
+            orphan = models.DiscogsAlbumData.objects.filter(
+                master_id=master_id, album__isnull=True
+            ).first()
+
+        if existing is not None and not self.force:
+            record, outcome = existing, "skipped"
+        elif orphan is not None and not self.force:
+            orphan.album = album
+            orphan.save()
+            record, outcome = orphan, "adopted"
+        else:
+            master = client.fetch_master(master_id)
+            if master is None:
+                return None
+            record = existing or models.DiscogsAlbumData(
+                album=album, master_id=master.master_id
+            )
+            record.title = fit(models.DiscogsAlbumData, "title", master.title)
+            record.main_release_year = master.year
+            record.genres = master.genres
+            record.styles = master.styles
+            record.save()
+            outcome = "processed"
+
+        if album.discogs_master_id != master_id:
+            album.discogs_master_id = master_id
+            album.save(update_fields=["discogs_master_id"])
+        self._link_discogs(album, record)
+        return outcome
+
+    def _musicbrainz_master(self, album) -> Optional[int]:
+        """The Discogs master the album's MusicBrainz release group links to."""
+        if not album.musicbrainz_release_group_id:
+            return None
+        return self._musicbrainz().fetch_discogs_master_id(
+            album.musicbrainz_release_group_id
+        )
 
     def _link_discogs(self, album, record) -> None:
         """Make this the album's primary Discogs row.

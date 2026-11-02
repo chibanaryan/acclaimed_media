@@ -18,6 +18,7 @@ The two have very different standing in the pipeline:
 """
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -28,6 +29,10 @@ logger = logging.getLogger(__name__)
 
 #: MusicBrainz search scores run 0-100; below this a match is not trustworthy.
 MIN_SEARCH_SCORE = 90
+
+#: A release group's Discogs link: ``https://www.discogs.com/master/38630``,
+#: sometimes with a title slug after the id.
+DISCOGS_MASTER_URL = re.compile(r"discogs\.com/master/(\d+)")
 
 #: How well an image tagged ``Front`` shows the sleeve, judged by the other
 #: Cover Art Archive types it carries. ``Booklet``, ``Track`` and ``Liner``
@@ -103,6 +108,30 @@ class MusicBrainzClient(RateLimitedClient):
         if not isinstance(payload, dict):
             return None
         return self._build_release_group(mbid, payload)
+
+    def fetch_discogs_master_id(self, release_group_mbid: str) -> Optional[int]:
+        """The Discogs master this release group links to, or None.
+
+        The Discogs pass's fallback for an album whose Wikidata entity has no
+        P1954, or one Discogs no longer has: on 2026-11-02 MusicBrainz linked
+        a live master for all nine albums in that state. A link to a single
+        release is not a master, and an ended link is no longer current;
+        both are ignored.
+        """
+        payload = self.get_json(
+            f"{config.MUSICBRAINZ_API_URL}/release-group/{release_group_mbid}",
+            params={"inc": "url-rels", "fmt": "json"},
+        )
+        if not isinstance(payload, dict):
+            return None
+        for relation in payload.get("relations") or []:
+            if relation.get("type") != "discogs" or relation.get("ended"):
+                continue
+            url = (relation.get("url") or {}).get("resource") or ""
+            match = DISCOGS_MASTER_URL.search(url)
+            if match:
+                return int(match.group(1))
+        return None
 
     def search_release_group(
         self, title: str, artist_credit: str = "", year: Optional[int] = None

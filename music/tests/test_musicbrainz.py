@@ -202,6 +202,69 @@ class BrowseReleasesTests(ClientTestCase):
             self.assertEqual(client.browse_release_mbids(RG_MBID), ["art", "unknown"])
 
 
+class DiscogsMasterLinkTests(ClientTestCase):
+    def relations(self, *urls):
+        return {
+            "relations": [{"type": "discogs", "url": {"resource": u}} for u in urls]
+        }
+
+    def test_the_linked_master_is_returned(self):
+        client = self.build()
+        payload = self.relations(
+            "https://www.wikidata.org/wiki/Q7759337",
+            "https://www.discogs.com/master/716744",
+        )
+        with mock.patch.object(client, "get_json", return_value=payload) as get:
+            self.assertEqual(client.fetch_discogs_master_id(RG_MBID), 716744)
+        self.assertIn(RG_MBID, get.call_args.args[0])
+        self.assertEqual(get.call_args.kwargs["params"]["inc"], "url-rels")
+
+    def test_a_master_url_with_a_title_slug_is_read(self):
+        client = self.build()
+        payload = self.relations("https://www.discogs.com/master/38630-Neil-Young")
+        with mock.patch.object(client, "get_json", return_value=payload):
+            self.assertEqual(client.fetch_discogs_master_id(RG_MBID), 38630)
+
+    def test_a_release_link_is_not_a_master(self):
+        client = self.build()
+        payload = self.relations("https://www.discogs.com/release/579392")
+        with mock.patch.object(client, "get_json", return_value=payload):
+            self.assertIsNone(client.fetch_discogs_master_id(RG_MBID))
+
+    def test_an_ended_link_or_another_type_is_ignored(self):
+        client = self.build()
+        payload = {
+            "relations": [
+                {
+                    "type": "discogs",
+                    "ended": True,
+                    "url": {"resource": "https://www.discogs.com/master/1"},
+                },
+                {
+                    "type": "other databases",
+                    "url": {"resource": "https://www.discogs.com/master/2"},
+                },
+                {
+                    "type": "discogs",
+                    "ended": False,
+                    "url": {"resource": "https://www.discogs.com/master/3"},
+                },
+            ]
+        }
+        with mock.patch.object(client, "get_json", return_value=payload):
+            self.assertEqual(client.fetch_discogs_master_id(RG_MBID), 3)
+
+    def test_no_relations_is_none(self):
+        client = self.build()
+        with mock.patch.object(client, "get_json", return_value={}):
+            self.assertIsNone(client.fetch_discogs_master_id(RG_MBID))
+
+    def test_a_failed_request_is_none(self):
+        client = self.build()
+        with mock.patch.object(client, "get_json", return_value=None):
+            self.assertIsNone(client.fetch_discogs_master_id(RG_MBID))
+
+
 class SearchReleaseGroupTests(ClientTestCase):
     def test_an_album_is_preferred_over_a_single_of_the_same_name(self):
         client = self.build()

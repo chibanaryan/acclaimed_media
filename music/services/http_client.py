@@ -72,6 +72,11 @@ class RateLimitedClient:
         self.last_request_time: float = 0.0
         self.rate_limit_lock = threading.Lock()
 
+        # The HTTP status of the last ``get_json`` response, or None when
+        # none came back, because get_json's None means a 404 and a throttle
+        # alike. Not meaningful on a client shared between threads.
+        self.last_status: Optional[int] = None
+
     def __enter__(self) -> "RateLimitedClient":
         return self
 
@@ -113,6 +118,7 @@ class RateLimitedClient:
 
         for attempt in range(self.max_retries):
             self._wait_for_rate_limit()
+            self.last_status = None
             last_attempt = attempt == self.max_retries - 1
 
             try:
@@ -145,6 +151,7 @@ class RateLimitedClient:
                 return None
 
             self._observe_response(response)
+            self.last_status = response.status_code
 
             if response.status_code == 404:
                 logger.debug("%s: not found", url)

@@ -276,6 +276,17 @@ class WikidataPassTests(ServiceTestCase):
         result = self.service.run_wikidata([self.album])
         self.assertEqual(result.errors, ["No album carries a Wikidata ID"])
 
+    def test_an_album_without_a_qid_is_skipped_beside_the_others(self):
+        """The release gives 'Old Nobody' no QID, and the weekly run is not a
+        failure for it: it filed a Sentry issue every Sunday."""
+        no_qid = models.Album.objects.create(name="Old Nobody", rank=900)
+        with self.assertNoLogs("music.services.metadata_service", level="ERROR"):
+            result = self.run_pass(albums=[self.album, no_qid])
+        self.assertEqual(result.errors, [])
+        self.assertEqual(result.processed, 1)
+        self.assertEqual(result.skipped, 1)
+        self.assertFalse(no_qid.wikipedia_album_data_set.exists())
+
     def test_a_failure_on_one_album_does_not_stop_the_others(self):
         other = models.Album.objects.create(
             name="Revolver", rank=7, wikidata_id="Q189622"
@@ -714,6 +725,155 @@ class DiscogsPassTests(ServiceTestCase):
 
     def test_no_albums_is_a_no_op(self):
         self.assertEqual(self.service.run_discogs([]).processed, 0)
+
+
+class DiscogsMusicBrainzFallbackTests(ServiceTestCase):
+    """Wikidata's Discogs master is missing or dead; MusicBrainz links one.
+
+    Seven albums had no P1954 and two pointed at masters Discogs now 404s
+    (The Raincoats, Magnolia Electric Co.); MusicBrainz's release groups
+    linked a live master for every one of them.
+    """
+
+    run_pass = DiscogsPassTests.run_pass
+
+    def build_client(self, master=None, last_status=404):
+        client = DiscogsPassTests.build_client(self, master)
+        client.last_status = last_status
+        return client
+
+    def setUp(self):
+        super().setUp()
+        self.album.discogs_master_id = 24047
+        self.album.musicbrainz_release_group_id = RG_MBID
+        self.album.save()
+        self.mb_client = mock.MagicMock()
+        self.mb_client.fetch_discogs_master_id.return_value = 716744
+        patcher = mock.patch(
+            "music.services.metadata_service.MusicBrainzClient",
+            return_value=self.mb_client,
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def live_master(self, master_id=716744):
+        return DiscogsMaster(
+            master_id=master_id,
+            title="The Raincoats",
+            year=1979,
+            genres=["Rock"],
+            styles=["Post-Punk"],
+        )
+
+    def test_an_album_with_no_master_takes_musicbrainzs(self):
+        self.album.discogs_master_id = None
+        self.album.save()
+        client = self.build_client(master=self.live_master())
+        result = self.run_pass(client)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(result.processed, 1)
+        client.fetch_master.assert_called_once_with(716744)
+        self.mb_client.fetch_discogs_master_id.assert_called_once_with(RG_MBID)
+        self.album.refresh_from_db()
+        self.assertEqual(self.album.discogs_master_id, 716744)
+        self.assertEqual(self.album.primary_discogs_album_data.master_id, 716744)
+
+    def test_a_dead_master_falls_back_to_musicbrainzs(self):
+        client = self.build_client()
+        client.fetch_master.side_effect = [None, self.live_master()]
+        result = self.run_pass(client)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(result.processed, 1)
+        self.assertEqual(
+            client.fetch_master.call_args_list, [mock.call(24047), mock.call(716744)]
+        )
+        self.album.refresh_from_db()
+        self.assertEqual(self.album.discogs_master_id, 716744)
+
+    def test_a_dead_master_relinks_the_row_musicbrainzs_master_stored(self):
+        """Wikidata puts the dead id back every week; the data stays."""
+        models.DiscogsAlbumData.objects.create(
+            album=self.album, master_id=716744, styles=["Post-Punk"]
+        )
+        client = self.build_client()
+        client.fetch_master.return_value = None
+        result = self.run_pass(client)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(result.skipped, 1)
+        client.fetch_master.assert_called_once_with(24047)
+        self.album.refresh_from_db()
+        self.assertEqual(self.album.discogs_master_id, 716744)
+        self.assertEqual(self.album.primary_discogs_album_data.master_id, 716744)
+
+    def test_a_master_discogs_failed_to_serve_is_not_replaced(self):
+        """A throttle or a 5xx is not a dead master: keep it for next week."""
+        client = self.build_client(last_status=429)
+        client.fetch_master.return_value = None
+        result = self.run_pass(client)
+        self.assertEqual(len(result.errors), 1)
+        client.fetch_master.assert_called_once_with(24047)
+        self.mb_client.fetch_discogs_master_id.assert_not_called()
+        self.album.refresh_from_db()
+        self.assertEqual(self.album.discogs_master_id, 24047)
+
+    def test_a_dead_master_musicbrainz_cannot_replace_is_reported(self):
+        self.mb_client.fetch_discogs_master_id.return_value = None
+        client = self.build_client()
+        client.fetch_master.return_value = None
+        result = self.run_pass(client)
+        self.assertEqual(result.processed, 0)
+        self.assertIn("not found", result.errors[0])
+        client.fetch_master.assert_called_once_with(24047)
+
+    def test_musicbrainz_naming_the_same_dead_master_is_not_fetched_twice(self):
+        self.mb_client.fetch_discogs_master_id.return_value = 24047
+        client = self.build_client()
+        client.fetch_master.return_value = None
+        result = self.run_pass(client)
+        self.assertIn("not found", result.errors[0])
+        client.fetch_master.assert_called_once_with(24047)
+
+    def test_a_dead_master_from_musicbrainz_is_not_looked_up_again(self):
+        self.album.discogs_master_id = None
+        self.album.save()
+        client = self.build_client()
+        client.fetch_master.return_value = None
+        result = self.run_pass(client)
+        self.assertIn("Discogs master 716744 not found", result.errors[0])
+        self.mb_client.fetch_discogs_master_id.assert_called_once()
+        self.album.refresh_from_db()
+        self.assertIsNone(self.album.discogs_master_id)
+
+    def test_no_master_anywhere_is_still_reported(self):
+        self.album.discogs_master_id = None
+        self.album.save()
+        self.mb_client.fetch_discogs_master_id.return_value = None
+        client = self.build_client()
+        result = self.run_pass(client)
+        self.assertIn("no Discogs master ID", result.errors[0])
+        client.fetch_master.assert_not_called()
+
+    def test_an_album_without_a_qid_is_skipped_not_reported(self):
+        no_qid = models.Album.objects.create(name="Old Nobody", rank=900)
+        result = self.run_pass(self.build_client(), albums=[no_qid])
+        self.assertEqual(result.errors, [])
+        self.assertEqual(result.skipped, 1)
+
+    def test_the_musicbrainz_client_is_closed_when_the_pass_ends(self):
+        self.album.discogs_master_id = None
+        self.album.save()
+        self.run_pass(self.build_client(master=self.live_master()))
+        self.mb_client.close.assert_called_once()
+
+    def test_the_musicbrainz_client_is_closed_when_the_pass_fails(self):
+        self.album.discogs_master_id = None
+        self.album.save()
+        with mock.patch.object(
+            self.service, "_store_discogs", side_effect=RuntimeError("db")
+        ):
+            with self.assertRaises(RuntimeError):
+                self.run_pass(self.build_client())
+        self.mb_client.close.assert_called_once()
 
 
 class MusicBrainzPassTests(ServiceTestCase):

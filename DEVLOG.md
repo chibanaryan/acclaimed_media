@@ -1,5 +1,24 @@
 # Developer Log
 
+## 2026-11-02
+
+- **The weekly music job no longer fails on 'Old Nobody'.** The Wikidata pass
+  raised for the one album the release gives no QID, and logged it as an
+  error, which filed ACCLAIMED-VIDEO-GAMES-A7. It is now counted as skipped
+- **Every album has Discogs data.** Nine had none: seven had no Discogs master
+  on Wikidata, and two (The Raincoats, Magnolia Electric Co.) pointed at
+  masters Discogs now 404s. The Discogs pass falls back to the master the
+  album's MusicBrainz release group links, which was live for all nine, Old
+  Nobody included. Production gets them on the next Discogs pass
+- **Eight more genre labels are classified**: Neue Deutsche Welle (New Wave),
+  Euro House (House), German rock (Rock), urban contemporary (Contemporary
+  R&B), Memphis soul (Southern Soul), stoner metal (Stoner Rock), bubblegum
+  bass (Pop) and Discogs' "Political", dropped as a subject rather than a
+  sound. On production's data only Madonna's *Music* changes: it gains House
+- **The 37 undated albums were re-checked and stay undated.** Wikidata's
+  P577 is still year-precision for every one, and none of their MusicBrainz
+  releases gives a month in the album's year
+
 ## 2026-11-01
 
 - **An album without a Wikidata id can be marked.** Tracking rows are keyed on

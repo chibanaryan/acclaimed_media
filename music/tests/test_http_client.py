@@ -136,6 +136,34 @@ class GetJsonTests(ClientTestCase):
         self.assertIsNone(client.get_json("https://example.test/"))
         self.assertEqual(session.get.call_count, 1)
 
+    def test_the_last_status_tells_a_404_from_a_throttle(self):
+        """get_json's None covers both; the Discogs fallback needs to know."""
+        client, session = self.build()
+        session.get.return_value = fake_response(status_code=404)
+        client.get_json("https://example.test/")
+        self.assertEqual(client.last_status, 404)
+        session.get.return_value = fake_response(status_code=429)
+        client.get_json("https://example.test/")
+        self.assertEqual(client.last_status, 429)
+
+    def test_a_retry_that_gets_no_response_clears_the_last_status(self):
+        client, session = self.build()
+        session.get.side_effect = [
+            fake_response(status_code=503),
+            requests.TooManyRedirects("loop"),
+        ]
+        self.assertIsNone(client.get_json("https://example.test/"))
+        self.assertIsNone(client.last_status)
+
+    def test_a_connection_failure_leaves_no_last_status(self):
+        client, session = self.build()
+        session.get.return_value = fake_response(status_code=404)
+        client.get_json("https://example.test/")
+        session.get.side_effect = requests.ConnectionError("down")
+        with self.assertLogs("music.services.http_client", level="ERROR"):
+            client.get_json("https://example.test/")
+        self.assertIsNone(client.last_status)
+
     def test_a_body_that_is_not_json_returns_none(self):
         client, session = self.build()
         session.get.return_value = fake_response(json_body=None)
