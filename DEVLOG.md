@@ -24,6 +24,25 @@
   gone. The mobile sheet shows the years there are, "All Years" clears the year
   rather than narrowing to the first one, and From and To work on music, where
   they had always been empty
+- **Back survives a filter change made as the games engine loads.** Its first
+  render replaced the entry the click was leaving, so Back stayed on the
+  filtered page. The engine now takes over what was queued or in flight, in one
+  render, and pushes when the filters have not reached the URL. The browser
+  smoke test holds the engine's data and the server request to pin it. Music's
+  engine answers a filter request or Load More it overtakes the same way, and
+  a games page landing on a list that has changed is dropped and answered by
+  the engine
+- **An empty result can be left.** A server-rendered page with no matches had no
+  list to render into, so with the engine running every later filter change,
+  Clear All included, did nothing, on both sites
+- **A music search leaves one history entry.** The debounced commit and the
+  typing timer both pushed it, so Back took two presses after every search
+- **Games reads the URL in one place.** Back, a bfcache restore and jump to rank
+  all use `getFiltersFromURL`, so an old `?year=` link and an open-ended playtime
+  survive Back, and a jump on an empty result is refused
+- **Music's Clear All resets the sort too, as games' does.** `defaultSort` was
+  the sort the page loaded with, so it now names `rank`. From and To show a year
+  outside the data (`?start=1900&end=1950`) instead of falling back to the newest
 
 ## 2026-10-31
 

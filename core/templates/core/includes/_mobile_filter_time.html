@@ -79,7 +79,7 @@
                         class="select select-bordered w-full">
                     <option value="" :selected="!hasYearFilter()">All Years</option>
                     <template x-if="hasYearFilter() && singleYear() === null">
-                        <option value="" disabled selected>A range</option>
+                        <option value="" disabled selected x-text="shownStart() === shownEnd() ? shownStart() : 'A range'"></option>
                     </template>
                     <template x-for="year in years" :key="year">
                         <option :value="year" :selected="year === singleYear()" x-text="year"></option>
@@ -99,6 +99,9 @@
                     <select aria-label="From year"
                             @change="pickFrom($event.target.value); debouncedFilterUpdate()"
                             class="select select-bordered w-full">
+                        <template x-if="!isListedYear(shownStart())">
+                            <option value="" disabled selected x-text="shownStart()"></option>
+                        </template>
                         <template x-for="year in years" :key="year">
                             <option :value="year" :selected="year === shownStart()" x-text="year"></option>
                         </template>
@@ -111,6 +114,9 @@
                     <select aria-label="To year"
                             @change="pickTo($event.target.value); debouncedFilterUpdate()"
                             class="select select-bordered w-full">
+                        <template x-if="!isListedYear(shownEnd())">
+                            <option value="" disabled selected x-text="shownEnd()"></option>
+                        </template>
                         <template x-for="year in years" :key="year">
                             <option :value="year" :selected="year === shownEnd()" x-text="year"></option>
                         </template>

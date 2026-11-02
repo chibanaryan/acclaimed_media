@@ -142,6 +142,7 @@ class YearGridScaleTests(SimpleTestCase):
             {
                 # A range or a year outside the data shows "A range", not a year
                 "singleYear": [1990, None, None, 2026],
+                "listedYears": [False, True, True, False],
                 # Each end pushes the other along
                 "fromPastTo": [1990, 1990],
                 "toBeforeFrom": [1975, 1975],

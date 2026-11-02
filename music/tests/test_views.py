@@ -375,6 +375,16 @@ class AlbumHomePageViewTests(MusicDataMixin, TestCase):
         self.assertContains(response, "No albums match your filters")
 
 
+class EmptyResultCanBeLeftTests(MusicDataMixin, TestCase):
+    """As games: the engine renders into the list, so an empty result needs one."""
+
+    def test_the_list_exists_with_no_albums(self):
+        response = self.client.get(reverse("music:home"), {"q": "no-such-album"})
+        self.assertContains(response, '<div id="album-list-container"')
+        self.assertContains(response, 'data-empty-message="No albums match')
+        self.assertContains(response, "No albums match your filters.")
+
+
 class FilterTitleTests(TestCase):
     """The heading describes the filter state, in the site's own wording.
 

@@ -1206,7 +1206,7 @@ class GameListRenderer extends BaseMediaListRenderer {
      * @param {Object} state - { hasMore, remaining, maxLoaded, total }
      * @returns {string} HTML string
      */
-    getLoadMoreHtml(state) {
+    _loadMoreMarkup(state) {
         const { hasMore, remaining, maxLoaded, total } = state;
 
         if (maxLoaded || !hasMore) {

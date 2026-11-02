@@ -4607,6 +4607,22 @@ class HomePageDocumentTitleTest(TestCase):
         self.assertIn("window.documentTitleSuffix = ' | Acclaimed Media';", html)
 
 
+class EmptyResultCanBeLeftTests(TestCase):
+    """The client renders into the list, so an empty result has to have one.
+
+    Without it the engine's render bailed, and on a page with no matches every
+    filter change, Clear All included, did nothing.
+    """
+
+    def test_the_list_and_load_more_exist_with_no_games(self):
+        response = self.client.get(reverse("home"), {"q": "no-such-game"})
+        self.assertContains(response, '<div id="game-list-container"')
+        self.assertContains(response, 'data-empty-message="No games match')
+        self.assertContains(response, '<div id="load-more-container"')
+        self.assertContains(response, "No games match your filters.")
+        self.assertNotContains(response, "results loaded")
+
+
 class GamesHomeGenreQueryBudgetTests(TestCase):
     """The genre hierarchy costs a constant number of queries, not one per node.
 

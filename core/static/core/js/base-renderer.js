@@ -176,6 +176,14 @@ class BaseMediaListRenderer {
             container.innerHTML = '';
         }
 
+        if (items.length === 0 && container.dataset.emptyMessage) {
+            const message = document.createElement('div');
+            message.className = 'empty-result';
+            message.textContent = container.dataset.emptyMessage;
+            container.appendChild(message);
+            return;
+        }
+
         // Render first page
         const pageItems = items.slice(0, this.PAGE_SIZE);
         const fragment = this._renderItems(pageItems, showRank, 1, viewMode);
@@ -525,6 +533,12 @@ class BaseMediaListRenderer {
      * @returns {string} HTML string
      */
     getLoadMoreHtml(state) {
+        // Under an empty result's message there is nothing to say
+        return state.total === 0 ? '' : this._loadMoreMarkup(state);
+    }
+
+    /** The markup for a list with something in it, which a section can replace. @protected */
+    _loadMoreMarkup(state) {
         const { hasMore, remaining, maxLoaded } = state;
 
         if (maxLoaded || !hasMore) {

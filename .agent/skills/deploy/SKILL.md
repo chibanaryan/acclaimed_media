@@ -56,9 +56,9 @@ git fetch origin
 
 Follow step 5 of the commit skill (`.claude/skills/commit/SKILL.md`)
 exactly: a `/code-review` at `high` of everything not yet on `origin/main`,
-every finding fixed or waived out loud, and a one-line summary in the
-final message. If there is nothing new to push (HEAD is already on
-`origin/main`), there is nothing to review; skip the step.
+every blocker fixed and every other finding answered out loud, and a
+one-line summary in the final message. If there is nothing new to push (HEAD
+is already on `origin/main`), there is nothing to review; skip the step.
 
 ### 6. Stage the change
 

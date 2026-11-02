@@ -66,8 +66,12 @@
     }
 })();
 </script>
+{% endif %}
+{# Here with no albums too: leaving an empty result renders into it. #}
+{% with empty_message='No albums match your filters.' %}
 {% include 'core/includes/_load_previous.html' %}
-<div id="album-list-container" class="isolate" :class="'view-' + viewMode">
+<div id="album-list-container" class="isolate" :class="'view-' + viewMode" data-empty-message="{{ empty_message }}">
+    {% if albums %}
     {# List view - album rows #}
     {% for album in albums %}
         {% include 'music/includes/_album_row.html' with item=album show_rank=show_rank index=forloop.counter|add:page_obj.start_index|add:-1 highlight=highlight %}
@@ -78,10 +82,10 @@
             {% include 'music/includes/_album_card_grid.html' with item=album show_rank=show_rank index=forloop.counter|add:page_obj.start_index|add:-1 highlight=highlight %}
         {% endfor %}
     </div>
+    {% else %}
+    {% include 'core/includes/_empty_result.html' with message=empty_message %}
+    {% endif %}
 </div>
+{% endwith %}
 
 {% include 'music/includes/_album_load_more.html' %}
-
-{% else %}
-<div class="text-base-content/85 py-8 text-center">No albums match your filters.</div>
-{% endif %}

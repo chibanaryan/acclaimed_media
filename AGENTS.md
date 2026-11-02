@@ -37,12 +37,31 @@ reach `main`. Pushing to `main` is the merge here: there is no branch
 protection, and the only PRs are Dependabot's, so the review is a workflow
 rule rather than a GitHub one. `/commit` and `/deploy` run it as their step
 5. A hand-run `git push origin main` or merge is covered by the same rule,
-and so is merging a Dependabot PR with `gh pr merge`. Fix every finding or
-say in chat why it is waived, and review again after any fix, for as many
-rounds as it takes; skip the review only when the user says to,
-or the diff touches no code or templates (a Dependabot PR that changes
-only lock files touches none). Codex has no `/code-review`: a Codex
-session asks the user before pushing to `main` or merging a PR.
+and so is merging a Dependabot PR with `gh pr merge`.
+
+Round 1 reviews the whole diff. Sort every finding, and say in chat what
+became of each:
+
+- **Blocker:** this change causes wrong behaviour a reader can reach, data
+  loss, a crash or a security hole. Fix it, with a test that fails first.
+- **Older bug:** already on `main`. Not a blocker. List it for its own
+  ticket, unless it is a line or two in code this change already touches.
+- **Cleanup or test gap:** fix it in round 1 or waive it. It never starts a
+  round.
+
+Review again only if a blocker fix changed code, and only that fix (name the
+files it touched as the target). Stop when a round has no blockers. Stop and
+ask the user if a third round still has blockers, if a fix breaks something
+an earlier round covered, or if the diff has outgrown the request. Until
+2026-11-01 any change restarted the review of the whole diff: one ticket
+of three small fixes ran ten rounds and 71 findings, most of them cleanups,
+and about eight of them regressions from fixes made for earlier findings.
+
+Run focused tests between rounds, and the full suites and browser checks once,
+at the end. Skip the review only when the user says to, or the diff touches
+no code or templates (a Dependabot PR that changes only lock files touches
+none). Codex has no `/code-review`: a Codex session asks the user before
+pushing to `main` or merging a PR.
 
 ## Development Commands
 
@@ -440,8 +459,8 @@ itself.
 It is progressive enhancement. The page is server-rendered and its HTMX sidebar
 filters server-side on its own; the bundle suppresses those requests only once
 it has data and a renderer, so a failed or slow bundle leaves a working page.
-Load More, jump-to-rank and the list/grid toggle all work either way: the
-engine seeds itself from what the server rendered (`attach()` and
+Load More and the list/grid toggle work either way, and jump-to-rank once the
+engine is there: it seeds itself from what the server rendered (`attach()` and
 `_syncRendererWithPage()`) rather than re-rendering the page on load.
 
 Two payload fields exist to keep the client and the server agreeing exactly:
@@ -1824,8 +1843,19 @@ every click's INP under 200 ms even at 4x. Four things mattered:
   (`clientFilterReady`, music's `clientEngine` setting): before that each
   update is a server render, and a leading fetch could land after a newer
   client render. A burst's trailing run replaces the history entry the
-  leading one pushed (music: `form.dataset.historyReplace`), and is skipped
-  when it would render the same filters again.
+  leading one pushed (music: `historyReplace` on the `change` event's detail), and is skipped
+  when it would render the same filters again. When the games engine
+  finishes loading it takes over: it cancels what is queued, aborts a server
+  render in flight, and pushes if the filters are not the ones the URL last
+  got (`_urlFilterKey`, kept by `_writeHistory`, the one place a URL is
+  written), since replacing would lose the page Back should reach.
+  `scripts/browser_smoke.js` holds the engine's data and that render to pin it.
+  Music's engine aborts an HTMX filter request or Load More it overtakes and
+  answers it. It keeps no record of what it last rendered: three attempts at
+  skipping a repeated commit each broke something (a typed search, a `?q=`
+  link, Clear All on a jumped list). Only `pushUrl` guards, statelessly, against
+  pushing the URL it is on: a search used to leave two entries. A games Load More or server jump whose button has gone is dropped
+  (`utils-loadmore.js`) and answered by the engine.
 - **Sidebar bindings scanned the page's reactive arrays.** Every
   platform, genre and series row called `find()`/`filter()` over
   `platforms`/`genres`/`seriesList`. Each scan read, and subscribed to,
@@ -2054,7 +2084,7 @@ Four layers, from automatic to manual:
   | `audit` | `pip-audit` on both locks, `npm audit --audit-level=high` |
   | `css` | rebuilds the CSS and fails if it differs from the committed file |
   | `js` | `scripts/minify_js.sh --check`: the same for the minified JS and bundles |
-  | `browser` | `scripts/browser_smoke.js`: Chrome over the main pages, failing on a JS, Alpine or CSP error |
+  | `browser` | `scripts/browser_smoke.js`: Chrome over the main pages, failing on a JS, Alpine or CSP error, plus Back and Load More across the engine load, and a year range outside the corpus and leaving it |
 
   `css` exists because Heroku runs only the Python buildpack, so the
   committed `theme/static/css/dist/styles.css` is what ships. An npm bump

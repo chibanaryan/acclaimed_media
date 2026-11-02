@@ -107,7 +107,7 @@ function mediaListControlsData(config) {
         // The year grid asks before requesting an update, so that building
         // the grid on load does not immediately re-filter the page.
         initialized: false,
-        defaultSort: settings.sort || 'rank',
+        defaultSort: settings.defaultSort || 'rank',
         _popstateListener: null,
         _genresSelectedListener: null,
 
@@ -380,6 +380,8 @@ function mediaListControlsData(config) {
             this.filters[statusKey] = [];
             this.filters.start = this.minYear;
             this.filters.end = this.maxYear;
+            this.filters.sort = this.defaultSort;
+            this.filters.sortDirection = 'asc';
             const form = this._form();
             if (form) {
                 const artists = form.querySelector('[name="artists"]');
@@ -858,13 +860,10 @@ function mediaListControlsData(config) {
         _syncFromUrl() {
             // Nothing queued before Back may apply after it.
             if (this._leadingCommit) this._leadingCommit.cancel();
-            // On a landing page's bare path the path itself is the filter:
-            // `landingSearch` is what an empty query string stands for there.
-            const onLandingPath = !window.location.search
-                && settings.landingPath
-                && window.location.pathname === settings.landingPath;
-            const params = new URLSearchParams(
-                onLandingPath ? settings.landingSearch || '' : window.location.search
+            // On a landing page's path the path itself is the filter
+            const params = mergedFilterParams(
+                window.location.pathname === settings.landingPath
+                    ? settings.landingSearch : ''
             );
             const number = (name, fallback) => {
                 const parsed = parseInt(params.get(name), 10);

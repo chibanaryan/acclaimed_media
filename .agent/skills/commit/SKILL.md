@@ -73,17 +73,29 @@ reuse whatever level was typed last. Review everything that will land on
 `main`: the working-tree changes **and** any commits on this branch not yet
 on `origin/main` (`git diff origin/main` covers both).
 
-- **Answer every finding.** Fix it, or say in chat why it is a false
-  positive or out of scope. Never drop one silently.
-- **Re-review after fixing.** Run it again on the new diff, with no limit
-  on rounds, until one comes back with nothing left to answer. Any code
-  changed since the last round gets another, even a small fix made after
-  the review. A finding already waived does not need answering twice.
+- **Sort every finding,** and say in chat what became of it. Never drop one
+  silently. A false positive is waived with the reason.
+  - **Blocker:** this change causes wrong behaviour a reader can reach, data
+    loss, a crash or a security hole. Fix it, with a test that fails first.
+  - **Older bug:** already on `main`. Not a blocker. List it for its own
+    ticket, unless it is a line or two in code this change already touches.
+  - **Cleanup or test gap:** fix it in round 1 or waive it. It never starts
+    a round.
+- **Re-review only blocker fixes.** Run the skill again only if a blocker fix
+  changed code, targeting the files that fix touched, not the whole diff.
+  Stop when a round has no blockers. A finding already answered does not
+  need answering twice.
+- **Stop and ask the user** if a third round still has blockers, if a fix
+  breaks something an earlier round covered, or if the diff has outgrown the
+  request. Otherwise keep going without reporting each round.
+- **Test proportionately.** Focused tests between rounds; the full suites
+  and browser checks once, at the end.
 - **Skip only when** the user explicitly says so ("commit without
   review"), or the diff touches no code or templates (DEVLOG or docs
   only). Say in chat that the review was skipped and why.
 - **Report it.** The final message carries one line:
-  "Reviewed at high: N findings, N fixed, N waived (reasons)".
+  "Reviewed at high: N rounds, N blockers fixed, N other findings fixed,
+  N waived, N older bugs listed (reasons)".
 
 ### 6. Stage the change
 

@@ -122,57 +122,13 @@ function initJumpToRank() {
 }
 
 /**
- * Get current filters from the URL, a landing page's path included
- * (currentFilterParams). Reading only the query string, a jump on
- * /games/2010s/ saw no filters: the total was the whole ranking, so rank
- * 500 passed validation and the jump re-rendered the list unfiltered.
- * Old ?year= and ?decade= links, which the server honours, are mapped
- * onto start/end the same way.
- */
-function getFiltersFromURL() {
-    const params = currentFilterParams();
-    if (!params.get('start') && !params.get('end')) {
-        const year = parseInt(params.get('year'));
-        const decade = (params.get('decade') || '').match(/^(\d{3}0)-\d{2}$/);
-        if (year) {
-            params.set('start', year);
-            params.set('end', year);
-        } else if (decade) {
-            params.set('start', decade[1]);
-            params.set('end', parseInt(decade[1]) + 9);
-        }
-    }
-
-    // Parse HLTB parameters
-    const hltb_min_str = params.get('hltb_min');
-    const hltb_max_str = params.get('hltb_max');
-    const hltb_min = hltb_min_str ? parseInt(hltb_min_str) : null;
-    const hltb_max = (hltb_max_str && hltb_max_str !== 'unlimited') ? parseInt(hltb_max_str) : null;
-
-    return {
-        q: params.get('q') || '',
-        start: params.get('start') ? parseInt(params.get('start')) : null,
-        end: params.get('end') ? parseInt(params.get('end')) : null,
-        genres: params.get('genres') ? params.get('genres').split(',') : [],
-        platforms: params.get('platforms') ? params.get('platforms').split(',') : [],
-        series: params.get('series') ? params.get('series').split(',') : [],
-        sort: params.get('sort') || 'rank',
-        sortDirection: params.get('dir') || 'asc',
-        played: params.get('played') || '',
-        hltb_mode: params.get('hltb_mode') || 'main',
-        hltb_min: hltb_min,
-        hltb_max: hltb_max
-    };
-}
-
-/**
  * Get the current game list state from the best available source
  * Priority: CSF renderer state > data attributes > DOM count
  * @returns {Object} { total, loaded, filters, showRank, csf }
  */
 function getCurrentState() {
     const filters = getFiltersFromURL();
-    let total = 0;
+    let total = null;
     let loaded = 0;
     let csf = null;
 
@@ -202,7 +158,7 @@ function getCurrentState() {
         const input = document.querySelector('.jump-to-rank-input');
         if (input) {
             loaded = parseInt(input.dataset.loaded) || 0;
-            if (total === 0) {
+            if (total === null) {
                 total = parseInt(input.dataset.total) || 0;
             }
         }
@@ -216,7 +172,7 @@ function getCurrentState() {
 
     const showRank = hasActiveFilters(filters, csf) ? 'filtered' : 'alltime';
 
-    return { total, loaded, filters, showRank, csf };
+    return { total: total || 0, loaded, filters, showRank, csf };
 }
 
 /**
@@ -231,7 +187,7 @@ function hasActiveFilters(filters, csf) {
     if (filters.genres && filters.genres.length > 0) return true;
     if (filters.platforms && filters.platforms.length > 0) return true;
     if (filters.series && filters.series.length > 0) return true;
-    if (filters.played) return true;
+    if (filters.played.length) return true;
 
     // Check sort - non-default sort or direction counts as filtered
     if (filters.sort && filters.sort !== 'rank') return true;
@@ -365,6 +321,9 @@ function jumpToRankClientSide(csf, targetRank) {
         return;
     }
 
+    // Validated against the list as it was, if the engine has changed it since
+    if (targetRank > result.total) return;
+
     const renderer = csf.renderer;
     if (renderer.currentItems && renderer.currentItems.length) {
         renderer.currentItems = result.games;
@@ -448,6 +407,15 @@ async function jumpToRankServerSide(targetRank, loaded, perPage) {
             pagesToLoad.map(page => fetchPage(page))
         );
 
+        // The list was re-rendered meanwhile, so these pages are for one that
+        // has gone: if that was the engine, it makes the jump itself
+        if (pageResults.some(({ button }) => button && !button.isConnected)) {
+            const csf = typeof getClientSideFiltering === 'function' &&
+                getClientSideFiltering();
+            if (csf && csf.isReady()) jumpToRankClientSide(csf, targetRank);
+            return;
+        }
+
         // Append pages in correct order (they may have arrived out of order)
         pageResults.sort((a, b) => a.page - b.page);
         for (const result of pageResults) {
@@ -469,9 +437,10 @@ async function jumpToRankServerSide(targetRank, loaded, perPage) {
 /**
  * Fetches a specific page and returns parsed results (without appending to DOM)
  * @param {number} page - The page number to load
- * @returns {Promise<{page: number, rows: NodeList, meta: Object}>}
+ * @returns {Promise<{page: number, rows: NodeList, meta: Object, button: ?HTMLElement}>}
  */
 async function fetchPage(page) {
+    const button = document.querySelector('.load-more-button');
     const params = new URLSearchParams(window.location.search);
     params.set('page', page);
     params.set('append', 'true');
@@ -499,15 +468,19 @@ async function fetchPage(page) {
     // so desktop rows include the played button container)
     const rows = doc.querySelectorAll('.game-row-wrapper, .game-card-mobile');
 
-    return { page, rows, meta };
+    return { page, rows, meta, button };
 }
 
 /**
  * Appends fetched page results to the DOM
- * @param {{page: number, rows: NodeList, meta: Object}} result - Fetched page data
+ * @param {{page: number, rows: NodeList, meta: Object, button: ?HTMLElement}} result - Fetched page data
  */
 function appendPageResults(result) {
-    const { rows, meta } = result;
+    const { rows, meta, button } = result;
+
+    // A filter change replaced the button, and with it the list this page
+    // extends: its rows could be another filter's
+    if (button && !button.isConnected) return;
 
     // Append game rows
     const gameList = document.getElementById('game-list-container');
@@ -532,9 +505,8 @@ function appendPageResults(result) {
         });
 
         // Update or remove load more button
-        const loadMoreButton = document.querySelector('.load-more-button');
-        if (loadMoreButton) {
-            updateLoadMoreButton(loadMoreButton, meta);
+        if (button) {
+            updateLoadMoreButton(button, meta);
         }
     }
 }
@@ -682,56 +654,8 @@ async function handleLoadMore(event) {
     button.classList.add('is-loading');
     button.disabled = true;
 
-    // Build URL with current filters + next page + append flag
-    const params = new URLSearchParams(window.location.search);
-    params.set('page', nextPage);
-    params.set('append', 'true');
-
-    const url = window.location.pathname + '?' + params.toString();
-
     try {
-        const response = await fetch(url, {
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'HX-Request': 'true'
-            }
-        });
-
-        if (!response.ok) throw new Error('Failed to load more');
-
-        const html = await response.text();
-
-        // Parse the response to separate game rows from metadata
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-
-        // Extract metadata
-        const metaScript = doc.getElementById('load-more-meta');
-        const meta = metaScript ? JSON.parse(metaScript.textContent) : null;
-
-        // Remove the metadata script from the parsed doc
-        if (metaScript) metaScript.remove();
-
-        // Append game rows without animation (instant load)
-        const gameList = document.getElementById('game-list-container');
-        if (gameList) {
-            const allRows = doc.querySelectorAll('.game-row-wrapper, .game-card-mobile');
-            allRows.forEach((row) => {
-                gameList.appendChild(row);
-            });
-
-            // Reinitialize HTMX for dynamically appended content
-            if (typeof htmx !== 'undefined') {
-                htmx.process(gameList);
-            }
-        }
-
-        // Update result summary and button
-        if (meta) {
-            updateResultSummary(meta.loadedCount, meta.totalCount);
-            updateLoadMoreButton(button, meta);
-        }
-
+        await loadPage(nextPage);
     } catch (err) {
         console.error('Load more error:', err);
         button.classList.remove('is-loading');

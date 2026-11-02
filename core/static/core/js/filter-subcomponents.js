@@ -1107,10 +1107,15 @@
                 return filters.start > maxYear ? filters.end : Math.min(filters.end, maxYear);
             },
 
+            /** Whether the selects have an option for this year. */
+            isListedYear: function (year) {
+                return year >= minYear && year <= maxYear;
+            },
+
             /** The year the Year select can honestly show, if the range is one. */
             singleYear: function () {
                 var year = this.shownStart();
-                return year === this.shownEnd() && year >= minYear && year <= maxYear ? year : null;
+                return year === this.shownEnd() && this.isListedYear(year) ? year : null;
             },
 
             /** One year, or "All Years", whose value is empty. */

@@ -367,6 +367,17 @@ class BookHomePageViewTests(StaffUserTestMixin, TestCase):
         self.assertEqual(books[0].name, "Beta Book")
 
 
+class EmptyResultCanBeLeftTests(StaffUserTestMixin, TestCase):
+    """As games: the engine renders into the list, so an empty result needs one."""
+
+    def test_the_list_and_load_more_exist_with_no_books(self):
+        response = self.client.get(reverse("books:home"), {"q": "no-such-book"})
+        self.assertContains(response, '<div id="book-list-container"')
+        self.assertContains(response, 'data-empty-message="No books match')
+        self.assertContains(response, '<div id="load-more-container"')
+        self.assertContains(response, "No books match your filters.")
+
+
 class BookDetailViewTests(StaffUserTestMixin, TestCase):
     """Tests for the BookDetailView."""
 

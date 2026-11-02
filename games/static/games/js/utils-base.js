@@ -239,48 +239,6 @@ function afterNextPaint(fn) {
     requestAnimationFrame(() => setTimeout(fn, 0));
 }
 
-/**
- * Creates a throttled function
- * @param {Function} fn - Function to throttle
- * @param {number} limit - Minimum time between calls in milliseconds
- * @returns {Function} Throttled function
- */
-function throttle(fn, limit) {
-    let lastCall = 0;
-
-    return function(...args) {
-        const now = Date.now();
-        if (now - lastCall >= limit) {
-            lastCall = now;
-            return fn.apply(this, args);
-        }
-    };
-}
-
-/**
- * Creates a throttled function that can be force-called
- * @param {Function} fn - Function to throttle
- * @param {number} limit - Minimum time between calls
- * @returns {Object} Object with call() and force() methods
- */
-function throttleWithForce(fn, limit) {
-    let lastCall = 0;
-
-    return {
-        call(...args) {
-            const now = Date.now();
-            if (now - lastCall >= limit) {
-                lastCall = now;
-                return fn.apply(this, args);
-            }
-        },
-        force(...args) {
-            lastCall = 0;
-            return fn.apply(this, args);
-        }
-    };
-}
-
 // ============================================================
 // ABORT CONTROLLER MANAGER
 // ============================================================
@@ -324,19 +282,10 @@ class FetchManager {
 /**
  * Builds URL parameters from filter object
  * @param {Object} filters - Filter values
- * @param {Object} options - Options for building params
- * @param {boolean} options.preservePage - Keep current page parameter
  * @returns {URLSearchParams} Built parameters
  */
-function buildFilterParams(filters, options = {}) {
+function buildFilterParams(filters) {
     const params = new URLSearchParams();
-
-    if (options.preservePage) {
-        const currentPage = new URLSearchParams(window.location.search).get('page');
-        if (currentPage) {
-            params.set('page', currentPage);
-        }
-    }
 
     if (filters.q) params.set('q', filters.q);
     if (filters.start) params.set('start', filters.start);
@@ -540,21 +489,76 @@ function trapTabFocus(event, container) {
 }
 
 /**
+ * The query string, plus the filters a page's path implies. Merged rather than
+ * used only as a fallback, because a landing URL can still carry ?utm_source=
+ * or ?highlight=.
+ * @param {string} implied - The path's filters, as a query string
+ * @returns {URLSearchParams}
+ */
+function mergedFilterParams(implied) {
+    const params = new URLSearchParams(window.location.search);
+    new URLSearchParams(implied || '').forEach((value, key) => {
+        if (!params.has(key)) params.set(key, value);
+    });
+    return params;
+}
+
+/**
  * The page's filter params: the query string, plus whatever filter a clean
  * SEO path implies. A filter state with its own landing page is pushed as
  * that path (/games/2010s/), with no query string, so anything reading the
  * filters from location.search alone saw none there: jump to rank checked
  * against the whole ranking, and client-rendered rows showed all-time
- * ranks. Merged rather than used only as a fallback, because a landing URL
- * can still carry ?utm_source= or ?highlight=.
+ * ranks. Old ?year= and ?decade= links, which the server honours, are mapped
+ * onto start/end the same way.
  * @returns {URLSearchParams}
  */
 function currentFilterParams() {
-    const params = new URLSearchParams(window.location.search);
-    new URLSearchParams(seoPathSearch(window.location.pathname)).forEach((value, key) => {
-        if (!params.has(key)) params.set(key, value);
-    });
+    const params = mergedFilterParams(seoPathSearch(window.location.pathname));
+    if (!params.get('start') && !params.get('end')) {
+        const year = parseInt(params.get('year'));
+        const decade = (params.get('decade') || '').match(/^(\d{3}0)-\d{2}$/);
+        if (year) {
+            params.set('start', year);
+            params.set('end', year);
+        } else if (decade) {
+            params.set('start', decade[1]);
+            params.set('end', parseInt(decade[1]) + 9);
+        }
+    }
     return params;
+}
+
+/**
+ * Get current filters from the URL, a landing page's path included
+ * (currentFilterParams). Reading only the query string, a jump on
+ * /games/2010s/ saw no filters: the total was the whole ranking, so rank
+ * 500 passed validation and the jump re-rendered the list unfiltered.
+ * @returns {Object} The filters, with null for a year or playtime not given
+ */
+function getFiltersFromURL() {
+    const params = currentFilterParams();
+    // Not a number too: an open-ended playtime is hltb_max=unlimited
+    const number = name => {
+        const value = parseInt(params.get(name));
+        return Number.isFinite(value) ? value : null;
+    };
+    const list = name => (params.get(name) || '').split(',').filter(id => id);
+
+    return {
+        q: params.get('q') || '',
+        start: number('start'),
+        end: number('end'),
+        genres: list('genres'),
+        platforms: list('platforms'),
+        series: list('series'),
+        sort: params.get('sort') || 'rank',
+        sortDirection: params.get('dir') || 'asc',
+        played: list('played'),
+        hltb_mode: params.get('hltb_mode') || 'main',
+        hltb_min: number('hltb_min'),
+        hltb_max: number('hltb_max')
+    };
 }
 
 /**
@@ -627,36 +631,6 @@ async function searchGames(query, limit, apiUrl) {
 
     const data = await response.json();
     return data.results || [];
-}
-
-/**
- * Removes a filter item and updates the page via fetch
- * @param {Object} filters - Current filter state
- * @param {string} filterType - Type of filter ('genres' or 'platforms')
- * @param {number} index - Index of item to remove
- * @param {string} searchUrl - Base search URL
- * @param {Function} onUpdate - Callback after update (optional)
- */
-async function removeFilterItem(filters, filterType, index, searchUrl, onUpdate) {
-    filters[filterType] = filters[filterType].filter((_, i) => i !== index);
-
-    const params = buildFilterParams(filters);
-    const url = searchUrl + '?' + normalizeUrl(params.toString());
-
-    try {
-        const html = await fetchHtml(url, new AbortController().signal);
-        const contentEl = document.getElementById('content');
-        if (contentEl) {
-            contentEl.innerHTML = html;
-            window.history.pushState({}, '', url);
-            if (typeof Alpine !== 'undefined') {
-                Alpine.initTree(contentEl);
-            }
-        }
-        if (onUpdate) onUpdate();
-    } catch (err) {
-        console.error('Error removing filter:', err);
-    }
 }
 
 /**

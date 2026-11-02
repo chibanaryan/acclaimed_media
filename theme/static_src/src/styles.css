@@ -271,6 +271,11 @@
 
 /* Minimal table styling - reduced visual noise per Tufte principles */
 @layer components {
+  /* What a list says with nothing in it, server-rendered or client-rendered */
+  .empty-result {
+    @apply text-base-content/85 py-8 text-center;
+  }
+
   .table-minimal {
     @apply w-full;
     border-collapse: separate;

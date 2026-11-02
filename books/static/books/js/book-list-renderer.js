@@ -698,7 +698,7 @@ class BookListRenderer extends BaseMediaListRenderer {
      * @param {Object} state - { hasMore, remaining, maxLoaded }
      * @returns {string} HTML string
      */
-    getLoadMoreHtml(state) {
+    _loadMoreMarkup(state) {
         const { hasMore, remaining, maxLoaded } = state;
 
         if (maxLoaded) {

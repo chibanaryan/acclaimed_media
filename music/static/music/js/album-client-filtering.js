@@ -267,17 +267,11 @@ class AlbumClientSideFiltering {
         if (!container) return null;
 
         this.renderer.reset();
-        if (total === 0) {
-            container.innerHTML =
-                '<div class="text-base-content/85 py-8 text-center">' +
-                'No albums match your filters.</div>';
-        } else {
-            this.renderer.render(albums, container, {
-                showRank,
-                highlightId: options.highlightId || null,
-                viewMode: this.viewMode
-            });
-        }
+        this.renderer.render(albums, container, {
+            showRank,
+            highlightId: options.highlightId || null,
+            viewMode: this.viewMode
+        });
 
         this._updatePaging();
         this._publishFacets(filters, albums);
@@ -358,6 +352,12 @@ class AlbumClientSideFiltering {
         return this._isFiltered(this.currentFilters) ? 'filtered' : 'alltime';
     }
 
+    /** How many albums the current filters match. */
+    matchCount() {
+        this._syncRendererWithPage();
+        return this.renderer.currentItems.length;
+    }
+
     /** Append the next page and refresh the count and buttons. */
     loadMore() {
         const container = document.getElementById('album-list-container');
@@ -430,9 +430,10 @@ class AlbumClientSideFiltering {
         // the genre and reloading brought rock straight back.
         const query = params.toString();
         const base = window.albumRankingsUrl || window.location.pathname;
-        window.history[replace ? 'replaceState' : 'pushState'](
-            {}, '', query ? `${base}?${query}` : base
-        );
+        const url = query ? `${base}?${query}` : base;
+        // The debounced commit and the typing timer both answer one search
+        if (url === window.location.pathname + window.location.search) return;
+        window.history[replace ? 'replaceState' : 'pushState']({}, '', url);
     }
 }
 
@@ -440,18 +441,14 @@ class AlbumClientSideFiltering {
  * The filter params the current URL stands for.
  *
  * A landing page's own path implies its filters with no query string, and
- * Back can return to that bare path, so on it an empty query means the
- * page's params (`window.albumLandingSearch`) rather than no filters.
+ * Back can return to that bare path, so on it the page's params
+ * (`window.albumLandingSearch`) count, beside any such as ?utm_source=.
  */
 function albumUrlParams() {
-    if (
-        !window.location.search &&
-        window.albumLandingPath &&
+    return mergedFilterParams(
         window.location.pathname === window.albumLandingPath
-    ) {
-        return new URLSearchParams(window.albumLandingSearch || '');
-    }
-    return new URLSearchParams(window.location.search);
+            ? window.albumLandingSearch : ''
+    );
 }
 
 /**
@@ -569,58 +566,21 @@ function loadedAlbumCount(viewMode) {
 }
 
 /**
- * Page until at least `count` rows are on the page, or there are no more.
- *
- * With the engine ready this pages through the data in memory; without it the
- * page's own HTMX load-more is clicked instead, which is slower but keeps
- * working if the bundle's data never arrives.
- */
-async function loadAlbumsThrough(csf, count) {
-    // The engine's mode is the one its loadMore appends in.
-    const loaded = () => loadedAlbumCount(csf.isReady() ? csf.viewMode : undefined);
-    while (loaded() < count) {
-        const before = loaded();
-        if (csf.isReady()) {
-            csf.loadMore();
-        } else {
-            const button = document.querySelector(
-                '#load-more-container .load-more-button'
-            );
-            if (!button) break;
-            button.click();
-            // Give HTMX a moment to swap the next page in.
-            await new Promise(resolve => setTimeout(resolve, 400));
-        }
-        if (loaded() === before) break;
-    }
-}
-
-/**
  * Wire the jump-to-rank boxes in the results header.
  *
  * The controls partial renders a pair of them, one for each breakpoint, so
  * the handlers are delegated from the document rather than bound per input.
  */
 function initAlbumJumpToRank(csf) {
-    const jump = async input => {
+    const jump = input => {
         const target = parseInt(input.value, 10);
-        // The renderer holds the current result set once it has rendered
-        // one; before that the server's own count is on the input.
-        const rendered = csf.isReady() ? csf.renderer.currentItems.length : 0;
-        const total = rendered || parseInt(input.dataset.total, 10) || 0;
-
-        if (!Number.isFinite(target) || target < 1 || (total && target > total)) {
+        if (!Number.isFinite(target) || target < 1 || target > csf.matchCount()) {
             input.classList.add('input-error');
             setTimeout(() => input.classList.remove('input-error'), 1000);
             return;
         }
 
-        if (csf.isReady()) {
-            csf.jumpTo(target);
-        } else {
-            // Without the data, page down through the server's HTMX button
-            await loadAlbumsThrough(csf, target);
-        }
+        csf.jumpTo(target);
         scrollToAlbumPosition(target);
         input.value = '';
     };
@@ -813,7 +773,19 @@ function initAlbumFiltering() {
         // Nothing is re-rendered on load: the server already rendered this
         // exact filter state, and re-rendering would only make the page
         // flicker. The engine takes over from the next interaction - except
-        // to page down to a highlighted album the server did not render.
+        // to answer what the load overtook, which would otherwise land on top
+        // of the engine's renders or go unanswered, and to page down to a
+        // highlighted album the server did not render.
+        const filterRequest = document.querySelector('#album-loading.htmx-request');
+        const pageRequest = document.querySelector('.load-more-button.htmx-request');
+        // htmx reports these as errors in the console; nothing has gone wrong
+        if (filterRequest) htmx.trigger(form, 'htmx:abort');
+        if (pageRequest) htmx.trigger(pageRequest, 'htmx:abort');
+        if (filterRequest) {
+            rerender();
+        } else if (pageRequest) {
+            csf.loadMore();
+        }
         if (highlightPending) {
             csf._syncRendererWithPage();
             const position = csf.renderer.currentItems.findIndex(

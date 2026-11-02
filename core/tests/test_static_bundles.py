@@ -1012,8 +1012,8 @@ class JumpToRankReadsLandingPagePathsTests(SimpleTestCase):
 
     def test_the_filters_are_read_from_a_landing_path(self):
         for path in (
-            "games/static/games/js/utils-loadmore.js",
-            "games/static/games/js/utils-loadmore.min.js",
+            "games/static/games/js/utils-base.js",
+            "games/static/games/js/utils-base.min.js",
         ):
             with self.subTest(path=path):
                 source = self._source(path)
@@ -1397,6 +1397,17 @@ class ClearAllResetsTheSortDirectionTests(SimpleTestCase):
         body = body[: body.index("this.$dispatch")]
         self.assertIn("this.filters.sortDirection = 'asc';", body)
 
+    def test_music_clears_the_sort_as_games_does(self):
+        source = (
+            Path(settings.BASE_DIR) / "core/static/core/js/media-list-controls.js"
+        ).read_text()
+        body = source[source.index("resetAllFilters() {") :]
+        body = body[: body.index("this.commit()")]
+        self.assertIn("this.filters.sort = this.defaultSort;", body)
+        self.assertIn("this.filters.sortDirection = 'asc';", body)
+        # It used to be the sort the page loaded with, which Clear All would keep
+        self.assertIn("defaultSort: settings.defaultSort || 'rank',", source)
+
 
 class MobileSheetBuildsItsOwnYearOptionsTests(SimpleTestCase):
     """Only games set `year_range`, so From and To were empty on music.
@@ -1418,6 +1429,25 @@ class MobileSheetBuildsItsOwnYearOptionsTests(SimpleTestCase):
         self.assertIn("""<template x-if="mode === 'range'">""", template)
         self.assertNotIn("year_range", template)
         self.assertIn('<option value="" :selected="!hasYearFilter()">', template)
+
+    def test_a_year_with_no_option_is_still_what_from_and_to_show(self):
+        """With nothing selected a select falls back to its first option.
+
+        So ?start=1900&end=1950 read as the newest year in both boxes.
+        """
+        template = (
+            Path(settings.BASE_DIR)
+            / "core/templates/core/includes/_mobile_filter_time.html"
+        ).read_text()
+        for shown in ("shownStart", "shownEnd"):
+            self.assertIn(f'<template x-if="!isListedYear({shown}())">', template)
+            self.assertIn(
+                f'<option value="" disabled selected x-text="{shown}()">', template
+            )
+        # And the Year select names one too, rather than call it a range
+        self.assertIn(
+            "shownStart() === shownEnd() ? shownStart() : 'A range'", template
+        )
 
 
 class MusicHeadingKeepsItsHeightTests(SimpleTestCase):

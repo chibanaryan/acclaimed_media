@@ -544,7 +544,7 @@ class AlbumListRenderer extends BaseMediaListRenderer {
      * load-more - in both wording and classes.
      * @returns {string} HTML
      */
-    getLoadMoreHtml(state) {
+    _loadMoreMarkup(state) {
         const { hasMore, remaining } = state;
         if (!hasMore) return '';
         return (

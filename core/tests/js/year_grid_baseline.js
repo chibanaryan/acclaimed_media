@@ -258,6 +258,7 @@ const sheetCases = () => {
         singleYear: [sheet(1990, 1990), sheet(1990, 1999), sheet(1900, 1900), sheet(2026, 2029)].map(
             ({ component }) => component.singleYear()
         ),
+        listedYears: [1970, 1971, 2026, 2027].map(year => sheet(1990, 1999).component.isListedYear(year)),
         fromPastTo: picked(1980, 1985, component => component.pickFrom('1990')),
         toBeforeFrom: picked(1980, 1985, component => component.pickTo('1975')),
         lastFiveOfOldData: (() => {

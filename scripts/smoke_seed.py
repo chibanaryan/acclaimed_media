@@ -26,7 +26,7 @@ platforms = [
 nintendo = Developer.objects.create(name="Nintendo", slug="nintendo", igdb_id=1)
 studio = Developer.objects.create(name="Nintendo EAD", igdb_id=2, parent=nintendo)
 saga = Series.objects.create(name="Smoke Saga", slug="smoke-saga", igdb_id=1)
-for rank in range(1, 41):
+for rank in range(1, 121):
     game = Game.objects.create(
         name=f"Smoke Game {rank}",
         slug=f"smoke-game-{rank}",
@@ -42,12 +42,12 @@ for rank in range(1, 41):
 
 rock = MusicGenre.objects.create(name="Smoke Rock", slug="smoke-rock")
 artist = Artist.objects.create(name="Smoke Band", slug="smoke-band")
-for rank in range(1, 21):
+for rank in range(1, 121):
     album = Album.objects.create(
         name=f"Smoke Album {rank}",
         rank=rank,
         artist_credit=artist.name,
-        year_released=1965 + rank * 2,
+        year_released=1965 + rank % 50,
     )
     album.artists.set([artist])
     album.genres.set([rock])

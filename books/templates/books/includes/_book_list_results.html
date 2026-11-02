@@ -104,18 +104,22 @@
     </div>
 </div>
 
-{% if books %}
-<div id="book-list-container">
+{# Here with no books too: leaving an empty result renders into it. #}
+{% with empty_message='No books match your filters.' %}
+<div id="book-list-container" data-empty-message="{{ empty_message }}">
     {# List view - book rows #}
     {% for book in books %}
         {% with index=page_obj.start_index|add:forloop.counter0 %}
             {% include 'books/includes/_book_row.html' with book=book index=index show_rank=show_rank|default:'alltime' %}
         {% endwith %}
+    {% empty %}
+        {% include 'core/includes/_empty_result.html' with message=empty_message %}
     {% endfor %}
 </div>
+{% endwith %}
 
-{% if has_more and not max_loaded %}
 <div id="load-more-container" class="load-more-container text-center my-6">
+{% if has_more and not max_loaded %}
     <button type="button"
             class="btn btn-ghost load-more-button"
             data-next-page="{{ next_page }}"
@@ -124,16 +128,10 @@
         <span class="mdi mdi-book-open-page-variant" aria-hidden="true"></span>
         <span class="load-more-text">Load More ({{ remaining_count|intcomma }} remaining)</span>
     </button>
-</div>
 {% elif max_loaded %}
-<div id="load-more-container" class="load-more-container text-center my-6">
     <div class="alert alert-info">
         <span class="mdi mdi-information-outline" aria-hidden="true"></span>
         <span>Showing maximum of 1,000 results. Refine your filters to see more specific results.</span>
     </div>
+{% endif %}
 </div>
-{% endif %}
-
-{% else %}
-<div class="text-base-content/85 py-8 text-center">No books match your filters.</div>
-{% endif %}

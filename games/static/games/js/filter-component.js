@@ -60,9 +60,8 @@ document.addEventListener('alpine:init', () => {
         viewMode: localStorage.getItem('gameViewMode') || 'list',
         fetchManager: new FetchManager(),
         _debouncedUpdate: null,
-        _throttledSlider: null,
         _debouncedFilter: null,
-        _debouncedDisplay: null,
+        _urlFilterKey: '',
         clientFilterReady: false,
         _clientFilteringInitRequested: false,
         _csf: null,
@@ -139,16 +138,13 @@ document.addEventListener('alpine:init', () => {
             if (dirParam && (dirParam === 'asc' || dirParam === 'desc')) {
                 this.filters.sortDirection = dirParam;
             }
+            this._urlFilterKey = this._filterKey();
 
             // Defer non-critical initialization to reduce TBT
             const deferredInit = () => {
                 this._debouncedUpdate = debounce(() => this.performUpdate({
                     partial: true, historyMethod: 'pushState'
                 }), 300);
-
-                this._throttledSlider = throttleWithForce(() => this.performUpdate({
-                    partial: true, historyMethod: 'replaceState'
-                }), 150);
 
                 // Leading edge: a click applies at once instead of after
                 // 150 ms; a burst still collapses into one trailing update,
@@ -163,13 +159,9 @@ document.addEventListener('alpine:init', () => {
                     historyMethod: burst.followsLeading ? 'replaceState' : 'pushState'
                 }), 150, {
                     canLead: () => this.clientFilterReady,
-                    keyOf: () => buildFilterParams(this.filters).toString(),
+                    keyOf: () => this._filterKey(),
                     schedule: afterNextPaint
                 });
-
-                this._debouncedDisplay = debounce(() => this.performUpdate({
-                    partial: true, historyMethod: 'pushState', preservePage: true
-                }), 150);
 
                 // Restore scroll position, but not if there's a highlight parameter
                 // (highlight scroll will handle positioning in that case)
@@ -232,33 +224,9 @@ document.addEventListener('alpine:init', () => {
                         setTimeout(() => {
                             const component = getFilterComponent();
                             if (component) {
-                                // Sync filter state from URL params (Alpine reinitializes
-                                // from #filters-data which may not match the URL after
-                                // client-side filtering changed it via pushState).
-                                // Clean SEO paths carry no search params, so map the
-                                // path back to its implied filter
-                                const params = new URLSearchParams(
-                                    window.location.search ||
-                                    (typeof seoPathSearch === 'function'
-                                        ? seoPathSearch(window.location.pathname) : '')
-                                );
-                                component.filters.q = params.get('q') || '';
-                                component.filters.start = params.get('start') ? parseInt(params.get('start')) : component.minYear;
-                                component.filters.end = params.get('end') ? parseInt(params.get('end')) : component.maxYear;
-                                component.filters.sort = params.get('sort') || 'rank';
-                                component.filters.sortDirection = params.get('dir') || 'asc';
-                                const playedParam = params.get('played');
-                                component.filters.played = playedParam ? playedParam.split(',').filter(s => s) : [];
-                                const genresParam = params.get('genres');
-                                component.filters.genres = genresParam ? genresParam.split(',').filter(id => id) : [];
-                                const platformsParam = params.get('platforms');
-                                component.filters.platforms = platformsParam ? platformsParam.split(',').filter(id => id) : [];
-                                const seriesParam = params.get('series');
-                                component.filters.series = seriesParam ? seriesParam.split(',').filter(id => id) : [];
-                                component.filters.hltb_mode = params.get('hltb_mode') || 'main';
-                                component.filters.hltb_min = params.get('hltb_min') ? parseInt(params.get('hltb_min')) : null;
-                                component.filters.hltb_max = params.get('hltb_max') ? parseInt(params.get('hltb_max')) : null;
-                                component.filters.hltb_preset = component.calculateHltbPreset(component.filters.hltb_min, component.filters.hltb_max);
+                                // Alpine reinitializes from #filters-data, which may not match
+                                // the URL after client-side filtering changed it via pushState.
+                                component._syncFiltersFromUrl();
 
                                 if (component.clientFilterReady) {
                                     // Recalculate all counts from cached data (includes HLTB)
@@ -278,33 +246,10 @@ document.addEventListener('alpine:init', () => {
                     // Nothing queued before Back may apply after it.
                     if (this._debouncedFilter) this._debouncedFilter.cancel();
                     if (this._debouncedUpdate) this._debouncedUpdate.cancel();
-                    // Clean SEO paths (/games/<slug>/ etc.) carry no search
-                    // params, so map the path back to its implied filter
-                    const params = new URLSearchParams(
-                        window.location.search ||
-                        (typeof seoPathSearch === 'function'
-                            ? seoPathSearch(window.location.pathname) : '')
-                    );
+                    this._syncFiltersFromUrl();
                     // The q watcher below would treat the restored text as a
                     // new search and push it; the update below covers it.
-                    this._restoredQuery = params.get('q') || '';
-                    this.filters.q = this._restoredQuery;
-                    this.filters.start = params.get('start') ? parseInt(params.get('start')) : this.minYear;
-                    this.filters.end = params.get('end') ? parseInt(params.get('end')) : this.maxYear;
-                    this.filters.sort = params.get('sort') || 'rank';
-                    this.filters.sortDirection = params.get('dir') || 'asc';
-                    const playedParam = params.get('played');
-                    this.filters.played = playedParam ? playedParam.split(',').filter(s => s) : [];
-                    const genresParam = params.get('genres');
-                    this.filters.genres = genresParam ? genresParam.split(',').filter(id => id) : [];
-                    const platformsParam = params.get('platforms');
-                    this.filters.platforms = platformsParam ? platformsParam.split(',').filter(id => id) : [];
-                    const seriesParam = params.get('series');
-                    this.filters.series = seriesParam ? seriesParam.split(',').filter(id => id) : [];
-                    this.filters.hltb_mode = params.get('hltb_mode') || 'main';
-                    this.filters.hltb_min = params.get('hltb_min') ? parseInt(params.get('hltb_min')) : null;
-                    this.filters.hltb_max = params.get('hltb_max') ? parseInt(params.get('hltb_max')) : null;
-                    this.filters.hltb_preset = this.calculateHltbPreset(this.filters.hltb_min, this.filters.hltb_max);
+                    this._restoredQuery = this.filters.q;
                     if (this.hasActiveFilters()) {
                         this.requestClientFilteringInit('popstate');
                     }
@@ -447,13 +392,30 @@ document.addEventListener('alpine:init', () => {
                         onLoadComplete: () => {
                             self.clientFilterReady = true;
                             self._csf.setViewMode(self.viewMode);
-                            if (self.hasActiveFilters()) {
+                            // The engine takes over from here: nothing queued
+                            // or in flight may repeat this render or undo it.
+                            const interrupted = self.isLoading;
+                            const pageLoading = document.querySelector('.load-more-button.is-loading');
+                            self.fetchManager.abort();
+                            if (interrupted) clearLoading('game-results-container');
+                            if (self._debouncedFilter) self._debouncedFilter.cancel();
+                            if (self._debouncedUpdate) self._debouncedUpdate.cancel();
+                            const changed = self._filterKey() !== self._urlFilterKey;
+                            if (changed) {
+                                // A change the load overtook. This entry is the
+                                // page it left, which Back has to reach.
+                                self.performClientUpdate({ historyMethod: 'pushState' });
+                            } else if (self.hasActiveFilters()) {
                                 self.performClientUpdate({ historyMethod: 'replaceState' });
-                            } else if (self._needsClientGrid()) {
-                                // Same filters as the server rendered, so the URL stays.
+                            } else if (interrupted || self._needsClientGrid()) {
+                                // The filters are the URL's, so it stays.
                                 self.performClientUpdate({ historyMethod: null });
                             } else {
                                 self.updateFacetCounts();
+                            }
+                            // A render replaced the button, so its page is dropped
+                            if (!changed && pageLoading && !pageLoading.isConnected) {
+                                handleLoadMoreCSF(self._csf);
                             }
                         }
                     });
@@ -866,7 +828,7 @@ document.addEventListener('alpine:init', () => {
                 const item = el.classList.contains('game-card-playtime') ? el : el.parentElement;
                 item.classList.toggle('hidden', !text);
             });
-            window.history.pushState({}, '', this._filterUrl());
+            this._writeHistory('pushState', this._filterUrl());
         },
 
         _filterUrl() {
@@ -884,6 +846,30 @@ document.addEventListener('alpine:init', () => {
             return (typeof seoCleanUrl === 'function' &&
                 seoCleanUrl(params, this.minYear, this.maxYear)) ||
                 (query ? '/games/?' + query : '/');
+        },
+
+        /** Read the filters back from the URL, which they then match. */
+        _syncFiltersFromUrl() {
+            const url = getFiltersFromURL();
+            Object.assign(this.filters, url, {
+                start: url.start === null ? this.minYear : url.start,
+                end: url.end === null ? this.maxYear : url.end,
+                hltb_preset: this.calculateHltbPreset(url.hltb_min, url.hltb_max)
+            });
+            this._urlFilterKey = this._filterKey();
+        },
+
+        /** The filters as one value. A highlight is spent by the first update. */
+        _filterKey() {
+            const params = buildFilterParams(this.filters);
+            params.delete('highlight');
+            return params.toString();
+        },
+
+        /** Every URL write, so that the engine can tell what reached the URL. */
+        _writeHistory(method, url, key = this._filterKey()) {
+            window.history[method]({}, '', url);
+            this._urlFilterKey = key;
         },
 
         resetSearch() {
@@ -1025,17 +1011,18 @@ document.addEventListener('alpine:init', () => {
         },
 
         async performUpdate(options = {}) {
-            const { partial = false, historyMethod = 'pushState', preservePage = false } = options;
+            const { partial = false, historyMethod = 'pushState' } = options;
 
             if (this.clientFilterReady) {
                 return this.performClientUpdate({ historyMethod });
             }
 
             const signal = this.fetchManager.newRequest();
+            const filterKey = this._filterKey();
             this.isLoading = true;
             setLoading('game-results-container');
 
-            const params = buildFilterParams(this.filters, { preservePage });
+            const params = buildFilterParams(this.filters);
             const url = '/games/?' + normalizeUrl(params.toString());
 
             try {
@@ -1126,15 +1113,18 @@ document.addEventListener('alpine:init', () => {
                 const pushUrl = (typeof seoCleanUrl === 'function' &&
                     seoCleanUrl(params, this.minYear, this.maxYear)) || url;
                 if (historyMethod) {
-                    window.history[historyMethod]({}, '', pushUrl);
+                    this._writeHistory(historyMethod, pushUrl, filterKey);
                 }
             } catch (err) {
                 if (err.name !== 'AbortError') {
                     console.error('Error fetching results:', err);
                 }
             } finally {
-                this.isLoading = false;
-                clearLoading('game-results-container');
+                // An aborted render finishes after what replaced it
+                if (!signal.aborted) {
+                    this.isLoading = false;
+                    clearLoading('game-results-container');
+                }
                 if (this.filters.highlight) {
                     delete this.filters.highlight;
                 }
@@ -1222,7 +1212,7 @@ document.addEventListener('alpine:init', () => {
             }
 
             if (historyMethod) {
-                window.history[historyMethod]({}, '', this._filterUrl());
+                this._writeHistory(historyMethod, this._filterUrl());
             }
 
             this.isLoading = false;
@@ -1364,14 +1354,6 @@ document.addEventListener('alpine:init', () => {
             this.performUpdate({ partial: false, historyMethod: 'pushState' });
         },
 
-        throttledSliderUpdate() {
-            if (this._throttledSlider) this._throttledSlider.call();
-        },
-
-        forceSliderUpdate() {
-            if (this._throttledSlider) this._throttledSlider.force();
-        },
-
         debouncedFilterUpdate() {
             if (this._debouncedFilter) {
                 this.requestClientFilteringInit('filter-change');
@@ -1423,11 +1405,6 @@ document.addEventListener('alpine:init', () => {
             if (this.viewMode !== 'grid') return false;
             const container = document.getElementById('game-list-container');
             return !!container && !container.querySelector('.game-grid');
-        },
-
-        updateDisplayOnly() {
-            if (!this.initialized || !this._debouncedDisplay) return;
-            this._debouncedDisplay();
         }
     }));
 });

@@ -233,7 +233,7 @@ var listenStatusOptions = JSON.parse(
                     <span class="font-bold text-base">Search</span>
                 </div>
                 <label class="input input-bordered input-sm w-full bg-base-100">
-                    <input type="search" name="q" x-model="filters.q"
+                    <input type="search" name="q" value="{{ current_q }}" x-model="filters.q"
                            @input.debounce.350ms="debouncedFilterUpdate()"
                            class="grow" placeholder="Album or artist" autocomplete="off">
                 </label>
