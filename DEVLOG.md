@@ -2,6 +2,28 @@
 
 ## 2026-11-03
 
+- **Games: cached pages and the payload follow the data version.** The
+  engine joins the rows a page rendered to `/api/games/all/`'s by position,
+  and nothing made them agree: a cached `/` from before an import beside
+  the new payload repeated and dropped games on its first Load More or
+  jump, as did a fresh page beside a payload `cache_page` kept for an hour.
+  The pages store and name their version, the payload is cached under the
+  version it computes, and the client keeps only a copy of the page's
+- **Games: a Load More fetches the next page of the list it extends.**
+  Clicked while Back's server render was on its way, it fetched from the
+  URL Back had moved to, and Back's list's rows went in under the one
+  shown. The button now carries its list's address
+- **Games: a Load More answered by another page no longer sticks.** A 200
+  without the append partial's meta appended its rows and left the button
+  loading and disabled for good; it is now a failed page
+- **Music: Back keeps the artist in the heading, whatever loads first.**
+  Only the engine's popstate listener restored the artist field the heading
+  reads, so the heading rested on the engine loading before Alpine; under
+  load it lost the artist 10 times in 12. The controls restore it themselves
+- **Music: a failed request the controls never saw is rolled back.** A
+  row's genre sent before Alpine started, failing with the engine's data,
+  left the form on the genre, as did `?genres=5,abc` and a saved filter
+  whose years were strings: each read as the reader having moved on
 - **Music: a failed filter request no longer leaves the sidebar ahead of
   the list.** At the engine's takeover a failed search is rendered and
   pushed even with focus in the box, while the box still holds exactly

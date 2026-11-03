@@ -506,13 +506,17 @@ each pinned by `scripts/browser_smoke.js`:
   in a debounce lives only in `filters`, and one queued behind the request
   is sent by htmx from the form as it stands then, so a roll-back would
   lose it or send the old filters in its place. `_movedOnFrom` reads what
-  was sent back into the controls' terms (`_filtersFrom`, the rules Back
-  reads the URL by) and compares it with `filters` now, then the form's
-  named fields with what was sent. A record of what the controls held as
-  the request went out cannot stand in: a queued request is sent after a
-  newer click's debounce began, and Enter and a row's genre send without a
-  commit. A request sent before Alpine started is not covered: the
-  controls cannot tell it from a change of the reader's (ROADMAP).
+  was sent, and the list's echo, back into the controls' terms
+  (`_filtersFrom`, the rules Back reads the URL by, genre ids kept as the
+  server's `parse_id_list` keeps them), and the reader has moved on only
+  if `filters`, or else the form's named fields, differ from both. Against
+  what was sent alone, a request sent before Alpine started the controls
+  (a row's genre) read as a newer change, since the controls start on the
+  list. The engine keeps the failed request's parameters on
+  `csf.failedParams`, which controls starting after it failed answer as
+  they start. A record of what the controls held as the request went out
+  cannot stand in: a queued request is sent after a newer click's debounce
+  began, and Enter and a row's genre send without a commit.
 - **The jump box waits for the engine**, which alone answers it: it renders
   disabled (`jump_awaits_engine`) and the bundle switches it on.
 
@@ -1100,8 +1104,9 @@ text states the test (does the game have an ending that HLTB's Main time
 measures?), and the HLTB changelist has bulk "Mark open-ended / Mark
 finishable / Clear the call" actions; the Game changelist shows the result
 as a read-only "Open-ended" column, with a filter for games HLTB has not
-matched (which cannot carry a call yet). A call reaches visitors within the
-hour: cached pages expire in 5 minutes, `/api/games/all/` in an hour. If
+matched (which cannot carry a call yet). A call reaches visitors on their
+next page: the data version that cached pages and `/api/games/all/` are
+kept under fingerprints the open-ended set. If
 IGDB re-keys a game, the fetch gives its new HLTB row the old row's call.
 HLTB files most sandbox, sports and
 arcade games as ordinary "game"s and some co-op story games as "multi", so
@@ -1685,7 +1690,8 @@ Three aliases, defined by `core/cache_config.py` (which `settings.py` calls):
   for up to their 24-hour TTL. Local dev stays on LocMem; `createcachetable
   cache_table` runs in the Heroku release phase and is idempotent.
   The table outlives a deploy, so the games API's page caches
-  (`games.api.views.cache_page`) are keyed on `HEROKU_RELEASE_VERSION`, from
+  (`games.api.views.cache_page`, and `/api/games/all/`'s own) are keyed
+  on `HEROKU_RELEASE_VERSION`, from
   the app's `runtime-dyno-metadata` lab (enabled 2026-10-26). Before that,
   new code was served old code's output, such as the payload version for up
   to an hour after a `SCHEMA_VERSION` bump. The rest of the alias is not
@@ -1756,7 +1762,7 @@ pages and `/browse/` for an hour (`music/config.py`). Measured on the
 1000-album corpus first, since every cached page spends from the 512 MB
 budget below: a rankings page is ~700 KB of HTML and ~90 KB deflated, and
 the 23 of them come to ~1.8 MB per worker, against ~430 ms of rendering
-each (a hit costs a few ms). Unlike games', a stored page is served only
+each (a hit costs a few ms). A stored page is served only
 while the album data version is the one it was rendered from
 (`MusicPageCacheMixin`, through the mixin's `get_page_cache_version`), at
 three aggregates a hit: the client joins a page's rows to `/api/all/`'s by
@@ -1770,6 +1776,21 @@ cover pass, one cover at a time) left a dead 90 KB copy per hit until a
 cull. A filtered page, or any signed-in one, is never cached. What the
 version does not hash - a genre renamed in place, an artist's name, a
 landing genre falling below the threshold - lasts until the TTL.
+
+**Games' cached pages carry their data version too** (2026-11-03), for the
+same reason: the engine adopts the rows `/` rendered and pages on from the
+payload by position. `HomePageView.get_page_cache_version` is
+`games.services.data_version.compute_game_data_version`, six small queries,
+which the landing pages inherit, and the page names it
+(`window.gameDataVersion`). The other half was the payload: `cache_page`
+kept `/api/games/all/` for an hour whatever an import did, and IndexedDB
+trusted its copy for five minutes unchecked, so a fresh page could sit
+beside the last import's payload. The view now caches it under the version
+it computes, and `GameDataCache` keeps only a copy of the page's version and
+asks for `?v=<version>`, which keeps the browser's HTTP cache honest. The
+server never keys on `?v=`, so the parameter cannot fill the shared cache
+with copies of the payload. `/api/games/version/` is now asked only by a
+page that names no version.
 
 Music's cache keys all live in `music/config.py` as `CACHE_KEYS`, which
 `caching.invalidate_music_caches()` iterates - add a cached value there or it
@@ -2001,7 +2022,13 @@ every click's INP under 200 ms even at 4x. Four things mattered:
   answers it. It keeps no record of what it last rendered: three attempts at
   skipping a repeated commit each broke something (a typed search, a `?q=`
   link, Clear All on a jumped list). Only `pushUrl` guards, statelessly, against
-  pushing the URL it is on: a search used to leave two entries. A games Load More or server jump whose button has gone is dropped
+  pushing the URL it is on: a search used to leave two entries. A games
+  Load More or server jump fetches from the list's own address, which the
+  server renders onto the button (`data-list-url`), not from the URL: Back
+  moves the URL before its render replaces the list, and a page fetched
+  meanwhile went in under the wrong list. A response with no
+  `#load-more-meta` is a failed page, not rows to append. One whose button
+  has gone is dropped
   (`utils-loadmore.js`), unless the list is still the one it was asked
   for: `filterComponent._urlFilterKey`, the filters the URL was last
   written with, is unchanged, on the same visit of them (`_urlFilterVisit`,
