@@ -260,27 +260,27 @@ class OpenEndedGamesInRankingsTests(TestCase):
         self.assertIsNone(games[self.pacman.id]["pt"])
 
     def test_payload_version_moves_when_staff_mark_a_game(self):
-        from games.api.views import _compute_game_data_version
+        from games.services.data_version import compute_game_data_version
 
-        before = _compute_game_data_version()
+        before = compute_game_data_version()
         data = self.long.primary_hltb_game_data
         data.open_ended_override = True
         data.save()
-        self.assertNotEqual(_compute_game_data_version(), before)
+        self.assertNotEqual(compute_game_data_version(), before)
 
     def test_payload_version_ignores_a_refresh_that_changes_nothing(self):
         """The weekly refresh saves every HLTB row, changed or not."""
-        from games.api.views import _compute_game_data_version
+        from games.services.data_version import compute_game_data_version
 
-        before = _compute_game_data_version()
+        before = compute_game_data_version()
         for data in HLTBGameData.objects.all():
             data.save()
-        self.assertEqual(_compute_game_data_version(), before)
+        self.assertEqual(compute_game_data_version(), before)
 
         data = self.long.primary_hltb_game_data
         data.main_story_hours = 101
         data.save()
-        self.assertNotEqual(_compute_game_data_version(), before)
+        self.assertNotEqual(compute_game_data_version(), before)
 
     def test_detail_page_labels_their_hours(self):
         response = self.client.get(reverse("game-detail", args=[self.moba.slug]))

@@ -346,6 +346,42 @@ async function checkLoadMoreBehindAFilterChange(page) {
 }
 
 /**
+ * The engine joins the page's rows to its payload's by position, so it keeps
+ * only a copy of the version the page names: a fresher copy of another
+ * version, kept five minutes without a check, repeated and dropped games
+ * after an import. Answers as above.
+ */
+async function checkGamesDataFollowsThePage(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    const asked = [];
+    page.on('request', request => {
+        if (request.url().startsWith(games + '/api/games/')) asked.push(request.url());
+    });
+    await page.goto(games + '/', { waitUntil: 'networkidle2' });
+    await startGamesEngine(page);
+    const version = await page.evaluate(() => window.gameDataVersion);
+    if (!version) return 'games: the page names no data version';
+    if (!asked.some(url => url.endsWith('/api/games/all/?v=' + version))) {
+        return `games: the engine asked for ${asked.join(', ') || 'nothing'}`;
+    }
+    // A copy stored a minute ago, of another version
+    await page.evaluate(async () => {
+        const cache = new GameDataCache();
+        const stored = await cache._getCached();
+        await cache._setCached('another-version', stored.data);
+    });
+    asked.length = 0;
+    await page.goto(games + '/', { waitUntil: 'networkidle2' });
+    await startGamesEngine(page);
+    if (asked.length !== 1) return `games: a copy of another version was kept (${asked.length} requests)`;
+    asked.length = 0;
+    await page.goto(games + '/', { waitUntil: 'networkidle2' });
+    await startGamesEngine(page);
+    return asked.length === 0 ? null
+        : `games: a copy of the page's own version was fetched again (${asked.join(', ')})`;
+}
+
+/**
  * A server Load More whose rows fail to go in: the button was left loading,
  * and disabled, for good. Answers as above.
  */
@@ -1735,6 +1771,7 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     await report('games Load More landing before Back', checkLoadMoreLandingBeforeBack);
     await report('games Load More that fails to append', checkLoadMoreThatFailsToAppend);
     await report('games Load More answered by another page', checkLoadMoreAnsweredByAnotherPage);
+    await report("games data follows the page's version", checkGamesDataFollowsThePage);
     for (const fails of [false, true]) {
         await report(`games Load More across a rewritten takeover${fails ? ', failed' : ''}`,
             page => checkLoadMoreAcrossARewrittenTakeover(page, fails));

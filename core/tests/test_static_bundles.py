@@ -507,6 +507,31 @@ class GamesLoadMoreTakesOnlyItsOwnPageTests(SimpleTestCase):
         )
 
 
+class GamesDataFollowsThePageTests(SimpleTestCase):
+    """The games engine keeps only a payload of the version the page names.
+
+    It joins the page's rows to the payload's by position, and kept any copy
+    for five minutes unchecked, so after an import a fresh page beside an old
+    copy repeated and dropped games. scripts/browser_smoke.js runs it ("games
+    data follows the page's version").
+    """
+
+    def test_the_page_version_decides_and_reaches_the_url(self):
+        for path in (
+            "games/static/games/js/game-cache.js",
+            "games/static/games/js/game-cache.min.js",
+            "games/static/games/js/client-side-filtering.bundle.min.js",
+        ):
+            with self.subTest(path=path):
+                source = (Path(settings.BASE_DIR) / path).read_text()
+                self.assertIn("window.gameDataVersion", source)
+                self.assertIn("?v=", source)
+        source = (
+            Path(settings.BASE_DIR) / "games/static/games/js/game-cache.js"
+        ).read_text()
+        self.assertIn("cached && cached.version === pageVersion", source)
+
+
 class ClientLoadMoreClaimsItsClickTests(SimpleTestCase):
     """A client-rendered Load More must load one page, not two.
 

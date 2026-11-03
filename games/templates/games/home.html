@@ -63,6 +63,8 @@
         marioStar: '{% static "games/images/mario-star.png" %}',
         marioStar2x: '{% static "games/images/mario-star@2x.png" %}'
     };
+    {# The payload a copy must match: the page's rows are joined to it by position #}
+    window.gameDataVersion = "{{ view.game_data_version|escapejs }}";
     </script>
     {# Game status state for client-side rendering (played + want to play) #}
     <script nonce="{{ csp_nonce }}">

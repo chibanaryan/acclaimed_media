@@ -2,10 +2,13 @@ from collections import defaultdict
 from datetime import datetime
 
 from django.contrib.flatpages.models import FlatPage
+from django.core.cache import cache
 from django.db import connection
-from django.db.models import Count, F, Min, Prefetch, Q, Sum
+from django.db.models import Count, F, Min, Prefetch, Q
 from django.db.models.functions import Lower
 from django.shortcuts import get_object_or_404
+from django.http import HttpResponse
+from django.utils.cache import patch_response_headers
 from django.utils.decorators import method_decorator
 from django.conf import settings
 from django.views.decorators.cache import cache_page as django_cache_page
@@ -13,12 +16,14 @@ from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.renderers import JSONRenderer
 from rest_framework.views import APIView, Response
 
 
 from core.services import search_ranking
 from core.services.genre_tree import descendants_by_id
 from core.services.query_params import parse_id_list, parse_limit
+from games.services.data_version import compute_game_data_version
 
 from .. import config, models, utils
 from . import serializers
@@ -612,70 +617,6 @@ class UnifiedSearchView(APIView):
         )
 
 
-def _compute_game_data_version():
-    """
-    Compute a version hash for cache invalidation.
-
-    Uses schema version, max modified timestamp of games, genre count, and series count.
-    Returns a short hash string that changes when data is updated.
-    """
-    import hashlib
-
-    # Schema version - increment when API response format changes
-    # v2: Changed st->dv, studios/companies->developers (commit ac84d07c)
-    # v3: Added 'i' (IGDB ID) field for played game filtering
-    # v4: Added 'lc' (list_count) field for displaying list appearances
-    # v5: Added 'ys' (year_start) and 'ye' (year_end) to platforms for sorting
-    # v6: Force cache refresh after list_count data update
-    # v7: Added 'pt' (playtime) field for HLTB filtering
-    # v8: Added 'ptc' (playtime_completionist) field for HLTB 100% filtering
-    # v9: Updated HLTB bucket boundaries (short: 0-10h, medium: 10-30h, long: 30+h)
-    # v10: Removed game_modes - no longer supported
-    # v11: Populated platform year_start/year_end data for all 74 platforms
-    # v12: Added remaining prod platform year ranges and refreshed cached platform data
-    # v13: Open-ended games (HLTBGameData.is_open_ended) send no 'pt'/'ptc'
-    # v14: 'ni', each game's position in the server's name order
-    SCHEMA_VERSION = "14"
-
-    # Get latest game modification time
-    latest_game = models.Game.objects.order_by("-modified").first()
-    game_modified = latest_game.modified.isoformat() if latest_game else ""
-
-    # Get genre count (changes if genres are added/modified)
-    genre_count = models.WikipediaGenre.objects.count()
-
-    # Get series count (changes if series are added/removed)
-    series_count = models.Series.objects.count()
-
-    # Count games with series assignments
-    games_with_series = models.Game.objects.filter(series__isnull=False).count()
-
-    # The playtimes the payload serves. An HLTB save leaves Game.modified
-    # alone, and the weekly refresh saves every row whether or not anything
-    # changed, so fingerprint the values rather than updated_at
-    hltb = models.Game.objects.aggregate(
-        main=Sum("primary_hltb_game_data__main_story_hours"),
-        completionist=Sum("primary_hltb_game_data__completionist_hours"),
-    )
-    # The open-ended set itself, not a sum a swap could preserve
-    open_ended_ids = (
-        models.Game.objects.filter(primary_hltb_game_data__is_open_ended=True)
-        .order_by("id")
-        .values_list("id", flat=True)
-    )
-    hltb_fingerprint = (
-        f"{hltb['main']}:{hltb['completionist']}:"
-        + hashlib.md5(",".join(map(str, open_ended_ids)).encode()).hexdigest()
-    )
-
-    # Combine into version string and hash it
-    version_string = (
-        f"{SCHEMA_VERSION}:{game_modified}:{genre_count}"
-        f":{series_count}:{games_with_series}:{hltb_fingerprint}"
-    )
-    return hashlib.md5(version_string.encode()).hexdigest()[:12]
-
-
 @method_decorator(cache_page(config.CACHE_TIMEOUT_1_HOUR), name="dispatch")
 class GameDataVersionView(APIView):
     """
@@ -686,10 +627,9 @@ class GameDataVersionView(APIView):
     """
 
     def get(self, request):
-        return Response({"version": _compute_game_data_version()})
+        return Response({"version": compute_game_data_version()})
 
 
-@method_decorator(cache_page(config.CACHE_TIMEOUT_1_HOUR), name="dispatch")
 class GameAllDataView(APIView):
     """
     Complete game data endpoint for client-side filtering.
@@ -713,8 +653,27 @@ class GameAllDataView(APIView):
     """
 
     def get(self, request):
-        version = _compute_game_data_version()
+        """The payload, cached in the shared cache under its data version.
 
+        Not ``cache_page``, which kept the last import's payload for up to an
+        hour beside pages naming the new data: the client joins the page's
+        rows to these by position. Keyed on the version computed here rather
+        than on the URL, so the client's ``?v=``, which keeps its browser's
+        copy honest, cannot fill the cache with copies of the payload.
+        """
+        # Read before the rows, so an import committing in between files the
+        # new rows under the old version, which only an older page names
+        version = compute_game_data_version()
+        key = f"games_all_data:{settings.RELEASE_CACHE_PREFIX}:{version}"
+        body = cache.get(key)
+        if body is None:
+            body = JSONRenderer().render(self._payload(version))
+            cache.set(key, body, config.CACHE_TIMEOUT_1_HOUR)
+        response = HttpResponse(body, content_type="application/json")
+        patch_response_headers(response, config.CACHE_TIMEOUT_1_HOUR)
+        return response
+
+    def _payload(self, version):
         # Fetch base game rows with scalar fields only (no model instantiation)
         game_rows = list(
             models.Game.objects.values(
@@ -928,18 +887,16 @@ class GameAllDataView(APIView):
                 }
             )
 
-        return Response(
-            {
-                "version": version,
-                "data": {
-                    "games": games_data,
-                    "developers": developers_dict,
-                    "platforms": platforms_dict,
-                    "genres": genres_data,
-                    "series": series_dict,
-                },
-            }
-        )
+        return {
+            "version": version,
+            "data": {
+                "games": games_data,
+                "developers": developers_dict,
+                "platforms": platforms_dict,
+                "genres": genres_data,
+                "series": series_dict,
+            },
+        }
 
 
 class SavedFilterSetListCreateView(APIView):

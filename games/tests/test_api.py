@@ -768,6 +768,36 @@ class GameAllDataViewTests(TestCase):
         self.game.primary_hltb_game_data = self.hltb_data
         self.game.save()
 
+    def test_all_data_is_cached_under_its_data_version(self):
+        """Not for an hour whatever happens, as `cache_page` kept it.
+
+        The client joins a page's rows to the payload's by position, so a
+        new page beside the last import's payload repeated and dropped games.
+        """
+        with mock.patch.object(
+            views.GameAllDataView, "_payload", wraps=views.GameAllDataView()._payload
+        ) as payload:
+            first = self.client.get("/api/games/all/").json()
+            self.assertEqual(self.client.get("/api/games/all/").json(), first)
+            self.assertEqual(payload.call_count, 1)
+
+            models.Game.objects.create(name="Imported", rank=2, slug="imported")
+            second = self.client.get("/api/games/all/").json()
+            self.assertEqual(payload.call_count, 2)
+        self.assertNotEqual(second["version"], first["version"])
+        self.assertEqual(len(second["data"]["games"]), 2)
+
+    def test_the_clients_version_parameter_cannot_fill_the_cache(self):
+        """`?v=` keeps a browser's copy honest; the server keys on its own."""
+        with mock.patch.object(
+            views.GameAllDataView, "_payload", wraps=views.GameAllDataView()._payload
+        ) as payload:
+            for version in ("one", "two", "three"):
+                response = self.client.get("/api/games/all/", {"v": version})
+                self.assertEqual(response.status_code, 200)
+            self.assertEqual(payload.call_count, 1)
+        self.assertIn("max-age=3600", response["Cache-Control"])
+
     def test_all_data_endpoint_returns_correct_structure(self):
         """Test that all data endpoint returns correct structure."""
         response = self.client.get("/api/games/all/")

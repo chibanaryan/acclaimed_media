@@ -26,6 +26,7 @@ from games.cache import (
     want_ids_cache_key,
 )
 from games.services import landing_pages, playtime
+from games.services.data_version import compute_game_data_version
 from games.services.game_filters import (
     PLATFORMS_CACHE_KEY,
     apply_game_filters,
@@ -100,6 +101,21 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         if self.request.META.get("QUERY_STRING", ""):
             return None
         return f"home_page:{config.CACHE_VERSION}:default"
+
+    def get_page_cache_version(self):
+        """A stored page is served only while the game data is the same.
+
+        The client joins the page's rows to `/api/games/all/`'s by position,
+        so a page from before an import beside the new payload repeated and
+        dropped games on its first Load More or jump.
+        """
+        return self.game_data_version
+
+    @cached_property
+    def game_data_version(self):
+        """Read once a request, and only by a full page or a cache hit: what
+        the cache checks, stores and the page names are the same value."""
+        return compute_game_data_version()
 
     @cached_property
     def _genre_descendants(self):

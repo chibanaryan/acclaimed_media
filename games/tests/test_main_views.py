@@ -38,6 +38,7 @@ from games.models import (
     WantToPlayGame,
     WikipediaGenre,
 )
+from games.services.data_version import compute_game_data_version
 from games.views import HomePageView
 
 
@@ -317,6 +318,7 @@ class HomePageViewTest(TestCase):
                         "samesite": "Lax",
                     }
                 },
+                "version": compute_game_data_version(),
             },
             60,
         )
@@ -324,6 +326,37 @@ class HomePageViewTest(TestCase):
         self.assertEqual(response.content, b"cached home")
         self.assertEqual(response["X-Test-Header"], "1")
         self.assertEqual(response.cookies["ab_test"].value, "A")
+
+    def test_a_cached_page_from_other_game_data_is_rendered_again_over_it(self):
+        """The client joins the page's rows to the payload's by position.
+
+        A cached `/` from before an import, beside the new payload, repeated
+        and dropped games on its first Load More or jump.
+        """
+        Game.objects.create(name="Cached Game", rank=1, year_of_release=2020)
+        key = f"testserver:home_page:{config.CACHE_VERSION}:default"
+        self.client.get(reverse("home"))
+        payload = caches["local"].get(key)
+        self.assertEqual(payload["version"], compute_game_data_version())
+        payload["body"] = zlib.compress(b"CACHED MARKER")
+        caches["local"].set(key, payload, 60)
+        self.assertEqual(self.client.get(reverse("home")).content, b"CACHED MARKER")
+
+        Game.objects.create(name="Imported Game", rank=2, year_of_release=2020)
+        response = self.client.get(reverse("home"))
+        self.assertNotEqual(response.content, b"CACHED MARKER")
+        version = compute_game_data_version()
+        self.assertNotEqual(version, payload["version"])
+        self.assertContains(response, f'window.gameDataVersion = "{version}"')
+        # Stored over, in the same key: one entry a page, whatever the data
+        self.assertEqual(caches["local"].get(key)["version"], version)
+
+    def test_a_landing_page_names_its_game_data_version(self):
+        Game.objects.create(name="Landing Game", rank=1, year_of_release=2020)
+        response = self.client.get("/games/2020s/")
+        self.assertContains(
+            response, f'window.gameDataVersion = "{compute_game_data_version()}"'
+        )
 
     def test_home_page_serialize_headers_includes_non_skipped(self):
         response = HttpResponse("ok")

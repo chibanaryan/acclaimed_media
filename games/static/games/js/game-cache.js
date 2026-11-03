@@ -139,11 +139,24 @@ class GameDataCache {
     }
 
     /**
-     * Fetch full game data from server
+     * The data version the page names, if it names one
      * @private
      */
-    async _fetchData() {
-        const response = await fetch(this.DATA_URL);
+    _pageVersion() {
+        return (typeof window !== 'undefined' && window.gameDataVersion) || '';
+    }
+
+    /**
+     * Fetch full game data from server. With the page's version in the URL:
+     * the response is cached server-side for an hour by its full URL, so a
+     * new version is a new entry rather than the last import's payload
+     * @private
+     */
+    async _fetchData(pageVersion = '') {
+        const url = pageVersion
+            ? this.DATA_URL + '?v=' + encodeURIComponent(pageVersion)
+            : this.DATA_URL;
+        const response = await fetch(url);
         if (!response.ok) throw new Error('Data fetch failed');
         return response.json();
     }
@@ -162,7 +175,7 @@ class GameDataCache {
 
         if (forceRefresh) {
             if (onCacheMiss) onCacheMiss();
-            const response = await this._fetchData();
+            const response = await this._fetchData(this._pageVersion());
             const { version, data } = response;
             await this._setCached(version, data);
             return data;
@@ -170,8 +183,17 @@ class GameDataCache {
 
         // Try to get cached data
         const cached = await this._getCached();
+        // The version the page was rendered from. The renderer joins the
+        // page's rows to the payload's by position, so only that version
+        // will do, however fresh another copy is
+        const pageVersion = this._pageVersion();
 
-        if (cached) {
+        if (pageVersion) {
+            if (cached && cached.version === pageVersion) {
+                if (onCacheHit) onCacheHit(cached.data);
+                return cached.data;
+            }
+        } else if (cached) {
             // Quick win: skip version check if cache is fresh (< 5 min old)
             const cacheAge = Date.now() - cached.timestamp;
             if (cacheAge < this.CACHE_TTL) {
@@ -194,10 +216,11 @@ class GameDataCache {
         // Cache miss or stale - fetch fresh data
         if (onCacheMiss) onCacheMiss();
 
-        const response = await this._fetchData();
+        const response = await this._fetchData(pageVersion);
         const { version, data } = response;
 
-        // Store in cache
+        // Store in cache, under the version it names: a payload that still
+        // differs from the page's is used, and the next page asks again
         await this._setCached(version, data);
 
         return data;
