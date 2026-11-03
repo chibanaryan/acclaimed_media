@@ -222,6 +222,13 @@ function mediaListControlsData(config) {
             this.$nextTick(() => {
                 this.publishFacetCounts();
                 this.initialized = true;
+                // The engine failed before the controls were here to hear it,
+                // with a failed request nobody has answered
+                const engine = this._clientEngine();
+                if (settings.renderedFiltersId && engine && engine.failed &&
+                        engine.failedParams) {
+                    this._answerFailedRequest(engine.failedParams);
+                }
             });
         },
 
@@ -485,8 +492,10 @@ function mediaListControlsData(config) {
             this.applyingSavedFilter = true;
 
             this.filters.q = saved.q || '';
-            this.filters.start = saved.start || this.minYear;
-            this.filters.end = saved.end || this.maxYear;
+            // Numbers, as every other path sets them: a blob storing "1990"
+            // read as a filter other than the request it sent
+            this.filters.start = parseInt(saved.start, 10) || this.minYear;
+            this.filters.end = parseInt(saved.end, 10) || this.maxYear;
             // Both through `_asList`: the stored blob is accepted
             // unvalidated, so a hand-written or hand-edited one can hold
             // the comma-joined spelling the URL uses, and a bare string
@@ -939,20 +948,46 @@ function mediaListControlsData(config) {
         _movedOnFrom(sent) {
             const form = this._form();
             if (!form || !sent) return false;
-            const asSent = Object.assign({ genres: this.filters.genres },
-                this._filtersFrom(name => {
-                    const value = htmxParameter(sent, name);
-                    return value === undefined ? null : value;
-                }));
-            if (JSON.stringify(this._fieldValues()) !==
-                    JSON.stringify(this._fieldValues(asSent))) {
-                return true;
-            }
+            const asSent = name => {
+                const value = htmxParameter(sent, name);
+                return value === undefined ? null : value;
+            };
+            const echo = settings.renderedFiltersId &&
+                document.getElementById(settings.renderedFiltersId);
+            const asListed = echo && (name => (
+                echo.hasAttribute('data-' + name) ? echo.getAttribute('data-' + name) || '' : null
+            ));
+            // A newer change is ahead of both what was sent and what the list
+            // shows, in the controls or in the form. A request the controls
+            // never saw, sent before Alpine started them (a row's genre),
+            // leaves them on the list and only the form on what was sent,
+            // which is the failed request itself and nothing newer
+            const ahead = differs => differs(asSent) && (!asListed || differs(asListed));
+            return ahead(get => this._controlsDiffer(get)) ||
+                ahead(get => this._formDiffers(form, get));
+        },
+
+        /**
+         * Whether the controls hold other filters than a source of the form's
+         * parameters names.
+         * @private
+         */
+        _controlsDiffer(get) {
+            const named = Object.assign({ genres: this.filters.genres }, this._filtersFrom(get));
+            return JSON.stringify(this._fieldValues()) !== JSON.stringify(this._fieldValues(named));
+        },
+
+        /**
+         * Whether a field of the form holds another value than a source of
+         * its parameters gives (null for a name the source does not give).
+         * @private
+         */
+        _formDiffers(form, get) {
             return [...form.elements].some(field => {
                 // An unnamed control sends nothing, so it cannot differ
                 if (!field.name) return false;
-                const value = htmxParameter(sent, field.name);
-                return value !== undefined && value !== field.value;
+                const value = get(field.name);
+                return value !== null && value !== field.value;
             });
         },
 
@@ -1030,12 +1065,15 @@ function mediaListControlsData(config) {
                 return Number.isFinite(parsed) ? parsed : fallback;
             };
             const list = name => text(name).split(',').filter(Boolean);
+            // The ids the server reads (`parse_id_list`): `?genres=5,abc` is 5
+            const ids = name => list(name).filter(part => /^\d{1,19}$/.test(part))
+                .map(part => String(parseInt(part, 10)));
             return {
                 q: text('q'),
                 start: number('start', this.minYear),
                 end: number('end', this.maxYear),
                 // Left out, not copied, so the reactive array is not replaced
-                ...(get('genres') !== null ? { genres: list('genres') } : {}),
+                ...(get('genres') !== null ? { genres: ids('genres') } : {}),
                 [statusKey]: list(statusKey),
                 sort: text('sort') || this.defaultSort,
                 sortDirection: text('dir') || 'asc',

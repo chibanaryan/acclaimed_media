@@ -1116,6 +1116,133 @@ async function checkFailedRequestWithoutTheEngine(page, engineFirst) {
 }
 
 /**
+ * A request sent before Alpine starts, which fails while the engine's data
+ * fails too: a row's genre (`how` 'genre') or Enter in the search box. The
+ * controls start from the list the server rendered, so they read the
+ * request they never saw as the reader having moved on, and left the form
+ * ahead of the list. `engineFirst` fails the data before the click, or after
+ * the request has failed. Answers as above.
+ */
+async function checkAFailureBeforeAlpine(page, how, engineFirst) {
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = { alpine: null, data: null, sent: null };
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        if (url.includes('/vendor/alpine.min.js')) {
+            held.alpine = request;
+        } else if (url.startsWith(music + '/api/all/')) {
+            if (engineFirst) {
+                request.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+            } else {
+                held.data = request;
+            }
+        } else if (url.startsWith(music + '/?') &&
+                ['xhr', 'fetch'].includes(request.resourceType())) {
+            held.sent = url;
+            request.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(music + '/', { waitUntil: 'domcontentloaded' });
+    for (let tries = 0; !held.alpine && tries < 200; tries += 1) await sleep(50);
+    if (!held.alpine) return 'Alpine was never asked for';
+    if (!engineFirst) {
+        for (let tries = 0; !held.data && tries < 200; tries += 1) await sleep(50);
+        if (!held.data) return 'the engine never asked for its data';
+    } else {
+        await sleep(500);
+    }
+    const heading = await page.$eval('#search-title-text', element => element.textContent.trim());
+    if (how === 'genre') {
+        await page.evaluate(() => document.querySelector('#album-list-container [data-add-genre]').click());
+    } else {
+        await page.evaluate(() => {
+            const box = document.querySelector('#album-filters input[name="q"]');
+            box.value = 'zzz';
+            box.form.requestSubmit();
+        });
+    }
+    for (let tries = 0; !held.sent && tries < 100; tries += 1) await sleep(50);
+    if (!held.sent) return `the ${how} sent no request before Alpine`;
+    await sleep(300);
+    if (!engineFirst) {
+        await held.data.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        await sleep(300);
+    }
+    await held.alpine.continue();
+    const decade = await page.waitForSelector('.year-grid-decade');
+    await page.waitForFunction(element => Alpine.$data(element).initialized, {}, decade);
+    await sleep(500);
+    const form = await page.$eval('#album-filters', element => ({
+        q: element.querySelector('[name="q"]').value,
+        genres: element.querySelector('[name="genres"]').value,
+    }));
+    if (form.q || form.genres) {
+        return `the form stayed ahead of the list: q="${form.q}", genres="${form.genres}"`;
+    }
+    const now = await page.$eval('#search-title-text', element => element.textContent.trim());
+    return now === heading ? null : `the heading read "${now}", not "${heading}"`;
+}
+
+/**
+ * With no engine, a failed request whose filters the controls spell another
+ * way than the request did: a saved filter storing its years as strings, or
+ * a hand-edited `?genres=` with junk in it. They read as the reader having
+ * moved on, so the sidebar was never rolled back. Answers as above.
+ */
+async function checkAFailureSpelledAnotherWay(page, how) {
+    await page.setViewport({ width: 1440, height: 900 });
+    let genre = null;
+    if (how === 'genres') {
+        await page.goto(music + '/', { waitUntil: 'networkidle2' });
+        genre = await page.$eval('#album-list-container [data-add-genre]',
+            button => button.dataset.addGenre);
+        // Or the engine starts from this visit's copy of its data
+        await page.evaluate(() => sessionStorage.clear());
+    }
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        if (url.startsWith(music + '/api/all/') || (url.startsWith(music + '/?') &&
+                ['xhr', 'fetch'].includes(request.resourceType()))) {
+            request.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(music + (genre ? `/?genres=${genre},abc` : '/'), { waitUntil: 'networkidle2' });
+    const decade = await page.waitForSelector('.year-grid-decade');
+    await page.waitForFunction(element => Alpine.$data(element).initialized, {}, decade);
+    await sleep(500);
+    const heading = await page.$eval('#search-title-text', element => element.textContent.trim());
+    if (how === 'genres') {
+        // Sent from the form as it stands, with no commit of the controls'
+        // to send the genres again in their own spelling: as Enter does
+        // before Alpine, or with a search the controls have not seen typed
+        await page.evaluate(() => {
+            const box = document.querySelector('#album-filters input[name="q"]');
+            box.value = 'zzz';
+            box.form.requestSubmit();
+        });
+    } else {
+        await page.evaluate(element => Alpine.$data(element).applySavedFilter(
+            { filters: { start: '1990', end: '1999' } }), decade);
+    }
+    await sleep(1500);
+    const form = await page.$eval('#album-filters', element => ({
+        q: element.querySelector('[name="q"]').value,
+        start: element.querySelector('[name="start"]').value,
+    }));
+    if (form.q || form.start) {
+        return `the form stayed ahead of the list: q="${form.q}", start="${form.start}"`;
+    }
+    const now = await page.$eval('#search-title-text', element => element.textContent.trim());
+    return now === heading ? null : `the heading read "${now}", not "${heading}"`;
+}
+
+/**
  * A server Load More pushed its own address, `?page=2&append=true`, and Back,
  * Forward or a reload onto it rendered the rows alone, with no page. It is
  * rows to append, not an address, so it pushes nothing. Answers as above.
@@ -1828,6 +1955,18 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
         await report(`music failed request, engine failed ${engineFirst ? 'first' : 'after'}`,
             page => checkFailedRequestWithoutTheEngine(page, engineFirst));
     }
+    for (const engineFirst of [true, false]) {
+        await report(`music a row genre failing before Alpine, engine failed ${engineFirst ? 'first' : 'after'}`,
+            page => checkAFailureBeforeAlpine(page, 'genre', engineFirst));
+    }
+    // Alpine puts the box back on the list as it starts, so this one passed
+    // before; it guards the roll-back rule from the other side
+    await report('music Enter failing before Alpine',
+        page => checkAFailureBeforeAlpine(page, 'Enter', true));
+    await report('music a failure under ?genres= with junk in it',
+        page => checkAFailureSpelledAnotherWay(page, 'genres'));
+    await report('music a failure from a saved filter with string years',
+        page => checkAFailureSpelledAnotherWay(page, 'years'));
     await report('music Back onto an htmx entry', checkBackOntoAnHtmxEntry);
     await report('music Back before the engine', checkBackBeforeTheEngine);
     await report('music Back past an old snapshot', checkBackPastAnOldSnapshot);

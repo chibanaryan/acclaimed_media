@@ -744,6 +744,8 @@ function initAlbumFiltering() {
         if (pending.get(event.detail.xhr) === form) {
             const config = event.detail.requestConfig;
             failedParams = event.detail.successful ? null : (config && config.parameters) || {};
+            // For controls Alpine starts after the engine has failed
+            csf.failedParams = failedParams;
         }
         pending.delete(event.detail.xhr);
     };
@@ -823,7 +825,7 @@ function initAlbumFiltering() {
 
     csf.init().then(async ok => {
         if (!ok) {
-            // HTMX keeps the page, and nothing will read the record. A
+            // HTMX keeps the page. A
             // failed request has nobody left to answer it, so the controls
             // go back to the list (mediaListControls.rollBackToTheList) -
             // unless a newer one is on its way, which answers for itself.
@@ -831,7 +833,8 @@ function initAlbumFiltering() {
             const inFlight = [...pending].some(([xhr, element]) =>
                 element === form && xhr.readyState !== XMLHttpRequest.DONE
             );
-            tracking(false);
+            // Still tracked: a request that fails before Alpine starts the
+            // controls is answered by them as they start, from csf.failedParams
             pending.clear();
             csf.failed = true;
             if (failedParams && !inFlight) {

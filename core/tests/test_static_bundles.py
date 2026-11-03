@@ -1182,9 +1182,45 @@ class AlbumFilterClicksApplyAtOnceTests(SimpleTestCase):
         self.assertIn(
             "if (!this._movedOnFrom(sent)) this.rollBackToTheList();", controls
         )
-        self.assertIn("JSON.stringify(this._fieldValues(asSent))", controls)
+        self.assertIn(
+            "JSON.stringify(this._fieldValues()) !== "
+            "JSON.stringify(this._fieldValues(named))",
+            controls,
+        )
         self.assertIn("if (!field.name) return false;", controls)
         self.assertNotIn("_sentFieldValues", controls)
+
+    def test_a_failure_the_controls_never_saw_is_still_answered(self):
+        # "music a row genre failing before Alpine", "... with junk in it" and
+        # "... with string years" in scripts/browser_smoke.js. Ahead of both
+        # what was sent and the list, in the controls or in the form: a
+        # request sent before Alpine left the controls on the list
+        controls = self._source("core/static/core/js/media-list-controls.js")
+        self.assertIn(
+            "const ahead = differs => "
+            "differs(asSent) && (!asListed || differs(asListed));",
+            controls,
+        )
+        self.assertIn("return ahead(get => this._controlsDiffer(get)) ||", controls)
+        self.assertIn("ahead(get => this._formDiffers(form, get));", controls)
+        # Answered as the controls start if the engine failed before them
+        self.assertIn("this._answerFailedRequest(engine.failedParams);", controls)
+        engine = self._source("music/static/music/js/album-client-filtering.js")
+        self.assertIn("csf.failedParams = failedParams;", engine)
+        self.assertNotIn("tracking(false);\n            pending.clear();", engine)
+        # The genre ids the server reads, and years as numbers
+        self.assertIn("/^\\d{1,19}$/.test(part)", controls)
+        self.assertIn("parseInt(saved.start, 10) || this.minYear", controls)
+        for minified in (
+            "core/static/core/js/media-list-controls.min.js",
+            "music/static/music/js/music-client-side-filtering.bundle.min.js",
+        ):
+            with self.subTest(minified=minified):
+                source = self._source(minified)
+                self.assertIn("failedParams", source)
+        minified = self._source("core/static/core/js/media-list-controls.min.js")
+        self.assertIn("_controlsDiffer", minified)
+        self.assertIn("parseInt(t.start,10)||this.minYear", minified)
 
 
 class HtmxKeepsNoHistorySnapshotsTests(SimpleTestCase):
