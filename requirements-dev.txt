@@ -92,7 +92,7 @@ django==6.1.2
     #   django-tailwind
     #   djangorestframework
     #   sentry-sdk
-django-allauth==65.20.1
+django-allauth==65.21.0
     # via
     #   -c requirements.txt
     #   -r requirements.in
@@ -153,7 +153,7 @@ idna==3.20
     #   yarl
 iniconfig==2.3.1
     # via pytest
-ipython==9.17.1
+ipython==9.18.0
     # via -r requirements-dev.in
 ipython-pygments-lexers==1.1.1
     # via ipython
@@ -263,7 +263,7 @@ pytailwindcss==0.4.2
     # via
     #   -c requirements.txt
     #   django-tailwind
-pytest==9.1.1
+pytest==9.2.0
     # via
     #   -r requirements-dev.in
     #   pytest-cov
