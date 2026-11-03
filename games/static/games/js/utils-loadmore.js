@@ -533,9 +533,12 @@ async function fetchPage(page) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
 
-    // Extract metadata
+    // Only the append partial carries the meta. Any other 200 - a whole page,
+    // from a redirect or a proxy - is not this page, and its rows would go
+    // in with nothing to move the button past them
     const metaScript = doc.getElementById('load-more-meta');
-    const meta = metaScript ? JSON.parse(metaScript.textContent) : null;
+    if (!metaScript) throw new Error('Page ' + page + ' came back without its meta');
+    const meta = JSON.parse(metaScript.textContent);
 
     // Get all game rows (select top-level wrappers, not inner .game-row divs,
     // so desktop rows include the played button container)
@@ -568,21 +571,19 @@ function appendPageResults(result) {
 
     // The rows are in, so the button moves past them before anything else
     // can throw: left asking for this page, a retry appended it twice
-    if (meta) {
-        if (button) {
-            updateLoadMoreButton(button, meta);
-        }
-        document.querySelectorAll('.jump-to-rank-input').forEach(input => {
-            input.dataset.loaded = meta.loadedCount;
-        });
+    if (button) {
+        updateLoadMoreButton(button, meta);
     }
+    document.querySelectorAll('.jump-to-rank-input').forEach(input => {
+        input.dataset.loaded = meta.loadedCount;
+    });
 
     // What remains only dresses the rows; a failure is logged, not thrown
     const finishing = [
         // Reinitialize HTMX for dynamically appended content
         () => { if (gameList && typeof htmx !== 'undefined') htmx.process(gameList); },
         // The last page's meta has the final counts
-        () => { if (meta) updateResultSummary(meta.loadedCount, meta.totalCount); },
+        () => updateResultSummary(meta.loadedCount, meta.totalCount),
     ];
     finishing.forEach(step => {
         try {

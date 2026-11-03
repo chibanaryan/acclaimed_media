@@ -461,6 +461,28 @@ class GamesOvertakenServerWorkHasOneOwnerTests(SimpleTestCase):
         )
 
 
+class GamesLoadMoreTakesOnlyItsOwnPageTests(SimpleTestCase):
+    """A 200 that is not the append partial is a failed Load More.
+
+    Its rows went in, and with no `#load-more-meta` nothing moved the button
+    on, so it stayed loading and disabled for good. scripts/browser_smoke.js
+    runs it ("games Load More answered by another page").
+    """
+
+    def test_a_page_without_its_meta_throws_before_it_is_appended(self):
+        for path in (
+            "games/static/games/js/utils-loadmore.js",
+            "games/static/games/js/utils-loadmore.min.js",
+        ):
+            with self.subTest(path=path):
+                source = (Path(settings.BASE_DIR) / path).read_text()
+                self.assertIn("came back without its meta", source)
+        source = (
+            Path(settings.BASE_DIR) / "games/static/games/js/utils-loadmore.js"
+        ).read_text()
+        self.assertNotIn("metaScript ? JSON.parse", source)
+
+
 class ClientLoadMoreClaimsItsClickTests(SimpleTestCase):
     """A client-rendered Load More must load one page, not two.
 

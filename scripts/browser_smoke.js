@@ -377,6 +377,44 @@ async function checkLoadMoreThatFailsToAppend(page) {
 }
 
 /**
+ * A server Load More answered by a 200 that is not its page - a whole page,
+ * say, from a proxy or a redirect: its rows went in, and with no meta to move
+ * the button on, the button was left loading and disabled for good. Answers
+ * as above.
+ */
+async function checkLoadMoreAnsweredByAnotherPage(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    let answered = false;
+    await page.setRequestInterception(true);
+    page.on('request', async request => {
+        if (!answered && request.url().includes('append=true')) {
+            answered = true;
+            const body = await page.evaluate(
+                url => fetch(url).then(response => response.text()), games + '/?sort=name');
+            await request.respond({ status: 200, contentType: 'text/html', body });
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(games + '/', { waitUntil: 'networkidle2' });
+    await sleep(500);
+    await page.click('.load-more-button');
+    await sleep(1500);
+    const rows = '#game-list-container .game-row.desktop [data-slot="rank"]';
+    const count = await page.$$eval(rows, cells => cells.length);
+    if (count !== 100) return `another page's answer to Load More appended ${count - 100} rows`;
+    const state = await page.$eval('.load-more-button',
+        button => ({ loading: button.classList.contains('is-loading'), disabled: button.disabled }));
+    if (state.loading || state.disabled) return "another page's answer left Load More stuck";
+    await page.click('.load-more-button');
+    await sleep(1500);
+    const ranks = await page.$$eval(rows, cells => cells.map(cell => cell.textContent.trim()));
+    const expected = Array.from({ length: 200 }, (_, index) => String(index + 1));
+    return ranks.join() === expected.join() ? null
+        : `a retry after another page's answer gave ${ranks.length} rows, not 1-200`;
+}
+
+/**
  * Back before the engine, then a server Load More on the list still shown
  * while Back's render is on its way: the key already named Back's list, so
  * the engine answered the click on it. Answers as above.
@@ -1639,6 +1677,7 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     await report('games Load More behind a filter change', checkLoadMoreBehindAFilterChange);
     await report('games Load More behind Back', checkLoadMoreBehindBack);
     await report('games Load More that fails to append', checkLoadMoreThatFailsToAppend);
+    await report('games Load More answered by another page', checkLoadMoreAnsweredByAnotherPage);
     for (const fails of [false, true]) {
         await report(`games Load More across a rewritten takeover${fails ? ', failed' : ''}`,
             page => checkLoadMoreAcrossARewrittenTakeover(page, fails));
