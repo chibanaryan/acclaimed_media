@@ -1833,26 +1833,28 @@ after its first render is allocator arenas, not live data. It is now 690 KB
 anonymous and 833 KB logged in (see "Rankings page weight" below). On 3.14
 and 6.1 the dyno's metrics show less: a week of 2 workers x 2 threads to
 2026-11-02 peaked at 342 MiB RSS for both, with swap under 13 MiB, and ran at
-a median of 250 MiB.
+a median of 250 MiB, so a third thread went in on 2026-11-03.
 
 That arithmetic sets the shape of the `Procfile`:
 
 - **`--workers 2`.** 2 x 200 MB leaves ~110 MB of headroom; three workers
   needed ~570 MB and the dyno had been swapping and firing R14 all day.
-- **`--worker-class gthread --threads 2`** for concurrency without a third
-  heap: threads share their worker's imports and caches, so a second thread
+- **`--worker-class gthread --threads 3`** for concurrency without a third
+  heap: threads share their worker's imports and caches, so another thread
   costs only what its in-flight render allocates, where a third process cost
-  another ~200 MB. Four requests run at once instead of two, and a long SSE
-  import stream now holds one thread rather than a whole worker. Raise
-  `--threads` only against `memory.rss.bytes.max` measured on the dyno.
+  another ~200 MB. Six requests run at once instead of two, and a long SSE
+  import stream holds one thread rather than a whole worker. It ran two
+  threads from 2026-10-27 to 11-03. Raise `--threads` only against
+  `memory.rss.bytes.max` measured on the dyno.
   The request path was audited for shared state before the switch: the
   per-process caches are `LocMemCache` (locked), the IGDB client and every
   `requests.Session` are per instance, and `RateLimitMiddleware._incr` now
   `add`s before it `incr`s so two threads meeting a new key both count.
 - **Database connections are per thread.** `CONN_MAX_AGE` is left at 0, so
   each request opens and closes its own, and the web dyno holds at most
-  workers x threads (4) at once, plus an import's: its background thread
-  and the IGDB importer's pool of 8. `import_handler._start_import_thread`
+  workers x threads (6) at once, plus an import's: its background thread
+  and the IGDB importer's pool of 8. That is 15 of the essential-1 plan's
+  20. `import_handler._start_import_thread`
   closes the background thread's connection when it finishes; left alone it
   lingered until the cyclic garbage collector reached the thread's wrapper.
 - **No `--preload`.** Measured with a fork test: a child touched ~160 MB of

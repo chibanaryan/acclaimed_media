@@ -76,17 +76,16 @@ a landing page at the apex (2026-10-30; AGENTS.md, "Domain"). The pages keep a
 ## Production memory
 
 The rankings page is 690 KB anonymous and 833 KB logged in, and the dyno
-runs gthread with two threads per worker (AGENTS.md, "Production memory
+runs gthread with three threads per worker (AGENTS.md, "Production memory
 budget").
 
-7. **Try `--threads 3`.** Measured on 2026-11-02 through the metrics API, a
-   week of gthread (2 workers x 2 threads, 2026-10-27 to 11-02, Python 3.14
-   and Django 6.1) peaked at 342 MiB RSS of the 512 MiB quota, with swap
-   never above 13 MiB; the last three days ran at a median of 250 MiB and
-   peaked at 278. A worker now sits near 125 MiB, not the 200 MB measured
-   on 3.11. A third thread costs only what its in-flight render allocates,
-   so it fits; Standard-2X is not needed. Change the `Procfile`, then
-   re-read `memory.rss.bytes.max` and swap after a week.
+7. **Check `--threads 3` after a week.** The `Procfile` went from two
+   threads per worker to three on 2026-11-03, on a week of gthread at two
+   (2026-10-27 to 11-02) that peaked at 342 MiB RSS of the 512 MiB quota,
+   with swap never above 13 MiB. Around 2026-11-10, re-read
+   `memory.rss.bytes.max` and `memory.swap.bytes.max` from the metrics API
+   (AGENTS.md, "Production memory budget"); back to two if the peak nears
+   the quota or swap climbs.
 
 ## Music: not worth doing as parity
 

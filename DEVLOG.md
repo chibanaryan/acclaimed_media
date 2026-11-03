@@ -1,5 +1,13 @@
 # Developer Log
 
+## 2026-11-03
+
+- **gunicorn runs three threads per worker**, up from two. A week at two
+  peaked at 342 MiB of the 512 MiB quota with swap under 13 MiB, and a
+  thread costs only its in-flight render. Six requests run at once, and the
+  web dyno holds at most 15 of Postgres' 20 connections during an import.
+  ROADMAP item 7 re-reads the memory a week on
+
 ## 2026-11-02
 
 - **A renamed artist's old URL redirects.** Every import and Wikidata pass
