@@ -64,7 +64,50 @@ budget").
    with swap never above 13 MiB. Around 2026-11-10, re-read
    `memory.rss.bytes.max` and `memory.swap.bytes.max` from the metrics API
    (AGENTS.md, "Production memory budget"); back to two if the peak nears
-   the quota or swap climbs.
+   the quota or swap climbs. Since v914 an import's metadata fetch spends
+   ~85 MB in one worker while it runs, so read a week that held one.
+
+## Imports and their metadata fetch (found 2026-11-03, v914)
+
+An import now starts its metadata fetch (AGENTS.md, "Imports start their
+metadata fetch"). Its six review rounds left these, none caused by it.
+
+5. **A games import drops every game's slug, developers and series.**
+   `import_games` recreates every `Game` and reattaches the stored IGDB rows,
+   but those fields live on `Game`, so every link reads `/games/None/` until
+   the forced IGDB pass restores them, 2-3 minutes after each import, or
+   until Sunday if the fetch is off or dies. Carry them across the import by
+   `igdb_id` from the old rows before the delete; then the post-import IGDB
+   pass can go missing-only like Wikipedia and HLTB, and the window closes.
+   Do this first: it also takes most of the weight off 6 and 7.
+6. **A fetch killed with its worker is not resumed.** It runs on a daemon
+   thread in a web worker, so a deploy or a `--max-requests 500` recycle
+   mid-fetch ends it silently, and the rest waits for the Sunday job. Cheap
+   fix: record a pending marker when it starts, clear it when done, and have
+   the import page's GET restart a fetch whose marker outlived its lock
+   (staff are told to reload that page anyway).
+7. **The fetch's lock is not shared** with the import page's IGDB and
+   Wikipedia buttons or the Sunday jobs (`refresh_all_metadata`,
+   `fetch_album_metadata --weekly`), so either can run a second pass beside
+   it: twice the IGDB rate limit and the connections. The page asks staff to
+   wait; have the buttons and the weekly commands take
+   `core.services.post_import`'s lock instead. On the shared DatabaseCache
+   `cache.add` over an expired row is also not atomic, so two imports in the
+   same instant after a lapse could both take it.
+8. **The 24-hour series and genre lists are never invalidated.**
+   `SERIES_CACHE_KEY` and `GENRES_CACHE_KEY` (`games/views/rankings.py`) are
+   dropped by nothing, so a page rendered just after a games import, before
+   IGDB restores the series, caches an empty series filter for a day. Drop
+   them when the games data version moves, or key them on it.
+9. **The `cache_page`'d games API ignores imports.** `/api/games/` (15 min),
+   `/api/games/<slug>/` and `/api/developers/<slug>/` (30 min) and
+   `/api/genres/` (24 h) are keyed on the release, not the data version, so
+   they serve pre-import rows, null slugs included, until they lapse.
+10. **The IGDB pool's connections outlive it.** `IGDBImportService` runs a
+    pool of 8 threads, and nothing closes their connections, so in a web
+    worker (the post-import fetch, or the IGDB button) they linger until the
+    garbage collector reaches the threads. Close them as each pool thread
+    finishes, as `start_background_thread` does for its own.
 
 ## Music: not worth doing as parity
 
