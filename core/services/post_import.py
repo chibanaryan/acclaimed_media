@@ -164,43 +164,64 @@ def resume_if_cut_short(section, job):
 
     ``None`` when there is nothing to restart, or imports do not fetch. A
     fetch leaves its pending marker only while it holds the lock, so the
-    marker without the lock is a fetch that never finished. Never raises:
-    it is called from the import page's GET.
+    marker without the lock is a fetch that never finished. It is read again
+    under the lock, so two page loads cannot both restart it, and a fetch
+    starting meanwhile keeps its marker. Never raises: it is called from the
+    import page's GET.
     """
     if not settings.METADATA_AFTER_IMPORT:
         return None
+    key = lock_key(section)
+    token = uuid.uuid4().hex
     try:
-        # One read: apart, a fetch finishing between the two looked cut short
-        held = cache.get_many([lock_key(section), pending_key(section)])
-        if lock_key(section) in held or pending_key(section) not in held:
+        # An ordinary load costs this one read
+        if cache.get(pending_key(section)) is None:
             return None
-        restarts = _restart_owed(section, held[pending_key(section)])
+        # A live fetch holds the lock, and is asked for nothing
+        if not _add(key, token):
+            return None
+        restarts = cache.get(pending_key(section))
+        if restarts is not None and restarts >= MAX_RESTARTS:
+            logger.error(
+                "A %s metadata fetch was cut short again after its restart; "
+                "leaving it to the Sunday job",
+                section,
+            )
+            cache.delete(pending_key(section))
     except Exception:
         logger.exception("Could not check for a cut-short %s metadata fetch", section)
+        _release_quietly(key, token)
         return None
-    if restarts is None:
-        return GAVE_UP
+    if restarts is None or restarts >= MAX_RESTARTS:
+        # Finished between the reads, or given up. Let go on a thread, which
+        # runs any fetch an import asked for meanwhile.
+        _hand_off(section, job, token, first=False)
+        return None if restarts is None else GAVE_UP
     logger.warning("Restarting a %s metadata fetch that was cut short", section)
-    status = {"message": RESUMED}
-    _start(section, job, status, restarts=restarts)
-    return status["message"]
+    if not _hand_off(section, job, token, first=True, restarts=restarts + 1):
+        return NOT_STARTED
+    return RESUMED
 
 
-def _restart_owed(section, restarts):
-    """The count a fetch cut short after ``restarts`` restarts runs under.
+def _hand_off(section, job, token, *, first, restarts=0):
+    """Run ``_rounds`` on a thread with the lock already taken; whether it started."""
+    try:
+        start_background_thread(
+            lambda: _run(section, job, token, first=first, restarts=restarts)
+        )
+    except Exception:
+        logger.exception("Could not start the %s metadata fetch", section)
+        _release_quietly(lock_key(section), token)
+        return False
+    return True
 
-    ``None`` once it has had ``MAX_RESTARTS``: its marker is dropped, at
-    ERROR, and the Sunday job does the work.
-    """
-    if restarts < MAX_RESTARTS:
-        return restarts + 1
-    logger.error(
-        "A %s metadata fetch was cut short again after its restart; leaving it "
-        "to the Sunday job",
-        section,
-    )
-    cache.delete(pending_key(section))
-    return None
+
+def _release_quietly(key, token):
+    """``_release`` for a caller that must not raise; the lock lapses anyway."""
+    try:
+        _release(key, token)
+    except Exception:
+        logger.exception("Could not release the metadata lock %s", key)
 
 
 class Hold:
@@ -221,21 +242,25 @@ class Hold:
 
         A fetch is owed if an import asked for one while the lock was held,
         or one was cut short; it runs now, on a thread with ``background``.
-        With ``run_owed`` false it is left to the import page to restart.
+        With ``run_owed`` false it is left to the import page to restart. A
+        restart cut short too is left for the page to report.
         """
         self.stop.set()
         section = self.section
         try:
-            restarts = None
-            if cache.get(again_key(section)):
+            asked = bool(cache.get(again_key(section)))
+            pending = cache.get(pending_key(section))
+            if asked:
+                # A later import's own fetch: an earlier count is moot
                 restarts = 0
+            elif pending is not None and pending < MAX_RESTARTS:
+                restarts = pending + 1
             else:
-                pending = cache.get(pending_key(section))
-                if pending is not None:
-                    restarts = _restart_owed(section, pending)
+                restarts = None
             if restarts is not None and not run_owed:
-                if cache.get(pending_key(section)) is None:
-                    cache.set(pending_key(section), 0, PENDING_SECONDS)
+                cache.set(
+                    pending_key(section), 0 if asked else pending, PENDING_SECONDS
+                )
                 cache.delete(again_key(section))
                 _release(lock_key(section), self.token)
             elif restarts is not None and background:
@@ -246,11 +271,7 @@ class Hold:
                 self._finish(stdout, first=restarts is not None, restarts=restarts or 0)
         except Exception:
             logger.exception("Could not let go of the %s metadata lock", section)
-            try:
-                _release(lock_key(section), self.token)
-            except Exception:
-                # It lapses in LOCK_SECONDS; the heartbeat has stopped.
-                logger.exception("Could not release the %s metadata lock", section)
+            _release_quietly(lock_key(section), self.token)
 
     def _finish(self, stdout, *, first, restarts=0):
         try:
@@ -380,14 +401,14 @@ def _acquire(section):
     return None
 
 
-def _start(section, job, status, *, restarts=0):
+def _start(section, job, status):
     token = None
     try:
         token = _acquire(section)
         if token is None:
             status["message"] = ALREADY_RUNNING
             return
-        start_background_thread(lambda: _run(section, job, token, restarts))
+        start_background_thread(lambda: _run(section, job, token))
     except Exception:
         # The import has committed, so this must not read as its failure.
         # With no thread, nothing but this releases the lock.
@@ -397,10 +418,10 @@ def _start(section, job, status, *, restarts=0):
         status["message"] = NOT_STARTED
 
 
-def _run(section, job, token, restarts=0):
+def _run(section, job, token, *, first=True, restarts=0):
     stream = LogStream()
     try:
-        _rounds(section, job, token, stream, restarts=restarts)
+        _rounds(section, job, token, stream, first=first, restarts=restarts)
     except Exception:
         logger.exception("The %s metadata fetch after an import failed", section)
     finally:

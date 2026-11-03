@@ -1344,8 +1344,10 @@ and `get_igdb` all use it.
   watch a fetch land anyway. The marker counts restarts, and a restart cut
   short too is left to the Sunday job, at ERROR and said once on the page:
   a fetch that takes its worker down would otherwise take one down on every
-  reload. A button's or a weekly job's hold also runs a fetch owed when it
-  lets go, unless its work raised, which leaves it to the page. A start that
+  reload. The page reads the marker again under the lock, so two loads
+  cannot both restart a fetch. A button's or a weekly job's hold also runs
+  a fetch owed when it lets go, unless a weekly job's work raised, which
+  leaves it to the page; an import's request starts the count afresh. A start that
   fails is logged and reported, never as a failed import, since the release
   is live by then.
 - **`METADATA_AFTER_IMPORT`** turns all of it off. It is off under test,
