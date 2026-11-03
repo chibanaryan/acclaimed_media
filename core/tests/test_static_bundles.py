@@ -597,6 +597,16 @@ class EnginesRenderAPayloadOfAnotherVersionTests(SimpleTestCase):
         self.assertIn("} else if (!csf.followsPage()) {", source)
         self.assertIn("range: page ? null : [start, start + shown]", source)
 
+    def test_music_lands_a_highlight_only_on_a_reader_who_stayed(self):
+        """The render replaces the row a `?highlight=` link scrolled to, and
+        can move it. smoke: "music highlight across another version"."""
+        source = self._read("music/static/music/js/album-client-filtering.js")
+        self.assertIn("if (readerMoved) {", source)
+        self.assertIn(
+            "if (!readerMoved) scrollToAlbumById(highlightOnLoad, csf.viewMode);",
+            source,
+        )
+
 
 class GamesDataFollowsThePageTests(SimpleTestCase):
     """The games engine keeps only a payload of the version the page names.

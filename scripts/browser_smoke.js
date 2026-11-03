@@ -1483,7 +1483,7 @@ async function checkBackOnAnEntityPage(page, url, input, text, evict) {
  * import committing between the page and its payload hands the page. Keeps
  * the names of the items sent.
  */
-async function servePayload(page, { site, data, items }, stale, keep) {
+async function servePayload(page, { site, data, items }, stale, reshape) {
     let open;
     const sent = { gate: new Promise(resolve => { open = resolve; }) };
     sent.open = open;
@@ -1500,7 +1500,7 @@ async function servePayload(page, { site, data, items }, stale, keep) {
         if (stale) {
             payload.version = 'another-version';
             list.shift();
-            if (keep) list.splice(keep);
+            if (reshape) reshape(list);
         }
         sent.names = list.map(item => item.n);
         await request.respond({
@@ -1520,28 +1520,12 @@ async function servePayload(page, { site, data, items }, stale, keep) {
 async function checkEngineFollowsThePagesVersion(page, engine, path, stale, keep) {
     const { site, rows, names, start } = engine;
     await page.setViewport({ width: 1440, height: 900 });
-    const sent = await servePayload(page, engine, stale, keep);
+    const sent = await servePayload(page, engine, stale, keep && (list => list.splice(keep)));
     await page.goto(site + path, { waitUntil: 'networkidle2' });
     await page.$eval(rows, row => { row.dataset.smokeServer = '1'; });
-    const highlight = new URLSearchParams(path.split('?')[1] || '').get('highlight');
-    if (highlight) {
-        // Past the server row's own scroll, and then on down the page, where
-        // the render must leave the reader
-        await sleep(600);
-        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-        await sleep(300);
-    }
-    const scrolled = await page.evaluate(() => window.scrollY);
     sent.open();
     await start(page);
     await sleep(500);
-    if (highlight) {
-        if (!await page.$(`#music-${highlight} .is-highlighted, #music-${highlight}.is-highlighted`)) {
-            return `${site}${path}: the render lost the album's highlight`;
-        }
-        const now = await page.evaluate(() => window.scrollY);
-        if (Math.abs(now - scrolled) > 5) return `${site}${path}: the render scrolled from ${scrolled} to ${now}`;
-    }
     const kept = Boolean(await page.$(`${rows}[data-smoke-server]`));
     if (!stale) return kept ? null : `${site}${path}: the page's own version re-rendered its rows`;
     if (kept) return `${site}${path}: another version's payload took the page's rows over`;
@@ -1559,12 +1543,68 @@ async function checkEngineFollowsThePagesVersion(page, engine, path, stale, keep
               `${expected[0]} to ${expected[expected.length - 1]}`;
     };
     const first = await shown();
-    if (first || keep || highlight) return first;
+    if (first || keep) return first;
     const button = path.includes('page=') ? '.load-previous-button' : '.load-more-button';
     if (!await page.$(button)) return `${site}${path}: no ${button} after the render`;
     await page.click(button);
     await sleep(800);
     return shown();
+}
+
+/**
+ * A `?highlight=` link whose payload is of another version: the render
+ * replaces the row the server scrolled to, and the new data can move the
+ * album, here past the first page. A reader still where the link landed is
+ * taken to the album, in a list or a grid; one who has moved on is left
+ * there, with the album flashed in place. Answers as above.
+ */
+async function checkHighlightAcrossAnotherVersion(page, engine, { readerMoves, albumMoves, grid }) {
+    const id = 5;
+    const path = `/?highlight=${id}`;
+    await page.setViewport({ width: 1440, height: 900 });
+    if (grid) {
+        await page.evaluateOnNewDocument(() => localStorage.setItem('albumViewMode', 'grid'));
+    }
+    // Ranked last, past the first page: the engine orders by rank
+    const sent = await servePayload(page, engine, true, albumMoves && (list => {
+        list.find(album => album.id === id).r = 1000;
+    }));
+    await page.goto(music + path, { waitUntil: 'networkidle2' });
+    // Past the server row's own scroll
+    await sleep(600);
+    if (readerMoves) {
+        await page.mouse.move(700, 450);
+        await page.mouse.wheel({ deltaY: 3000 });
+        await sleep(500);
+    }
+    const before = await page.evaluate(() => window.scrollY);
+    sent.open();
+    await engine.start(page);
+    // Past the landing's beat and a smooth scroll the length of the page
+    await sleep(2500);
+    const album = `#music-${id}${grid ? '-grid' : ''}`;
+    const state = await page.evaluate(selector => {
+        const element = document.querySelector(selector);
+        if (!element) return null;
+        const box = element.getBoundingClientRect();
+        return {
+            highlighted: Boolean(element.matches('.is-highlighted') ||
+                element.querySelector('.is-highlighted')),
+            inView: box.bottom > 0 && box.top < window.innerHeight,
+            scrollY: window.scrollY,
+        };
+    }, album);
+    const label = `music ${path}${grid ? ' (grid)' : ''}`;
+    if (readerMoves) {
+        const now = await page.evaluate(() => window.scrollY);
+        if (Math.abs(now - before) > 5) {
+            return `${label}: the render pulled a reader who had moved on from ${before} to ${now}`;
+        }
+        return state && !state.highlighted ? `${label}: the render lost the album's highlight` : null;
+    }
+    if (!state) return `${label}: the render left the album off the page`;
+    if (!state.highlighted) return `${label}: the render lost the album's highlight`;
+    return state.inView ? null : `${label}: the render left the album out of view`;
 }
 
 /** The text of each row an entity page lists, to tell them apart. */
@@ -2192,8 +2232,15 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     // Shorter than the page's start: the top of the list, not an empty one
     await report('music /?page=2 engine with another, shorter version',
         page => checkEngineFollowsThePagesVersion(page, versioned.music, '/?page=2', true, 90));
-    await report('music /?highlight=5 engine with another version',
-        page => checkEngineFollowsThePagesVersion(page, versioned.music, '/?highlight=5', true));
+    for (const [readerMoves, albumMoves, grid] of [
+        [true, false, false], [false, false, false], [false, true, false], [false, true, true],
+    ]) {
+        const name = [readerMoves && 'a reader who moved', albumMoves && 'an album that moved',
+            grid && 'a grid'].filter(Boolean).join(', ') || 'a reader who stayed';
+        await report(`music highlight across another version, ${name}`,
+            page => checkHighlightAcrossAnotherVersion(
+                page, versioned.music, { readerMoves, albumMoves, grid }));
+    }
     await report('games empty range', page => checkRangeOutsideTheCorpus(page, games));
     await report('music empty range', page => checkRangeOutsideTheCorpus(page, music));
     await browser.close();

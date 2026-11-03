@@ -861,6 +861,16 @@ function initAlbumFiltering() {
             highlightPending = true;
         }
     }
+    // A reader who scrolls, clicks or types has moved on from where the
+    // link landed, and a later render must not pull them back. Input, not
+    // scroll events, which the landing's own scroll fires too
+    let readerMoved = false;
+    if (highlightOnLoad !== null) {
+        const moved = () => { readerMoved = true; };
+        ['wheel', 'touchstart', 'keydown', 'pointerdown'].forEach(type =>
+            window.addEventListener(type, moved, { once: true, capture: true, passive: true })
+        );
+    }
 
     csf.init().then(async ok => {
         if (!ok) {
@@ -1014,10 +1024,27 @@ function initAlbumFiltering() {
             });
             if (pageRequest) csf.loadMore();
             // A row the server rendered and scrolled to was rendered again,
-            // without its highlight. It is flashed where it is: the reader
-            // may have scrolled on, or asked for more, since
+            // without its highlight, and maybe elsewhere. A reader still where
+            // the link landed is taken to it, below if it has left the rows
+            // rendered; one who has moved on keeps their place, and it is
+            // flashed where it is
             if (highlightOnLoad !== null && !highlightPending) {
-                scrollToAlbumById(highlightOnLoad, csf.viewMode, { scroll: false });
+                if (readerMoved) {
+                    scrollToAlbumById(highlightOnLoad, csf.viewMode, { scroll: false });
+                } else {
+                    const position = csf.renderer.currentItems.findIndex(
+                        album => album.id === highlightOnLoad
+                    ) + 1;
+                    if (position > 0) {
+                        csf.jumpTo(position);
+                        // After a beat, as on load: the page above the
+                        // list is still laying out, and a scroll now fell
+                        // short of the album
+                        setTimeout(() => {
+                            if (!readerMoved) scrollToAlbumById(highlightOnLoad, csf.viewMode);
+                        }, 300);
+                    }
+                }
             }
         } else if (pageRequest) {
             csf.loadMore();
