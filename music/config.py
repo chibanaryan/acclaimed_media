@@ -16,6 +16,15 @@ CACHE_TIMEOUT_1_HOUR = 60 * 60  # 3600 seconds
 CACHE_TIMEOUT_24_HOURS = 60 * 60 * 24  # 86400 seconds
 CACHE_TIMEOUT_DEFAULT = CACHE_TIMEOUT_24_HOURS
 
+# Whole rendered pages for anonymous visitors (core.mixins.
+# AnonymousResponseCacheMixin), per process, and served only while the
+# album data version is the one they were rendered from (MusicPageCacheMixin),
+# so a release retires them at once. A change the version does not hash, such
+# as a genre renamed in place, waits out five minutes on the rankings page,
+# an hour on a landing page.
+CACHE_TIMEOUT_HOME_PAGE = CACHE_TIMEOUT_5_MINUTES
+CACHE_TIMEOUT_LANDING_PAGE = CACHE_TIMEOUT_1_HOUR
+
 # Cache version - bump this to invalidate all caches after schema/data changes
 CACHE_VERSION = "v1"
 

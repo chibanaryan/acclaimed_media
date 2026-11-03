@@ -2,6 +2,13 @@
 
 ## 2026-11-03
 
+- **Music's bare pages are cached for anonymous visitors**: the rankings
+  page for five minutes, the 22 genre and decade landing pages and the
+  browse index for an hour, as games' are. Measured first: ~90 KB deflated
+  each, ~1.8 MB per worker in all, against ~430 ms of rendering per visit.
+  A stored page is served only while the album data version is the one it
+  was rendered from (a new `get_page_cache_version` hook on the mixin),
+  since the client joins its rows to `/api/all/`'s by position
 - **Games' source lists use the shared sort control**, the last page with a
   copy of its own. The shared control now leaves a direction out of the URL
   only when it is that sort's own, so a reload keeps Z-A names on every

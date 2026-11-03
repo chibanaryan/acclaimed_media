@@ -59,12 +59,12 @@ class AnonymousResponseCacheMixin:
     entries - the filter options and counts - straight out of it. Nothing
     here needs cross-process agreement; see `core.cache_config`.
 
-    The body is stored deflated. These pages are big - the rankings page is
-    ~1.4 MB of HTML - and there are ~50 cacheable URLs between the home page
-    and the SEO landing pages, which at full size is 60-70 MB in every
-    gunicorn worker on a 512 MB dyno. Deflate cuts that by about 15x, and
-    inflating on a hit costs a few milliseconds against the ~300 ms the
-    render it replaces takes.
+    The body is stored deflated. These pages are big - a rankings page is
+    ~700 KB of HTML, games' or music's - and there are ~75 cacheable URLs
+    between the two sites' home and landing pages, which at full size would
+    be tens of MB in every gunicorn worker on a 512 MB dyno. Deflate cuts
+    that by about 8x, and inflating on a hit costs a few milliseconds
+    against the ~300-600 ms the render it replaces takes.
     """
 
     page_cache_timeout = None
@@ -99,6 +99,17 @@ class AnonymousResponseCacheMixin:
 
     def get_page_cache_key(self):
         raise NotImplementedError("Subclasses must implement get_page_cache_key()")
+
+    def get_page_cache_version(self):
+        """What the cached page must match to be served, or None for nothing.
+
+        Asked only of a request the cache would answer. A stored page whose
+        version differs is rendered again and stored over, so a page keeps
+        one entry: a version in the key would leave each superseded copy in
+        the per-process cache until a cull, and a pass that moves the
+        version often would fill it.
+        """
+        return None
 
     @classmethod
     def _serialize_headers(cls, response):
@@ -220,12 +231,21 @@ class AnonymousResponseCacheMixin:
         cache_key = f"{request.get_host()}:{cache_key}"
 
         cache = caches[self.page_cache_alias]
+        version = self.get_page_cache_version()
 
         # Check cache (store only rendered content to avoid retaining
         # request/context)
         cached_payload = cache.get(cache_key)
         if cached_payload is not None:
-            if isinstance(cached_payload, dict) and "body" in cached_payload:
+            stale = (
+                isinstance(cached_payload, dict)
+                and cached_payload.get("version") != version
+            )
+            if stale:
+                # Rendered from data that has since changed: the render below
+                # stores over it
+                cached_payload = None
+            elif isinstance(cached_payload, dict) and "body" in cached_payload:
                 content = self._restore_csp_nonce(
                     request,
                     self._restore_csrf_token(
@@ -266,6 +286,7 @@ class AnonymousResponseCacheMixin:
                     "content_type": response.get("Content-Type"),
                     "headers": self._serialize_headers(response),
                     "cookies": self._serialize_cookies(response),
+                    "version": version,
                 },
                 self.page_cache_timeout,
             )

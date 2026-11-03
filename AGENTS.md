@@ -1730,8 +1730,26 @@ HTML, at 1.4 MB each for any client that did not send `Accept-Encoding: gzip`,
 was most of why the dyno sat over its 512 MB quota. See "Production memory
 budget" below.
 
-**Music has no whole-page cache.** Every cached rankings page spends from the
-512 MB budget below, so measure before adding `AnonymousResponseCacheMixin`.
+**Music's bare pages are cached whole for anonymous visitors**, as games'
+are (2026-11-03): `/` for five minutes, and the genre and decade landing
+pages and `/browse/` for an hour (`music/config.py`). Measured on the
+1000-album corpus first, since every cached page spends from the 512 MB
+budget below: a rankings page is ~700 KB of HTML and ~90 KB deflated, and
+the 23 of them come to ~1.8 MB per worker, against ~430 ms of rendering
+each (a hit costs a few ms). Unlike games', a stored page is served only
+while the album data version is the one it was rendered from
+(`MusicPageCacheMixin`, through the mixin's `get_page_cache_version`), at
+three aggregates a hit: the client joins a page's rows to `/api/all/`'s by
+position, and keeps only a payload whose version the page names, so a page
+from the last release beside the new payload duplicated and dropped
+albums, and re-downloaded the payload on every visit. Nothing an import
+does reaches another process's `local` cache, so the version is what
+retires a page there. It sits in the stored payload, not the key, so a
+page keeps one entry: in the key, a pass that moves the version often (a
+cover pass, one cover at a time) left a dead 90 KB copy per hit until a
+cull. A filtered page, or any signed-in one, is never cached. What the
+version does not hash - a genre renamed in place, an artist's name, a
+landing genre falling below the threshold - lasts until the TTL.
 
 Music's cache keys all live in `music/config.py` as `CACHE_KEYS`, which
 `caching.invalidate_music_caches()` iterates - add a cached value there or it

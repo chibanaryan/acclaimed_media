@@ -62,10 +62,6 @@ The section is public at `music.acclaimedmedia.org`, beside the games site and
 a landing page at the apex (2026-10-30; AGENTS.md, "Domain"). The pages keep a
 "Beta" badge while `music.config.MUSIC_BETA` is on.
 
-5. **An anonymous page cache for music.** Games' rankings and landing pages
-   use `AnonymousResponseCacheMixin`; music's have none. Every cached page
-   spends from the 512 MB budget, so measure before adding it (item 7 has
-   the current numbers).
 6. **New brand artwork.** The favicons still read "Acclaimed Video Games"
    (`games/static/games/brand/`), and a page without artwork of its own has
    no `og:image` since the old one was removed; every page title already

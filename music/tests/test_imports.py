@@ -1380,9 +1380,12 @@ class ImportInvalidatesCachesTests(ClearsCachesMixin, TestCase):
     def test_the_heading_counts_are_right_straight_after_an_import(self):
         # The symptom, end to end: cache the old counts, import a bigger
         # release, and the page must not still be describing the old one.
-        self.client.get(reverse("music:home"))
+        # Filtered, since the bare page an anonymous visitor gets is cached
+        # whole until its five minutes are up (AGENTS.md, "Caching").
+        url = reverse("music:home") + "?sort=name"
+        self.client.get(url)
         self._import_release()
-        response = self.client.get(reverse("music:home"))
+        response = self.client.get(url)
         self.assertEqual(response.context["album_count"], models.Album.objects.count())
         self.assertEqual(
             response.context["list_count"], models.MusicList.objects.count()
@@ -1391,6 +1394,25 @@ class ImportInvalidatesCachesTests(ClearsCachesMixin, TestCase):
             response.context["publication_count"],
             models.MusicPublication.objects.count(),
         )
+
+    def test_an_anonymous_bare_page_is_not_the_last_release(self):
+        # The page an anonymous visitor gets is cached whole, and the client
+        # joins its rows to /api/all/'s by position: a page from the last
+        # release beside the new payload duplicated and dropped albums
+        from music.services.data_version import compute_album_data_version
+
+        from django.core.cache import caches
+
+        self.client.logout()
+        self.client.get(reverse("music:home"))
+        key = f"testserver:album_home:{config.CACHE_VERSION}:/"
+        before = compute_album_data_version()
+        self.assertEqual(caches["local"].get(key)["version"], before)
+        self._import_release()
+        version = compute_album_data_version()
+        self.assertNotEqual(version, before)
+        page = self.client.get(reverse("music:home")).content.decode()
+        self.assertIn(f'window.albumDataVersion = "{version}"', page)
 
     def test_the_import_stamps_the_update_time(self):
         self._import_release()

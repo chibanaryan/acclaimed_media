@@ -36,10 +36,12 @@ from django.http import (
 )
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
+from django.utils.decorators import method_decorator
 from django.utils.functional import cached_property
 from django.utils.http import urlencode
 from django.utils.text import slugify
 from django.views import View
+from django.views.decorators.vary import vary_on_headers
 from django.views.generic import DetailView, ListView, TemplateView
 
 from core import constants as core_constants
@@ -48,7 +50,12 @@ from core.cache_helpers import (
     cache_get,
     get_year_bounds,
 )
-from core.mixins import HTMXPartialMixin, RobustPaginationMixin, StaffOnlyMixin
+from core.mixins import (
+    AnonymousResponseCacheMixin,
+    HTMXPartialMixin,
+    RobustPaginationMixin,
+    StaffOnlyMixin,
+)
 from core.models import User
 from core import sites
 from core.services import genre_tree, seo
@@ -685,7 +692,39 @@ def group_list_appearances(memberships):
     ]
 
 
-class AlbumHomePageView(RobustPaginationMixin, ListView):
+class MusicPageCacheMixin(AnonymousResponseCacheMixin):
+    """A bare music page, cached whole for anonymous visitors.
+
+    A stored page is served only while the album data version is the one it
+    was rendered from: the client joins its rows to `/api/all/`'s, which
+    carries the same version, by position, and keeps only a payload whose
+    version the page names. A page from the last release beside the new
+    payload duplicated and dropped albums. The version costs three
+    aggregates a hit; nothing an import does reaches another process's
+    `local` cache, so the version is what retires a page there.
+    """
+
+    page_cache_kind = None
+
+    def get_page_cache_key(self):
+        # The raw query string: a landing page's filters, injected later,
+        # are not in it, so a bare URL is cached and a filtered one is not
+        if self.request.META.get("QUERY_STRING", ""):
+            return None
+        return f"{self.page_cache_kind}:{config.CACHE_VERSION}:{self.request.path}"
+
+    def get_page_cache_version(self):
+        return self.album_data_version
+
+    @cached_property
+    def album_data_version(self):
+        """Read once a request: what the cache checks, stores and the page
+        names are the same value, so a stored page is never relabelled."""
+        return compute_album_data_version()
+
+
+@method_decorator(vary_on_headers("X-Requested-With", "HX-Request"), name="dispatch")
+class AlbumHomePageView(MusicPageCacheMixin, RobustPaginationMixin, ListView):
     """
     The album rankings page, with search, filtering and HTMX updates.
 
@@ -698,6 +737,9 @@ class AlbumHomePageView(RobustPaginationMixin, ListView):
     context_object_name = "albums"
     paginate_by = config.DEFAULT_PAGE_SIZE
     paginate_orphans = 0
+    # ~90 KB deflated and ~0.4 s of rendering, against a few ms from the cache
+    page_cache_kind = "album_home"
+    page_cache_timeout = config.CACHE_TIMEOUT_HOME_PAGE
 
     def _is_partial_request(self):
         """Whether this request wants a fragment rather than the whole page."""
@@ -936,7 +978,7 @@ class AlbumHomePageView(RobustPaginationMixin, ListView):
         # holding a copy of the bulk payload tell whether it is still current
         # without asking - which is why there is no `version/` endpoint.
         context["enable_client_filtering"] = True
-        context["album_data_version"] = compute_album_data_version()
+        context["album_data_version"] = self.album_data_version
 
         # Tracking state is rendered into the page per request, never into
         # the bulk payload: that payload is held in sessionStorage keyed only
@@ -982,6 +1024,9 @@ class MusicLandingPageView(AlbumHomePageView):
     The injection happens in ``render_rankings()``, not ``setup()`` as games
     does it, so that ``get()``'s ``batched_cache_reads`` covers it.
     """
+
+    page_cache_kind = "album_landing"
+    page_cache_timeout = config.CACHE_TIMEOUT_LANDING_PAGE
 
     def get_page_seo(self):
         """Return ``{"params", "meta_description"}`` for this URL, or 404."""
@@ -1063,10 +1108,12 @@ class DecadeLandingView(MusicLandingPageView):
         }
 
 
-class MusicBrowseIndexView(TemplateView):
+class MusicBrowseIndexView(MusicPageCacheMixin, TemplateView):
     """Index of every music landing page, reached from the sitemap only."""
 
     template_name = "music/landing/browse.html"
+    page_cache_kind = "album_landing"
+    page_cache_timeout = config.CACHE_TIMEOUT_LANDING_PAGE
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

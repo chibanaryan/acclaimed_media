@@ -136,6 +136,7 @@ class PublicSectionTests(AccessFixtureMixin, TestCase):
     def test_music_beta_decides_the_badge(self):
         response = self.client.get(reverse("music:home"))
         self.assertContains(response, "Beta</span>")
+        clear_all_caches()  # the page as rendered with the flag on
         with mock.patch.object(config, "MUSIC_BETA", False):
             response = self.client.get(reverse("music:home"))
         self.assertNotContains(response, "Beta</span>")

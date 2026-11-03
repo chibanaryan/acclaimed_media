@@ -5,9 +5,10 @@ Modelled on ``games/tests/test_landing_pages.py``.
 
 import json
 import re
+import zlib
 
 from django.conf import settings
-from django.core.cache import cache
+from django.core.cache import cache, caches
 from django.test import TestCase
 from django.urls import get_resolver, resolve, reverse
 from django.urls.resolvers import URLResolver
@@ -16,6 +17,7 @@ from core.models import User
 from core.tests.utils import DatabaseCacheTestCase, clear_all_caches
 from music import config, models, views
 from music.services import landing_pages
+from music.services.data_version import compute_album_data_version
 from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 
 
@@ -230,26 +232,100 @@ class MusicCacheRoundTripTests(LandingFixtureMixin, DatabaseCacheTestCase):
     """The rankings pages read the shared cache in one batch, not per value.
 
     As games' `/` did (Sentry ACCLAIMED-VIDEO-GAMES-9E): in production every
-    `cache.get` is a query on ``cache_table``. Music has no page cache, so
-    every visit paid each read; a landing page's path lookups now join the
-    batch too, because they run inside it (`render_rankings`).
+    `cache.get` is a query on ``cache_table``. A landing page's path lookups
+    join the batch too, because they run inside it (`render_rankings`). The
+    bare pages are served whole to an anonymous visitor from the per-process
+    page cache, so these ask for a sort, which every filtered visit pays.
     """
 
     # The batch. The articles check the nav makes is the games site's
     READS = 1
 
     def test_rankings_page(self):
-        self.assertEqual(len(self.warm_cache_reads("/")), self.READS)
+        self.assertEqual(len(self.warm_cache_reads("/?sort=name")), self.READS)
 
     def test_landing_pages(self):
-        for url in ("/1970s/", "/genres/rock/"):
+        for url in ("/1970s/?sort=name", "/genres/rock/?sort=name"):
             with self.subTest(url=url):
                 self.assertEqual(len(self.warm_cache_reads(url)), self.READS)
+
+    def test_a_bare_page_is_served_whole(self):
+        for url in ("/", "/1970s/"):
+            with self.subTest(url=url):
+                self.assertEqual(self.warm_cache_reads(url), [])
 
     def test_signed_in_batches_the_tracking_ids_too(self):
         User.objects.create_user(username="batched", password="pw")
         self.client.login(username="batched", password="pw")
         self.assertEqual(len(self.warm_cache_reads("/")), self.READS)
+
+
+class MusicPageCacheTests(LandingFixtureMixin, TestCase):
+    """The bare rankings, landing and browse pages are served whole to an
+    anonymous visitor, as games' are (`AnonymousResponseCacheMixin`)."""
+
+    def _key(self, kind, path):
+        return f"testserver:{kind}:{config.CACHE_VERSION}:{path}"
+
+    def _cached(self, url, kind, rest):
+        self.assertEqual(self.client.get(url).status_code, 200)
+        return caches["local"].get(self._key(kind, rest))
+
+    def test_each_bare_page_is_cached(self):
+        for url, kind, rest in (
+            ("/", "album_home", "/"),
+            ("/1970s/", "album_landing", "/1970s/"),
+            ("/genres/rock/", "album_landing", "/genres/rock/"),
+            ("/browse/", "album_landing", "/browse/"),
+        ):
+            with self.subTest(url=url):
+                self.assertIsNotNone(self._cached(url, kind, rest))
+
+    def test_the_second_visit_is_served_from_the_cache(self):
+        payload = self._cached("/genres/rock/", "album_landing", "/genres/rock/")
+        payload["body"] = zlib.compress(b"CACHED MARKER")
+        caches["local"].set(self._key("album_landing", "/genres/rock/"), payload, 60)
+        self.assertEqual(self.client.get("/genres/rock/").content, b"CACHED MARKER")
+
+    def test_a_page_from_other_data_is_rendered_again_over_it(self):
+        key = self._key("album_landing", "/1970s/")
+        payload = self._cached("/1970s/", "album_landing", "/1970s/")
+        self.assertEqual(payload["version"], compute_album_data_version())
+        payload["body"] = zlib.compress(b"CACHED MARKER")
+        payload["version"] = "an older release"
+        caches["local"].set(key, payload, 60)
+        response = self.client.get("/1970s/")
+        self.assertNotEqual(response.content, b"CACHED MARKER")
+        # Stored over, in the same key: one entry a page, whatever the data
+        self.assertEqual(
+            caches["local"].get(key)["version"], compute_album_data_version()
+        )
+
+    def test_a_query_string_bypasses_the_cache(self):
+        for url, kind, rest in (
+            ("/?page=2", "album_home", "/"),
+            ("/1970s/?sort=name", "album_landing", "/1970s/"),
+            ("/browse/?utm_source=x", "album_landing", "/browse/"),
+        ):
+            with self.subTest(url=url):
+                self.assertIsNone(self._cached(url, kind, rest))
+
+    def test_an_htmx_request_bypasses_the_cache(self):
+        response = self.client.get("/", HTTP_HX_REQUEST="true")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(caches["local"].get(self._key("album_home", "/")))
+        self.assertIn("HX-Request", response.headers["Vary"])
+
+    def test_a_signed_in_reader_is_not_cached(self):
+        User.objects.create_user(username="cached", password="pw")
+        self.client.login(username="cached", password="pw")
+        self.assertIsNone(self._cached("/", "album_home", "/"))
+
+    def test_a_page_with_no_landing_is_not_cached(self):
+        self.assertEqual(self.client.get("/genres/jazz/").status_code, 404)
+        self.assertIsNone(
+            caches["local"].get(self._key("album_landing", "/genres/jazz/"))
+        )
 
 
 class LandingRoutingTests(TestCase):

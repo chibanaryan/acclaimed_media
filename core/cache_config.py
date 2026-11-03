@@ -39,11 +39,12 @@ DUMMY_BACKEND = "django.core.cache.backends.dummy.DummyCache"
 # on almost every write.
 DATABASE_CACHE_OPTIONS = {"MAX_ENTRIES": 5000, "CULL_FREQUENCY": 4}
 
-# Whole-page HTML, keyed by URL. Only the two views using
-# `AnonymousResponseCacheMixin` write here, and both decline any request with
-# a query string, so this is a handful of keys - but each is a whole page
-# (the home page is ~1.4 MB of HTML), and the dyno has 512 MB for every
-# worker together, so the ceiling stays low.
+# Whole-page HTML, keyed by host and URL. Only the views using
+# `AnonymousResponseCacheMixin` write here (both rankings pages, their
+# landing and browse pages, the apex's landing page), and all of them
+# decline a query string, so this is about 75 keys - but each is a whole
+# page (~90 KB deflated for a rankings page), and the dyno has 512 MB for
+# every worker together, so the ceiling stays low.
 LOCAL_CACHE_OPTIONS = {"MAX_ENTRIES": 500}
 
 # One or two integer counters per client IP per hour. A distributed crawl
