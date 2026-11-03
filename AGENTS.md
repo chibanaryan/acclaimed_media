@@ -1280,7 +1280,8 @@ and `get_igdb` all use it.
   (`core.services.post_import.schedule_after_commit`), started once the
   import commits and only when the games file was part of it. The page says
   so: music's summary, games' success message or the streamed import's toast
-  (a `metadata` event). Reload to watch the counts fall.
+  (a `metadata` event). Open the page again to watch the counts fall; the
+  lines never say "reload", since music's import result is the POST's page.
 - **One fetch per section at a time**, across workers and dynos, the
   commands' included: a `cache.add` lock on the shared `default` alias. An
   import while one runs starts none, says so, and asks the running one to go
@@ -1355,7 +1356,13 @@ and `get_igdb` all use it.
   (`_owed`), and the fetch's rounds, the page and a hold all let go through
   `_let_go`, which takes the lock back for an import that asked as it went. A start that
   fails is logged and reported, never as a failed import, since the release
-  is live by then.
+  is live by then. A fetch whose thread or heartbeat will not start leaves
+  the marker at the count it was to run at, so the page's next load tries
+  it again; the page says that, never "reload", since music's import result
+  is the POST's page. "Run it by hand" is said when the marker could not
+  be written, the cache being down. A hold whose lock
+  the cache culled and another fetch or hold then took leaves everything
+  owed, marker included, to that holder, since the marker may be its own.
 - **`METADATA_AFTER_IMPORT`** turns all of it off. It is off under test,
   where there is no network; the tests of the feature turn it on and patch
   the fetch. `scripts/setup_cloud.sh` passes `metadata=False`, having no

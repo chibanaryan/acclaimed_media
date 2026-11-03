@@ -25,7 +25,8 @@ second fetch can start beside the first.
 
 A fetch so killed leaves its ``pending_key`` behind, set before each round
 and cleared after, and an import page's next load restarts it
-(``resume_if_cut_short``): staff are told to reload that page anyway.
+(``resume_if_cut_short``): staff are told to reload that page anyway. One
+whose thread or heartbeat will not start leaves it too.
 
 Other metadata work takes the same lock through ``hold``, so that it never
 runs beside a fetch: the import page's IGDB and Wikipedia buttons and the
@@ -65,7 +66,8 @@ MAX_RESTARTS = 1
 # The marker of a fetch owed but never started: its first run is no restart
 NEVER_RUN = -1
 
-STARTED = "Fetching metadata in the background; reload this page to see it land."
+# Not "reload", for the reason given at RETRY_ON_NEXT_LOAD
+STARTED = "Fetching metadata in the background; open this page again to see it land."
 ALREADY_RUNNING = (
     "A metadata fetch is already running; it will run again for this import "
     "once it finishes."
@@ -74,9 +76,19 @@ NOT_STARTED = (
     "The metadata fetch could not start; run it by hand, or leave it to the "
     "Sunday scheduled job."
 )
+# It was left owed, so the import page's next load starts it. Not "reload":
+# music's import result is the POST's page, which a reload would resubmit.
+RETRY_ON_NEXT_LOAD = (
+    "The metadata fetch could not start; the import page will try again the "
+    "next time it is opened."
+)
 RESUMED = (
     "The last import's metadata fetch was cut short; it has been restarted in "
     "the background."
+)
+LATE_START = (
+    "The last import's metadata fetch had not started; it has started in the "
+    "background."
 )
 GAVE_UP = (
     "The last import's metadata fetch was cut short again after its restart; "
@@ -190,7 +202,6 @@ def resume_if_cut_short(section, job):
 
     def restart(restarts):
         started.append(_hand_off(section, job, token, restarts))
-        return started[-1]
 
     try:
         restarts = _read_owed(section)
@@ -205,14 +216,20 @@ def resume_if_cut_short(section, job):
             # Finished between the reads, or given up; unless an import
             # asked as the lock went, and its fetch is under way
             if _let_go(section, token, restart):
-                return RESUMED if started[-1] else NOT_STARTED
+                # Not a restart: the fetch of an import that found it held
+                return _said(started[-1], STARTED)
             return None if restarts is None else GAVE_UP
     except Exception:
         logger.exception("Could not check for a cut-short %s metadata fetch", section)
         _release_quietly(key, token)
         return None
-    logger.warning("Restarting a %s metadata fetch that was cut short", section)
-    return RESUMED if restart(restarts) else NOT_STARTED
+    if restarts == 0:
+        # An import's fetch that never started, so was not cut short
+        logger.warning("Starting a %s metadata fetch left owed", section)
+    else:
+        logger.warning("Restarting a %s metadata fetch that was cut short", section)
+    restart(restarts)
+    return _said(started[-1], LATE_START if restarts == 0 else RESUMED)
 
 
 # What ``_owed`` says of a restart that was cut short too
@@ -259,18 +276,51 @@ def _let_go(section, token, run):
     return False
 
 
+# What ``_hand_off`` did: started the fetch, or not but left it owed to the
+# import page, or neither
+_STARTED = "started"
+_LEFT_OWED = "left owed"
+_LOST = "lost"
+
+
+def _said(outcome, started_line):
+    """The line for staff on ``_hand_off``'s ``outcome``."""
+    return {_STARTED: started_line, _LEFT_OWED: RETRY_ON_NEXT_LOAD}.get(
+        outcome, NOT_STARTED
+    )
+
+
 def _hand_off(section, job, token, restarts):
-    """Run the fetch on a thread, the lock already taken; whether it started."""
+    """Run the fetch on a thread, the lock already taken. Never raises.
+
+    The heartbeat starts here, before the fetch's thread, so that either
+    failing to start is known to the caller, which tells staff.
+    """
+    stop = threading.Event()
     try:
-        start_background_thread(lambda: _run(section, job, token, restarts=restarts))
+        _start_heartbeat(lock_key(section), stop)
+        start_background_thread(
+            lambda: _run(section, job, token, restarts=restarts, stop=stop)
+        )
     except Exception:
+        stop.set()
         logger.exception("Could not start the %s metadata fetch", section)
-        try:
-            # For the import page to restart, at the count this run had
-            cache.set(pending_key(section), restarts - 1, PENDING_SECONDS)
-        except Exception:
-            logger.exception("Could not leave the %s metadata fetch owed", section)
+        left = _leave_owed(section, restarts)
         _release_quietly(lock_key(section), token)
+        return _LEFT_OWED if left else _LOST
+    return _STARTED
+
+
+def _leave_owed(section, restarts):
+    """Leave a fetch that never ran for the import page; whether it was.
+
+    At the count it was to run at, so the page restarts it at that count,
+    and an import's own run, at 0, is ``NEVER_RUN``. Never raises.
+    """
+    try:
+        cache.set(pending_key(section), restarts - 1, PENDING_SECONDS)
+    except Exception:
+        logger.exception("Could not leave the %s metadata fetch owed", section)
         return False
     return True
 
@@ -323,8 +373,9 @@ class Hold:
         """
         self.stop.set()
         section = self.section
+        key = lock_key(section)
         try:
-            run = {
+            runners = {
                 RUN_HERE: lambda restarts: self._run_here(stdout, restarts),
                 RUN_ON_A_THREAD: lambda restarts: _hand_off(
                     section, self.job, self.token, restarts
@@ -332,7 +383,26 @@ class Hold:
                 LEAVE_TO_THE_PAGE: lambda restarts: _leave_to_page(
                     section, self.token, restarts
                 ),
-            }[owed]
+            }
+            run = runners.get(owed)
+            if run is None:
+                # Dropped, an import's request would wait for the next holder
+                logger.error(
+                    "Unknown place to run a %s metadata fetch owed: %r; "
+                    "leaving it to the import page",
+                    section,
+                    owed,
+                )
+                run = runners[LEAVE_TO_THE_PAGE]
+            if cache.get(key) != self.token and not _add(key, self.token):
+                # The cache culled the lock and another fetch or hold took it.
+                # What is owed is its to run, and the marker may be its own.
+                logger.warning(
+                    "The %s metadata lock was taken while held; leaving what "
+                    "is owed to its holder",
+                    section,
+                )
+                return
             restarts = _read_owed(section)
             if restarts is _GIVEN_UP:
                 if did_the_work:
@@ -346,7 +416,7 @@ class Hold:
                 run(restarts)
         except Exception:
             logger.exception("Could not let go of the %s metadata lock", section)
-            _release_quietly(lock_key(section), self.token)
+            _release_quietly(key, self.token)
 
     def _run_here(self, stdout, restarts):
         try:
@@ -475,43 +545,47 @@ def _acquire(section):
 
 
 def _start(section, job, status):
-    token = None
     try:
         token = _acquire(section)
-        if token is None:
-            status["message"] = ALREADY_RUNNING
-            return
-        start_background_thread(lambda: _run(section, job, token))
     except Exception:
-        # The import has committed, so this must not read as its failure.
-        # With no thread, nothing but this releases the lock.
+        # The import has committed, so this must not read as its failure
         logger.exception("Could not start the %s metadata fetch", section)
-        if token is not None:
-            _release_quietly(lock_key(section), token)
         status["message"] = NOT_STARTED
+        return
+    if token is None:
+        status["message"] = ALREADY_RUNNING
+        return
+    status["message"] = _said(_hand_off(section, job, token, 0), STARTED)
 
 
-def _run(section, job, token, *, restarts=0):
+def _run(section, job, token, *, restarts, stop):
     stream = LogStream()
     try:
-        _rounds(section, job, token, stream, restarts=restarts)
+        _rounds(section, job, token, stream, restarts=restarts, stop=stop)
     except Exception:
         logger.exception("The %s metadata fetch after an import failed", section)
     finally:
         stream.flush()
 
 
-def _rounds(section, job, token, stdout, *, restarts=0):
+def _rounds(section, job, token, stdout, *, restarts=0, stop=None):
     """Run ``job`` until no import is waiting on it; the last round's failures.
 
     ``restarts`` counts the times the first round's fetch was cut short; a
-    later round's is a later import's, at none.
+    later round's is a later import's, at none. ``stop`` is the heartbeat's,
+    when the caller started it; otherwise one starts here.
     """
     key = lock_key(section)
-    stop = threading.Event()
     failed = []
     try:
-        _start_heartbeat(key, stop)
+        if stop is None:
+            stop = threading.Event()
+            try:
+                _start_heartbeat(key, stop)
+            except Exception:
+                # The fetch never ran: owed, for the import page to start
+                _leave_owed(section, restarts)
+                raise
         while True:
             while True:
                 # Left behind if this worker dies mid-round, for the import

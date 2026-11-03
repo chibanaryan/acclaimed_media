@@ -10,7 +10,8 @@ that followed. Four more from the same list were fixed on 2026-11-02, and
 the three held back that day on 2026-11-03 (`DEVLOG.md`). The five older
 bugs the 2026-11-03 reviews turned up were fixed the same day, and the two
 filed then (the entity pages' Load More, an engine on a payload of another
-version) later that day.
+version) later that day, as were the metadata fetch's restart edges filed
+that evening.
 `music/static/music/js/album-client-filtering.js`'s `change` listener has
 broken three times when given state, so keep any fix there stateless and pin
 it in `scripts/browser_smoke.js` first.
@@ -39,30 +40,13 @@ The browser harnesses used for v905 are in the ashgabat worktree's
    middle sits under the sticky header still counts as on screen. Six review
    rounds went into this case, so weigh any fix against how rare it is.
 
-## Open bugs (found 2026-11-03, third session)
-
-3. **The metadata fetch's restart can still lose work when a thread will not
-   start.** Six review rounds on `core/services/post_import.py` (the
-   post-import lock, `hold`, the pending marker and `resume_if_cut_short`)
-   left these, each needing "can't start new thread" or a cache error at the
-   wrong instant, rare under 2 workers x 3 threads: `_start` leaves no
-   marker when the import's own fetch thread will not start, nor does
-   `_rounds` when its heartbeat will not; a `Hold.end` given an unknown
-   `owed=` drops an import's request; a weekly hold whose lock the cache
-   culled can delete a live fetch's given-up marker. The staff lines also
-   lag the marker's states: `NOT_STARTED` says "run it by hand" though the
-   next reload retries, and a `NEVER_RUN` request reads as "cut short".
-   The rounds' own notes: the weekly-marker rule went back and forth
-   (round 2 kept the marker, round 5 dropped it, round 6 restored round
-   2's), so read why before changing it.
-
 ## Music: after launch
 
 The section is public at `music.acclaimedmedia.org`, beside the games site and
 a landing page at the apex (2026-10-30; AGENTS.md, "Domain"). The pages keep a
 "Beta" badge while `music.config.MUSIC_BETA` is on.
 
-4. **New brand artwork.** The favicons still read "Acclaimed Video Games"
+3. **New brand artwork.** The favicons still read "Acclaimed Video Games"
    (`games/static/games/brand/`), and a page without artwork of its own has
    no `og:image` since the old one was removed; every page title already
    says Acclaimed Media. A new default goes in `base.html`'s `og_image` block,
@@ -75,7 +59,7 @@ The rankings page is 690 KB anonymous and 833 KB logged in, and the dyno
 runs gthread with three threads per worker (AGENTS.md, "Production memory
 budget").
 
-5. **Check `--threads 3` after a week.** The `Procfile` went from two
+4. **Check `--threads 3` after a week.** The `Procfile` went from two
    threads per worker to three on 2026-11-03, on a week of gthread at two
    (2026-10-27 to 11-02) that peaked at 342 MiB RSS of the 512 MiB quota,
    with swap never above 13 MiB. Around 2026-11-10, re-read

@@ -217,13 +217,29 @@ class ScheduleAfterCommitTests(PostImportTestCase):
             self.run_inline()
         self.job.assert_not_called()
         self.assertIsNone(cache.get(LOCK))
+        # Left owed, for the import page's next load to start
+        self.assertEqual(cache.get(PENDING), post_import.NEVER_RUN)
 
     def test_a_thread_that_will_not_start_releases_the_lock(self):
         status = {}
         with mock.patch(THREAD, side_effect=RuntimeError("can't start new thread")):
             with self.assertLogs("core.services.post_import", "ERROR"):
                 post_import._start("test", self.job, status)
+        self.assertEqual(status["message"], post_import.RETRY_ON_NEXT_LOAD)
+        self.assertIsNone(cache.get(LOCK))
+        self.assertEqual(cache.get(PENDING), post_import.NEVER_RUN)
+
+    def test_a_thread_that_will_not_start_nor_be_left_owed_is_said_so(self):
+        """Nothing will retry it, so staff are told to run it by hand."""
+        status = {}
+        with (
+            mock.patch(THREAD, side_effect=RuntimeError("can't start new thread")),
+            mock.patch.object(post_import.cache, "set", side_effect=ConnectionError),
+            self.assertLogs("core.services.post_import", "ERROR") as logs,
+        ):
+            post_import._start("test", self.job, status)
         self.assertEqual(status["message"], post_import.NOT_STARTED)
+        self.assertIn("Could not leave", logs.output[-1])
         self.assertIsNone(cache.get(LOCK))
 
     def test_a_lock_that_will_not_release_is_not_a_failed_import(self):
@@ -234,7 +250,7 @@ class ScheduleAfterCommitTests(PostImportTestCase):
             self.assertLogs("core.services.post_import", "ERROR"),
         ):
             post_import._start("test", self.job, status)
-        self.assertEqual(status["message"], post_import.NOT_STARTED)
+        self.assertEqual(status["message"], post_import.RETRY_ON_NEXT_LOAD)
 
     def test_a_cache_error_is_not_a_failed_import(self):
         status = {}
@@ -329,7 +345,8 @@ class CutShortFetchTests(PostImportTestCase):
         seen = []
         self.job.side_effect = lambda stdout: seen.append(cache.get(PENDING)) or []
         with self.assertLogs("core.services.post_import", "WARNING"):
-            self.assertEqual(self.resume(), post_import.RESUMED)
+            # It never ran, so it was not cut short
+            self.assertEqual(self.resume(), post_import.LATE_START)
         self.assertEqual(seen, [0])
 
     def test_an_import_asking_as_it_gives_up_gets_its_fetch(self):
@@ -347,8 +364,8 @@ class CutShortFetchTests(PostImportTestCase):
             mock.patch.object(post_import, "_release", side_effect=release_then_import),
             self.assertLogs("core.services.post_import", "ERROR"),
         ):
-            # Not "left to Sunday": a fetch is under way
-            self.assertEqual(self.resume(), post_import.RESUMED)
+            # Not "left to Sunday", nor a restart: the import's fetch is under way
+            self.assertEqual(self.resume(), post_import.STARTED)
         self.job.assert_called_once()
 
     def test_a_late_import_whose_thread_will_not_start_is_said_so(self):
@@ -369,8 +386,9 @@ class CutShortFetchTests(PostImportTestCase):
         ):
             self.assertEqual(
                 post_import.resume_if_cut_short("test", self.job),
-                post_import.NOT_STARTED,
+                post_import.RETRY_ON_NEXT_LOAD,
             )
+        self.assertEqual(cache.get(PENDING), post_import.NEVER_RUN)
 
     def test_two_loads_at_once_restart_it_once(self):
         """Both read the marker before either took the lock."""
@@ -420,9 +438,40 @@ class CutShortFetchTests(PostImportTestCase):
         ):
             self.assertEqual(
                 post_import.resume_if_cut_short("test", self.job),
+                post_import.RETRY_ON_NEXT_LOAD,
+            )
+        self.assertIsNone(cache.get(LOCK))
+        # At the count it had: the next load tries the same restart again
+        self.assertEqual(cache.get(PENDING), 0)
+
+    def test_a_restart_whose_heartbeat_will_not_start_keeps_its_count(self):
+        """And says so: nothing is running."""
+        cache.set(PENDING, 0)
+        self.heartbeat.side_effect = RuntimeError("can't start new thread")
+        with self.assertLogs("core.services.post_import", "WARNING"):
+            self.assertEqual(self.resume(), post_import.RETRY_ON_NEXT_LOAD)
+        self.job.assert_not_called()
+        self.assertIsNone(cache.get(LOCK))
+        self.assertEqual(cache.get(PENDING), 0)
+
+    def test_a_restart_that_cannot_be_left_owed_either_is_said_so(self):
+        cache.set(PENDING, 0)
+        with (
+            mock.patch(THREAD, side_effect=RuntimeError("can't start new thread")),
+            mock.patch.object(post_import.cache, "set", side_effect=ConnectionError),
+            self.assertLogs("core.services.post_import", "WARNING"),
+        ):
+            self.assertEqual(
+                post_import.resume_if_cut_short("test", self.job),
                 post_import.NOT_STARTED,
             )
         self.assertIsNone(cache.get(LOCK))
+
+    def test_the_retry_line_never_asks_for_a_reload(self):
+        """Music's import result is the POST's own page: a reload would
+        submit the import again."""
+        self.assertNotIn("reload", post_import.RETRY_ON_NEXT_LOAD)
+        self.assertNotIn("reload", post_import.STARTED)
 
     def test_a_live_fetch_is_left_alone(self):
         """Its marker stands beside its lock."""
@@ -575,7 +624,10 @@ class HoldTests(PostImportTestCase):
             override_settings(METADATA_AFTER_IMPORT=True),
             self.assertLogs("core.services.post_import", "WARNING"),
         ):
-            post_import.resume_if_cut_short("test", self.job)
+            self.assertEqual(
+                post_import.resume_if_cut_short("test", self.job),
+                post_import.LATE_START,
+            )
         self.assertEqual(seen, [0])
 
     def test_a_fetch_owed_whose_thread_will_not_start_is_left_to_the_page(self):
@@ -603,9 +655,51 @@ class HoldTests(PostImportTestCase):
 
     def test_an_unknown_place_to_run_does_not_raise(self):
         taken = post_import.hold("test", self.job)
+        cache.set(AGAIN, True)
         with self.assertLogs("core.services.post_import", "ERROR"):
             taken.end(StringIO(), owed="background")
         self.assertIsNone(cache.get(LOCK))
+        self.job.assert_not_called()
+        # The import's request is left to the page rather than dropped
+        self.assertEqual(cache.get(PENDING), post_import.NEVER_RUN)
+
+    def lock_culled_and_taken(self):
+        """The cache culled a hold's lock, and another fetch took it."""
+        cache.delete(LOCK)
+        cache.add(LOCK, "theirs")
+
+    def test_a_hold_whose_lock_was_taken_leaves_the_markers_to_their_holder(self):
+        """A live restart's marker is at the given-up count; deleted, a
+        restart cut short would never be reported."""
+        taken = post_import.hold("test", self.job)
+        self.lock_culled_and_taken()
+        cache.set(PENDING, 1)
+        with self.assertLogs("core.services.post_import", "WARNING"):
+            taken.end(StringIO(), did_the_work=True)
+        self.assertEqual(cache.get(PENDING), 1)
+        self.assertEqual(cache.get(LOCK), "theirs")
+
+    def test_a_hold_whose_lock_was_taken_leaves_an_import_to_their_holder(self):
+        """Run here, it would be a second fetch beside theirs."""
+        taken = post_import.hold("test", self.job)
+        self.lock_culled_and_taken()
+        cache.set(AGAIN, True)
+        with self.assertLogs("core.services.post_import", "WARNING"):
+            taken.end(StringIO())
+        self.job.assert_not_called()
+        self.assertTrue(cache.get(AGAIN))
+        self.assertEqual(cache.get(LOCK), "theirs")
+
+    def test_a_hold_whose_lock_was_culled_takes_it_back(self):
+        taken = post_import.hold("test", self.job)
+        cache.delete(LOCK)
+        cache.set(AGAIN, True)
+        held = []
+        self.job.side_effect = lambda stdout: held.append(cache.get(LOCK)) or []
+        taken.end(StringIO())
+        self.assertEqual(held, [taken.token])
+        self.assertIsNone(cache.get(LOCK))
+        self.assertIsNone(cache.get(AGAIN))
 
     def test_a_weekly_that_did_the_work_drops_a_given_up_marker(self):
         """Or the page would report, days later, work the job had done."""
@@ -926,6 +1020,15 @@ class RunInForegroundTests(PostImportTestCase):
             with self.assertLogs("core.services.post_import", "ERROR"):
                 post_import.run_in_foreground("test", self.job, command)
         self.assertIn("The metadata fetch failed; see the log", command.output())
+
+    def test_a_heartbeat_that_will_not_start_leaves_the_fetch_owed(self):
+        command = _Command()
+        self.heartbeat.side_effect = RuntimeError("can't start new thread")
+        with self.assertLogs("core.services.post_import", "ERROR"):
+            post_import.run_in_foreground("test", self.job, command)
+        self.job.assert_not_called()
+        self.assertEqual(cache.get(PENDING), post_import.NEVER_RUN)
+        self.assertIsNone(cache.get(LOCK))
 
     def test_a_running_fetch_is_asked_to_go_again(self):
         """The command's import replaced the rows the running fetch is on."""

@@ -2,6 +2,16 @@
 
 ## 2026-11-03
 
+- **A metadata fetch that cannot start is left for the page to start.** An
+  import whose fetch thread or heartbeat would not start left nothing
+  behind, so the fetch waited for Sunday while staff were told to run it by
+  hand; it now leaves the marker the import page's next load restarts, and
+  says to reload. A restart that was never a restart (an import's fetch
+  left owed) no longer reads as "cut short". A weekly job whose lock the
+  cache culled leaves what is owed to whatever took it, where it could
+  delete a live restart's marker or run a second fetch beside it, and a
+  hold given an unknown place to run an owed fetch leaves it to the page
+  rather than dropping it
 - **A metadata fetch cut short is restarted, and nothing runs beside one.**
   A deploy or worker recycle ended an import's fetch silently, leaving the
   rest to Sunday; the import page's next load now restarts it. The page's
