@@ -490,11 +490,31 @@ each pinned by `scripts/browser_smoke.js`:
   failed before then leaves behind. It compares with
   `#album-rendered-filters`, the server's echo of the request, not with the
   URL, which the server cleans up (`?artists=Prince` is `prince`, a repeated
-  parameter its last value), and leaves out a search still being typed.
-  Putting the form back on the URL instead lost a click in flight and the
-  search being typed.
+  parameter its last value), and leaves out a search still being typed -
+  unless the form's last request failed, which it renders whatever has
+  focus. Putting the form back on the URL instead lost a click in flight and
+  the search being typed. With no engine to come (its data failed, or the
+  bundle is missing), a failed request puts the controls, the form and the
+  heading back on that echo instead (`mediaListControls.rollBackToTheList`,
+  through `renderedFiltersId` and the `client-engine-failed` event), so the
+  click is lost but nothing claims a filter the list does not show -
+  unless the reader has changed something since the failed request
+  (`_movedOnFrom`, comparing its parameters with both `filters` and the
+  form): a change still in a debounce lives only in `filters`, and one
+  queued behind the request is sent by htmx from the form as it stands
+  then, so a roll-back would lose it or send the old filters in its place.
+  A failed search unmasks the search at the takeover only while the box
+  still holds the query that failed, and is then pushed, its own commit
+  having been spent.
 - **The jump box waits for the engine**, which alone answers it: it renders
   disabled (`jump_awaits_engine`) and the bundle switches it on.
+
+Before the engine, a filter request aborts a server Load More in flight: the
+button shares the form's `hx-sync` queue (`#album-filters:abort`). Without it
+the page landed after the filter's render, appended to the list it replaced,
+and put its own button back out of band. A `?page=N` link renders rows from
+`N`'s start, which `#album-list-container[data-window-start]` tells the
+engine; `adopt()` takes the start, and the takeover draws Load Previous.
 
 A status change under a status filter takes out only the row that left and
 moves the later positions up one (`dropIfFilteredOut`,
@@ -897,9 +917,15 @@ API with games' 403; `/import/` is staff-only, behind
   way in - the site menu (on music, beside the site's own name), the games
   mobile bar's Music icon, and the landing page's Music card, which also
   says it in words. Turning `MUSIC_BETA` off removes them all.
-- Artist slugs have no redirects, by decision (2026-10-30): every import
-  rebuilds them from the current names (see "Music Data Import"), so a renamed
-  act's old links 404 until an `ArtistSlugHistory` is built.
+- A renamed artist's old slug redirects. Every import and Wikidata pass
+  rebuilds slugs from the current names (see "Music Data Import"), and both
+  keep the slug an artist loses in `ArtistSlugHistory`
+  (`artist_slugs.record_slug_changes`), which `ArtistDetailView` 301s to the
+  current slug, query string kept. A slug an artist holds now is never kept
+  there, so a live page always wins, and an artist the file drops takes its
+  history with it. Only the page redirects: the API's artist detail is a
+  404, and a `?artists=` filter on an old slug matches nothing. Until
+  2026-11-02 nothing redirected, by decision at launch.
 
 **HTMX Integration:**
 - Dynamic filtering without full page reloads
@@ -918,6 +944,23 @@ API with games' 403; `/import/` is staff-only, behind
 - Pushes URLs to browser history when HTMX requests complete
 - Maintains browser back/forward functionality with HTMX
 - Uses `HX-Push-Url` header for selective history updates
+
+It sets `HX-Push-URL` on every htmx response but a Load More page, so htmx
+pushes an entry for every request, whether or not the element asked. Two
+rules follow, both since 2026-11-02 and both run by `scripts/browser_smoke.js`
+("Back from a search on ..."):
+
+- **htmx keeps no snapshots** (`historyCacheSize: 0, refreshOnHistoryMiss:
+  true` in `base.html`'s `htmx-config`), so Back onto an htmx entry reloads it.
+  A snapshot holds the DOM Alpine built, and restoring one threw an Alpine
+  error per `x-for` clone on every entity page; with none stored, htmx fetched
+  the entry as a partial and swapped it in for the whole body.
+- **A page never pushes an entry of its own beside htmx's.** Each entity page
+  (artists, source lists, developers) used to, so a search or a sort took two
+  presses of Back, and the first reloaded nothing. One that wants a tidier
+  address rewrites htmx's entry in place:
+  `history.replaceState(history.state, '', url)`, on its `htmx:afterRequest`
+  or after `htmx.ajax(...)` resolves, since htmx pushes before either.
 
 ### Google Analytics Integration
 
@@ -1129,8 +1172,8 @@ differ from the games files:
   title (`Artist.wikipedia_title`, from the enwiki sitelink) is the bare
   name keeps the plain slug, the others take their titles
   ("nirvana-british-band"); with no bare-name title the lowest provider id
-  keeps the plain slug, and only an act with no usable title is numbered. Names go through unidecode ("royksopp"). Nothing
-  redirects a replaced slug (see "Access"). `--dry-run` lists the slugs that
+  keeps the plain slug, and only an act with no usable title is numbered. Names go through unidecode ("royksopp"). A
+  replaced slug redirects to the new one (see "Access"). `--dry-run` lists the slugs that
   would change. An artist the file does not list is deleted,
   with its page.
 - **A provider id is permanent.** The import trusts that: a row updates
@@ -1795,13 +1838,15 @@ data attribute and a delegated listener, not `onclick`.
 ## Production memory budget
 
 The web dyno is a Basic one: **512 MB for every gunicorn worker together**.
-Measured on 2026-10-18 (Python 3.11, Django 5.2; re-measure after the
-2026-10-25 move to 3.14 and 6.1 reaches the dyno), one worker boots at ~110 MB (79 MB of imports, ~30 MB
+Measured on 2026-10-18 (Python 3.11, Django 5.2), one worker boots at ~110 MB (79 MB of imports, ~30 MB
 of it `sentry_sdk`) and plateaus at **~200 MB** once it has rendered a page or
 two - flat from ~50 renders out to 1000, so there is no leak to hunt. The
 rankings page was 1.4 MB of HTML then, and the ~45 MB a worker never returns
 after its first render is allocator arenas, not live data. It is now 690 KB
-anonymous and 833 KB logged in (see "Rankings page weight" below).
+anonymous and 833 KB logged in (see "Rankings page weight" below). On 3.14
+and 6.1 the dyno's metrics show less: a week of 2 workers x 2 threads to
+2026-11-02 peaked at 342 MiB RSS for both, with swap under 13 MiB, and ran at
+a median of 250 MiB.
 
 That arithmetic sets the shape of the `Procfile`:
 
@@ -1923,10 +1968,19 @@ every click's INP under 200 ms even at 4x. Four things mattered:
   skipping a repeated commit each broke something (a typed search, a `?q=`
   link, Clear All on a jumped list). Only `pushUrl` guards, statelessly, against
   pushing the URL it is on: a search used to leave two entries. A games Load More or server jump whose button has gone is dropped
-  (`utils-loadmore.js`) and answered by the engine. Whatever replaced the
-  button answers: the engine's takeover, unless it rendered a change, and a
-  list/grid toggle (`setViewMode`). The page landing later cannot tell a
-  toggle from a jump or a filter change, so it never answers.
+  (`utils-loadmore.js`), unless the list is still the one it was asked
+  for: `filterComponent._urlFilterKey`, the filters the URL was last
+  written with, is unchanged (`serverListKey`, `engineForSameList`). Not
+  the filters asked for, which run ahead of the list while a change is on
+  its way, and not the URL, which the takeover rewrites into its normal
+  form. Then the engine answers it, wherever it lands or fails, so
+  no render that replaces the button has to: the takeover of the page's own
+  filters, a list/grid toggle, a client jump, the engine's Load More. A jump
+  becomes the engine's jump, and a Load More renders to the row the click
+  asked for, not one page past the 100 a render leaves. A filter change or
+  Back changes the key, so both are dropped: a late server jump used to jump
+  on the filter's list. Asking at render time instead needed every render
+  to remember, and a pending jump to be forgotten once answered.
 - **Sidebar bindings scanned the page's reactive arrays.** Every
   platform, genre and series row called `find()`/`filter()` over
   `platforms`/`genres`/`seriesList`. Each scan read, and subscribed to,
@@ -1963,7 +2017,8 @@ Environment variables are managed via django-environ (`.env` file):
 - `IGDB_CLIENT_SECRET` - IGDB API client secret
 - `IGDB_USE_PRO_TIER` - Enable IGDB Pro tier (default: False)
 - `WIKIDATA_ACCESS_TOKEN` - For faster Wikipedia processing (2.5x speedup)
-- `BOOKS_ENABLED` - Enable books feature (default: False, enabled in DEBUG/TEST modes)
+- `BOOKS_ENABLED` - Show the Books links in the nav (default: False). The
+  section is staff-only whatever it says
 - `HARDCOVER_API_TOKEN` - Optional Hardcover API token for additional book metadata
 - `DISCOGS_TOKEN` - Optional Discogs personal access token; raises the music
   metadata rate limit above the 25 requests/minute anonymous tier

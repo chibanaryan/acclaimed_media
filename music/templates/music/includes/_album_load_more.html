@@ -6,6 +6,7 @@
 {# that one does. Because the button sits outside the element the rows are #}
 {# appended to, each page's response replaces it out of band - otherwise the #}
 {# first Load More would be the last. #}
+{# hx-sync shares the filter form's queue: a filter request aborts a page in flight, which would otherwise append to the list it replaced and put back its own button, and a click while one is in flight is dropped, its button about to be replaced. #}
 {# Keep every template comment on a single line. #}
 {% load humanize %}
 {% if has_more %}
@@ -15,6 +16,7 @@
             hx-get="{% url 'music:home' %}?page={{ next_page }}&append=true{% if query_string %}&{{ query_string }}{% endif %}"
             hx-target="#album-list-container"
             hx-swap="beforeend"
+            hx-sync="#album-filters:abort"
             data-next-page="{{ next_page }}"
             data-total="{{ total_count }}"
             data-loaded="{{ loaded_count }}">

@@ -36,8 +36,9 @@ class Artist(models.Model):
     provider's own permanent index, ``source_id``, which is what an import
     upserts on - so an artist keeps its pk across imports. Its slug follows
     its current name, disambiguated by its Wikipedia title (see
-    ``music.services.artist_slugs``), so a slug - and a ``?artists=`` link,
-    which takes slugs - lasts only as long as the name.
+    ``music.services.artist_slugs``). A slug it loses is kept in
+    ``ArtistSlugHistory``, so its page redirects to the new one; a
+    ``?artists=`` link, which takes slugs, lasts only as long as the name.
 
     An artist can be credited under several names, ``name_variants``:
     Prince is also "Prince and the Revolution", Frank Zappa "The Mothers of
@@ -113,6 +114,30 @@ class Artist(models.Model):
 
     def get_absolute_url(self) -> str:
         return site_reverse(MUSIC, "music:artist-detail", kwargs={"slug": self.slug})
+
+
+class ArtistSlugHistory(models.Model):
+    """A slug an artist has lost, so that its old links still land.
+
+    Written whenever a slug changes (``artist_slugs.record_slug_changes``)
+    and read by the artist page, which redirects it to the current one. A
+    slug some artist holds now is never kept here: the live page wins.
+    """
+
+    slug = models.SlugField(max_length=210, unique=True)
+    artist = models.ForeignKey(
+        Artist, on_delete=models.CASCADE, related_name="slug_history"
+    )
+    created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "music_artist_slug_history"
+        ordering = ["-created"]
+        verbose_name = "Former slug"
+        verbose_name_plural = "Former slugs"
+
+    def __str__(self) -> str:
+        return f"{self.slug} -> {self.artist_id}"
 
 
 class MusicGenre(models.Model):

@@ -9,6 +9,7 @@
     <div class="flex items-center w-full text-base font-semibold">
         <button type="button"
                 @click="expanded = !expanded"
+                :aria-expanded="expanded ? 'true' : 'false'"
                 class="flex items-center gap-2">
             <span class="mdi mdi-calendar-range text-lg text-base-content/70" aria-hidden="true"></span>
             Release Year
@@ -36,21 +37,24 @@
          class="space-y-4">
 
         {# Segmented Control Toggle #}
-        <div class="flex bg-base-200 rounded-lg p-1">
+        <div role="group" aria-label="Pick years by" class="flex bg-base-200 rounded-lg p-1">
             <button type="button"
                     @click="mode = 'decade'"
+                    :aria-pressed="mode === 'decade' ? 'true' : 'false'"
                     :class="mode === 'decade' ? 'bg-primary text-accent-content shadow-sm' : 'text-base-content/85 hover:text-base-content'"
                     class="flex-1 py-2 rounded-md text-sm font-medium transition-all duration-200">
                 Decade
             </button>
             <button type="button"
                     @click="mode = 'year'"
+                    :aria-pressed="mode === 'year' ? 'true' : 'false'"
                     :class="mode === 'year' ? 'bg-primary text-accent-content shadow-sm' : 'text-base-content/85 hover:text-base-content'"
                     class="flex-1 py-2 rounded-md text-sm font-medium transition-all duration-200">
                 Year
             </button>
             <button type="button"
                     @click="mode = 'range'"
+                    :aria-pressed="mode === 'range' ? 'true' : 'false'"
                     :class="mode === 'range' ? 'bg-primary text-accent-content shadow-sm' : 'text-base-content/85 hover:text-base-content'"
                     class="flex-1 py-2 rounded-md text-sm font-medium transition-all duration-200">
                 Range
@@ -58,10 +62,11 @@
         </div>
 
         {# Decade Grid #}
-        <div x-show="mode === 'decade'" class="grid grid-cols-3 gap-2">
+        <div x-show="mode === 'decade'" role="group" aria-label="Decade" class="grid grid-cols-3 gap-2">
             <template x-for="decade in decades" :key="decade.label">
                 <button type="button"
                         @click="selectDecade(decade); debouncedFilterUpdate()"
+                        :aria-pressed="isDecadeSelected(decade) ? 'true' : 'false'"
                         :class="isDecadeSelected(decade) ? 'btn-primary' : 'btn-outline'"
                         class="btn btn-sm">
                     <span x-text="decade.label"></span>

@@ -410,6 +410,56 @@ class GamesGridIsClientRenderedTests(SimpleTestCase):
                 )
 
 
+class GamesOvertakenServerWorkHasOneOwnerTests(SimpleTestCase):
+    """A server Load More or jump whose button a render replaced.
+
+    Each render once answered it its own way, or not at all: a client jump
+    dropped a Load More, every answer restarted at 100 rows, and a server
+    jump overtaken by a filter change jumped on the new list. Now the late
+    response asks one question where it lands: is the list the one it was
+    asked for (the URL's filters)? scripts/browser_smoke.js runs both ("games
+    server jump overtaken by a filter", "games Load More across a client
+    jump").
+    """
+
+    def _read(self, relative_path):
+        return (Path(settings.BASE_DIR) / relative_path).read_text()
+
+    def test_the_late_response_answers_only_for_the_same_list(self):
+        loadmore = self._read("games/static/games/js/utils-loadmore.js")
+        self.assertIn(
+            "if (key === null || key !== serverListKey()) return null;", loadmore
+        )
+        # The list on the page, which the takeover's rewritten URL keeps, and
+        # none while a server render is still bringing another one in
+        self.assertIn(
+            "return component.isLoading ? null : 'list:' + component._urlFilterKey;",
+            loadmore,
+        )
+        # Landed or failed, an overtaken click is answered the same way
+        self.assertIn(
+            "if (csf) answerLoadMore(csf, loaded + csf.renderer.PAGE_SIZE);", loadmore
+        )
+        body = loadmore[loadmore.index("async function jumpToRankServerSide(") :]
+        body = body[: body.index("\nasync function ")]
+        self.assertIn("const csf = engineForSameList(key);", body)
+        self.assertEqual(body.count("overtaken()"), 2)
+        # No render answers it itself any more, so none can answer it twice
+        component = self._read("games/static/games/js/filter-component.js")
+        self.assertNotIn("pageLoading", component)
+        self.assertNotIn("handleLoadMoreCSF", component)
+        for minified in (
+            "games/static/games/js/utils-loadmore.min.js",
+            "games/static/games/js/filter-component.min.js",
+        ):
+            with self.subTest(minified=minified):
+                self.assertNotIn("pageLoading", self._read(minified))
+        self.assertIn(
+            "engineForSameList",
+            self._read("games/static/games/js/utils-loadmore.min.js"),
+        )
+
+
 class ClientLoadMoreClaimsItsClickTests(SimpleTestCase):
     """A client-rendered Load More must load one page, not two.
 
@@ -655,7 +705,7 @@ class JumpToRankRendersAWindowTests(SimpleTestCase):
             "planJump(index)",
             "showRange(container, start, end",
             "loadPrevious(container",
-            "adopt(items, renderedCount)",
+            "adopt(items, renderedCount, start = 0)",
             "windowState()",
             "captureScrollAnchor(container)",
             "getLoadPreviousHtml(state)",
@@ -1002,6 +1052,66 @@ class AlbumFilterClicksApplyAtOnceTests(SimpleTestCase):
             "music/static/music/js/music-client-side-filtering.bundle.min.js"
         )
         self.assertIn("htmx:afterRequest", bundle)
+
+    def test_a_failed_filter_request_never_leaves_the_controls_ahead(self):
+        # Case by case in scripts/browser_smoke.js ("music failed ..."): the
+        # engine renders a failed search as it takes over, focus or not, and
+        # with no engine to come the controls go back to the list's filters.
+        engine = self._source("music/static/music/js/album-client-filtering.js")
+        self.assertIn("if (filterRequest || formAhead) {", engine)
+        self.assertIn("csf.failed = true;", engine)
+        # A failed search is rendered even with focus in the box, without
+        # forcing a render when the form already matches the list
+        self.assertIn("const masked = typing && !searchFailed;", engine)
+        self.assertIn("rerender({ push: !masked });", engine)
+        self.assertIn(
+            "element === form && xhr.readyState !== XMLHttpRequest.DONE", engine
+        )
+        self.assertIn("new CustomEvent('client-engine-failed', {", engine)
+        controls = self._source("core/static/core/js/media-list-controls.js")
+        self.assertIn("if (engine && !engine.failed) return;", controls)
+        # A newer change, still in a debounce or queued, answers for itself:
+        # the controls compare their own state, not only the form's
+        self.assertIn(
+            "if (!this._movedOnFrom(sent)) this.rollBackToTheList();", controls
+        )
+        self.assertIn(
+            "this._sentFieldValues = JSON.stringify(this._fieldValues());", controls
+        )
+
+
+class HtmxKeepsNoHistorySnapshotsTests(SimpleTestCase):
+    """Back onto an entry htmx pushed reloads it, on every page.
+
+    A snapshot holds the DOM Alpine built, so restoring one threw an Alpine
+    error per `x-for` clone, and with none stored htmx fetched the entry as
+    a partial and swapped it in for the whole body. And the entity pages each
+    pushed an entry of their own beside htmx's (HTMXPushURLMiddleware asks
+    it to push every response), so Back took two presses.
+    scripts/browser_smoke.js ("Back from a search on ...") runs them.
+    """
+
+    def _read(self, relative_path):
+        return (Path(settings.BASE_DIR) / relative_path).read_text()
+
+    def test_htmx_stores_no_snapshot_and_reloads_instead(self):
+        base = self._read("games/templates/base.html")
+        self.assertIn('"historyCacheSize": 0, "refreshOnHistoryMiss": true', base)
+
+    def test_no_entity_page_pushes_an_entry_of_its_own(self):
+        for template in (
+            "games/templates/developers/developer_list.html",
+            "games/templates/lists/list_list.html",
+            "games/templates/lists/includes/_list_list_full.html",
+        ):
+            with self.subTest(template=template):
+                self.assertNotIn("pushState", self._read(template))
+        controls = self._read("core/static/core/js/media-list-controls.js")
+        body = controls[controls.index("function entityListControlsData(") :]
+        self.assertNotIn("pushState", body)
+        self.assertIn(
+            "window.history.replaceState(window.history.state, '', url)", body
+        )
 
 
 class MobileFilterSheetIsSharedTests(SimpleTestCase):
@@ -1486,6 +1596,28 @@ class MobileSheetBuildsItsOwnYearOptionsTests(SimpleTestCase):
         self.assertIn(
             "shownStart() === shownEnd() ? shownStart() : 'A range'", template
         )
+
+
+class MobileTimeSheetSaysWhatIsSelectedTests(SimpleTestCase):
+    """The Decade / Year / Range switch and the decade buttons showed their
+    state by colour alone, where the sidebar's year grid says it in
+    `aria-pressed`. A screen reader could not tell which one was on."""
+
+    def test_every_toggle_carries_its_pressed_state(self):
+        template = (
+            Path(settings.BASE_DIR)
+            / "core/templates/core/includes/_mobile_filter_time.html"
+        ).read_text()
+        for mode in ("decade", "year", "range"):
+            self.assertIn(
+                f""":aria-pressed="mode === '{mode}' ? 'true' : 'false'\"""", template
+            )
+        self.assertIn(
+            """:aria-pressed="isDecadeSelected(decade) ? 'true' : 'false'\"""",
+            template,
+        )
+        self.assertIn(""":aria-expanded="expanded ? 'true' : 'false'\"""", template)
+        self.assertEqual(template.count('role="group"'), 2)
 
 
 class MusicHeadingKeepsItsHeightTests(SimpleTestCase):

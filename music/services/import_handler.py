@@ -342,7 +342,9 @@ def import_artists(
     and the Revolution.
 
     Slugs follow the current names (``music.services.artist_slugs``), with
-    the Wikipedia titles already stored telling same-named acts apart.
+    the Wikipedia titles already stored telling same-named acts apart. A
+    kept artist's old slug redirects to its new one: the id is trusted, as
+    for everything else the row writes.
     """
     parsed = parse_artists_file(file_obj)
     total = len(parsed)
@@ -373,6 +375,7 @@ def import_artists(
 
     created = 0
     artists_by_source: Dict[int, models.Artist] = {}
+    slug_changes = []
     for index, row in enumerate(parsed, start=1):
         name = row.names[0]
         artist = by_source.get(row.source_id) or adopt(name, row.wikidata_ids)
@@ -391,6 +394,8 @@ def import_artists(
         artist.name_variants = row.names
         artist.wikidata_id = primary
         artist.all_wikidata_ids = row.wikidata_ids
+        if artist.pk:
+            slug_changes.append((artist, artist.slug, slugs[row.source_id]))
         artist.slug = slugs[row.source_id]
         artist.save()
         artists_by_source[row.source_id] = artist
@@ -406,6 +411,7 @@ def import_artists(
         source_id__in=list(artists_by_source)
     ).delete()
     removed = deleted_by_model.get(models.Artist._meta.label, 0)
+    artist_slugs.record_slug_changes(slug_changes)
 
     variants = sum(len(row.names) - 1 for row in parsed)
     if progress_callback:

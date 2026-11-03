@@ -28,7 +28,12 @@ from django.db.models.expressions import OrderBy
 from django.db.models.functions import Lower
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
-from django.http import Http404, HttpResponse, HttpResponseBadRequest
+from django.http import (
+    Http404,
+    HttpResponse,
+    HttpResponseBadRequest,
+    HttpResponsePermanentRedirect,
+)
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.utils.functional import cached_property
@@ -1382,6 +1387,23 @@ class ArtistDetailView(HTMXPartialMixin, DetailView):
     context_object_name = "artist"
     slug_field = "slug"
     slug_url_kwarg = "slug"
+
+    def get(self, request, *args, **kwargs):
+        try:
+            return super().get(request, *args, **kwargs)
+        except Http404:
+            # A slug the artist has lost since (artist_slugs.record_slug_changes)
+            former = (
+                models.ArtistSlugHistory.objects.filter(slug=kwargs.get("slug"))
+                .select_related("artist")
+                .first()
+            )
+            if former is None or not former.artist.slug:
+                raise
+        url = reverse("music:artist-detail", kwargs={"slug": former.artist.slug})
+        if request.GET:
+            url += "?" + request.GET.urlencode()
+        return HttpResponsePermanentRedirect(url)
 
     def get_queryset(self):
         sort = self.request.GET.get("sort")

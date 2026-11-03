@@ -26,7 +26,8 @@ platforms = [
 nintendo = Developer.objects.create(name="Nintendo", slug="nintendo", igdb_id=1)
 studio = Developer.objects.create(name="Nintendo EAD", igdb_id=2, parent=nintendo)
 saga = Series.objects.create(name="Smoke Saga", slug="smoke-saga", igdb_id=1)
-for rank in range(1, 121):
+# Past three pages, so that a server Load More can ask for rows 201-300
+for rank in range(1, 321):
     game = Game.objects.create(
         name=f"Smoke Game {rank}",
         slug=f"smoke-game-{rank}",

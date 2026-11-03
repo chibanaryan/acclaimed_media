@@ -5,6 +5,7 @@ from unittest import mock
 
 from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase
+from django.urls import reverse
 
 from music import models
 from music.services.metadata_service import PassResult
@@ -12,7 +13,9 @@ from music.services.artist_slugs import (
     SlugSource,
     plan_artist_slugs,
     rebuild_artist_slugs,
+    record_slug_changes,
 )
+from music.tests.site import setUpModule, tearDownModule  # noqa: F401
 
 
 def plan(*entries):
@@ -114,6 +117,17 @@ class RebuildArtistSlugsTests(TestCase):
 
     def test_nothing_changed_reports_nothing(self):
         self.assertEqual(rebuild_artist_slugs(), [])
+        self.assertFalse(models.ArtistSlugHistory.objects.exists())
+
+    def test_a_moved_slug_is_kept_for_the_redirect(self):
+        models.Artist.objects.filter(pk=self.uk.pk).update(
+            wikipedia_title="Nirvana (British band)"
+        )
+        rebuild_artist_slugs()
+        self.assertEqual(
+            list(models.ArtistSlugHistory.objects.values_list("slug", "artist")),
+            [("nirvana-2", self.uk.pk)],
+        )
 
     def test_the_metadata_command_rebuilds_after_the_wikidata_pass(self):
         models.Artist.objects.filter(pk=self.uk.pk).update(
@@ -130,3 +144,68 @@ class RebuildArtistSlugsTests(TestCase):
         self.assertIn(
             "Artist 90 slug: nirvana-2 -> nirvana-british-band", out.getvalue()
         )
+
+
+class ArtistSlugRedirectTests(TestCase):
+    """A renamed act's old links land on its page (ROADMAP, 2026-10-30)."""
+
+    def setUp(self):
+        self.artist = models.Artist.objects.create(
+            name="Prince", slug="prince", source_id=8
+        )
+
+    def rename(self, artist, new):
+        old, artist.slug = artist.slug, new
+        artist.save()
+        record_slug_changes([(artist, old, new)])
+
+    def test_an_old_slug_redirects_to_the_current_one_with_its_query(self):
+        self.rename(self.artist, "the-artist")
+        url = reverse("music:artist-detail", kwargs={"slug": "prince"})
+        response = self.client.get(url + "?sort=year&dir=desc")
+        self.assertEqual(response.status_code, 301)
+        self.assertEqual(
+            response["Location"],
+            reverse("music:artist-detail", kwargs={"slug": "the-artist"})
+            + "?sort=year&dir=desc",
+        )
+        self.assertEqual(self.client.get(response["Location"]).status_code, 200)
+
+    def test_a_slug_another_artist_holds_now_serves_that_artist(self):
+        self.rename(self.artist, "the-artist")
+        other = models.Artist.objects.create(name="Prince", slug="prince", source_id=9)
+        record_slug_changes([])
+        response = self.client.get(
+            reverse("music:artist-detail", kwargs={"slug": "prince"})
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["artist"], other)
+        self.assertFalse(models.ArtistSlugHistory.objects.exists())
+
+    def test_the_newest_claim_on_an_old_slug_wins(self):
+        other = models.Artist.objects.create(name="Other", slug="other", source_id=9)
+        self.rename(self.artist, "the-artist")
+        self.rename(other, "prince")
+        self.rename(other, "other-act")
+        self.assertEqual(
+            models.ArtistSlugHistory.objects.get(slug="prince").artist, other
+        )
+
+    def test_a_former_slug_names_itself_and_its_artist_in_the_admin(self):
+        self.rename(self.artist, "the-artist")
+        former = models.ArtistSlugHistory.objects.get()
+        self.assertEqual(str(former), f"prince -> {self.artist.pk}")
+
+    def test_a_slug_nobody_ever_had_is_still_a_404(self):
+        response = self.client.get(
+            reverse("music:artist-detail", kwargs={"slug": "nobody"})
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_an_old_slug_whose_artist_lost_its_slug_is_a_404(self):
+        self.rename(self.artist, "the-artist")
+        models.Artist.objects.filter(pk=self.artist.pk).update(slug=None)
+        response = self.client.get(
+            reverse("music:artist-detail", kwargs={"slug": "prince"})
+        )
+        self.assertEqual(response.status_code, 404)

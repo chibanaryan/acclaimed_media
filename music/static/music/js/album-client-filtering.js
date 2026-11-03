@@ -22,6 +22,9 @@ class AlbumClientSideFiltering {
         this.currentFilters = {};
         this.viewMode = 'list';
         this.form = null;
+        // Where the server's rows start: 0, or a `?page=N` link's offset,
+        // until the renderer adopts them or the engine renders its own
+        this.pageStart = 0;
     }
 
     /**
@@ -35,6 +38,7 @@ class AlbumClientSideFiltering {
     attach(form) {
         this.form = form;
         this.currentFilters = this.readFilters(form);
+        this.pageStart = serverPageStart();
     }
 
     /**
@@ -52,7 +56,8 @@ class AlbumClientSideFiltering {
         const filters = this.form ? this.readFilters(this.form) : this.currentFilters;
         this.currentFilters = filters;
         const { albums } = this.engine.apply(filters);
-        this.renderer.adopt(albums, loadedAlbumCount());
+        this.renderer.adopt(albums, loadedAlbumCount(), this.pageStart);
+        this.pageStart = 0;
         this.renderer._currentViewMode = this.viewMode;
         this.renderer._currentShowRank = this._isFiltered(filters)
             ? 'filtered'
@@ -286,6 +291,8 @@ class AlbumClientSideFiltering {
         if (!this.isInitialized) return;
 
         this.currentFilters = filters;
+        // The engine's rows start at the top, whatever page the server's did
+        this.pageStart = 0;
         const { albums } = this.engine.apply(filters);
         const showRank = this._isFiltered(filters) ? 'filtered' : 'alltime';
 
@@ -604,6 +611,19 @@ function albumViewIsGrid(viewMode) {
     return Boolean(container && container.classList.contains('view-grid'));
 }
 
+/**
+ * The index of the first row the server rendered: 0, or a later page's start
+ * for a `?page=N` link. Read once, as the engine takes over: its own renders
+ * replace the rows under the same container, which would keep the attribute.
+ */
+function serverPageStart() {
+    const container = document.getElementById('album-list-container');
+    if (!container || !container.dataset.windowStart) return 0;
+    const start = parseInt(container.dataset.windowStart, 10) || 0;
+    delete container.dataset.windowStart;
+    return start;
+}
+
 /** How many rows are on the page now, in whichever view is showing. */
 function loadedAlbumCount() {
     const container = document.getElementById('album-list-container');
@@ -709,12 +729,21 @@ function initAlbumFiltering() {
     // the xhr: when the asker has been swapped out, htmx re-fires
     // afterRequest on an ancestor as its `elt`.
     const pending = new Map();
+    // The parameters of the form's last request if it failed, which leaves
+    // the form ahead of the list just as one still in flight does
+    let failedParams = null;
     const track = event => {
         const asker = event.detail.elt;
         if (asker !== form && !asker.matches('.load-more-button')) return;
         pending.set(event.detail.xhr, asker);
     };
-    const untrack = event => pending.delete(event.detail.xhr);
+    const untrack = event => {
+        if (pending.get(event.detail.xhr) === form) {
+            const config = event.detail.requestConfig;
+            failedParams = event.detail.successful ? null : (config && config.parameters) || {};
+        }
+        pending.delete(event.detail.xhr);
+    };
     const tracking = on => [form, results].forEach(element => {
         const method = on ? 'addEventListener' : 'removeEventListener';
         element[method]('htmx:beforeSend', track);
@@ -791,9 +820,23 @@ function initAlbumFiltering() {
 
     csf.init().then(async ok => {
         if (!ok) {
-            // HTMX keeps the page, and nothing will read the record
+            // HTMX keeps the page, and nothing will read the record. A
+            // failed request has nobody left to answer it, so the controls
+            // go back to the list (mediaListControls.rollBackToTheList) -
+            // unless a newer one is on its way, which answers for itself.
+            // Finished ones can still be listed (see the takeover below)
+            const inFlight = [...pending].some(([xhr, element]) =>
+                element === form && xhr.readyState !== XMLHttpRequest.DONE
+            );
             tracking(false);
             pending.clear();
+            csf.failed = true;
+            if (failedParams && !inFlight) {
+                // The controls compare it with what the reader has done since
+                window.dispatchEvent(new CustomEvent('client-engine-failed', {
+                    detail: { parameters: failedParams },
+                }));
+            }
             return;
         }
         ready = true;
@@ -889,22 +932,36 @@ function initAlbumFiltering() {
         // appended the form's rows to the server's. The sidebar says what
         // the reader last asked for, so that is what the engine renders.
         // Compared, not remembered: both states are on the page. Except a
-        // search still being typed, which its own commit will answer.
+        // search still being typed, which its own commit will answer -
+        // unless the search's own request is the one that failed.
         const typing = document.activeElement &&
             // Either search box: the sidebar's and the mobile sheet's
             document.activeElement.matches('[data-filter-search]');
+        // A search whose own request failed is not still being typed: the
+        // box holds the query that was sent. One typed since, or an older
+        // failure of another filter, is
+        // Trimmed, as readFilters trims: "pink " was sent for "pink"
+        const searchFailed = Boolean(failedParams) &&
+            (htmxParameter(failedParams, 'q') || '').trim() === csf.readFilters(form).q;
+        const masked = typing && !searchFailed;
         const comparable = filters => JSON.stringify(
-            typing ? Object.assign({}, filters, { q: '' }) : filters
+            masked ? Object.assign({}, filters, { q: '' }) : filters
         );
         const rendered = csf.renderedFilters();
         const formAhead = Boolean(rendered) &&
             comparable(csf.readFilters(form)) !== comparable(rendered);
         if (filterRequest || formAhead) {
             // Not pushed mid-search: the query is half typed, and its commit,
-            // still to come, pushes the whole one
-            rerender({ push: !typing });
+            // still to come, pushes the whole one. A failed search's commit
+            // has been spent, so it is pushed here
+            rerender({ push: !masked });
         } else if (pageRequest) {
             csf.loadMore();
+        } else if (csf.pageStart > 0) {
+            // A `?page=N` link: the rows above it get their Load Previous,
+            // and the count names the range
+            csf._syncRendererWithPage();
+            csf._updatePaging();
         }
         if (highlightPending) {
             csf._syncRendererWithPage();

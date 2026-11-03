@@ -44,8 +44,23 @@ class MusicSiteAdminMixin:
         return sites.canonical_url(sites.MUSIC, obj.get_absolute_url())
 
 
+class ArtistSlugHistoryInline(admin.TabularInline):
+    """The slugs an artist has lost, each redirecting to the current one."""
+
+    model = models.ArtistSlugHistory
+    extra = 0
+    fields = ["slug", "created"]
+    readonly_fields = ["slug", "created"]
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        # Written by the slug rebuild alone, as the slug itself is.
+        return False
+
+
 @admin.register(models.Artist)
 class ArtistAdmin(MusicSiteAdminMixin, admin.ModelAdmin):
+    inlines = [ArtistSlugHistoryInline]
     list_display = [
         "name",
         "source_id",
@@ -71,6 +86,22 @@ class ArtistAdmin(MusicSiteAdminMixin, admin.ModelAdmin):
     @admin.display(description="Credited albums", ordering="_album_count")
     def album_count(self, obj):
         return obj._album_count
+
+
+@admin.register(models.ArtistSlugHistory)
+class ArtistSlugHistoryAdmin(admin.ModelAdmin):
+    """Every former slug, to find which artist one now redirects to."""
+
+    list_display = ["slug", "artist", "created"]
+    search_fields = ["slug", "artist__name"]
+    raw_id_fields = ["artist"]
+    readonly_fields = ["slug", "artist", "created"]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(models.AlbumCredit)

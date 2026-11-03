@@ -22,6 +22,9 @@
     sort: new URLSearchParams(window.location.search).get('sort') || 'games',
     sortDirection: new URLSearchParams(window.location.search).get('dir') || 'asc',
     updateUrl(event) {
+        // Tidies the entry htmx has just pushed for this request (with the
+        // middleware's address) rather than pushing a second beside it
+        if (!event.detail.successful) return;
         const searchValue = event.target.value;
         const url = new URL(window.location);
         if (searchValue) {
@@ -30,18 +33,14 @@
             url.searchParams.delete('q');
         }
         url.searchParams.delete('page');
-        window.history.pushState({}, '', url);
+        // htmx's address carries the sort and direction even at their defaults
+        if (url.searchParams.get('sort') === 'games') url.searchParams.delete('sort');
+        if (url.searchParams.get('dir') === 'asc') url.searchParams.delete('dir');
+        window.history.replaceState(window.history.state, '', url);
     },
     updateSort(newSort) {
         this.sort = newSort;
-        const url = new URL(window.location);
-        if (newSort !== 'games') {
-            url.searchParams.set('sort', newSort);
-        } else {
-            url.searchParams.delete('sort');
-        }
-        url.searchParams.delete('page');
-        window.history.pushState({}, '', url);
+        // The search box's request carries it, and updateUrl tidies its address
         // Wait for Alpine to update hx-vals before triggering HTMX
         this.$nextTick(() => {
             htmx.trigger(document.getElementById('developer-search'), 'sort-changed');
@@ -49,14 +48,7 @@
     },
     toggleSortDirection() {
         this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
-        const url = new URL(window.location);
-        if (this.sortDirection !== 'asc') {
-            url.searchParams.set('dir', this.sortDirection);
-        } else {
-            url.searchParams.delete('dir');
-        }
-        url.searchParams.delete('page');
-        window.history.pushState({}, '', url);
+        // The search box's request carries it, and updateUrl tidies its address
         // Wait for Alpine to update hx-vals before triggering HTMX
         this.$nextTick(() => {
             htmx.trigger(document.getElementById('developer-search'), 'sort-changed');

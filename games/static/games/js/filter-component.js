@@ -395,7 +395,6 @@ document.addEventListener('alpine:init', () => {
                             // The engine takes over from here: nothing queued
                             // or in flight may repeat this render or undo it.
                             const interrupted = self.isLoading;
-                            const pageLoading = document.querySelector('.load-more-button.is-loading');
                             self.fetchManager.abort();
                             if (interrupted) clearLoading('game-results-container');
                             if (self._debouncedFilter) self._debouncedFilter.cancel();
@@ -412,10 +411,6 @@ document.addEventListener('alpine:init', () => {
                                 self.performClientUpdate({ historyMethod: null });
                             } else {
                                 self.updateFacetCounts();
-                            }
-                            // A render replaced the button, so its page is dropped
-                            if (!changed && pageLoading && !pageLoading.isConnected) {
-                                handleLoadMoreCSF(self._csf);
                             }
                         }
                     });
@@ -1177,7 +1172,9 @@ document.addEventListener('alpine:init', () => {
         },
 
         performClientUpdate(options = {}) {
-            // historyMethod: null re-renders without touching the URL
+            // historyMethod: null re-renders without touching the URL. A
+            // server page or jump this overtakes is answered or dropped when
+            // it lands (utils-loadmore.js, engineForSameList).
             const { historyMethod = 'pushState' } = options;
 
             this.isLoading = true;
@@ -1436,14 +1433,9 @@ document.addEventListener('alpine:init', () => {
                 // A view is not a filter: re-render, leave the URL alone. It
                 // used to replaceState with _filterUrl(), which on an
                 // unfiltered page wrote /games/?start=..&end=.. over `/`.
-                const pageLoading = document.querySelector('.load-more-button.is-loading');
+                // A server page this overtakes is answered when it lands, the
+                // list being the same (utils-loadmore.js, engineForSameList).
                 this.performClientUpdate({ historyMethod: null });
-                // The render replaced the button a server page was on its way
-                // to, so the page is dropped; the list is the same one, so the
-                // engine answers the click, as it does when it takes over.
-                if (pageLoading && !pageLoading.isConnected) {
-                    handleLoadMoreCSF(this._csf);
-                }
             } else if (mode === 'grid') {
                 // Until the bundle renders a grid, grid mode shows the server's
                 // rows (styles.css hides them only once a .game-grid exists).

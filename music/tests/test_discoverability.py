@@ -83,6 +83,15 @@ class EntryPointTests(HostClientMixin, TestCase):
         self.assertIn(GAMES_HOME, rendered)
         self.assertNotIn("/books/", rendered)
 
+    def test_the_books_link_follows_the_setting(self):
+        # The context processor reads the setting, which reads the env var
+        books = 'href="https://games.acclaimedmedia.org/books/"'
+        for enabled in (True, False):
+            with self.subTest(enabled=enabled), self.settings(BOOKS_ENABLED=enabled):
+                clear_all_caches()
+                menu = site_menu(self.get_on(sites.GAMES, "developers-list"))
+                self.assertEqual(books in menu, enabled)
+
     def test_the_mobile_nav_has_a_music_entry(self):
         response = self.get_on(sites.GAMES, "home")
         self.assertContains(response, 'data-nav-item="music"')

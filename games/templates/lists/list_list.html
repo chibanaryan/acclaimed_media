@@ -11,6 +11,9 @@
 <div id="content" x-data="{
     q: '{{ filters.q|default:''|escapejs }}',
     updateUrl(event) {
+        // Tidies the entry htmx has just pushed for this request (with the
+        // middleware's address) rather than pushing a second beside it
+        if (!event.detail.successful) return;
         // Get all current filter values from the form
         const yearEl = document.querySelector('[name=year]');
         const typeEl = document.querySelector('[name=type]');
@@ -43,7 +46,7 @@
         // Reset to page 1 on filter change
         url.searchParams.delete('page');
 
-        window.history.pushState({}, '', url);
+        window.history.replaceState(window.history.state, '', url);
     }
 }">
     <div class="flex items-center justify-between mb-2">

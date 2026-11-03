@@ -5,6 +5,7 @@ from unittest import mock
 
 from django.core.cache import cache
 from django.db import connection
+from django.template.loader import render_to_string
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
@@ -335,6 +336,15 @@ class AlbumHomePageViewTests(MusicDataMixin, TestCase):
         response = self.client.get(reverse("music:home"), {"page": "99"})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.context["albums"]), 3)
+
+    def test_a_later_page_says_where_its_rows_start(self):
+        # The engine adopts the rows from there, not from #1
+        for index in range(120):
+            models.Album.objects.create(name=f"Filler {index}", rank=100 + index)
+        first = self.client.get(reverse("music:home"))
+        self.assertNotContains(first, "data-window-start")
+        second = self.client.get(reverse("music:home"), {"page": "2"})
+        self.assertContains(second, 'data-window-start="100"')
 
     def test_htmx_request_targeting_the_results_container(self):
         response = self.client.get(
@@ -1494,6 +1504,15 @@ class ClientSideFilteringContextTests(MusicDataMixin, TestCase):
         self.assertContains(
             response, "if (!engine || !engine.isReady()) window.location.reload();"
         )
+
+    def test_a_filter_request_aborts_a_load_more_in_flight(self):
+        # Before the engine, the page landed after the filter's render,
+        # appended to the old list and put its own button back out of band.
+        rendered = render_to_string(
+            "music/includes/_album_load_more.html",
+            {"has_more": True, "next_page": 2, "total_count": 300},
+        )
+        self.assertIn('hx-sync="#album-filters:abort"', rendered)
 
     def test_the_form_is_not_restored_by_the_browser(self):
         # Firefox puts a reloaded form's fields back as they were, so after

@@ -224,6 +224,19 @@ class ImportArtistsTests(TestCase):
         self.assertEqual(renamed.name, "Crazy Horse (band)")
         self.assertEqual(renamed.slug, "crazy-horse-band")
 
+    def test_a_renamed_artists_old_slug_is_kept_for_the_redirect(self):
+        import_artists()
+        import_artists(ARTISTS_TSV.replace("\tCrazy Horse\n", "\tCrazy Horse (band)\n"))
+        former = models.ArtistSlugHistory.objects.get()
+        self.assertEqual(former.slug, "crazy-horse")
+        self.assertEqual(former.artist.source_id, 192)
+
+    def test_an_artist_the_file_drops_takes_its_old_slugs_with_it(self):
+        import_artists()
+        import_artists(ARTISTS_TSV.replace("\tCrazy Horse\n", "\tCrazy Horse (band)\n"))
+        import_artists(ARTISTS_TSV.replace("192\t\tCrazy Horse\n", ""))
+        self.assertFalse(models.ArtistSlugHistory.objects.exists())
+
     def test_a_slug_edited_by_hand_is_rebuilt(self):
         import_artists()
         models.Artist.objects.filter(source_id=3).update(slug="beach-boys-old")

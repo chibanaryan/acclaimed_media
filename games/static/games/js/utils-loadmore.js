@@ -353,6 +353,67 @@ function jumpToRankClientSide(csf, targetRank, state = getCurrentState()) {
 }
 
 /**
+ * Which list is on the page, for a server request to compare when it lands:
+ * the filters the URL was last written with (`filterComponent._urlFilterKey`),
+ * which a render of another list moves (a filter change, Back) and a render
+ * of the same one does not (the engine taking over its own filters, a view
+ * toggle, a jump, Load More). Not the filters asked for, which run ahead of
+ * the list while a change is on its way; and not the URL itself, which the
+ * takeover rewrites into its normal form (`?start=1990` gains its end).
+ * Before Alpine has made the component, the URL's own filters, prefixed so
+ * that the two never match: a click that early is dropped, not misread.
+ * @returns {?string} null while the list on the page cannot be named
+ */
+function serverListKey() {
+    const element = document.querySelector('[x-data*="filterComponent"]');
+    const component = element && window.Alpine && Alpine.$data(element);
+    if (component && typeof component._urlFilterKey === 'string') {
+        // A server render on its way (a filter change, or Back's) writes the
+        // key before the list it names is on the page: unknown, and dropped
+        return component.isLoading ? null : 'list:' + component._urlFilterKey;
+    }
+    return 'url:' + JSON.stringify(getFiltersFromURL());
+}
+
+/**
+ * The engine, if a server page or jump whose button has gone can still be
+ * answered: the list is the one it was asked for, and the engine owns it.
+ * Asked when the response lands, which is the one place every render that
+ * replaces the button meets, so none of them has to remember to answer it.
+ * @param {string} key - serverListKey() when the request went out
+ * @returns {?Object} The ready ClientSideFiltering instance, or null to drop it
+ */
+function engineForSameList(key) {
+    if (key === null || key !== serverListKey()) return null;
+    const csf = typeof getClientSideFiltering === 'function' && getClientSideFiltering();
+    if (!csf || !csf.isReady()) return null;
+    const renderer = csf.renderer;
+    return renderer.currentItems && renderer.currentItems.length ? csf : null;
+}
+
+/**
+ * Answer an overtaken server Load More: render down to the row its click
+ * asked for. A render of the same list leaves the first 100, so starting
+ * from there gave a click for rows 201-300 rows 101-200. Not after a jump
+ * further down, whose window no longer reaches the top.
+ * @param {Object} csf - The ready ClientSideFiltering instance
+ * @param {number} end - The row count the click asked for
+ */
+function answerLoadMore(csf, end) {
+    const container = document.getElementById('game-list-container');
+    const renderer = csf.renderer;
+    if (!container || renderer.windowStart > 0) return;
+    const target = Math.min(end, renderer.currentItems.length);
+    if (target <= renderer.windowEnd) return;
+    renderer.showRange(container, 0, target, {
+        showRank: csf._computeShowRank(),
+        viewMode: csf.getViewMode ? csf.getViewMode() : undefined
+    });
+    csf._hasRenderedUI = true;
+    refreshClientLoadMore(csf);
+}
+
+/**
  * Redraw the count, Load Previous and Load More from the renderer's window.
  * @param {Object} csf - The ready ClientSideFiltering instance
  */
@@ -393,6 +454,17 @@ function handleLoadPreviousCSF() {
 async function jumpToRankServerSide(targetRank, loaded, perPage) {
     const targetPage = Math.ceil(targetRank / perPage);
     const currentPage = Math.ceil(loaded / perPage);
+    // The list the jump is for, to tell if a render replaces it meanwhile
+    const button = document.querySelector('.load-more-button');
+    const key = serverListKey();
+    const overtaken = () => {
+        if (!button || button.isConnected) return false;
+        // The same list's engine makes the jump; after another list's, such
+        // as a filter change's, jumping would undo its return to the top
+        const csf = engineForSameList(key);
+        if (csf) jumpToRankClientSide(csf, targetRank);
+        return true;
+    };
 
     // Show loading state on all instances
     const allButtons = document.querySelectorAll('.jump-to-rank-btn');
@@ -412,14 +484,8 @@ async function jumpToRankServerSide(targetRank, loaded, perPage) {
             pagesToLoad.map(page => fetchPage(page))
         );
 
-        // The list was re-rendered meanwhile, so these pages are for one that
-        // has gone: if that was the engine, it makes the jump itself
-        if (pageResults.some(({ button }) => button && !button.isConnected)) {
-            const csf = typeof getClientSideFiltering === 'function' &&
-                getClientSideFiltering();
-            if (csf && csf.isReady()) jumpToRankClientSide(csf, targetRank);
-            return;
-        }
+        // The list was re-rendered meanwhile, so the pages are dropped
+        if (overtaken()) return;
 
         // Append pages in correct order (they may have arrived out of order)
         pageResults.sort((a, b) => a.page - b.page);
@@ -433,6 +499,8 @@ async function jumpToRankServerSide(targetRank, loaded, perPage) {
         }, 100);
     } catch (err) {
         console.error('Jump to rank error:', err);
+        // A render may have overtaken it first: answered as if it had landed
+        overtaken();
     } finally {
         allButtons.forEach(btn => { btn.classList.remove('loading'); btn.disabled = false; });
         allInputs.forEach(inp => { inp.disabled = false; });
@@ -483,8 +551,8 @@ async function fetchPage(page) {
 function appendPageResults(result) {
     const { rows, meta, button } = result;
 
-    // A filter change replaced the button, and with it the list this page
-    // extends: its rows could be another filter's
+    // A render replaced the button, and with it the rows this page extends:
+    // they could be another filter's. Its caller answers the click.
     if (button && !button.isConnected) return;
 
     // Append game rows
@@ -514,16 +582,6 @@ function appendPageResults(result) {
             updateLoadMoreButton(button, meta);
         }
     }
-}
-
-/**
- * Loads a specific page and appends to the list (used by Load More button)
- * @param {number} page - The page number to load
- * @returns {Promise<void>}
- */
-async function loadPage(page) {
-    const result = await fetchPage(page);
-    appendPageResults(result);
 }
 
 /**
@@ -655,14 +713,34 @@ async function handleLoadMore(event) {
     // Set loading state
     button.classList.add('is-loading');
     button.disabled = true;
+    // The list on the page now, to tell when the page lands whether a
+    // render has replaced it with the same one or another
+    const key = serverListKey();
+    const loaded = parseInt(button.dataset.loaded, 10) || 0;
 
+    let result = null;
     try {
-        await loadPage(nextPage);
+        result = await fetchPage(nextPage);
     } catch (err) {
         console.error('Load more error:', err);
-        button.classList.remove('is-loading');
-        button.disabled = false;
     }
+    if (!button.isConnected) {
+        // Overtaken, landed or failed alike: the same list's engine has the
+        // rows, and another list's drops the click
+        const csf = engineForSameList(key);
+        if (csf) answerLoadMore(csf, loaded + csf.renderer.PAGE_SIZE);
+        return;
+    }
+    if (result) {
+        try {
+            appendPageResults(result);
+            return;
+        } catch (err) {
+            console.error('Load more error:', err);
+        }
+    }
+    button.classList.remove('is-loading');
+    button.disabled = false;
 }
 
 /**

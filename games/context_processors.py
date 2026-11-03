@@ -7,13 +7,13 @@ def feature_flags(request):
     """
     Add feature flags to template context.
     """
-    import os
+    from django.conf import settings
 
     from music import config as music_config
 
     return {
         # Books feature is hidden until ready for public release
-        "BOOKS_ENABLED": os.environ.get("BOOKS_ENABLED", "").lower() == "true",
+        "BOOKS_ENABLED": settings.BOOKS_ENABLED,
         # The "Beta" badge on music pages
         "MUSIC_BETA": music_config.MUSIC_BETA,
     }

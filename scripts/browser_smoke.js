@@ -4,7 +4,10 @@
  * Alpine expression error or Content-Security-Policy violation.
  *
  *   node scripts/browser_smoke.js http://127.0.0.1:8000
+ *   SMOKE_ONLY='music Load More' node scripts/browser_smoke.js ...
  *
+ * SMOKE_ONLY, a regular expression, runs only the named checks after the
+ * page loop, and skips the loop.
  * The argument names the dev server; its port is all that is used. Each site
  * is its own host (core/sites.py), so the pages are visited as
  * localhost:PORT (the landing page), games.localhost:PORT and
@@ -158,6 +161,292 @@ async function startGamesEngine(page) {
 }
 
 /**
+ * A server jump the engine's load overtook, then a filter change: when the
+ * jump's pages landed the engine made the jump itself, on the new list,
+ * undoing the change's return to the top. They are dropped now. Answers as
+ * above.
+ */
+async function checkServerJumpOvertakenByAFilter(page) {
+    const engine = {
+        site: games, data: '/api/games/all/',
+        ready: element => Alpine.$data(element).clientFilterReady,
+    };
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = await holdEngineLoad(page, engine, request =>
+        request.url().includes('append=true'));
+    await page.goto(games + '/', { waitUntil: 'load' });
+    const component = await page.waitForSelector('[x-data*="filterComponent"]');
+    await sleep(1000);
+    const box = (await page.evaluateHandle(() => [...document.querySelectorAll(
+        '.jump-to-rank-input')].find(input => input.offsetParent))).asElement();
+    // One server page: the jump waits 3 s for the engine, held, then fetches
+    await box.type('110');
+    await box.press('Enter');
+    const missing = await bothHeld(held, games);
+    if (missing) return missing;
+    const body = await page.evaluate(
+        url => fetch(url + '?smoke=1').then(response => response.text()),
+        games + engine.data
+    );
+    await held.data.respond({ status: 200, contentType: 'application/json', body });
+    await page.waitForFunction(engine.ready, {}, component);
+    await page.evaluate(element => Alpine.$data(element).updateSort('name'), component);
+    await sleep(500);
+    await held.server.continue().catch(() => {});
+    await sleep(800);
+    const [start, end] = await page.evaluate(() => {
+        const renderer = getClientSideFiltering().renderer;
+        return [renderer.windowStart, renderer.windowEnd];
+    });
+    return start === 0 && end === 100 ? null
+        : `games: a server jump overtaken by a sort change rendered rows ${start + 1}-${end}`;
+}
+
+/**
+ * A server jump the engine's load overtook without a render (an unfiltered
+ * list), then the engine's own Load More, which redraws the button the
+ * jump's pages were on their way to. The list is the same, so the jump is
+ * made, not dropped. Answers as above.
+ */
+async function checkServerJumpAcrossAnEngineLoadMore(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    // The jump fetches pages 2 and 3, so every page is held, not the last
+    const held = { data: null, pages: [] };
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        if (url.startsWith(games + '/api/games/all/') && !url.includes('smoke=1')) {
+            held.data = request;
+        } else if (url.includes('append=true')) {
+            held.pages.push(request);
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(games + '/', { waitUntil: 'load' });
+    const filters = await page.waitForSelector('[x-data*="filterComponent"]');
+    await sleep(1000);
+    const box = (await page.evaluateHandle(() => [...document.querySelectorAll(
+        '.jump-to-rank-input')].find(input => input.offsetParent))).asElement();
+    // Past the 200 rows the engine's Load More reaches by itself
+    await box.type('250');
+    await box.press('Enter');
+    for (let tries = 0; held.pages.length < 2 && tries < 200; tries += 1) await sleep(50);
+    if (!held.data || held.pages.length < 2) return 'games: the jump sent no server pages';
+    const body = await page.evaluate(
+        url => fetch(url + '?smoke=1').then(response => response.text()),
+        games + '/api/games/all/'
+    );
+    await held.data.respond({ status: 200, contentType: 'application/json', body });
+    await page.waitForFunction(element => Alpine.$data(element).clientFilterReady, {}, filters);
+    await page.evaluate(() => handleLoadMoreCSF(getClientSideFiltering()));
+    for (const request of held.pages) await request.continue().catch(() => {});
+    await sleep(800);
+    const [start, end] = await page.evaluate(() => {
+        const renderer = getClientSideFiltering().renderer;
+        return [renderer.windowStart, renderer.windowEnd];
+    });
+    return start <= 249 && end > 249 ? null
+        : `games: a server jump to 250 was dropped, the rows ${start + 1}-${end}`;
+}
+
+/**
+ * A server Load More the engine's takeover overtook, on a link the takeover
+ * rewrites (`?start=1990` gains its end), or whose request then fails. The
+ * list is the same either way, so the engine answers the click: the key
+ * that says so is the filter component's, not the URL's, and a failed page
+ * is answered as a landed one. Answers as above.
+ */
+async function checkLoadMoreAcrossARewrittenTakeover(page, fails) {
+    const engine = {
+        site: games, data: '/api/games/all/',
+        ready: element => Alpine.$data(element).clientFilterReady,
+    };
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = await holdEngineLoad(page, engine, request =>
+        request.url().includes('append=true'));
+    await page.goto(games + '/?start=1990', { waitUntil: 'load' });
+    const decade = await page.waitForSelector('.year-grid-decade');
+    const rows = '#game-list-container .game-row-wrapper';
+    await sleep(1000);
+    await page.click('.load-more-button');
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('acclaimed:need-csf')));
+    const missing = await bothHeld(held, games);
+    if (missing) return missing;
+    const body = await page.evaluate(
+        url => fetch(url + '?smoke=1').then(response => response.text()),
+        games + engine.data
+    );
+    await held.data.respond({ status: 200, contentType: 'application/json', body });
+    await page.waitForFunction(engine.ready, {}, decade);
+    if (fails) {
+        await held.server.respond({ status: 500, contentType: 'text/html', body: 'boom' });
+    } else {
+        await held.server.continue().catch(() => {});
+    }
+    await sleep(800);
+    const count = await page.$$eval(rows, found => found.length);
+    return count === 200 ? null
+        : `games: an overtaken Load More${fails ? ' that failed' : ''} left ${count} rows on ${page.url()}`;
+}
+
+/**
+ * A server Load More clicked on the list on the page while a filter change's
+ * render was on its way: its key named the list asked for, so when the
+ * engine took over and rendered that list the page was answered on it,
+ * undoing the change's return to the top. Answers as above.
+ */
+async function checkLoadMoreBehindAFilterChange(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = { data: null, render: null, page: null };
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        if (url.startsWith(games + '/api/games/all/') && !url.includes('smoke=1')) {
+            held.data = request;
+        } else if (url.includes('append=true')) {
+            held.page = request;
+        } else if (url.startsWith(games + '/games/?') &&
+                ['xhr', 'fetch'].includes(request.resourceType())) {
+            held.render = request;
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(games + '/', { waitUntil: 'load' });
+    const filters = await page.waitForSelector('[x-data*="filterComponent"]');
+    await sleep(1000);
+    await page.evaluate(element => Alpine.$data(element).updateSort('name'), filters);
+    for (let tries = 0; !held.render && tries < 100; tries += 1) await sleep(50);
+    if (!held.render) return 'games: the sort sent no server render';
+    // Under the render's loading overlay, so not a mouse click
+    await page.evaluate(() => document.querySelector('.load-more-button').click());
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('acclaimed:need-csf')));
+    for (let tries = 0; !(held.page && held.data) && tries < 100; tries += 1) await sleep(50);
+    if (!held.page) return 'games: the Load More click sent nothing';
+    if (!held.data) return 'games: the engine asked for no data';
+    const body = await page.evaluate(
+        url => fetch(url + '?smoke=1').then(response => response.text()),
+        games + '/api/games/all/'
+    );
+    await held.data.respond({ status: 200, contentType: 'application/json', body });
+    await page.waitForFunction(element => Alpine.$data(element).clientFilterReady, {}, filters);
+    await held.page.continue().catch(() => {});
+    await held.render.continue().catch(() => {});
+    await sleep(800);
+    const end = await page.evaluate(() => getClientSideFiltering().renderer.windowEnd);
+    return end === 100 ? null : `games: the old list's Load More extended the sorted one to ${end}`;
+}
+
+/**
+ * A server Load More whose rows fail to go in: the button was left loading,
+ * and disabled, for good. Answers as above.
+ */
+async function checkLoadMoreThatFailsToAppend(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    await page.goto(games + '/', { waitUntil: 'networkidle2' });
+    await sleep(500);
+    await page.evaluate(() => {
+        htmx.process = () => { throw new Error('smoke: htmx.process failed'); };
+    });
+    await page.click('.load-more-button');
+    await sleep(1500);
+    const state = await page.$eval('.load-more-button',
+        button => ({ loading: button.classList.contains('is-loading'), disabled: button.disabled }));
+    return state.loading || state.disabled ? 'a failed append left Load More stuck' : null;
+}
+
+/**
+ * Back before the engine, then a server Load More on the list still shown
+ * while Back's render is on its way: the key already named Back's list, so
+ * the engine answered the click on it. Answers as above.
+ */
+async function checkLoadMoreBehindBack(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = { data: null, back: null, page: null };
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        if (url.startsWith(games + '/api/games/all/') && !url.includes('smoke=1')) {
+            held.data = request;
+        } else if (url.includes('append=true')) {
+            held.page = request;
+        } else if (url.startsWith(games + '/games/?') && !url.includes('sort=name') &&
+                ['xhr', 'fetch'].includes(request.resourceType())) {
+            held.back = request;
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(games + '/', { waitUntil: 'load' });
+    const filters = await page.waitForSelector('[x-data*="filterComponent"]');
+    await sleep(1000);
+    await page.evaluate(element => Alpine.$data(element).updateSort('name'), filters);
+    await page.waitForFunction(() => location.search.includes('sort=name'));
+    await sleep(500);
+    await page.evaluate(() => history.back());
+    for (let tries = 0; !held.back && tries < 100; tries += 1) await sleep(50);
+    if (!held.back) return "games: Back sent no server render";
+    // On the sorted list, still shown under Back's loading overlay
+    await page.evaluate(() => document.querySelector('.load-more-button').click());
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('acclaimed:need-csf')));
+    for (let tries = 0; !(held.page && held.data) && tries < 100; tries += 1) await sleep(50);
+    if (!held.page) return 'games: the Load More click sent nothing';
+    if (!held.data) return 'games: the engine asked for no data';
+    const body = await page.evaluate(
+        url => fetch(url + '?smoke=1').then(response => response.text()),
+        games + '/api/games/all/'
+    );
+    await held.data.respond({ status: 200, contentType: 'application/json', body });
+    await page.waitForFunction(element => Alpine.$data(element).clientFilterReady, {}, filters);
+    await held.page.continue().catch(() => {});
+    await held.back.continue().catch(() => {});
+    await sleep(800);
+    const end = await page.evaluate(() => getClientSideFiltering().renderer.windowEnd);
+    return end === 100 ? null : `games: the sorted list's Load More extended Back's list to ${end}`;
+}
+
+/**
+ * A server Load More for rows 201-300, then a client jump that redrew the
+ * button the page was on its way to: the page was dropped and the click went
+ * unanswered, and the takeover's and the view toggle's answers started again
+ * from 100 rows, giving 101-200. Answers as above.
+ */
+async function checkLoadMoreAcrossAClientJump(page) {
+    const engine = {
+        site: games, data: '/api/games/all/',
+        ready: element => Alpine.$data(element).clientFilterReady,
+    };
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = await holdEngineLoad(page, engine, request =>
+        request.url().includes('append=true') && request.url().includes('page=3'));
+    await page.goto(games + '/', { waitUntil: 'load' });
+    const component = await page.waitForSelector('[x-data*="filterComponent"]');
+    const rows = '#game-list-container .game-row-wrapper';
+    await sleep(1000);
+    await page.click('.load-more-button');
+    await page.waitForFunction(selector =>
+        document.querySelectorAll(selector).length === 200, {}, rows);
+    await sleep(300);
+    await page.click('.load-more-button');
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('acclaimed:need-csf')));
+    const missing = await bothHeld(held, games);
+    if (missing) return missing;
+    const body = await page.evaluate(
+        url => fetch(url + '?smoke=1').then(response => response.text()),
+        games + engine.data
+    );
+    await held.data.respond({ status: 200, contentType: 'application/json', body });
+    await page.waitForFunction(engine.ready, {}, component);
+    await page.evaluate(() => jumpToRankClientSide(getClientSideFiltering(), 50));
+    await held.server.continue().catch(() => {});
+    await sleep(800);
+    const ids = await page.$$eval(rows, found => found.map(row => row.id));
+    if (new Set(ids).size !== ids.length) return 'games: a row is shown twice';
+    return ids.length === 300 ? null : `games: the click for rows 201-300 left ${ids.length} rows`;
+}
+
+/**
  * A games jump filtered the whole corpus three times, where once gives it every
  * game it needs. And Clear All from a jumped list, whose filters it leaves as
  * they were, pushed `/` over `/`, so Back needed two presses. Answers as above.
@@ -228,7 +517,9 @@ async function checkLoadMoreAcrossViewToggle(page) {
  * engine's hearing, so the takeover once took the finished request for one
  * still to answer and appended a page nobody asked for, and could not abort
  * one still on its way. `landed` lets the page's response arrive before the
- * engine does, or holds it until after. Answers as above.
+ * engine does, or holds it until after. Landed, it used to append to the old
+ * list and its out-of-band button replace the filter's; the filter request
+ * now aborts it. Answers as above.
  */
 async function checkDetachedLoadMoreAcrossEngineLoad(page, engine, landed) {
     await page.setViewport({ width: 1440, height: 900 });
@@ -258,24 +549,21 @@ async function checkDetachedLoadMoreAcrossEngineLoad(page, engine, landed) {
         const more = document.querySelector('.load-more-container .load-more-button');
         return more && (more.getAttribute('hx-get') || '').includes('dir=desc');
     });
-    if (landed) {
-        await held.server.continue();
-        // Landed once its out-of-band container has replaced the live one
-        await page.waitForFunction(() => {
-            const more = document.querySelector('.load-more-container .load-more-button');
-            return !more || !(more.getAttribute('hx-get') || '').includes('dir=desc');
-        });
-    }
     const rows = '#album-list-container .media-row-wrapper';
     const before = await page.$$eval(rows, found => found.length);
+    if (landed) {
+        // Its request was aborted, so this answers nobody
+        await held.server.continue().catch(() => {});
+        await sleep(800);
+        const next = await nextPage();
+        if (!next || !next.includes('dir=desc')) {
+            return `before the engine, the stale page left "${next}"`;
+        }
+    }
     await releaseAfterEngine(page, held, engine, decade);
     await sleep(800);
     const after = await page.$$eval(rows, found => found.length);
     if (after !== before) return `the takeover turned ${before} rows into ${after}`;
-    // Landed, its out-of-band button has already replaced the live one (an
-    // older race, ROADMAP). Aborted, it cannot: the button is still the one
-    // the descending render drew.
-    if (landed) return null;
     const next = await nextPage();
     return next && next.includes('dir=desc') ? null : `the stale page left "${next}"`;
 }
@@ -473,6 +761,178 @@ async function checkFailedFilterRequest(page) {
 }
 
 /**
+ * The same, for a search: a search box with focus as the engine took over
+ * masked the query, for fear of rendering one half typed, so a search whose
+ * own request had failed was never rendered and the box named a query the
+ * list did not show. Answers as above.
+ */
+async function checkFailedSearchAcrossTheTakeover(page, text = 'album 11') {
+    const engine = { site: music, data: '/api/all/', ready: musicReady };
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = await holdEngineLoad(page, engine, request =>
+        request.url().includes('q=album') &&
+        ['xhr', 'fetch'].includes(request.resourceType()));
+    await page.goto(music + '/', { waitUntil: 'load' });
+    const decade = await page.waitForSelector('.year-grid-decade');
+    await sleep(1000);
+    await page.type('#album-filters input[name="q"]', text);
+    const missing = await bothHeld(held, music);
+    if (missing) return missing;
+    await held.server.respond({ status: 500, contentType: 'text/html', body: 'boom' });
+    await sleep(500);
+    // The focus is still in the box
+    await releaseAfterEngine(page, held, engine, decade);
+    await sleep(500);
+    const rows = await page.$$eval(albumRows, found => found.length);
+    if (rows !== 11) return `after a failed search the list has ${rows} rows, not 11`;
+    // Its commit was spent on the failed request, so the takeover pushes it
+    return page.url().includes('q=album') ? null : `the failed search left the URL on ${page.url()}`;
+}
+
+/**
+ * An older failure of a request for the list's own filters, then a search
+ * still being typed as the engine arrives: the failure once unmasked the
+ * search, so the takeover took the typing for a form left ahead and
+ * rendered the half-typed query. Answers as above.
+ */
+async function checkAnOlderFailureLeavesTheTypingAlone(page) {
+    const engine = { site: music, data: '/api/all/', ready: musicReady };
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = await holdEngineLoad(page, engine, request =>
+        request.url().startsWith(music + '/?') && !request.url().includes('append=true') &&
+        ['xhr', 'fetch'].includes(request.resourceType()));
+    await page.goto(music + '/', { waitUntil: 'load' });
+    const decade = await page.waitForSelector('.year-grid-decade');
+    await sleep(1000);
+    await page.evaluate(() => document.getElementById('album-filters').dispatchEvent(
+        new CustomEvent('change', { bubbles: true, detail: {} })));
+    const missing = await bothHeld(held, music);
+    if (missing) return missing;
+    await held.server.respond({ status: 500, contentType: 'text/html', body: 'boom' });
+    await sleep(300);
+    // Fetched first, so the engine arrives before the typing is committed
+    const body = await page.evaluate(
+        url => fetch(url + '?smoke=1').then(response => response.text()), music + engine.data
+    );
+    await page.type('#album-filters input[name="q"]', 'smo');
+    await held.data.respond({ status: 200, contentType: 'application/json', body });
+    await page.waitForFunction(engine.ready, {}, decade);
+    // A render leaves the renderer owning the list; taking over without one
+    // leaves it empty until the next interaction
+    const rendered = await page.evaluate(
+        () => getAlbumClientSideFiltering().renderer.currentItems.length
+    );
+    return rendered ? 'the takeover rendered the half-typed search' : null;
+}
+
+/**
+ * With no engine, on `?start=1990`, a search sent by Enter that fails. The
+ * form sends no end year where the controls hold one, so comparing them
+ * with what was sent read the two spellings as a newer change, and the
+ * sidebar was never rolled back. Answers as above.
+ */
+async function checkFailedEnterWithoutTheEngine(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        if (url.startsWith(music + '/api/all/') || (url.startsWith(music + '/?') &&
+                ['xhr', 'fetch'].includes(request.resourceType()))) {
+            request.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(music + '/?start=1990', { waitUntil: 'networkidle2' });
+    await sleep(500);
+    const box = '#album-filters input[name="q"]';
+    await page.type(box, 'zzz');
+    await page.keyboard.press('Enter');
+    await sleep(1500);
+    const value = await page.$eval(box, input => input.value);
+    const heading = await page.$eval('#search-title-text', title => title.textContent);
+    if (value) return `the failed search stayed in the box as "${value}"`;
+    return /zzz/.test(heading) ? `the heading kept the failed search: "${heading.trim()}"` : null;
+}
+
+/**
+ * With no engine, a failed request while a search is still in its input
+ * debounce: the roll-back reset the box under the reader's typing. Answers
+ * as above.
+ */
+async function checkTypingBehindAFailureWithoutTheEngine(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    let first = null;
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        if (url.startsWith(music + '/api/all/')) {
+            request.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        } else if (!first && url.includes('start=1990') &&
+                ['xhr', 'fetch'].includes(request.resourceType())) {
+            first = request;
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(music + '/', { waitUntil: 'networkidle2' });
+    await sleep(500);
+    await (await page.waitForSelector('.year-grid-decade[title^="1990s:"]')).click();
+    for (let tries = 0; !first && tries < 100; tries += 1) await sleep(50);
+    if (!first) return 'the 1990s click sent no request';
+    const box = '#album-filters input[name="q"]';
+    await page.type(box, 'album');
+    await first.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+    await sleep(100);
+    const value = await page.$eval(box, input => input.value);
+    return value === 'album' ? null : `the roll-back left the search box on "${value}"`;
+}
+
+/**
+ * And with no engine to come, the controls go back to the list: before, the
+ * sidebar and the heading stayed on the decade the failed request asked for
+ * while the list showed every year. `engineFirst` fails the engine's data
+ * before the click, or after the click's request has failed. Answers as above.
+ */
+async function checkFailedRequestWithoutTheEngine(page, engineFirst) {
+    await page.setViewport({ width: 1440, height: 900 });
+    let data = null;
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        if (url.startsWith(music + '/api/all/') && !engineFirst) {
+            data = request;
+        } else if (url.startsWith(music + '/api/all/') ||
+                (url.startsWith(music + '/?') &&
+                    ['xhr', 'fetch'].includes(request.resourceType()))) {
+            request.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(music + '/', { waitUntil: 'load' });
+    const title = () => page.$eval('#search-title-text', element => element.textContent.trim());
+    const heading = await title();
+    const decade = await page.waitForSelector('.year-grid-decade[title^="1990s:"]');
+    await sleep(1000);
+    await decade.click();
+    await sleep(1500);
+    if (!engineFirst) {
+        for (let tries = 0; !data && tries < 100; tries += 1) await sleep(50);
+        if (!data) return 'the engine never asked for its data';
+        await data.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        await sleep(500);
+    }
+    const start = await page.$eval('#album-filters [name="start"]', field => field.value);
+    if (start) return `the form stayed on start=${start}`;
+    const pressed = await page.$eval('.year-grid-decade[title^="1990s:"]',
+        tile => tile.getAttribute('aria-pressed'));
+    if (pressed !== 'false') return 'the year grid stayed on the 1990s';
+    const now = await title();
+    return now === heading ? null : `the heading read "${now}", not "${heading}"`;
+}
+
+/**
  * A server Load More pushed its own address, `?page=2&append=true`, and Back,
  * Forward or a reload onto it rendered the rows alone, with no page. It is
  * rows to append, not an address, so it pushes nothing. Answers as above.
@@ -663,6 +1123,44 @@ async function checkBackPastAnOldSnapshot(page) {
 }
 
 /**
+ * Back from a search or a sort on an entity page (artists, source lists,
+ * developers). htmx restored its snapshot of the page, which held the DOM
+ * Alpine built and threw an Alpine error per `x-for` clone; with none stored
+ * it fetched the entry as a partial and swapped it in for the whole body.
+ * It reloads now (base.html's htmx-config). And each page pushed an entry of
+ * its own beside htmx's, so Back took two presses and the first reloaded
+ * nothing. Answers as above.
+ */
+async function checkBackOnAnEntityPage(page, url, input, text, evict) {
+    await page.setViewport({ width: 1440, height: 900 });
+    const alpine = [];
+    page.on('console', message => {
+        if (/Alpine Expression Error/.test(message.text())) alpine.push(message.text());
+    });
+    await page.goto(url, { waitUntil: 'networkidle2' });
+    const entries = await page.evaluate(() => history.length);
+    await page.type(input, text);
+    await page.waitForFunction(left => location.href !== left, {}, url);
+    await sleep(800);
+    const added = await page.evaluate(() => history.length) - entries;
+    // Another tab's, saved before snapshots were turned off, under the key
+    // htmx gives a path: no trailing slash
+    const stale = '<p id="stale">stale</p>';
+    if (evict) {
+        await page.evaluate((content, path) => localStorage.setItem('htmx-history-cache',
+            JSON.stringify([{ url: path.replace(/\/+$/, ''), content, title: 'stale', scroll: 0 }])),
+        stale, new URL(url).pathname);
+    }
+    await page.evaluate(() => history.back());
+    await sleep(1500);
+    if (added !== 1) return `${url}: one search added ${added} history entries`;
+    if (page.url() !== url) return `${url}: Back landed on ${page.url()}`;
+    if (await page.$('#stale')) return `${url}: Back restored a stored snapshot`;
+    if (!await page.$('.site-menu')) return `${url}: Back left a page with no sidebar`;
+    return alpine.length ? `${url}: Back threw ${alpine.length} Alpine errors` : null;
+}
+
+/**
  * The jump box is answered by the engine alone, so without its data it took a
  * number and ignored Enter. It waits for the engine, disabled. Answers as
  * above.
@@ -690,6 +1188,132 @@ async function checkJumpBoxComesOn(page) {
     const disabled = await page.$$eval('.jump-to-rank-input, .jump-to-rank-btn',
         found => found.filter(element => element.disabled).length);
     return disabled ? `${disabled} jump controls stayed off with the engine ready` : null;
+}
+
+/**
+ * With no engine, a filter change queued behind a request that fails: htmx
+ * sends the queued one from the form as it stands then, so the failure's
+ * roll-back sent the old filters in its place. Answers as above.
+ */
+async function checkAChangeQueuedBehindAFailure(page, queued = true) {
+    await page.setViewport({ width: 1440, height: 900 });
+    let first = null;
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        if (url.startsWith(music + '/api/all/')) {
+            request.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        } else if (!first && url.includes('start=1990') &&
+                ['xhr', 'fetch'].includes(request.resourceType())) {
+            first = request;
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(music + '/', { waitUntil: 'networkidle2' });
+    await sleep(500);
+    await (await page.waitForSelector('.year-grid-decade[title^="1990s:"]')).click();
+    for (let tries = 0; !first && tries < 100; tries += 1) await sleep(50);
+    if (!first) return 'the 1990s click sent no request';
+    await (await page.waitForSelector('.year-grid-decade[title^="2000s:"]')).click();
+    // Queued behind the request, or still in the controls' 250 ms debounce
+    if (queued) await sleep(800);
+    await first.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+    await page.waitForFunction(() => location.search.includes('start=2000'), { timeout: 5000 })
+        .catch(() => {});
+    const start = await page.$eval('#album-filters [name="start"]', field => field.value);
+    if (start !== '2000') return `the queued 2000s click was sent as start="${start}"`;
+    return page.url().includes('start=2000') ? null : `the list ended on ${page.url()}`;
+}
+
+/**
+ * A failed request for the filters the list already shows leaves nothing to
+ * catch up on, so the takeover renders nothing: it once re-rendered, which
+ * threw away the rows a server Load More had appended. Answers as above.
+ */
+async function checkAFailedRequestForTheListKeepsItsRows(page) {
+    const engine = { site: music, data: '/api/all/', ready: musicReady };
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = await holdEngineLoad(page, engine, request =>
+        request.url().startsWith(music + '/?') && !request.url().includes('append=true') &&
+        ['xhr', 'fetch'].includes(request.resourceType()));
+    await page.goto(music + '/', { waitUntil: 'load' });
+    const decade = await page.waitForSelector('.year-grid-decade');
+    await sleep(1000);
+    await page.click('.load-more-button');
+    await page.waitForFunction(rows => document.querySelectorAll(rows).length === 120, {}, albumRows);
+    // A request for the same filters, as commit() sends
+    await page.evaluate(() => document.getElementById('album-filters').dispatchEvent(
+        new CustomEvent('change', { bubbles: true, detail: {} })));
+    const missing = await bothHeld(held, music);
+    if (missing) return missing;
+    await held.server.respond({ status: 500, contentType: 'text/html', body: 'boom' });
+    await sleep(300);
+    await releaseAfterEngine(page, held, engine, decade);
+    await sleep(500);
+    const rows = await page.$$eval(albumRows, found => found.length);
+    return rows === 120 ? null : `the takeover turned 120 rows into ${rows}`;
+}
+
+/**
+ * And a `?page=2` link whose takeover re-renders, for a filter request that
+ * failed: the engine's rows start at #1, but the server's offset stayed on
+ * the container for the next adoption to read. Answers as above.
+ */
+async function checkALaterPageForgetsItsStartOnceRendered(page) {
+    const engine = { site: music, data: '/api/all/', ready: musicReady };
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = await holdEngineLoad(page, engine, request =>
+        request.url().includes('start=1990') &&
+        ['xhr', 'fetch'].includes(request.resourceType()));
+    await page.goto(music + '/?page=2', { waitUntil: 'load' });
+    const decade = await page.waitForSelector('.year-grid-decade[title^="1990s:"]');
+    await sleep(1000);
+    await decade.click();
+    const missing = await bothHeld(held, music);
+    if (missing) return missing;
+    await held.server.respond({ status: 500, contentType: 'text/html', body: 'boom' });
+    await sleep(300);
+    await releaseAfterEngine(page, held, engine, decade);
+    await sleep(500);
+    const state = await page.evaluate(() => ({
+        attribute: Boolean(document.querySelector('[data-window-start]')),
+        start: getAlbumClientSideFiltering().pageStart,
+        windowStart: getAlbumClientSideFiltering().renderer.windowStart,
+    }));
+    if (state.windowStart !== 0) return `the 1990s list starts at row ${state.windowStart + 1}`;
+    return state.attribute || state.start
+        ? 'page 2\'s offset outlived the engine rendering from #1' : null;
+}
+
+/**
+ * A `?page=2` link renders rows 101-120, and the engine took them for 1-20:
+ * a jump to 110 appended rows already there, and one to 5 flashed row 105.
+ * It starts the window where the page does. Answers as above.
+ */
+async function checkALaterPageStartsItsWindowThere(page) {
+    await openMusicEngine(page, '/?page=2');
+    const summary = await page.$eval('[data-result-count="desktop"]', line => line.textContent);
+    if (!/101\D120 of 120/.test(summary)) return `page 2's count read "${summary.trim()}"`;
+    if (!await page.$('.load-previous-button')) return 'page 2 had no Load Previous';
+    const shown = () => page.$$eval(albumRows, found => found.map(row => row.id));
+    const repeated = ids => new Set(ids).size !== ids.length;
+    for (const position of [110, 5]) {
+        await page.evaluate(at => getAlbumClientSideFiltering().jumpTo(at), position);
+        await sleep(300);
+        const ids = await shown();
+        if (repeated(ids)) return `a jump to ${position} on page 2 repeated rows`;
+        const rank = await page.evaluate(at => {
+            const csf = getAlbumClientSideFiltering();
+            const index = at - 1 - csf.renderer.windowStart;
+            const row = document.querySelectorAll('#album-list-container .media-row-wrapper')[index];
+            return row && row.querySelector('[data-slot="rank"]').textContent.trim();
+        }, position);
+        if (rank !== String(position)) {
+            return `a jump to ${position} on page 2 found #${rank} in its place`;
+        }
+    }
+    return null;
 }
 
 /**
@@ -787,7 +1411,8 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
         args: ['--no-sandbox', '--host-resolver-rules=MAP *.localhost 127.0.0.1'],
     });
     let failures = 0;
-    for (const [width, height] of [[1440, 900], [420, 860]]) {
+    const only = process.env.SMOKE_ONLY && new RegExp(process.env.SMOKE_ONLY);
+    for (const [width, height] of only ? [] : [[1440, 900], [420, 860]]) {
         for (const url of pages) {
             const page = await browser.newPage();
             await page.setViewport({ width, height });
@@ -829,6 +1454,7 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     // Each in its own context: game data cached by the pages above would skip
     // the very load these wait on
     const report = async (name, check) => {
+        if (only && !only.test(name)) return;
         const context = await browser.createBrowserContext();
         const page = await context.newPage();
         const errors = [];
@@ -871,6 +1497,16 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     }
     await report('games jump then Clear All', checkJumpThenClearAll);
     await report('games Load More across a view toggle', checkLoadMoreAcrossViewToggle);
+    await report('games server jump overtaken by a filter', checkServerJumpOvertakenByAFilter);
+    await report('games Load More across a client jump', checkLoadMoreAcrossAClientJump);
+    await report('games server jump across an engine Load More', checkServerJumpAcrossAnEngineLoadMore);
+    await report('games Load More behind a filter change', checkLoadMoreBehindAFilterChange);
+    await report('games Load More behind Back', checkLoadMoreBehindBack);
+    await report('games Load More that fails to append', checkLoadMoreThatFailsToAppend);
+    for (const fails of [false, true]) {
+        await report(`games Load More across a rewritten takeover${fails ? ', failed' : ''}`,
+            page => checkLoadMoreAcrossARewrittenTakeover(page, fails));
+    }
     // The third is spelled as the server would not echo it, which the engine
     // must not read as a form left ahead of the list
     for (const path of ['/?q=smoke', '/genres/smoke-rock/?utm_source=smoke',
@@ -904,6 +1540,17 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     await report('music click out of the search', checkClickOutOfTheSearch);
     await report('music marking keeps the place', checkMarkingKeepsThePlace);
     await report('music failed filter request', checkFailedFilterRequest);
+    await report('music failed search across the takeover', checkFailedSearchAcrossTheTakeover);
+    // Sent as typed, read trimmed: the two once failed to match
+    await report('music failed search with a trailing space',
+        page => checkFailedSearchAcrossTheTakeover(page, 'album 11 '));
+    await report('music failed Enter on a link with no end year', checkFailedEnterWithoutTheEngine);
+    await report('music an older failure leaves the typing alone', checkAnOlderFailureLeavesTheTypingAlone);
+    await report('music typing behind a failure without the engine', checkTypingBehindAFailureWithoutTheEngine);
+    for (const engineFirst of [true, false]) {
+        await report(`music failed request, engine failed ${engineFirst ? 'first' : 'after'}`,
+            page => checkFailedRequestWithoutTheEngine(page, engineFirst));
+    }
     await report('music Back onto an htmx entry', checkBackOntoAnHtmxEntry);
     await report('music Back before the engine', checkBackBeforeTheEngine);
     await report('music Back past an old snapshot', checkBackPastAnOldSnapshot);
@@ -912,6 +1559,24 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     await report('music server Load More adds no entry', checkServerLoadMoreAddsNoEntry);
     await report('music jump box waits for the engine', checkJumpBoxWaitsForTheEngine);
     await report('music jump box comes on', checkJumpBoxComesOn);
+    await report('music page 2 starts its window there', checkALaterPageStartsItsWindowThere);
+    await report('music page 2 forgets its start once rendered', checkALaterPageForgetsItsStartOnceRendered);
+    await report('music a change queued behind a failure', checkAChangeQueuedBehindAFailure);
+    await report('music a change still in the debounce behind a failure',
+        page => checkAChangeQueuedBehindAFailure(page, false));
+    await report('music a failed request for the list itself keeps its rows',
+        checkAFailedRequestForTheListKeepsItsRows);
+    for (const [url, input, text] of [
+        [music + '/artists/', '#artist-search', 'smo'],
+        [music + '/lists/', '#music-list-search', 'smo'],
+        [games + '/developers/', '#developer-search', 'nin'],
+        [games + '/lists/', '#publication-search', 'smo'],
+    ]) {
+        for (const evict of [false, true]) {
+            await report(`Back from a search on ${url}${evict ? ', a snapshot stored' : ''}`,
+                page => checkBackOnAnEntityPage(page, url, input, text, evict));
+        }
+    }
     await report('games empty range', page => checkRangeOutsideTheCorpus(page, games));
     await report('music empty range', page => checkRangeOutsideTheCorpus(page, music));
     await browser.close();

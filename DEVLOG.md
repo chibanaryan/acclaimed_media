@@ -2,6 +2,51 @@
 
 ## 2026-11-02
 
+- **A renamed artist's old URL redirects.** Every import and Wikidata pass
+  rebuilds artist slugs from the current names, and a renamed act's old
+  links 404'd, by decision at launch. Both now keep the slug an artist loses
+  in `ArtistSlugHistory` (migration `0013`), and the artist page 301s it to
+  the current one, query string kept. A slug some artist holds now always
+  wins, and an artist a release drops takes its history with it. The API and
+  `?artists=` still take current slugs only
+- **Back on the entity pages reloads, once.** htmx restored its snapshot of
+  the artists, source-lists and developers pages on Back, which threw ~200
+  Alpine errors per Back, and with no snapshot stored it swapped the results
+  partial in for the whole page, sidebar and all. It keeps no snapshots now,
+  site-wide, so Back onto an htmx entry reloads it. And each of those pages
+  pushed an entry of its own beside htmx's, so one search or sort took two
+  presses of Back (three on games' developers); they tidy htmx's entry
+  instead
+- **Games: one owner for overtaken server work.** A server Load More whose
+  button a client jump redrew was dropped unanswered, and the takeover's and
+  the view toggle's answers started again at 100 rows, so a click for rows
+  201-300 got 101-200. And a server jump overtaken by a filter change jumped
+  on the new list when its pages landed. The late response now asks whether
+  the filters are still the ones it was sent under: if so the engine
+  renders exactly the rows the click asked for, or makes the jump, whatever
+  replaced the button; if not it is dropped. The smoke seed has 320 games,
+  to reach row 300
+- **Music: a filter change cancels a Load More in flight.** Before the
+  engine, the stale page landed after the filter's render, appended to the
+  list it replaced, and put back its own button ("All 120 results loaded"
+  under 100 rows). The button shares the form's `hx-sync` queue
+- **Music: a failed filter request never leaves the sidebar ahead.** A
+  search whose request failed was not rendered when the engine took over
+  with focus still in the box, and with no engine to come any failed
+  request left the sidebar and heading on filters the list did not show.
+  The engine renders it, focus or not; without one, the controls go back to
+  what the list shows, unless a newer change is already on its way
+- **Music: a `?page=2` link knows where it starts.** The engine took its
+  rows for 1-100, so a jump repeated rows or flashed the wrong one. The
+  server renders the window's start and the engine adopts it, with Load
+  Previous and a "101-200" count
+- **The mobile sheet's year switch and decades say which is on**
+  (`aria-pressed`), and the section header says whether it is open
+  (`aria-expanded`). They showed it by colour alone
+- **`BOOKS_ENABLED` is one flag**: the setting reads the env var, default
+  off, and the nav reads the setting. The setting had been read by nothing
+- **Memory measured on the dyno**: a week of gthread peaked at 342 MiB of
+  512, swap under 13 MiB, so `--threads 3` fits (ROADMAP item 4)
 - **The music Wikidata pass reads language-neutral labels.** Wikidata has
   moved some names to the `mul` label and dropped the `en` one, which was
   all the pass read, so it skipped 27 artists (Radiohead, Rihanna, 50 Cent,
