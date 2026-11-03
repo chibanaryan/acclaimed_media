@@ -1363,3 +1363,33 @@ class UnifiedSearchAccentTests(TestCase):
         studio.save()
         studio.refresh_from_db()
         self.assertEqual(studio.name_normalized, "unicode works")
+
+
+class CachedApiFollowsTheDataVersionTests(TestCase):
+    """The `cache_page`'d endpoints keep a response only while the data stands.
+
+    Keyed on the release alone, they served the rows from before an import,
+    `/games/None/` slugs included, for up to a day.
+    """
+
+    def setUp(self):
+        clear_all_caches()
+        self.addCleanup(clear_all_caches)
+        self.game = models.Game.objects.create(
+            name="Alpha Quest", rank=1, igdb_id=1, slug="alpha-quest"
+        )
+
+    def name(self):
+        return self.client.get("/api/games/alpha-quest/").json()["name"]
+
+    def test_a_response_is_kept_while_the_version_stands(self):
+        self.assertEqual(self.name(), "Alpha Quest")
+        # .update() moves nothing the version reads
+        models.Game.objects.filter(pk=self.game.pk).update(name="Renamed")
+        self.assertEqual(self.name(), "Alpha Quest")
+
+    def test_a_response_is_dropped_once_the_version_moves(self):
+        self.assertEqual(self.name(), "Alpha Quest")
+        models.Game.objects.filter(pk=self.game.pk).update(name="Renamed")
+        models.Game.objects.create(name="Imported", rank=2, igdb_id=2)
+        self.assertEqual(self.name(), "Renamed")

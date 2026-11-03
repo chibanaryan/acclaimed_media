@@ -88,17 +88,23 @@ class BuildCachesTests(SimpleTestCase):
         self.assertEqual(prefix(""), "")
 
     def test_the_api_page_caches_are_keyed_on_the_release(self):
+        """Then the data version, so the release still sorts first for culling."""
         from unittest import mock
 
-        from django.test import override_settings
+        from django.test import RequestFactory, override_settings
 
         from games.api import views as api_views
 
-        with override_settings(RELEASE_CACHE_PREFIX="v00000412"), mock.patch.object(
-            api_views, "django_cache_page"
-        ) as django_cache_page:
-            api_views.cache_page(60)
-        django_cache_page.assert_called_once_with(60, key_prefix="v00000412")
+        view = mock.Mock()
+        with (
+            override_settings(RELEASE_CACHE_PREFIX="v00000412"),
+            mock.patch.object(api_views, "django_cache_page") as django_cache_page,
+            mock.patch.object(
+                api_views, "compute_game_data_version", return_value="abc123"
+            ),
+        ):
+            api_views.cache_page(60)(view)(RequestFactory().get("/"))
+        django_cache_page.assert_called_once_with(60, key_prefix="v00000412:abc123")
 
     def test_the_per_process_aliases_are_always_per_process(self):
         # Whole-page HTML and the rate-limit counters live here, so neither

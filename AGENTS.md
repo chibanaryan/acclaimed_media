@@ -1785,7 +1785,9 @@ Three aliases, defined by `core/cache_config.py` (which `settings.py` calls):
   on `HEROKU_RELEASE_VERSION`, from
   the app's `runtime-dyno-metadata` lab (enabled 2026-10-26). Before that,
   new code was served old code's output, such as the payload version for up
-  to an hour after a `SCHEMA_VERSION` bump. The rest of the alias is not
+  to an hour after a `SCHEMA_VERSION` bump. Both are keyed on the games
+  data version too, so an import is not answered with the rows from before
+  it, the `cache_page` ones at six queries a hit. The rest of the alias is not
   prefixed. A whole-alias prefix reset allauth's and the contact form's
   rate-limit counters on every release, and aimed a long job's
   invalidation at the release it started under. The hand-built caches carry

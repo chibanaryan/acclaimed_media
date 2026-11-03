@@ -1,3 +1,4 @@
+import functools
 from collections import defaultdict
 from datetime import datetime
 
@@ -30,13 +31,28 @@ from . import serializers
 
 
 def cache_page(timeout):
-    """Django's ``cache_page``, keyed on the Heroku release.
+    """Django's ``cache_page``, keyed on the Heroku release and the data.
 
     These responses sit in the shared cache, which outlives a deploy, so a
     new release must not be served the old code's output; see
-    ``core.cache_config.release_cache_prefix``.
+    ``core.cache_config.release_cache_prefix``. And an import must not be
+    served the rows from before it, ``/games/None/`` slugs and all, until
+    the timeout lapses, so the game data version is read on every request:
+    six small queries, beside the one a hit costs. A response rendered
+    across an import's commit is stored under the version before it, which
+    no request asks for again.
     """
-    return django_cache_page(timeout, key_prefix=settings.RELEASE_CACHE_PREFIX)
+
+    def decorator(view):
+        @functools.wraps(view)
+        def cached_view(request, *args, **kwargs):
+            prefix = f"{settings.RELEASE_CACHE_PREFIX}:{compute_game_data_version()}"
+            cached = django_cache_page(timeout, key_prefix=prefix)(view)
+            return cached(request, *args, **kwargs)
+
+        return cached_view
+
+    return decorator
 
 
 @method_decorator(cache_page(60 * 15), name="dispatch")  # 15 min cache

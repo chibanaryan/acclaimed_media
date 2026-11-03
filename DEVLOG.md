@@ -2,6 +2,10 @@
 
 ## 2026-11-03
 
+- **Games: the cached API endpoints follow the data version.**
+  `/api/games/`, a game's or a developer's detail, meta, genres and
+  platforms were kept for up to a day whatever an import did, null slugs
+  included
 - **Games: the sidebar's genre and series lists follow the data version.**
   Nothing dropped them, so a page rendered between an import and the fetch
   after it kept the lists without the added games' series for a day
