@@ -1,5 +1,10 @@
 {# Author search results partial - used for both initial render and HTMX updates #}
 {% load humanize %}
+{# The heading's counts, which a search's swap reads (author_list.html) #}
+<div id="pagination-data"
+     data-loaded-count="{{ loaded_count|default:0 }}"
+     data-total-count="{{ total_count|default:0 }}"
+     style="display: none;"></div>
 {% if authors %}
 {# Desktop table view #}
 <div class="hidden desktop:block overflow-x-auto">

@@ -1483,7 +1483,7 @@ async function checkBackOnAnEntityPage(page, url, input, text, evict) {
  * import committing between the page and its payload hands the page. Keeps
  * the names of the items sent.
  */
-async function servePayload(page, { site, data, items }, stale) {
+async function servePayload(page, { site, data, items }, stale, keep) {
     let open;
     const sent = { gate: new Promise(resolve => { open = resolve; }) };
     sent.open = open;
@@ -1500,6 +1500,7 @@ async function servePayload(page, { site, data, items }, stale) {
         if (stale) {
             payload.version = 'another-version';
             list.shift();
+            if (keep) list.splice(keep);
         }
         sent.names = list.map(item => item.n);
         await request.respond({
@@ -1516,15 +1517,20 @@ async function servePayload(page, { site, data, items }, stale) {
  * had; one of the page's own version leaves the page's rows alone. Answers
  * as above.
  */
-async function checkEngineFollowsThePagesVersion(page, engine, path, stale) {
+async function checkEngineFollowsThePagesVersion(page, engine, path, stale, keep) {
     const { site, rows, names, start } = engine;
     await page.setViewport({ width: 1440, height: 900 });
-    const sent = await servePayload(page, engine, stale);
+    const sent = await servePayload(page, engine, stale, keep);
     await page.goto(site + path, { waitUntil: 'networkidle2' });
     await page.$eval(rows, row => { row.dataset.smokeServer = '1'; });
+    // Past the server row's own highlight, which the render replaces
+    if (path.includes('highlight=')) await sleep(600);
     sent.open();
     await start(page);
     await sleep(500);
+    if (path.includes('highlight=') && !await page.$('#album-list-container .is-highlighted')) {
+        return `${site}${path}: the render lost the highlight`;
+    }
     const kept = Boolean(await page.$(`${rows}[data-smoke-server]`));
     if (!stale) return kept ? null : `${site}${path}: the page's own version re-rendered its rows`;
     if (kept) return `${site}${path}: another version's payload took the page's rows over`;
@@ -1534,6 +1540,7 @@ async function checkEngineFollowsThePagesVersion(page, engine, path, stale) {
             return [renderer.windowStart, renderer.windowEnd];
         }, site === games ? 'games' : 'music');
         const shownNames = await page.$$eval(names, cells => cells.map(cell => cell.textContent.trim()));
+        if (!shownNames.length) return `${site}${path}: the render left no rows (window ${window.join('-')})`;
         const expected = sent.names.slice(...window);
         return shownNames.join() === expected.join() ? null
             : `${site}${path}: rows ${window.join('-')} showed ${shownNames[0]} to ` +
@@ -1541,7 +1548,7 @@ async function checkEngineFollowsThePagesVersion(page, engine, path, stale) {
               `${expected[0]} to ${expected[expected.length - 1]}`;
     };
     const first = await shown();
-    if (first) return first;
+    if (first || keep || path.includes('highlight=')) return first;
     const button = path.includes('page=') ? '.load-previous-button' : '.load-more-button';
     if (!await page.$(button)) return `${site}${path}: no ${button} after the render`;
     await page.click(button);
@@ -2171,6 +2178,11 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
                 page => checkEngineFollowsThePagesVersion(page, versioned[name], path, stale));
         }
     }
+    // Shorter than the page's start: the top of the list, not an empty one
+    await report('music /?page=2 engine with another, shorter version',
+        page => checkEngineFollowsThePagesVersion(page, versioned.music, '/?page=2', true, 90));
+    await report('music /?highlight=5 engine with another version',
+        page => checkEngineFollowsThePagesVersion(page, versioned.music, '/?highlight=5', true));
     await report('games empty range', page => checkRangeOutsideTheCorpus(page, games));
     await report('music empty range', page => checkRangeOutsideTheCorpus(page, music));
     await browser.close();

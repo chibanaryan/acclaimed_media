@@ -1,8 +1,9 @@
 {# Append-only partial - returns just author rows for Load More #}
 {% load humanize %}
 
-{# Desktop table rows #}
-<div id="append-rows-container" class="hidden">
+{# Desktop table rows, in a table so that DOMParser keeps the <tr>s #}
+<table id="append-rows-container">
+<tbody>
 {% for author in authors %}
 <tr class="author-row">
     <td>
@@ -42,7 +43,8 @@
     <td class="text-lg text-right tabular-nums">{{ author.books_count }}</td>
 </tr>
 {% endfor %}
-</div>
+</tbody>
+</table>
 
 {# Mobile cards #}
 <div id="mobile-append-container" class="hidden">

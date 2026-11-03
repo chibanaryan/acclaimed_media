@@ -326,7 +326,9 @@ class AlbumClientSideFiltering {
         if (!container) return;
 
         this.renderer.reset();
-        if (options.range) {
+        // A range past the end, after an import shortened the list, is the
+        // top of it, where an empty result says so
+        if (options.range && options.range[0] < albums.length) {
             // From an empty window, so the range replaces the page's rows
             // rather than growing them
             this.renderer.currentItems = albums;
@@ -1009,6 +1011,8 @@ function initAlbumFiltering() {
                 range: page ? null : [start, start + shown]
             });
             if (pageRequest) csf.loadMore();
+            // Its row was rendered again, without the highlight
+            highlightPending = highlightOnLoad !== null;
         } else if (pageRequest) {
             csf.loadMore();
         } else if (csf.pageStart > 0) {

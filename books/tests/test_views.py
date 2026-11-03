@@ -618,6 +618,13 @@ class AuthorListViewTests(StaffUserTestMixin, TestCase):
                 reverse("books:author-list"), {"append": "true", "page": 2}
             )
         self.assertContains(first, 'Showing <span id="loaded-count">1</span> of 2')
+        # A search's swap reads the heading's counts from here
+        self.assertContains(first, 'data-total-count="2"')
+        # Outside a table, DOMParser drops the <tr>s and no desktop row went in
+        self.assertRegex(
+            append.content.decode(),
+            r'<table id="append-rows-container">\s*<tbody>\s*<tr class="author-row">',
+        )
         meta = re.search(
             r'id="load-more-meta">(.*?)</script>', append.content.decode(), re.S
         )
