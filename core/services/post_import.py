@@ -186,8 +186,11 @@ def resume_if_cut_short(section, job):
         logger.exception("Could not check for a cut-short %s metadata fetch", section)
         return None
 
+    started = []
+
     def restart(restarts):
-        return _hand_off(section, job, token, restarts)
+        started.append(_hand_off(section, job, token, restarts))
+        return started[-1]
 
     try:
         restarts = _read_owed(section)
@@ -202,7 +205,7 @@ def resume_if_cut_short(section, job):
             # Finished between the reads, or given up; unless an import
             # asked as the lock went, and its fetch is under way
             if _let_go(section, token, restart):
-                return RESUMED
+                return RESUMED if started[-1] else NOT_STARTED
             return None if restarts is None else GAVE_UP
     except Exception:
         logger.exception("Could not check for a cut-short %s metadata fetch", section)
@@ -234,20 +237,10 @@ def _owed(asked, pending):
     return _GIVEN_UP
 
 
-def _read_owed(section, *, did_the_work=False):
-    """``_owed`` for the section, read with the lock held.
-
-    ``did_the_work``: the work under the lock was the Sunday job's, which a
-    fetch cut short is left to, so its marker goes. An import that asked
-    meanwhile still gets its fetch: the work read its rows before.
-    """
+def _read_owed(section):
+    """``_owed`` for the section, read with the lock held."""
     held = cache.get_many([again_key(section), pending_key(section)])
-    asked = bool(held.get(again_key(section)))
-    pending = held.get(pending_key(section))
-    if did_the_work and pending is not None and not asked:
-        cache.delete(pending_key(section))
-        pending = None
-    return _owed(asked, pending)
+    return _owed(bool(held.get(again_key(section))), held.get(pending_key(section)))
 
 
 def _let_go(section, token, run):
@@ -324,9 +317,9 @@ class Hold:
         A fetch is owed if an import asked for one while the lock was held,
         or one was cut short. ``owed`` says where it runs: here, on a thread
         for a caller that cannot wait for it, or left for the import page to
-        restart. A restart cut short too is left for the page to report.
-        ``did_the_work``: the work under the lock was the Sunday job's, which
-        a fetch cut short is left to (``_read_owed``).
+        restart. A restart cut short too is left for the page to report,
+        unless the work under the lock ``did_the_work`` (the Sunday job's,
+        which the page told staff it was left to).
         """
         self.stop.set()
         section = self.section
@@ -340,9 +333,12 @@ class Hold:
                     section, self.token, restarts
                 ),
             }[owed]
-            restarts = _read_owed(section, did_the_work=did_the_work)
+            restarts = _read_owed(section)
             if restarts is _GIVEN_UP:
-                # Left for the page to report
+                if did_the_work:
+                    # Given up, it was left to the Sunday job, which this is
+                    cache.delete(pending_key(section))
+                # Otherwise left for the page to report
                 restarts = None
             if restarts is None:
                 _let_go(section, self.token, run)
@@ -395,9 +391,10 @@ def run_weekly(section, job, command, work):
     the lock still held gives up the week, at ERROR so Sentry hears of it.
     A fetch owed when it lets go runs after it: every pass of the fetch is
     missing-only, so that costs little, and the work's own failures are
-    warnings, which cannot say whether it did the fetch's work. Work that
-    raised leaves the fetch to the import page, rather than hold the error
-    behind it. A cache error taking the lock runs the work without it.
+    warnings, which cannot say whether it did the fetch's work. Only one
+    given up is dropped: the page told staff it was left to this job. Work
+    that raised leaves the fetch to the import page, rather than hold the
+    error behind it. A cache error taking the lock runs the work without it.
     """
     try:
         taken = hold(section, job, wait=WEEKLY_WAIT_SECONDS)

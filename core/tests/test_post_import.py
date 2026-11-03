@@ -351,6 +351,27 @@ class CutShortFetchTests(PostImportTestCase):
             self.assertEqual(self.resume(), post_import.RESUMED)
         self.job.assert_called_once()
 
+    def test_a_late_import_whose_thread_will_not_start_is_said_so(self):
+        cache.set(PENDING, 1)
+        release = post_import._release
+        calls = []
+
+        def release_then_import(key, token):
+            release(key, token)
+            calls.append(key)
+            if len(calls) == 1:
+                cache.set(AGAIN, True)
+
+        with (
+            mock.patch.object(post_import, "_release", side_effect=release_then_import),
+            mock.patch(THREAD, side_effect=RuntimeError("can't start new thread")),
+            self.assertLogs("core.services.post_import", "ERROR"),
+        ):
+            self.assertEqual(
+                post_import.resume_if_cut_short("test", self.job),
+                post_import.NOT_STARTED,
+            )
+
     def test_two_loads_at_once_restart_it_once(self):
         """Both read the marker before either took the lock."""
         cache.set(PENDING, 0)
@@ -707,16 +728,24 @@ class HoldTests(PostImportTestCase):
 
 
 class RunWeeklyTests(PostImportTestCase):
-    def test_work_done_under_the_lock_is_the_sunday_backstop(self):
-        """A fetch cut short is left to the Sunday job, which this is."""
+    def test_a_fetch_cut_short_runs_after_the_work(self):
+        """Every pass of the fetch is missing-only, so it costs little after
+        the weekly work; and the weekly's own failures are warnings, which
+        cannot say whether it did the fetch's work."""
         cache.set(PENDING, 0)
         seen = []
         post_import.run_weekly(
             "test", self.job, _Command(), lambda: seen.append(cache.get(LOCK))
         )
         self.assertTrue(seen[0])
-        self.job.assert_not_called()
+        self.job.assert_called_once()
         self.assertIsNone(cache.get(LOCK))
+        self.assertIsNone(cache.get(PENDING))
+
+    def test_a_given_up_fetch_was_left_to_this_job(self):
+        cache.set(PENDING, post_import.MAX_RESTARTS)
+        post_import.run_weekly("test", self.job, _Command(), lambda: None)
+        self.job.assert_not_called()
         self.assertIsNone(cache.get(PENDING))
 
     def test_an_import_during_the_work_still_gets_its_fetch(self):
