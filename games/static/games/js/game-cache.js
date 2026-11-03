@@ -2,7 +2,7 @@
  * Acclaimed Games - IndexedDB Cache Manager
  *
  * Manages caching of game data in IndexedDB for client-side filtering.
- * Validates cache freshness using version hash from server.
+ * A copy is current only if its version is the one the page names.
  */
 
 /**
@@ -19,9 +19,7 @@ class GameDataCache {
         this.DB_VERSION = 1;
         this.STORE_NAME = 'gamedata';
         this.CACHE_KEY = 'allgames';
-        this.VERSION_URL = '/api/games/version/';
         this.DATA_URL = '/api/games/all/';
-        this.CACHE_TTL = 5 * 60 * 1000; // 5 minutes - skip version check if cache is fresher
         this._db = null;
         this._initPromise = null;
     }
@@ -123,22 +121,6 @@ class GameDataCache {
     }
 
     /**
-     * Fetch current data version from server
-     * @private
-     */
-    async _fetchVersion() {
-        try {
-            const response = await fetch(this.VERSION_URL);
-            if (!response.ok) throw new Error('Version fetch failed');
-            const data = await response.json();
-            return data.version;
-        } catch (e) {
-            console.warn('Version check failed:', e);
-            return null;
-        }
-    }
-
-    /**
      * The data version the page names, if it names one
      * @private
      */
@@ -147,9 +129,9 @@ class GameDataCache {
     }
 
     /**
-     * Fetch full game data from server. With the page's version in the URL:
-     * the response is cached server-side for an hour by its full URL, so a
-     * new version is a new entry rather than the last import's payload
+     * Fetch full game data from server. With the page's version in the URL,
+     * so the browser's HTTP cache, which keeps a response for an hour by its
+     * URL, holds a copy per version; the server keys on its own version
      * @private
      */
     async _fetchData(pageVersion = '') {
@@ -188,29 +170,9 @@ class GameDataCache {
         // will do, however fresh another copy is
         const pageVersion = this._pageVersion();
 
-        if (pageVersion) {
-            if (cached && cached.version === pageVersion) {
-                if (onCacheHit) onCacheHit(cached.data);
-                return cached.data;
-            }
-        } else if (cached) {
-            // Quick win: skip version check if cache is fresh (< 5 min old)
-            const cacheAge = Date.now() - cached.timestamp;
-            if (cacheAge < this.CACHE_TTL) {
-                if (onCacheHit) onCacheHit(cached.data);
-                return cached.data;
-            }
-
-            // Cache exists but may be stale - check version in parallel with preparing fallback
-            const serverVersion = await this._fetchVersion();
-
-            if (serverVersion && cached.version === serverVersion) {
-                // Cache version matches - update timestamp and return cached data
-                if (onCacheHit) onCacheHit(cached.data);
-                // Refresh timestamp in background (don't await)
-                this._setCached(cached.version, cached.data);
-                return cached.data;
-            }
+        if (pageVersion && cached && cached.version === pageVersion) {
+            if (onCacheHit) onCacheHit(cached.data);
+            return cached.data;
         }
 
         // Cache miss or stale - fetch fresh data

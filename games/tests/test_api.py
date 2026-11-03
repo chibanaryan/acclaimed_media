@@ -694,28 +694,6 @@ class UnifiedSearchViewTests(TestCase):
         self.assertEqual(data["order"], ["games", "series", "developers"])
 
 
-class GameDataVersionViewTests(TestCase):
-    """Test the GameDataVersionView endpoint."""
-
-    def setUp(self):
-        self.client = APIClient()
-        self.game = models.Game.objects.create(
-            name="Test Game",
-            rank=1,
-            year_of_release=2020,
-            slug="test-game",
-        )
-
-    def test_version_endpoint_returns_version(self):
-        """Test that version endpoint returns a version hash."""
-        response = self.client.get("/api/games/version/")
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertIn("version", data)
-        self.assertIsInstance(data["version"], str)
-        self.assertEqual(len(data["version"]), 12)  # MD5 hash truncated to 12 chars
-
-
 class GameAllDataViewTests(TestCase):
     """Test the GameAllDataView endpoint for client-side filtering."""
 
@@ -786,6 +764,24 @@ class GameAllDataViewTests(TestCase):
             self.assertEqual(payload.call_count, 2)
         self.assertNotEqual(second["version"], first["version"])
         self.assertEqual(len(second["data"]["games"]), 2)
+
+    def test_a_payload_read_across_an_import_is_neither_labelled_nor_kept(self):
+        """Its rows could be of either version, so no client may keep them."""
+        with mock.patch.object(
+            views, "compute_game_data_version", side_effect=["before", "after"]
+        ):
+            response = self.client.get("/api/games/all/", {"v": "before"})
+        self.assertEqual(response.json()["version"], "")
+        self.assertNotIn("max-age", response.get("Cache-Control", ""))
+        with mock.patch.object(
+            views.GameAllDataView, "_payload", wraps=views.GameAllDataView()._payload
+        ) as payload, mock.patch.object(
+            views, "compute_game_data_version", return_value="before"
+        ):
+            self.assertEqual(
+                self.client.get("/api/games/all/").json()["version"], "before"
+            )
+        self.assertEqual(payload.call_count, 1)
 
     def test_the_clients_version_parameter_cannot_fill_the_cache(self):
         """`?v=` keeps a browser's copy honest; the server keys on its own."""

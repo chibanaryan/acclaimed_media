@@ -214,6 +214,13 @@ function mediaListControlsData(config) {
             if (settings.renderedFiltersId) {
                 document.body.addEventListener('htmx:afterRequest', this._failedRequestListener);
                 window.addEventListener('client-engine-failed', this._engineFailedListener);
+                // The engine failed before the controls were here to hear it,
+                // with a failed request nobody has answered. Asked as the
+                // listeners go on, so one or the other answers it, never both
+                const engine = this._clientEngine();
+                if (engine && engine.failed && engine.failedParams) {
+                    this._answerFailedRequest(engine.failedParams);
+                }
             }
             // Let the subcomponents build themselves from the state the
             // server rendered before any of them can ask for a refilter -
@@ -222,13 +229,6 @@ function mediaListControlsData(config) {
             this.$nextTick(() => {
                 this.publishFacetCounts();
                 this.initialized = true;
-                // The engine failed before the controls were here to hear it,
-                // with a failed request nobody has answered
-                const engine = this._clientEngine();
-                if (settings.renderedFiltersId && engine && engine.failed &&
-                        engine.failedParams) {
-                    this._answerFailedRequest(engine.failedParams);
-                }
             });
         },
 

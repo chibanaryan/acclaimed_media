@@ -1520,7 +1520,8 @@ content is ever shown as-is.
   `games/tests/test_main_views.py::GamesHomeGenreQueryBudgetTests`.** On a
   cold cache it cost 109 queries, 75 of them `games_wikipediagenre`:
   `get_landing_genres` filters once per root genre, and every filter walked
-  `children` a query per node. Now 38, and `/?genres=<root>` 109 -> 39.
+  `children` a query per node. Now 38, and `/?genres=<root>` 109 -> 39,
+  each plus the six of the page's data version since 2026-11-03.
   `/api/games/all/` uses `descendants_by_id` too, in place of its own copy
   of the walk.
 - **The rest are pinned by growth, not by count**
@@ -1789,8 +1790,9 @@ beside the last import's payload. The view now caches it under the version
 it computes, and `GameDataCache` keeps only a copy of the page's version and
 asks for `?v=<version>`, which keeps the browser's HTTP cache honest. The
 server never keys on `?v=`, so the parameter cannot fill the shared cache
-with copies of the payload. `/api/games/version/` is now asked only by a
-page that names no version.
+with copies of the payload. A payload whose rows were read across an
+import's commit is labelled with no version and cached nowhere. The
+`/api/games/version/` endpoint went: no page was left without a version.
 
 Music's cache keys all live in `music/config.py` as `CACHE_KEYS`, which
 `caching.invalidate_music_caches()` iterates - add a cached value there or it

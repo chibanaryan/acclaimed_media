@@ -617,19 +617,6 @@ class UnifiedSearchView(APIView):
         )
 
 
-@method_decorator(cache_page(config.CACHE_TIMEOUT_1_HOUR), name="dispatch")
-class GameDataVersionView(APIView):
-    """
-    Lightweight endpoint returning only the data version hash.
-
-    Used by client-side cache to validate if cached data is still current.
-    Response: {"version": "abc123def456"}
-    """
-
-    def get(self, request):
-        return Response({"version": compute_game_data_version()})
-
-
 class GameAllDataView(APIView):
     """
     Complete game data endpoint for client-side filtering.
@@ -661,16 +648,25 @@ class GameAllDataView(APIView):
         than on the URL, so the client's ``?v=``, which keeps its browser's
         copy honest, cannot fill the cache with copies of the payload.
         """
-        # Read before the rows, so an import committing in between files the
-        # new rows under the old version, which only an older page names
         version = compute_game_data_version()
         key = f"games_all_data:{settings.RELEASE_CACHE_PREFIX}:{version}"
         body = cache.get(key)
-        if body is None:
-            body = JSONRenderer().render(self._payload(version))
-            cache.set(key, body, config.CACHE_TIMEOUT_1_HOUR)
+        if body is not None:
+            response = HttpResponse(body, content_type="application/json")
+            patch_response_headers(response, config.CACHE_TIMEOUT_1_HOUR)
+            return response
+        payload = self._payload(version)
+        # An import that committed while the rows were read leaves them of
+        # either version, so they are labelled with none, which no page
+        # names and no client keeps, and are kept by no cache
+        current = compute_game_data_version() == version
+        if not current:
+            payload["version"] = ""
+        body = JSONRenderer().render(payload)
         response = HttpResponse(body, content_type="application/json")
-        patch_response_headers(response, config.CACHE_TIMEOUT_1_HOUR)
+        if current:
+            cache.set(key, body, config.CACHE_TIMEOUT_1_HOUR)
+            patch_response_headers(response, config.CACHE_TIMEOUT_1_HOUR)
         return response
 
     def _payload(self, version):

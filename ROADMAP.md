@@ -28,6 +28,14 @@ it in `scripts/browser_smoke.js` first.
    `#load-more-meta` is missing. They also build their URL from
    `window.location`. Move them onto the games behaviour, or onto one
    shared script.
+3. **Both engines still adopt a payload that is not the page's version.**
+   A page rendered just before an import commits fetches its payload just
+   after, and gets the new data: games' `GameDataCache` and music's
+   `_loadData` keep such a copy out of storage, but the engine still joins
+   the page's rows to it by position, so that one visit's Load More or jump
+   can repeat and drop items. The window is the page's lifetime across an
+   import. Re-render the list from the payload when the versions differ,
+   rather than adopting the server's rows.
 
 The browser harnesses used for v905 are in the ashgabat worktree's
 `.context/ygrid/`, which is gitignored and so exists only there:
@@ -40,7 +48,7 @@ The section is public at `music.acclaimedmedia.org`, beside the games site and
 a landing page at the apex (2026-10-30; AGENTS.md, "Domain"). The pages keep a
 "Beta" badge while `music.config.MUSIC_BETA` is on.
 
-3. **New brand artwork.** The favicons still read "Acclaimed Video Games"
+4. **New brand artwork.** The favicons still read "Acclaimed Video Games"
    (`games/static/games/brand/`), and a page without artwork of its own has
    no `og:image` since the old one was removed; every page title already
    says Acclaimed Media. A new default goes in `base.html`'s `og_image` block,
@@ -53,7 +61,7 @@ The rankings page is 690 KB anonymous and 833 KB logged in, and the dyno
 runs gthread with three threads per worker (AGENTS.md, "Production memory
 budget").
 
-4. **Check `--threads 3` after a week.** The `Procfile` went from two
+5. **Check `--threads 3` after a week.** The `Procfile` went from two
    threads per worker to three on 2026-11-03, on a week of gthread at two
    (2026-10-27 to 11-02) that peaked at 342 MiB RSS of the 512 MiB quota,
    with swap never above 13 MiB. Around 2026-11-10, re-read
