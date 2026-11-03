@@ -26,6 +26,7 @@ from django.db.models import Case, IntegerField, Value, When
 from core.services.monitoring import weekly_job_monitor
 from games import config
 from games.models import Game, HLTBGameData, WikipediaGameData
+from games.services import post_import
 from games.services.genre_normalizer import (
     canonicalize_genre_payload,
     get_or_create_genre,
@@ -123,7 +124,11 @@ class Command(BaseCommand):
         with weekly_job_monitor(
             "refresh-all-metadata", enabled=options.get("weekly"), max_runtime=180
         ):
-            self._run(options)
+            if options.get("weekly"):
+                # Never beside an import's fetch, or the rate limit is shared
+                post_import.run_weekly(self, lambda: self._run(options))
+            else:
+                self._run(options)
 
     def _run(self, options):
         """Everything after the weekly gate, inside the cron check-in."""

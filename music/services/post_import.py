@@ -36,3 +36,18 @@ def schedule():
 def run_in_foreground(command):
     """Run the fetch on an import command's output."""
     post_import.run_in_foreground("music", refresh_after_import, command)
+
+
+def hold():
+    """The lock for other metadata work (``post_import.hold``), or ``None``."""
+    return post_import.hold("music", refresh_after_import)
+
+
+def resume():
+    """Restart a fetch its worker took down; the line to show staff, or ``None``."""
+    return post_import.resume_if_cut_short("music", refresh_after_import)
+
+
+def run_weekly(command, work):
+    """The weekly job's ``work``, never beside a fetch."""
+    post_import.run_weekly("music", refresh_after_import, command, work)

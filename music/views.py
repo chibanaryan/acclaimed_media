@@ -1737,11 +1737,11 @@ class MusicImportView(StaffOnlyMixin, View):
     template_name = "music/import.html"
 
     def get(self, request):
-        return render(
-            request,
-            self.template_name,
-            self._context(MusicImportForm()),
-        )
+        context = self._context(MusicImportForm())
+        # Staff reload this page to watch a fetch land, so it restarts one
+        # a deploy or worker recycle cut short.
+        context["metadata_resumed"] = post_import.resume()
+        return render(request, self.template_name, context)
 
     def post(self, request):
         form = MusicImportForm(request.POST, request.FILES)

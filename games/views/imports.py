@@ -50,6 +50,9 @@ class ImportView(StaffOnlyMixin, FormView):
     def get_context_data(self, **kwargs) -> dict:
         """Add database object counts and persistent errors to context."""
         context = super().get_context_data(**kwargs)
+        # Staff reload this page to watch a fetch land, so it restarts one a
+        # deploy or worker recycle cut short.
+        context["metadata_resumed"] = post_import.resume()
 
         try:
             # Get all counts in a single aggregation query (optimized)

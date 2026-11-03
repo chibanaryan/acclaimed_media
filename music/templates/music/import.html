@@ -30,6 +30,13 @@
 </div>
 {% endif %}
 
+{% if metadata_resumed %}
+<div class="alert alert-warning mb-4">
+    <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
+    <p class="text-sm">{{ metadata_resumed }}</p>
+</div>
+{% endif %}
+
 {% if summary %}
 <div class="alert alert-success mb-4">
     <span class="mdi mdi-check-circle" aria-hidden="true"></span>

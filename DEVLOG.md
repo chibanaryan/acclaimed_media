@@ -2,6 +2,14 @@
 
 ## 2026-11-03
 
+- **A metadata fetch cut short is restarted, and nothing runs beside one.**
+  A deploy or worker recycle ended an import's fetch silently, leaving the
+  rest to Sunday; the import page's next load now restarts it. The page's
+  IGDB and Wikipedia buttons and both weekly jobs take the fetch's lock, so
+  none is a second pass at IGDB's rate limit beside it: a button says the
+  fetch is running, a weekly job waits for it, and either runs a fetch an
+  import asked for meanwhile. Two imports in the same instant after the
+  lock lapsed could both take it on the database cache; they cannot
 - **Games: the cached API endpoints follow the data version.**
   `/api/games/`, a game's or a developer's detail, meta, genres and
   platforms were kept for up to a day whatever an import did, null slugs

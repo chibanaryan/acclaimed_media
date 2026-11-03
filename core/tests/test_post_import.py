@@ -1,19 +1,25 @@
 """The metadata fetch an import starts once it commits."""
 
 import threading
+from datetime import timedelta
 from io import StringIO
 from unittest import mock
 
-from django.core.cache import cache
+from django.core.cache import cache, caches
 from django.core.management.base import BaseCommand
+from django.db import connection
 from django.test import TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 
 from core.services import post_import
+from core.tests.utils import DatabaseCacheTestCase
 
 THREAD = "core.services.post_import.start_background_thread"
 HEARTBEAT = "core.services.post_import._start_heartbeat"
 LOCK = post_import.lock_key("test")
 AGAIN = post_import.again_key("test")
+PENDING = post_import.pending_key("test")
 
 
 def _run_inline(target, **kwargs):
@@ -23,7 +29,7 @@ def _run_inline(target, **kwargs):
 class PostImportTestCase(TestCase):
     def setUp(self):
         # Django's runner does not clear caches between tests.
-        for key in (LOCK, AGAIN):
+        for key in (LOCK, AGAIN, PENDING):
             cache.delete(key)
             self.addCleanup(cache.delete, key)
         # Inline, a heartbeat would beat until its fetch stopped it, and the
@@ -226,6 +232,232 @@ class ScheduleAfterCommitTests(PostImportTestCase):
             with self.assertLogs("core.services.post_import", "ERROR"):
                 post_import._start("test", self.job, status)
         self.assertEqual(status["message"], post_import.NOT_STARTED)
+
+
+@override_settings(METADATA_AFTER_IMPORT=True)
+class CutShortFetchTests(PostImportTestCase):
+    """A fetch killed with its worker leaves a marker the import page reads."""
+
+    def test_a_round_is_marked_pending_while_it_runs(self):
+        seen = []
+        self.job.side_effect = lambda stdout: seen.append(cache.get(PENDING)) or []
+        self.run_inline()
+        self.assertEqual(seen, [True])
+        self.assertIsNone(cache.get(PENDING))
+
+    def test_a_round_that_raised_is_not_pending(self):
+        """Its failure was reported; running it again would fail again."""
+        self.job.side_effect = RuntimeError("IGDB down")
+        with self.assertLogs("core.services.post_import", "ERROR"):
+            self.run_inline()
+        self.assertIsNone(cache.get(PENDING))
+
+    def resume(self):
+        with mock.patch(THREAD, side_effect=_run_inline):
+            return post_import.resume_if_cut_short("test", self.job)
+
+    def test_a_fetch_cut_short_is_restarted_once(self):
+        cache.set(PENDING, True)
+        with self.assertLogs("core.services.post_import", "WARNING"):
+            self.assertEqual(self.resume(), post_import.RESUMED)
+        self.job.assert_called_once()
+        self.assertIsNone(cache.get(PENDING))
+        self.assertIsNone(self.resume())
+        self.job.assert_called_once()
+
+    def test_a_live_fetch_is_left_alone(self):
+        """Its marker stands beside its lock."""
+        cache.set(PENDING, True)
+        cache.add(LOCK, "theirs")
+        self.assertIsNone(self.resume())
+        self.job.assert_not_called()
+        self.assertIsNone(cache.get(AGAIN))
+
+    def test_nothing_to_restart(self):
+        self.assertIsNone(self.resume())
+        self.job.assert_not_called()
+
+    def test_nothing_with_the_setting_off(self):
+        cache.set(PENDING, True)
+        with override_settings(METADATA_AFTER_IMPORT=False):
+            self.assertIsNone(self.resume())
+        self.job.assert_not_called()
+
+    def test_a_cache_error_does_not_break_the_page(self):
+        with mock.patch.object(post_import.cache, "get", side_effect=ConnectionError):
+            with self.assertLogs("core.services.post_import", "ERROR"):
+                self.assertIsNone(self.resume())
+
+
+class HoldTests(PostImportTestCase):
+    """Other metadata work takes the same lock, and owes the fetch it delays."""
+
+    def test_a_free_lock_is_taken_and_kept_alive(self):
+        taken = post_import.hold("test", self.job)
+        self.assertEqual(cache.get(LOCK), taken.token)
+        self.heartbeat.assert_called_once_with(LOCK, taken.stop)
+        taken.end(StringIO())
+        self.assertTrue(taken.stop.is_set())
+        self.assertIsNone(cache.get(LOCK))
+        self.job.assert_not_called()
+
+    def test_a_held_lock_is_not_taken_nor_asked_for_a_round(self):
+        """A button's IGDB pass is not the fetch an import needs."""
+        cache.add(LOCK, "theirs")
+        self.assertIsNone(post_import.hold("test", self.job))
+        self.assertEqual(cache.get(LOCK), "theirs")
+        self.assertIsNone(cache.get(AGAIN))
+
+    def test_it_waits_for_the_lock_when_asked(self):
+        with (
+            mock.patch.object(post_import.cache, "add", side_effect=[False, True]),
+            mock.patch.object(post_import.time, "sleep") as sleep,
+        ):
+            self.assertIsNotNone(post_import.hold("test", self.job, wait=60))
+        sleep.assert_called_once_with(post_import.HEARTBEAT_SECONDS)
+
+    def test_it_gives_up_once_the_wait_is_over(self):
+        clock = iter([0, 10, 70])
+        with (
+            mock.patch.object(post_import.cache, "add", return_value=False),
+            mock.patch.object(post_import.time, "monotonic", lambda: next(clock)),
+            mock.patch.object(post_import.time, "sleep") as sleep,
+        ):
+            self.assertIsNone(post_import.hold("test", self.job, wait=60))
+        self.assertEqual(sleep.call_args_list, [mock.call(30)])
+
+    def test_a_heartbeat_that_will_not_start_releases_it(self):
+        self.heartbeat.side_effect = RuntimeError("can't start new thread")
+        with self.assertRaises(RuntimeError):
+            post_import.hold("test", self.job)
+        self.assertIsNone(cache.get(LOCK))
+
+    def test_an_import_that_asked_meanwhile_gets_its_fetch(self):
+        """It found the lock held, so it started none of its own."""
+        taken = post_import.hold("test", self.job)
+        post_import._start("test", mock.Mock(), {})
+        taken.end(StringIO())
+        self.job.assert_called_once()
+        self.assertIsNone(cache.get(LOCK))
+        self.assertIsNone(cache.get(AGAIN))
+
+    def test_a_fetch_cut_short_is_finished_after(self):
+        cache.set(PENDING, True)
+        taken = post_import.hold("test", self.job)
+        taken.end(StringIO())
+        self.job.assert_called_once()
+        self.assertIsNone(cache.get(PENDING))
+
+    def test_work_that_covers_the_fetch_clears_one_cut_short(self):
+        cache.set(PENDING, True)
+        taken = post_import.hold("test", self.job)
+        taken.end(StringIO(), covers=True)
+        self.job.assert_not_called()
+        self.assertIsNone(cache.get(PENDING))
+        self.assertIsNone(cache.get(LOCK))
+
+    def test_work_that_covers_the_fetch_still_runs_one_asked_for(self):
+        """The import came after the work had read its rows."""
+        taken = post_import.hold("test", self.job)
+        cache.set(AGAIN, True)
+        taken.end(StringIO(), covers=True)
+        self.job.assert_called_once()
+
+    def test_a_fetch_owed_can_run_on_a_thread(self):
+        taken = post_import.hold("test", self.job)
+        cache.set(AGAIN, True)
+        with mock.patch(THREAD) as thread:
+            taken.end(StringIO(), background=True)
+        self.job.assert_not_called()
+        thread.call_args.args[0]()
+        self.job.assert_called_once()
+        self.assertIsNone(cache.get(LOCK))
+
+    def test_a_fetch_owed_that_raises_is_logged(self):
+        taken = post_import.hold("test", self.job)
+        cache.set(AGAIN, True)
+        with (
+            mock.patch.object(post_import, "_rounds", side_effect=ConnectionError),
+            self.assertLogs("core.services.post_import", "ERROR"),
+        ):
+            taken.end(StringIO())
+
+    def test_a_cache_error_still_lets_go(self):
+        taken = post_import.hold("test", self.job)
+        with (
+            mock.patch.object(
+                post_import.cache, "get", side_effect=[ConnectionError, taken.token]
+            ),
+            self.assertLogs("core.services.post_import", "ERROR"),
+        ):
+            taken.end(StringIO())
+        self.assertIsNone(cache.get(LOCK))
+
+
+class RunWeeklyTests(PostImportTestCase):
+    def test_the_work_runs_under_the_lock_and_covers_the_fetch(self):
+        cache.set(PENDING, True)
+        seen = []
+        post_import.run_weekly(
+            "test", self.job, _Command(), lambda: seen.append(cache.get(LOCK))
+        )
+        self.assertTrue(seen[0])
+        self.job.assert_not_called()
+        self.assertIsNone(cache.get(LOCK))
+        self.assertIsNone(cache.get(PENDING))
+
+    def test_work_that_raises_still_lets_go(self):
+        def work():
+            raise RuntimeError("IGDB down")
+
+        with self.assertRaises(RuntimeError):
+            post_import.run_weekly("test", self.job, _Command(), work)
+        self.assertIsNone(cache.get(LOCK))
+
+    def test_a_fetch_that_outlasts_the_wait_skips_the_week(self):
+        command = _Command()
+        work = mock.Mock()
+        with (
+            mock.patch.object(post_import, "hold", return_value=None) as hold,
+            self.assertLogs("core.services.post_import", "ERROR"),
+        ):
+            post_import.run_weekly("test", self.job, command, work)
+        self.assertEqual(hold.call_args.kwargs["wait"], post_import.WEEKLY_WAIT_SECONDS)
+        work.assert_not_called()
+        self.assertIn("skipping this week", command.output())
+
+
+class DatabaseCacheLockTests(DatabaseCacheTestCase):
+    """On the shared cache, an ``add`` over an expired row is a SELECT then
+    an UPDATE, which two callers at once can both win."""
+
+    def expire(self, key):
+        backend = caches["default"]
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE cache_table SET expires = %s WHERE cache_key = %s",
+                [
+                    connection.ops.adapt_datetimefield_value(
+                        timezone.now() - timedelta(minutes=5)
+                    ),
+                    backend.make_and_validate_key(key),
+                ],
+            )
+
+    def test_an_expired_lock_is_deleted_so_the_add_must_insert(self):
+        cache.add(LOCK, "dead")
+        self.expire(LOCK)
+        with CaptureQueriesContext(connection) as captured:
+            self.assertTrue(post_import._add(LOCK, "mine"))
+        sqls = [q["sql"] for q in captured]
+        self.assertTrue([sql for sql in sqls if sql.startswith("INSERT")])
+        self.assertFalse([sql for sql in sqls if sql.startswith("UPDATE")])
+        self.assertEqual(cache.get(LOCK), "mine")
+
+    def test_a_live_lock_is_left_to_its_holder(self):
+        cache.add(LOCK, "theirs")
+        self.assertFalse(post_import._add(LOCK, "mine"))
+        self.assertEqual(cache.get(LOCK), "theirs")
 
 
 class HeartbeatTests(TestCase):

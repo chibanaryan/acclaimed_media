@@ -20,6 +20,7 @@ from django.db import connection, transaction
 from django.db.models import Q
 
 from core.services.background import start_background_thread
+from core.services.post_import import BUSY, LogStream
 from games.platform_years import years_for
 from games import config, constants, models
 from games.services import post_import
@@ -105,9 +106,53 @@ def import_data(data: Dict[str, Any]) -> Optional[Tuple[bool, str]]:
             return (False, f"Could not process uploaded file: {e}")
 
 
+def _holding_the_fetch_lock(events):
+    """Stream ``events(start_thread)`` while holding the games metadata lock.
+
+    The IGDB and Wikipedia buttons would otherwise run beside an import's
+    fetch or the weekly job: a second pass at the same rate limit and
+    database connections. With the lock held the stream is one error event.
+    ``start_thread`` runs the work and lets go of the lock after it; a
+    stream that never starts any lets go as it closes.
+    """
+    import json
+
+    taken = post_import.hold()
+    if taken is None:
+        yield f"data: {json.dumps({'event': 'error', 'error': BUSY})}\n\n"
+        return
+    started = []
+
+    def start_thread(target):
+        def run():
+            try:
+                target()
+            finally:
+                taken.end(LogStream())
+
+        _start_import_thread(run)
+        started.append(True)
+
+    try:
+        yield from events(start_thread)
+    finally:
+        if not started:
+            # On the request's thread, so any fetch it owes runs on another
+            taken.end(LogStream(), background=True)
+
+
 def import_igdb_with_progress(
     update_relationships: bool = False, force_refresh: bool = False
 ):
+    """Fetch IGDB data with progress events, never beside another fetch."""
+    return _holding_the_fetch_lock(
+        lambda start_thread: _igdb_progress(
+            update_relationships, force_refresh, start_thread
+        )
+    )
+
+
+def _igdb_progress(update_relationships, force_refresh, start_thread):
     """
     Fetch IGDB data for all games with progress updates.
     Yields JSON progress events for streaming to SSE client in real-time.
@@ -279,7 +324,7 @@ def import_igdb_with_progress(
                     finally:
                         _queue_event(None)
 
-                _start_import_thread(run_update)
+                start_thread(run_update)
         else:
             # Standard IGDB data import
             # Create service with optimizations enabled
@@ -308,7 +353,7 @@ def import_igdb_with_progress(
                     # Signal that we're done
                     _queue_event(None)
 
-            _start_import_thread(run_import)
+            start_thread(run_import)
 
         # Stream events as they come in from the queue
         try:
@@ -350,6 +395,13 @@ def import_igdb_with_progress(
 
 
 def import_wikipedia_pages_with_progress(force_refresh: bool = False):
+    """Look up Wikipedia pages with progress events, never beside another fetch."""
+    return _holding_the_fetch_lock(
+        lambda start_thread: _wikipedia_progress(force_refresh, start_thread)
+    )
+
+
+def _wikipedia_progress(force_refresh, start_thread):
     """
     Fetch Wikipedia pages for all games with progress updates.
     Yields JSON progress events for streaming to SSE client in real-time.
@@ -643,7 +695,7 @@ def import_wikipedia_pages_with_progress(force_refresh: bool = False):
                 # Signal that we're done
                 _queue_event(None)
 
-        _start_import_thread(run_lookup)
+        start_thread(run_lookup)
 
         # Stream events as they come in from the queue
         try:

@@ -41,7 +41,7 @@ from django.core.management.base import BaseCommand
 from core.services.monitoring import weekly_job_monitor
 from music.management.commands.rebuild_album_genres import write_report
 from music.models import Album
-from music.services import caching
+from music.services import caching, post_import
 from music.services.artist_slugs import rebuild_artist_slugs
 from music.services.genre_rebuild import rebuild_album_genres
 from music.services.release_dates import refresh_release_dates
@@ -129,7 +129,12 @@ class Command(BaseCommand):
         with weekly_job_monitor(
             "fetch-album-metadata", enabled=options.get("weekly"), max_runtime=120
         ):
-            self._run(options)
+            # Only the weekly run takes the lock: an import's fetch is this
+            # command, run under it.
+            if options["weekly"]:
+                post_import.run_weekly(self, lambda: self._run(options))
+            else:
+                self._run(options)
 
     def _run(self, options):
         """Everything after the weekly gate, inside the cron check-in."""

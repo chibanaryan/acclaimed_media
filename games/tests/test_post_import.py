@@ -403,3 +403,125 @@ class ImportCommandFetchesTests(TestCase):
     def test_the_setting_off_skips_it(self):
         refresh, _ = self.run_command()
         refresh.assert_not_called()
+
+
+class LockWrappersTests(TestCase):
+    def test_hold_resume_and_weekly_are_the_games_section_s(self):
+        command, work = object(), object()
+        with (
+            mock.patch.object(core_post_import, "hold") as hold,
+            mock.patch.object(core_post_import, "resume_if_cut_short") as resume,
+            mock.patch.object(core_post_import, "run_weekly") as weekly,
+        ):
+            post_import.hold()
+            post_import.resume()
+            post_import.run_weekly(command, work)
+        job = post_import.refresh_after_import
+        hold.assert_called_once_with("games", job)
+        resume.assert_called_once_with("games", job)
+        weekly.assert_called_once_with("games", job, command, work)
+
+
+class ImportPageResumesACutShortFetchTests(TestCase):
+    def setUp(self):
+        User.objects.create_user(username="staff", password="pw", is_staff=True)
+        self.client.login(username="staff", password="pw")
+
+    def test_its_load_restarts_one_and_says_so(self):
+        with mock.patch(
+            "games.views.imports.post_import.resume", return_value="Restarted."
+        ) as resume:
+            response = self.client.get(reverse("import"))
+        resume.assert_called_once_with()
+        self.assertContains(response, "Restarted.")
+
+    def test_with_nothing_to_restart_it_says_nothing(self):
+        with mock.patch("games.views.imports.post_import.resume", return_value=None):
+            response = self.client.get(reverse("import"))
+        self.assertIsNone(response.context["metadata_resumed"])
+
+
+class MetadataButtonsTakeTheLockTests(InlineImportThreadMixin, TestCase):
+    """The IGDB and Wikipedia buttons never run beside a fetch."""
+
+    LOCK = core_post_import.lock_key("games")
+
+    def setUp(self):
+        super().setUp()
+        cache.delete(self.LOCK)
+        self.addCleanup(cache.delete, self.LOCK)
+        heartbeat = mock.patch("core.services.post_import._start_heartbeat")
+        heartbeat.start()
+        self.addCleanup(heartbeat.stop)
+        models.Game.objects.create(name="Game", rank=1, igdb_id=1)
+
+    def events(self, stream):
+        return [
+            json.loads(line[len("data: ") :])
+            for chunk in stream
+            for line in chunk.splitlines()
+            if line.startswith("data: ")
+        ]
+
+    def test_a_button_pressed_during_a_fetch_says_so_and_starts_nothing(self):
+        cache.add(self.LOCK, "theirs")
+        for stream in (
+            utils.import_igdb_with_progress,
+            utils.import_wikipedia_pages_with_progress,
+        ):
+            with (
+                self.subTest(stream=stream.__name__),
+                mock.patch(
+                    "games.services.import_handler._start_import_thread"
+                ) as thread,
+            ):
+                events = self.events(stream())
+                thread.assert_not_called()
+                self.assertEqual(
+                    events, [{"event": "error", "error": core_post_import.BUSY}]
+                )
+        self.assertEqual(cache.get(self.LOCK), "theirs")
+        self.assertIsNone(cache.get(core_post_import.again_key("games")))
+
+    @mock.patch("games.services.igdb_importer.IGDBImportService")
+    def test_the_lock_is_held_while_the_work_runs_and_let_go_after(self, service):
+        held = []
+        service.return_value.import_games.side_effect = lambda games: held.append(
+            cache.get(self.LOCK)
+        )
+        self.events(utils.import_igdb_with_progress())
+        self.assertTrue(held[0])
+        self.assertIsNone(cache.get(self.LOCK))
+
+    @mock.patch("games.services.igdb_importer.IGDBImportService")
+    def test_a_stream_that_started_no_work_lets_go(self, service):
+        service.side_effect = RuntimeError("Failed to initialize IGDB API client")
+        with self.assertLogs("games.services.import_handler", "ERROR"):
+            events = self.events(utils.import_igdb_with_progress())
+        self.assertEqual(events[-1]["event"], "error")
+        self.assertIsNone(cache.get(self.LOCK))
+
+    @mock.patch("games.services.igdb_importer.IGDBImportService")
+    def test_an_import_during_the_work_gets_its_fetch_after(self, service):
+        service.return_value.import_games.side_effect = lambda games: (
+            core_post_import._start("games", mock.Mock(), {})
+        )
+        with mock.patch(REFRESH, return_value=[]) as refresh:
+            self.events(utils.import_igdb_with_progress())
+        refresh.assert_called_once()
+        self.assertIsNone(cache.get(self.LOCK))
+
+
+class WeeklyRefreshTakesTheLockTests(TestCase):
+    COMMAND = "games.management.commands.refresh_all_metadata"
+
+    def test_the_weekly_run_takes_it(self):
+        from datetime import datetime
+
+        with (
+            mock.patch(f"{self.COMMAND}.datetime") as clock,
+            mock.patch(f"{self.COMMAND}.post_import.run_weekly") as run_weekly,
+        ):
+            clock.now.return_value = datetime(2026, 10, 18)  # a Sunday
+            call_command("refresh_all_metadata", weekly=True, stdout=StringIO())
+        run_weekly.assert_called_once()

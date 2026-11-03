@@ -210,6 +210,13 @@
     <p class="text-base-content/70">Import and manage your game database</p>
 </div>
 
+{% if metadata_resumed %}
+<div class="alert alert-warning mb-6 shadow-lg">
+    <span class="mdi mdi-alert-circle text-2xl" aria-hidden="true"></span>
+    <span>{{ metadata_resumed }}</span>
+</div>
+{% endif %}
+
 <!-- Success Messages -->
 {% if import_success_message %}
 <div class="alert alert-success mb-6 shadow-lg">
@@ -517,7 +524,7 @@
             <span class="mdi mdi-database" aria-hidden="true"></span>
             Metadata Operations
         </h2>
-        <p class="text-sm opacity-70 mb-4">An import of the games file starts these itself, in the background: IGDB, Wikipedia and HowLongToBeat for the games missing them. The buttons are for running one by hand: wait for the import's to finish first, as the two would share IGDB's rate limit and the database's connections.</p>
+        <p class="text-sm opacity-70 mb-4">An import of the games file starts these itself, in the background: IGDB, Wikipedia and HowLongToBeat for the games missing them. The buttons are for running one by hand. One pressed while a fetch runs says so and starts nothing, as the two would share IGDB's rate limit and the database's connections. A fetch cut short by a deploy is restarted when this page next loads.</p>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <!-- Fetch IGDB Data -->

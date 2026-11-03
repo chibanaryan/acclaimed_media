@@ -63,6 +63,22 @@ class FetchAlbumMetadataCommandTests(TestCase):
         service.assert_not_called()
 
     @mock.patch(f"{COMMAND}.datetime")
+    def test_weekly_runs_under_the_fetch_lock(self, mock_datetime):
+        """Never beside an import's fetch, which is this command."""
+        mock_datetime.now.return_value = datetime(2026, 10, 18)  # a Sunday
+        with mock.patch(f"{COMMAND}.post_import.run_weekly") as run_weekly:
+            self._run(weekly=True, dry_run=True)
+        run_weekly.assert_called_once()
+
+    @mock.patch(f"{COMMAND}.datetime")
+    def test_a_run_by_hand_takes_no_lock(self, mock_datetime):
+        """The import's fetch runs this command while holding it."""
+        with mock.patch(f"{COMMAND}.post_import.run_weekly") as run_weekly:
+            output = self._run(dry_run=True)
+        run_weekly.assert_not_called()
+        self.assertIn("Fetching metadata for 1 album(s)", output)
+
+    @mock.patch(f"{COMMAND}.datetime")
     def test_weekly_runs_on_sunday(self, mock_datetime):
         mock_datetime.now.return_value = datetime(2026, 10, 18)  # a Sunday
         output = self._run(weekly=True, dry_run=True)

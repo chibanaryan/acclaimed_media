@@ -1284,6 +1284,19 @@ fetch cut short leaves; the button, its count and `get_igdb` all use it.
   round again when it finishes. Skipping it was not enough: the running round
   works from the rows it read as it began, so it would leave the games or
   albums the later import added without their metadata.
+- **Every metadata pass but a manual command's takes that lock**: the
+  import page's IGDB and Wikipedia buttons and the weekly jobs
+  (`refresh_all_metadata --weekly`, `fetch_album_metadata --weekly`) take
+  it through `post_import.hold`, so none runs beside an import's fetch and
+  doubles the rate limit and the connections. A button pressed while it is
+  held says so and starts nothing; a weekly job waits up to an hour, then
+  gives up the week at ERROR. One that held it while an import asked for a
+  fetch runs that fetch before letting go. Only the weekly music run takes
+  it: an import's music fetch *is* `fetch_album_metadata`, run under it.
+- **The lock's `add` cannot be won twice.** On the database cache an `add`
+  over an expired row is a SELECT then an UPDATE, so two imports in the
+  same instant after a lapse could both take it. `_add` first deletes the
+  row only if it has expired, which leaves an INSERT the primary key fails.
 - **The lock lives two minutes, and a heartbeat touches it every 30 s.** A
   first version held it for the longest fetch, two hours, so a fetch killed
   with its worker told every import in that time that it would go again.
@@ -1320,10 +1333,13 @@ fetch cut short leaves; the button, its count and `get_igdb` all use it.
   `WikidataClient.fetch_entities` now keeps only the claims its callers
   read (`keep_claims`), as each batch arrives.
 - **A deploy or a worker recycle kills the thread** (it is a daemon), and the
-  lock lapses within two minutes; the weekly scheduled fetch (below)
-  finishes the work by Sunday, or an import after the lapse does. A start
-  that fails is logged and reported, never as a failed import, since the
-  release is live by then.
+  lock lapses within two minutes. Each round sets a pending marker as it
+  starts and clears it before letting go, so the marker without the lock is
+  a fetch that died, and the import page's next load restarts it
+  (`post_import.resume_if_cut_short`), saying so; staff reload that page to
+  watch a fetch land anyway. A button's hold runs it too, and a weekly job
+  clears it, having done the same work. A start that fails is logged and
+  reported, never as a failed import, since the release is live by then.
 - **`METADATA_AFTER_IMPORT`** turns all of it off. It is off under test,
   where there is no network; the tests of the feature turn it on and patch
   the fetch. `scripts/setup_cloud.sh` passes `metadata=False`, having no
