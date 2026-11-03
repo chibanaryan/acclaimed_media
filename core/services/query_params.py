@@ -40,6 +40,15 @@ def parse_id_list(raw):
     return ids
 
 
+def parse_direction(raw, default):
+    """A sort direction, ``"asc"`` or ``"desc"``, else ``default``.
+
+    Pages render the direction into Alpine expressions, where anything but a
+    known value is script (AGENTS.md, "Content Security Policy").
+    """
+    return raw if raw in ("asc", "desc") else default
+
+
 def parse_limit(raw, default, maximum=20):
     """A result limit, clamped to ``1..maximum`` and never raising."""
     value = parse_int(raw)

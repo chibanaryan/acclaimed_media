@@ -2,7 +2,13 @@
 
 from django.test import SimpleTestCase
 
-from core.services.query_params import MAX_INT, parse_id_list, parse_int, parse_limit
+from core.services.query_params import (
+    MAX_INT,
+    parse_direction,
+    parse_id_list,
+    parse_int,
+    parse_limit,
+)
 
 
 class ParseIntTests(SimpleTestCase):
@@ -52,3 +58,14 @@ class ParseLimitTests(SimpleTestCase):
         for raw in (None, "", "abc", "1.5"):
             with self.subTest(raw=raw):
                 self.assertEqual(parse_limit(raw, default=5), 5)
+
+
+class ParseDirectionTests(SimpleTestCase):
+    def test_a_direction_is_kept(self):
+        self.assertEqual(parse_direction("desc", "asc"), "desc")
+        self.assertEqual(parse_direction("asc", "desc"), "asc")
+
+    def test_anything_else_is_the_default(self):
+        for raw in (None, "", "DESC", "x');alert(1);('"):
+            with self.subTest(raw=raw):
+                self.assertEqual(parse_direction(raw, "desc"), "desc")

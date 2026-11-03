@@ -52,7 +52,7 @@ from core.mixins import HTMXPartialMixin, RobustPaginationMixin, StaffOnlyMixin
 from core.models import User
 from core import sites
 from core.services import genre_tree, seo
-from core.services.query_params import parse_id_list, parse_int
+from core.services.query_params import parse_direction, parse_id_list, parse_int
 from music import config, models
 from music.forms import MusicImportForm
 from music.services import caching, import_handler, landing_pages
@@ -111,6 +111,11 @@ ASCENDING_SORTS = frozenset({"name", "alpha", "order", "rank"})
 def default_direction(sort):
     """The direction a sort runs in when the URL does not say."""
     return "asc" if sort in ASCENDING_SORTS else "desc"
+
+
+def requested_direction(params, sort):
+    """`?dir=` if it names a direction, else the sort's own."""
+    return parse_direction(params.get("dir"), default_direction(sort))
 
 
 # Sort keys for the artist list, which sorts in Python: its counts and best
@@ -766,12 +771,15 @@ class AlbumHomePageView(RobustPaginationMixin, ListView):
             user=self.request.user,
             descendants=self._descendants,
         )
-        return _apply_sort(
-            qs,
-            ALBUM_SORTS,
-            self.request.GET.get("sort", "rank"),
-            self.request.GET.get("dir", "asc"),
-            default="rank",
+        return _apply_sort(qs, ALBUM_SORTS, *self._sort_state(), default="rank")
+
+    def _sort_state(self):
+        """The sort and direction asked for, as known values: the list's
+        order and the controls (rendered into Alpine) read the same pair."""
+        sort = self.request.GET.get("sort")
+        return (
+            sort if sort in ALBUM_SORTS else "rank",
+            parse_direction(self.request.GET.get("dir"), "asc"),
         )
 
     def get_context_data(self, **kwargs):
@@ -875,8 +883,7 @@ class AlbumHomePageView(RobustPaginationMixin, ListView):
         # labels. Rendered rather than hard-coded in either, so the two
         # cannot come to state different ceilings.
         context["max_saved_filters"] = config.MAX_SAVED_FILTERS
-        context["current_sort"] = self.request.GET.get("sort", "rank")
-        context["current_dir"] = self.request.GET.get("dir", "asc")
+        context["current_sort"], context["current_dir"] = self._sort_state()
         # The artists as parsed, so a value that names nothing a slug could
         # does not leave a page "filtered" that the client calls all-time.
         context["is_filtered"] = bool(context["current_artists"]) or any(
@@ -1348,7 +1355,7 @@ class ArtistListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
         sort = self.request.GET.get("sort", "albums")
         if sort not in ARTIST_SORTS:
             sort = "albums"
-        direction = self.request.GET.get("dir") or default_direction(sort)
+        direction = requested_direction(self.request.GET, sort)
         # Two stable passes: the name tiebreaker first, then the primary key
         # in the requested direction, which leaves ties in name order.
         artists.sort(key=ARTIST_SORTS["name"])
@@ -1359,9 +1366,10 @@ class ArtistListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["current_q"] = self.request.GET.get("q", "")
-        context["current_sort"] = self.request.GET.get("sort", "albums")
-        context["current_dir"] = self.request.GET.get("dir") or default_direction(
-            context["current_sort"]
+        sort = self.request.GET.get("sort")
+        context["current_sort"] = sort if sort in ARTIST_SORTS else "albums"
+        context["current_dir"] = requested_direction(
+            self.request.GET, context["current_sort"]
         )
         context["sort_options"] = config.ARTIST_SORT_OPTIONS
 
@@ -1584,7 +1592,7 @@ class MusicListListView(HTMXPartialMixin, ListView):
         if sort not in {option["value"] for option in config.MUSIC_LIST_SORT_OPTIONS}:
             sort = "importance"
         context["current_sort"] = sort
-        context["current_dir"] = self.request.GET.get("dir") or default_direction(sort)
+        context["current_dir"] = requested_direction(self.request.GET, sort)
         context["sort_options"] = config.MUSIC_LIST_SORT_OPTIONS
         context["current_year"] = self.request.GET.get("year", "")
 

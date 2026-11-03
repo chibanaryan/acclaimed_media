@@ -5,6 +5,7 @@ from django.db.models.functions import Lower
 from django.views.generic import ListView
 
 from core.mixins import HTMXPartialMixin, RobustPaginationMixin
+from core.services.query_params import parse_direction
 from games import constants, models
 
 
@@ -229,7 +230,7 @@ class ListListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
         sort = raw_sort if raw_sort in ("importance", "alpha") else "importance"
         # Default direction depends on sort type: desc for importance, asc for alpha
         default_dir = "asc" if sort == "alpha" else "desc"
-        sort_direction = self.request.GET.get("dir", default_dir)
+        sort_direction = parse_direction(self.request.GET.get("dir"), default_dir)
 
         # Base list queryset for filtering
         list_filter = Q()
@@ -366,7 +367,7 @@ class ListListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
             sort = raw_sort if raw_sort in ("importance", "alpha") else "importance"
             default_dir = "asc" if sort == "alpha" else "desc"
 
-        sort_direction = self.request.GET.get("dir", default_dir)
+        sort_direction = parse_direction(self.request.GET.get("dir"), default_dir)
 
         # Handle type grouping mode
         if group_by == "type":

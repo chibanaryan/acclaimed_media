@@ -65,10 +65,10 @@
 {# The sort control sits inside the swapped results, so its state lives #}
 {# out here, as on the artists list. Both sorts read ascending first. #}
 <div x-data="entityListControls({
-         url: '{{ request.path }}',
+         url: '{{ request.path|escapejs }}',
          target: '#artist-album-results',
-         sort: '{{ current_sort }}',
-         dir: '{{ current_dir }}',
+         sort: '{{ current_sort|escapejs }}',
+         dir: '{{ current_dir|escapejs }}',
          defaultSort: 'rank',
          defaultDir: 'asc',
          ascendingSorts: ['rank', 'year']

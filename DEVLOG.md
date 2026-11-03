@@ -2,6 +2,12 @@
 
 ## 2026-11-03
 
+- **Close a reflected XSS through `?sort=` and `?dir=`.** Music's rankings,
+  artists and source-lists pages and games' source lists rendered them
+  unchecked into Alpine `x-data`, where autoescaping's `&#x27;` decodes
+  back to a quote, so a crafted link ran script (the CSP only reports). The
+  views now pass only known sorts and `asc`/`desc`
+  (`query_params.parse_direction`), and the templates `escapejs` them too
 - **gunicorn runs three threads per worker**, up from two. A week at two
   peaked at 342 MiB of the 512 MiB quota with swap under 13 MiB, and a
   thread costs only its in-flight render. Six requests run at once, and the

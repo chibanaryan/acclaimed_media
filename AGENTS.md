@@ -1822,6 +1822,13 @@ It reports and blocks nothing; enforcing it means moving the dict to
 an inline script, give it the nonce; when adding a click behaviour, use a
 data attribute and a delegated listener, not `onclick`.
 
+**A value in an Alpine expression is code, not text.** `x-data="{ sort:
+'{{ sort }}' }"` is autoescaped to `&#x27;`, which the attribute decodes back
+to a quote before Alpine evaluates it, so a request value there is script
+injection. Validate it in the view against the values the page knows, and
+write it with `|escapejs`. Until 2026-11-03 `?dir=` and `?sort=` reached four
+pages' expressions unchecked (`SortParametersStayDataTests`).
+
 ## Production memory budget
 
 The web dyno is a Basic one: **512 MB for every gunicorn worker together**.

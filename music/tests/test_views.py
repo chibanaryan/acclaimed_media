@@ -1662,6 +1662,68 @@ class ArtistSortTests(MusicDataMixin, TestCase):
         self.assertIn('aria-label="Clear search"', page)
 
 
+class SortParametersStayDataTests(MusicDataMixin, TestCase):
+    """`?sort=` and `?dir=` are rendered into Alpine expressions, as JS
+    string literals inside an HTML attribute. Autoescaping writes a quote as
+    `&#x27;`, which the attribute decodes back to a quote, so anything but a
+    known value let a link run script on the page."""
+
+    PAYLOAD = "x');alert(1);('"
+
+    def _pages(self):
+        return [
+            reverse("music:home"),
+            reverse("music:artist-list"),
+            reverse("music:artist-detail", args=[self.beatles.slug]),
+            reverse("music:list-list"),
+        ]
+
+    def test_an_unknown_direction_is_not_rendered(self):
+        for path in self._pages():
+            with self.subTest(path=path):
+                page = self.client.get(path, {"dir": self.PAYLOAD})
+                self.assertNotIn("alert(1)", page.content.decode())
+
+    def test_an_unknown_sort_is_not_rendered(self):
+        for path in self._pages():
+            with self.subTest(path=path):
+                page = self.client.get(path, {"sort": self.PAYLOAD})
+                self.assertNotIn("alert(1)", page.content.decode())
+
+    def test_an_unknown_direction_falls_back_to_the_sorts_own(self):
+        response = self.client.get(
+            reverse("music:artist-list"), {"sort": "name", "dir": "sideways"}
+        )
+        self.assertEqual(response.context["current_dir"], "asc")
+        response = self.client.get(reverse("music:home"), {"dir": "sideways"})
+        self.assertEqual(response.context["current_dir"], "asc")
+        self.assertEqual(response.context["current_sort"], "rank")
+
+    def test_the_templates_escape_the_sort_state_too(self):
+        # The second layer: a value the view let through is still a string
+        from pathlib import Path
+
+        from django.conf import settings
+
+        pattern = re.compile(
+            r"""(?:sort|dir|sortDirection|url): '\{\{ (?:current_sort|current_dir|"""
+            r"""sort|sort_direction|request\.path)(\|[^}]*)?\}\}'"""
+        )
+        sites = 0
+        for path in Path(settings.BASE_DIR).glob("*/templates/**/*.html"):
+            for match in pattern.finditer(path.read_text()):
+                sites += 1
+                with self.subTest(template=str(path), site=match.group(0)):
+                    self.assertIn("escapejs", match.group(1) or "")
+        self.assertGreaterEqual(sites, 9)
+
+    def test_a_known_direction_is_kept(self):
+        response = self.client.get(
+            reverse("music:list-list"), {"sort": "alpha", "dir": "desc"}
+        )
+        self.assertEqual(response.context["current_dir"], "desc")
+
+
 class ListenStatusPageTests(MusicDataMixin, TestCase):
     """What the rankings page renders once tracking exists."""
 

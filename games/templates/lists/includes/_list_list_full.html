@@ -17,8 +17,8 @@
 <div class="flex flex-wrap items-center gap-2 mb-6 min-h-[2.5rem]"
      x-data="{
         allExpanded: false,
-        sort: '{{ sort }}',
-        sortDirection: '{{ sort_direction|default:'desc' }}',
+        sort: '{{ sort|escapejs }}',
+        sortDirection: '{{ sort_direction|default:'desc'|escapejs }}',
         sortOpen: false,
         getSortLabel() {
             const labels = {
@@ -192,7 +192,7 @@
 
     {# Clear filters button - preserves sort, direction, and search query #}
     {% if filters.year or filters.type %}
-    <a href="{% url 'list-list' %}{% if sort == 'alpha' or sort_direction != 'desc' or filters.q %}?{% if sort == 'alpha' %}sort=alpha{% endif %}{% if sort_direction != 'desc' %}{% if sort == 'alpha' %}&{% endif %}dir={{ sort_direction }}{% endif %}{% if filters.q %}{% if sort == 'alpha' or sort_direction != 'desc' %}&{% endif %}q={{ filters.q }}{% endif %}{% endif %}"
+    <a href="{% url 'list-list' %}{% if sort == 'alpha' or sort_direction != 'desc' or filters.q %}?{% if sort == 'alpha' %}sort=alpha{% endif %}{% if sort_direction != 'desc' %}{% if sort == 'alpha' %}&{% endif %}dir={{ sort_direction }}{% endif %}{% if filters.q %}{% if sort == 'alpha' or sort_direction != 'desc' %}&{% endif %}q={{ filters.q|urlencode }}{% endif %}{% endif %}"
        class="btn btn-ghost btn-sm">
         <span class="mdi mdi-close" aria-hidden="true"></span>
         <span>Clear filters</span>

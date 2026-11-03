@@ -2098,6 +2098,22 @@ class ListListViewTest(TestCase):
             name="Best of 2021", publisher=self.pub2, year=2021, type="E"
         )
 
+    def test_an_unknown_direction_is_not_rendered(self):
+        # The sort state is rendered into an Alpine expression, inside an
+        # attribute that decodes `&#x27;` back to a quote
+        for group_by in ("publication", "type"):
+            with self.subTest(group_by=group_by):
+                response = self.client.get(
+                    reverse("list-list"),
+                    {"group_by": group_by, "dir": "x');alert(1);('"},
+                )
+                self.assertNotIn("alert(1)", response.content.decode())
+                self.assertEqual(response.context["sort_direction"], "desc")
+
+    def test_clear_filters_keeps_a_search_with_an_ampersand(self):
+        response = self.client.get(reverse("list-list"), {"year": "2020", "q": "R&B"})
+        self.assertContains(response, "q=R%26B")
+
     def test_list_list_loads(self):
         """Test that list list page loads."""
         response = self.client.get(reverse("list-list"))

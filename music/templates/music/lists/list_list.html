@@ -17,8 +17,8 @@
      x-data="entityListControls({
          url: '{% url 'music:list-list' %}',
          target: '#filter-results-wrapper',
-         sort: '{{ current_sort }}',
-         dir: '{{ current_dir }}',
+         sort: '{{ current_sort|escapejs }}',
+         dir: '{{ current_dir|escapejs }}',
          defaultSort: 'order',
          defaultDir: 'asc',
          extraFields: ['q', 'type', 'year']
