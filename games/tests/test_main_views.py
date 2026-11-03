@@ -1504,6 +1504,22 @@ class DeveloperListViewTest(TestCase):
         game1 = Game.objects.create(name="Game 1", rank=1, year_of_release=2020)
         game1.developers.add(self.dev1)
 
+    def test_load_more_fetches_from_its_lists_own_address(self):
+        """The button names its list, and the shared script answers it.
+
+        Each entity page had its own copy of the fetch, which built the
+        address from the URL and left the button stuck on a page without its
+        meta (scripts/browser_smoke.js, "developers Load More answered by
+        another page").
+        """
+        Game.objects.create(name="Game 2", rank=2).developers.add(self.dev2)
+        path = reverse("developers-list") + "?sort=name&dir=desc"
+        with mock.patch("games.views.developers.DeveloperListView.paginate_by", 1):
+            response = self.client.get(path)
+        self.assertContains(response, "data-entity-load-more")
+        self.assertContains(response, f'data-list-url="{escape(path)}"')
+        self.assertContains(response, "core/js/entity-load-more")
+
     def test_developer_list_loads(self):
         """Test that developer list page loads."""
         response = self.client.get(reverse("developers-list"))
@@ -2142,6 +2158,15 @@ class ListListViewTest(TestCase):
         self.list2 = List.objects.create(
             name="Best of 2021", publisher=self.pub2, year=2021, type="E"
         )
+
+    def test_load_more_fetches_from_its_lists_own_address(self):
+        path = reverse("list-list") + "?sort=alpha&dir=desc"
+        with mock.patch("games.views.lists.ListListView.paginate_by", 1):
+            response = self.client.get(path)
+        self.assertContains(response, "data-entity-load-more")
+        self.assertContains(response, f'data-list-url="{escape(path)}"')
+        self.assertContains(response, "data-init-alpine")
+        self.assertContains(response, "core/js/entity-load-more")
 
     def test_an_unknown_direction_is_not_rendered(self):
         # The sort state is rendered into an Alpine expression, inside an

@@ -8,12 +8,15 @@ Note: All book views require staff access (StaffOnlyMixin).
 Tests must use staff users to access these views.
 """
 
+import json
+import re
 from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
+from django.utils.html import escape
 
 from core.tests.utils import clear_all_caches
 from books import models
@@ -597,6 +600,37 @@ class AuthorListViewTests(StaffUserTestMixin, TestCase):
         authors = list(response.context["authors"])
         # Alpha Author has 2 books, Beta has 1
         self.assertEqual(authors[0].name, "Alpha Author")
+
+    def test_load_more_fetches_from_its_lists_own_address(self):
+        path = reverse("books:author-list") + "?sort=name&dir=desc"
+        with mock.patch("books.views.AuthorListView.paginate_by", 1):
+            response = self.client.get(path)
+        self.assertContains(response, "data-entity-load-more")
+        self.assertContains(response, f'data-list-url="{escape(path)}"')
+        self.assertContains(response, "core/js/entity-load-more")
+
+    def test_the_paging_counts_are_set(self):
+        """Nothing set them, so the page stopped at 100 with no Load More,
+        and the append partial's meta was not JSON."""
+        with mock.patch("books.views.AuthorListView.paginate_by", 1):
+            first = self.client.get(reverse("books:author-list"))
+            append = self.client.get(
+                reverse("books:author-list"), {"append": "true", "page": 2}
+            )
+        self.assertContains(first, 'Showing <span id="loaded-count">1</span> of 2')
+        meta = re.search(
+            r'id="load-more-meta">(.*?)</script>', append.content.decode(), re.S
+        )
+        self.assertEqual(
+            json.loads(meta.group(1)),
+            {
+                "hasMore": False,
+                "nextPage": None,
+                "loadedCount": 2,
+                "totalCount": 2,
+                "remainingCount": 0,
+            },
+        )
 
     def test_append_mode(self):
         """Test append mode for infinite scroll."""

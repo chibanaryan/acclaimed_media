@@ -507,6 +507,45 @@ class GamesLoadMoreTakesOnlyItsOwnPageTests(SimpleTestCase):
         )
 
 
+class EntityLoadMoreTakesOnlyItsOwnPageTests(SimpleTestCase):
+    """The developers, source-lists and authors pages share one Load More.
+
+    Each had an inline copy that fetched from the URL and, on a 200 without
+    `#load-more-meta`, appended its rows and left the button loading for
+    good, as games' did until 2026-11-03. scripts/browser_smoke.js runs it
+    ("Load More answered by another page", "Load More behind a search").
+    """
+
+    SCRIPT = "core/static/core/js/entity-load-more"
+    PAGES = (
+        "games/templates/developers/developer_list.html",
+        "games/templates/lists/list_list.html",
+        "books/templates/books/authors/author_list.html",
+    )
+
+    def _read(self, path):
+        return (Path(settings.BASE_DIR) / path).read_text()
+
+    def test_a_page_without_its_meta_fails_and_comes_from_its_lists_address(self):
+        for path in (self.SCRIPT + ".js", self.SCRIPT + ".min.js"):
+            with self.subTest(path=path):
+                source = self._read(path)
+                self.assertIn("came back without its meta", source)
+                self.assertIn("dataset.listUrl", source)
+                self.assertIn("isConnected", source)
+
+    def test_no_page_keeps_a_copy_of_its_own(self):
+        for path in self.PAGES:
+            with self.subTest(path=path):
+                source = self._read(path)
+                self.assertIn("core/js/entity-load-more.min.js", source)
+                self.assertNotIn("metaScript ? JSON.parse", source)
+                self.assertNotIn(
+                    "const params = new URLSearchParams(window.location.search)",
+                    source,
+                )
+
+
 class GamesDataFollowsThePageTests(SimpleTestCase):
     """The games engine keeps only a payload of the version the page names.
 

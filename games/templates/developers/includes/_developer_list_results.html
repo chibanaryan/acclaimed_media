@@ -90,7 +90,11 @@
             class="btn btn-ghost load-more-button"
             data-next-page="{{ next_page }}"
             data-total="{{ total_count }}"
-            data-loaded="{{ loaded_count }}">
+            data-loaded="{{ loaded_count }}"
+            data-entity-load-more
+            data-list-url="{{ request.get_full_path }}"
+            data-append='[["#append-rows-container .developer-row", "developer-list-body"], ["#mobile-append-container .developer-row", "developer-mobile-container"]]'
+            data-noun="developers">
         <span class="mdi mdi-space-invaders" aria-hidden="true"></span>
         <span class="load-more-text">Load More ({{ remaining_count|intcomma }} remaining)</span>
     </button>

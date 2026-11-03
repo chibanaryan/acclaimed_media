@@ -1477,6 +1477,82 @@ async function checkBackOnAnEntityPage(page, url, input, text, evict) {
     return alpine.length ? `${url}: Back threw ${alpine.length} Alpine errors` : null;
 }
 
+/** The text of each row an entity page lists, to tell them apart. */
+const entityRows = (page, rows) =>
+    page.$$eval(rows, found => found.map(row => row.textContent.replace(/\s+/g, ' ').trim()));
+
+/**
+ * An entity page's Load More (core/js/entity-load-more.js) answered by a 200
+ * that is not its page: the inline copies it replaced appended the whole
+ * page's rows and left the button loading and disabled for good. Answers as
+ * above.
+ */
+async function checkEntityLoadMoreAnsweredByAnotherPage(page, { url, rows }) {
+    await page.setViewport({ width: 1440, height: 900 });
+    const alpine = [];
+    page.on('console', message => {
+        if (/Alpine Expression Error/.test(message.text())) alpine.push(message.text());
+    });
+    let answered = false;
+    await page.setRequestInterception(true);
+    page.on('request', async request => {
+        if (!answered && request.url().includes('append=true')) {
+            answered = true;
+            const body = await page.evaluate(
+                address => fetch(address).then(response => response.text()), url);
+            await request.respond({ status: 200, contentType: 'text/html', body });
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(url, { waitUntil: 'networkidle2' });
+    const before = (await entityRows(page, rows)).length;
+    await page.click('.load-more-button');
+    await sleep(1000);
+    const after = (await entityRows(page, rows)).length;
+    if (after !== before) return `${url}: another page's answer appended ${after - before} rows`;
+    const state = await page.$eval('.load-more-button',
+        button => ({ loading: button.classList.contains('loading'), disabled: button.disabled }));
+    if (state.loading || state.disabled) return `${url}: another page's answer left Load More stuck`;
+    await page.click('.load-more-button');
+    await sleep(1000);
+    const listed = await entityRows(page, rows);
+    if (listed.length <= before) return `${url}: a retry appended nothing`;
+    if (new Set(listed).size !== listed.length) return `${url}: a retry repeated rows`;
+    if (await page.$('.load-more-button')) return `${url}: the last page left Load More up`;
+    return alpine.length ? `${url}: the new rows threw ${alpine.length} Alpine errors` : null;
+}
+
+/**
+ * A Load More still on its way when a search swaps the list in: the inline
+ * copies appended its rows under the search's. Answers as above.
+ */
+async function checkEntityLoadMoreBehindASearch(page, { url, rows, input, text }) {
+    await page.setViewport({ width: 1440, height: 900 });
+    let held = null;
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        if (!held && request.url().includes('append=true')) {
+            held = request;
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(url, { waitUntil: 'networkidle2' });
+    await page.click('.load-more-button');
+    for (let tries = 0; !held && tries < 100; tries += 1) await sleep(50);
+    if (!held) return `${url}: Load More sent no request`;
+    await page.type(input, text);
+    await page.waitForFunction(left => location.href !== left, {}, url);
+    await sleep(800);
+    const searched = await entityRows(page, rows);
+    await held.continue();
+    await sleep(1000);
+    const after = await entityRows(page, rows);
+    return after.length === searched.length ? null
+        : `${url}: a Load More behind a search appended ${after.length - searched.length} rows`;
+}
+
 /**
  * The jump box is answered by the engine alone, so without its data it took a
  * number and ignored Enter. It waits for the engine, disabled. Answers as
@@ -1995,6 +2071,17 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
             await report(`Back from a search on ${url}${evict ? ', a snapshot stored' : ''}`,
                 page => checkBackOnAnEntityPage(page, url, input, text, evict));
         }
+    }
+    for (const entity of [
+        { url: games + '/developers/', rows: '#developer-list-body .developer-row',
+            input: '#developer-search', text: 'Smoke Studio 1' },
+        { url: games + '/lists/', rows: '#publication-groups-container .publication-group',
+            input: '#publication-search', text: 'Smoke Weekly 1' },
+    ]) {
+        await report(`${entity.url} Load More answered by another page`,
+            page => checkEntityLoadMoreAnsweredByAnotherPage(page, entity));
+        await report(`${entity.url} Load More behind a search`,
+            page => checkEntityLoadMoreBehindASearch(page, entity));
     }
     await report('games empty range', page => checkRangeOutsideTheCorpus(page, games));
     await report('music empty range', page => checkRangeOutsideTheCorpus(page, music));

@@ -502,6 +502,19 @@ class AuthorListView(StaffOnlyMixin, RobustPaginationMixin, HTMXPartialMixin, Li
             cache.set(stats_cache_key, stats, config.CACHE_TIMEOUT_24_HOURS)
         context.update(stats)
 
+        # The Load More button and the heading's counts read these, which
+        # nothing set, so neither ever rendered and the page stopped at 100
+        page_obj = context["page_obj"]
+        has_more = page_obj.has_next()
+        total_count = page_obj.paginator.count
+        context.update(
+            has_more=has_more,
+            next_page=page_obj.next_page_number() if has_more else None,
+            total_count=total_count,
+            loaded_count=page_obj.end_index(),
+            remaining_count=total_count - page_obj.end_index(),
+        )
+
         # Current filter state
         context["current_q"] = self.request.GET.get("q", "")
         context["current_sort"] = self.request.GET.get("sort", "books")

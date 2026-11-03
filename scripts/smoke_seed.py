@@ -5,13 +5,21 @@ job). Enough that the rankings pages render rows, the filters have options,
 and the detail pages exist; nothing else depends on it.
 """
 
-from games.models import Developer, Game, Platform, Series, WikipediaGenre
+from games.models import (
+    Developer,
+    Game,
+    List,
+    Platform,
+    Publication,
+    Series,
+    WikipediaGenre,
+)
 from music.models import Album, Artist, MusicGenre
 
 # Not WikipediaGenre: migrations seed the genre tree, so it is never empty
 if any(
     model.objects.exists()
-    for model in (Album, Artist, Developer, Game, Platform, Series)
+    for model in (Album, Artist, Developer, Game, Platform, Publication, Series)
 ):
     raise SystemExit("smoke_seed.py is for an empty database; this one has data.")
 
@@ -40,6 +48,20 @@ for rank in range(1, 321):
     game.developers.add(studio if rank % 2 else nintendo)
     if rank % 5 == 0:
         game.series.add(saga)
+
+# Past a page of each, so that the developers and source-lists pages have a
+# Load More: 100 developers a page, and 50 publications
+for number in range(1, 111):
+    Developer.objects.create(
+        name=f"Smoke Studio {number}", igdb_id=1000 + number
+    ).developed_games.add(Game.objects.get(rank=number))
+for number in range(1, 61):
+    List.objects.create(
+        name=f"Smoke List {number}",
+        publisher=Publication.objects.create(name=f"Smoke Weekly {number}"),
+        year=2000,
+        type="A",
+    )
 
 rock = MusicGenre.objects.create(name="Smoke Rock", slug="smoke-rock")
 artist = Artist.objects.create(name="Smoke Band", slug="smoke-band")

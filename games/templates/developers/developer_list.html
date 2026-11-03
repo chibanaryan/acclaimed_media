@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 {% load game_filters %}
 {% load humanize %}
 
@@ -106,135 +107,10 @@
 </div>
 
 <script nonce="{{ csp_nonce }}">
-// Generic Load More handler for developers
-function initDeveloperLoadMore() {
-    const container = document.getElementById('results-container');
-    if (!container) return;
-
-    const button = container.querySelector('.load-more-button');
-    if (!button) return;
-
-    // Remove existing listener to prevent duplicates after DOM updates
-    const newButton = button.cloneNode(true);
-    button.parentNode.replaceChild(newButton, button);
-    newButton.addEventListener('click', handleDeveloperLoadMore);
-}
-
-async function handleDeveloperLoadMore(event) {
-    const button = event.currentTarget;
-    const nextPage = button.dataset.nextPage;
-
-    if (!nextPage || button.classList.contains('loading')) return;
-
-    // Set loading state
-    button.classList.add('loading');
-    button.disabled = true;
-
-    // Build URL with current filters + next page + append flag
-    const params = new URLSearchParams(window.location.search);
-    params.set('page', nextPage);
-    params.set('append', 'true');
-
-    const url = window.location.pathname + '?' + params.toString();
-
-    try {
-        const response = await fetch(url, {
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'HX-Request': 'true'
-            }
-        });
-
-        if (!response.ok) throw new Error('Failed to load more');
-
-        const html = await response.text();
-
-        // Parse the response to separate rows from metadata
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-
-        // Extract metadata
-        const metaScript = doc.getElementById('load-more-meta');
-        const meta = metaScript ? JSON.parse(metaScript.textContent) : null;
-
-        // Remove the metadata script from the parsed doc
-        if (metaScript) metaScript.remove();
-
-        // Append rows to desktop table body with staggered cascade animation
-        const tbody = document.getElementById('developer-list-body');
-        const appendContainer = doc.getElementById('append-rows-container');
-        if (tbody && appendContainer) {
-            const newRows = appendContainer.querySelectorAll('.developer-row');
-            let index = 0;
-            newRows.forEach(row => {
-                row.classList.add('game-row-enter');
-                row.style.animationDelay = `${index * 8}ms`;
-                index++;
-                tbody.appendChild(row);
-            });
-        }
-
-        // Append cards to mobile container with staggered cascade animation
-        const mobileContainer = document.getElementById('developer-mobile-container');
-        const mobileAppendContainer = doc.getElementById('mobile-append-container');
-        if (mobileContainer && mobileAppendContainer) {
-            const newCards = mobileAppendContainer.querySelectorAll('.developer-row');
-            let index = 0;
-            newCards.forEach(card => {
-                card.classList.add('game-row-enter');
-                card.style.animationDelay = `${index * 8}ms`;
-                index++;
-                mobileContainer.appendChild(card);
-            });
-        }
-
-        // Update result summary and button
-        if (meta) {
-            const loadedCountEl = document.getElementById('loaded-count');
-            if (loadedCountEl) {
-                loadedCountEl.textContent = meta.loadedCount.toLocaleString();
-            }
-
-            button.classList.remove('loading');
-
-            if (!meta.hasMore) {
-                const container = button.parentElement;
-                container.innerHTML = `
-                    <div class="text-base-content/85 text-center">
-                        All ${meta.totalCount.toLocaleString()} developers loaded
-                    </div>
-                `;
-            } else {
-                button.disabled = false;
-                button.dataset.nextPage = meta.nextPage;
-                button.dataset.loaded = meta.loadedCount;
-
-                const textSpan = button.querySelector('.load-more-text');
-                if (textSpan) {
-                    textSpan.textContent = `Load More (${meta.remainingCount.toLocaleString()} remaining)`;
-                }
-            }
-        }
-
-    } catch (err) {
-        console.error('Load more error:', err);
-        button.classList.remove('loading');
-        button.disabled = false;
-    }
-}
-
-// Initialize on page load (handle case where DOMContentLoaded already fired)
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initDeveloperLoadMore);
-} else {
-    initDeveloperLoadMore();
-}
-
-// Reinitialize after HTMX swaps (for search results)
+// A search swaps the list in: the heading's counts follow it. Load More is
+// core/js/entity-load-more.js
 document.body.addEventListener('htmx:afterSwap', function(e) {
     if (e.detail.target.id === 'results-container') {
-        initDeveloperLoadMore();
-        // Update the results count heading
         const paginationData = document.querySelector('#pagination-data');
         if (paginationData) {
             const loadedCount = paginationData.dataset.loadedCount;
@@ -248,4 +124,8 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
     }
 });
 </script>
+{% endblock %}
+
+{% block extra_scripts %}
+<script defer src="{% static 'core/js/entity-load-more.min.js' %}" nonce="{{ csp_nonce }}"></script>
 {% endblock %}
