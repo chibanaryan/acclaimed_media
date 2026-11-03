@@ -405,6 +405,18 @@ class ClientSideFiltering {
     }
 
     /**
+     * Whether the data is the version the page was rendered from. The
+     * renderer continues the page's rows by position, so data of another
+     * version - an import committed between the page and its payload - has
+     * to render the list itself rather than take it over
+     * @returns {boolean}
+     */
+    followsPage() {
+        return Boolean(this.cache.dataVersion) &&
+            this.cache.dataVersion === this.cache._pageVersion();
+    }
+
+    /**
      * Check if CSF has taken over UI rendering
      * (i.e., CSF has actively rendered the page, not just loaded data)
      * @returns {boolean}

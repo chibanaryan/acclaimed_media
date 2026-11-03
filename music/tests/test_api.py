@@ -8,6 +8,7 @@ name an authenticator sees a logged-in reader as anonymous.
 """
 
 import json
+from unittest import mock
 
 from django.db.models.functions import Lower
 from django.test import TestCase
@@ -524,6 +525,16 @@ class AlbumAllDataAPITests(MusicAPITestMixin, TestCase):
     def test_version_is_a_short_hash(self):
         data = self.payload(self.url())
         self.assertEqual(len(data["version"]), 12)
+
+    def test_an_import_committing_mid_read_labels_the_rows_with_no_version(self):
+        """Its rows are of either version. Labelled after them, as the
+        version was, the last release's rows were stored under the new
+        version for the rest of the session."""
+        with mock.patch(
+            "music.api.views.compute_album_data_version",
+            side_effect=["before", "after"],
+        ):
+            self.assertEqual(self.payload(self.url())["version"], "")
 
     def test_version_changes_when_an_album_changes(self):
         before = self.payload(self.url())["version"]

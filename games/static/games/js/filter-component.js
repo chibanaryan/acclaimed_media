@@ -410,6 +410,19 @@ document.addEventListener('alpine:init', () => {
                                 self.performClientUpdate({ historyMethod: 'pushState' });
                             } else if (self.hasActiveFilters()) {
                                 self.performClientUpdate({ historyMethod: 'replaceState' });
+                            } else if (!self._csf.followsPage()) {
+                                // The data is not the version the page was
+                                // rendered from, so its rows cannot continue
+                                // the page's: they are rendered from it, as
+                                // far down as the page had got. The filters
+                                // are the URL's, so it stays
+                                const shown = document.querySelectorAll(
+                                    '#game-list-container .game-row.desktop'
+                                ).length;
+                                self.performClientUpdate({ historyMethod: null });
+                                if (typeof answerLoadMore === 'function') {
+                                    answerLoadMore(self._csf, shown);
+                                }
                             } else if (interrupted || self._needsClientGrid()) {
                                 // The filters are the URL's, so it stays.
                                 self.performClientUpdate({ historyMethod: null });

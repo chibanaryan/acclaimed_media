@@ -97,6 +97,7 @@ class AlbumAllDataView(MusicReadAPIMixin, APIView):
     """
 
     def get(self, request):
+        version = compute_album_data_version()
         albums = (
             models.Album.objects.select_related("primary_musicbrainz_album_data")
             .prefetch_related(models.credits_prefetch(), "genres")
@@ -187,9 +188,16 @@ class AlbumAllDataView(MusicReadAPIMixin, APIView):
             for row in genre_rows
         ]
 
+        # Labelled with the version read before the rows and checked after
+        # them: an import that committed in between leaves rows of either
+        # version, which are labelled with none, so no page names them and
+        # no client stores them. Labelled after, as they were, the last
+        # release's rows were stored under the new version for the session
+        if compute_album_data_version() != version:
+            version = ""
         return Response(
             {
-                "version": compute_album_data_version(),
+                "version": version,
                 "albums": albums_data,
                 "artists": artists,
                 "genres": genres_data,

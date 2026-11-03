@@ -1477,6 +1477,78 @@ async function checkBackOnAnEntityPage(page, url, input, text, evict) {
     return alpine.length ? `${url}: Back threw ${alpine.length} Alpine errors` : null;
 }
 
+/**
+ * Answers the engine's data request, once `open()` is called, with the real
+ * payload or with one of another version that lacks its first item: what an
+ * import committing between the page and its payload hands the page. Keeps
+ * the names of the items sent.
+ */
+async function servePayload(page, { site, data, items }, stale) {
+    let open;
+    const sent = { gate: new Promise(resolve => { open = resolve; }) };
+    sent.open = open;
+    await page.setRequestInterception(true);
+    page.on('request', async request => {
+        if (!request.url().startsWith(site + data) || request.url().includes('smoke=1')) {
+            request.continue();
+            return;
+        }
+        await sent.gate;
+        const payload = JSON.parse(await page.evaluate(
+            url => fetch(url + '?smoke=1').then(response => response.text()), site + data));
+        const list = items(payload);
+        if (stale) {
+            payload.version = 'another-version';
+            list.shift();
+        }
+        sent.names = list.map(item => item.n);
+        await request.respond({
+            status: 200, contentType: 'application/json', body: JSON.stringify(payload),
+        });
+    });
+    return sent;
+}
+
+/**
+ * The engine continues the page's rows by position, so a payload of another
+ * version than the page's repeated and dropped rows on its first Load More
+ * or jump. It renders the list from such a payload, at the rows the page
+ * had; one of the page's own version leaves the page's rows alone. Answers
+ * as above.
+ */
+async function checkEngineFollowsThePagesVersion(page, engine, path, stale) {
+    const { site, rows, names, start } = engine;
+    await page.setViewport({ width: 1440, height: 900 });
+    const sent = await servePayload(page, engine, stale);
+    await page.goto(site + path, { waitUntil: 'networkidle2' });
+    await page.$eval(rows, row => { row.dataset.smokeServer = '1'; });
+    sent.open();
+    await start(page);
+    await sleep(500);
+    const kept = Boolean(await page.$(`${rows}[data-smoke-server]`));
+    if (!stale) return kept ? null : `${site}${path}: the page's own version re-rendered its rows`;
+    if (kept) return `${site}${path}: another version's payload took the page's rows over`;
+    const shown = async () => {
+        const window = await page.evaluate(csf => {
+            const renderer = (csf === 'games' ? getClientSideFiltering() : getAlbumClientSideFiltering()).renderer;
+            return [renderer.windowStart, renderer.windowEnd];
+        }, site === games ? 'games' : 'music');
+        const shownNames = await page.$$eval(names, cells => cells.map(cell => cell.textContent.trim()));
+        const expected = sent.names.slice(...window);
+        return shownNames.join() === expected.join() ? null
+            : `${site}${path}: rows ${window.join('-')} showed ${shownNames[0]} to ` +
+              `${shownNames[shownNames.length - 1]} (${shownNames.length}), not the payload's ` +
+              `${expected[0]} to ${expected[expected.length - 1]}`;
+    };
+    const first = await shown();
+    if (first) return first;
+    const button = path.includes('page=') ? '.load-previous-button' : '.load-more-button';
+    if (!await page.$(button)) return `${site}${path}: no ${button} after the render`;
+    await page.click(button);
+    await sleep(800);
+    return shown();
+}
+
 /** The text of each row an entity page lists, to tell them apart. */
 const entityRows = (page, rows) =>
     page.$$eval(rows, found => found.map(row => row.textContent.replace(/\s+/g, ' ').trim()));
@@ -2082,6 +2154,22 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
             page => checkEntityLoadMoreAnsweredByAnotherPage(page, entity));
         await report(`${entity.url} Load More behind a search`,
             page => checkEntityLoadMoreBehindASearch(page, entity));
+    }
+    const versioned = {
+        games: { site: games, data: '/api/games/all/', items: payload => payload.data.games,
+            rows: '#game-list-container .game-row-wrapper',
+            names: '#game-list-container .game-row.desktop [data-slot="name"]',
+            start: startGamesEngine },
+        music: { site: music, data: '/api/all/', items: payload => payload.albums,
+            rows: albumRows, names: '#album-list-container .media-row.desktop [data-slot="name"]',
+            start: async page => page.waitForFunction(
+                musicReady, {}, await page.waitForSelector('.year-grid-decade')) },
+    };
+    for (const [name, path] of [['games', '/'], ['music', '/'], ['music', '/?page=2']]) {
+        for (const stale of [true, false]) {
+            await report(`${name} ${path} engine with ${stale ? 'another' : 'the page\'s'} version`,
+                page => checkEngineFollowsThePagesVersion(page, versioned[name], path, stale));
+        }
     }
     await report('games empty range', page => checkRangeOutsideTheCorpus(page, games));
     await report('music empty range', page => checkRangeOutsideTheCorpus(page, music));

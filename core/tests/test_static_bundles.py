@@ -546,6 +546,58 @@ class EntityLoadMoreTakesOnlyItsOwnPageTests(SimpleTestCase):
                 )
 
 
+class EnginesRenderAPayloadOfAnotherVersionTests(SimpleTestCase):
+    """An engine whose data is not the page's version renders the list.
+
+    It continues the page's rows by position, so a payload of another
+    version - an import committed between the page and its payload - repeated
+    and dropped rows on the first Load More or jump. scripts/browser_smoke.js
+    runs it ("engine with another version"), and the page's own version
+    leaving the rows alone.
+    """
+
+    FILES = {
+        "games/static/games/js/game-cache": ("this.dataVersion=", "dataVersion"),
+        "games/static/games/js/client-filtering": ("followsPage()", "_pageVersion()"),
+        "games/static/games/js/filter-component": ("followsPage()",),
+        "music/static/music/js/album-client-filtering": (
+            "followsPage()",
+            "window.albumDataVersion",
+        ),
+    }
+    BUNDLES = {
+        "games/static/games/js/client-side-filtering.bundle.min.js": (
+            "followsPage()",
+            "dataVersion",
+        ),
+        "music/static/music/js/music-client-side-filtering.bundle.min.js": (
+            "followsPage()",
+        ),
+    }
+
+    def _read(self, path):
+        return (Path(settings.BASE_DIR) / path).read_text()
+
+    def test_each_engine_asks_whether_its_data_follows_the_page(self):
+        for stem, needles in self.FILES.items():
+            for path in (stem + ".js", stem + ".min.js"):
+                source = self._read(path).replace(" ", "")
+                for needle in needles:
+                    with self.subTest(path=path, needle=needle):
+                        self.assertIn(needle.replace(" ", ""), source)
+        for path, needles in self.BUNDLES.items():
+            for needle in needles:
+                with self.subTest(path=path, needle=needle):
+                    self.assertIn(needle, self._read(path))
+
+    def test_music_renders_the_rows_the_page_had(self):
+        """A `?page=N` link's included: the range is rendered from an empty
+        window, since `showRange` grows a window it touches."""
+        source = self._read("music/static/music/js/album-client-filtering.js")
+        self.assertIn("} else if (!csf.followsPage()) {", source)
+        self.assertIn("range: page ? null : [start, start + shown]", source)
+
+
 class GamesDataFollowsThePageTests(SimpleTestCase):
     """The games engine keeps only a payload of the version the page names.
 

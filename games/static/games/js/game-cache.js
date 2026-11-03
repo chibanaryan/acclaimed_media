@@ -22,6 +22,8 @@ class GameDataCache {
         this.DATA_URL = '/api/games/all/';
         this._db = null;
         this._initPromise = null;
+        // The version of the payload getData last returned
+        this.dataVersion = null;
     }
 
     /**
@@ -160,6 +162,7 @@ class GameDataCache {
             const response = await this._fetchData(this._pageVersion());
             const { version, data } = response;
             await this._setCached(version, data);
+            this.dataVersion = version;
             return data;
         }
 
@@ -172,6 +175,7 @@ class GameDataCache {
 
         if (pageVersion && cached && cached.version === pageVersion) {
             if (onCacheHit) onCacheHit(cached.data);
+            this.dataVersion = cached.version;
             return cached.data;
         }
 
@@ -182,8 +186,11 @@ class GameDataCache {
         const { version, data } = response;
 
         // Store in cache, under the version it names: a payload that still
-        // differs from the page's is used, and the next page asks again
+        // differs from the page's is used, and the next page asks again. Its
+        // version is kept, since such a payload cannot continue the page's
+        // rows (ClientSideFiltering.followsPage)
         await this._setCached(version, data);
+        this.dataVersion = version;
 
         return data;
     }

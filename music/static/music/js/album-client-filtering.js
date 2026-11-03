@@ -25,6 +25,8 @@ class AlbumClientSideFiltering {
         // Where the server's rows start: 0, or a `?page=N` link's offset,
         // until the renderer adopts them or the engine renders its own
         this.pageStart = 0;
+        // The version of the data it loaded (followsPage)
+        this.dataVersion = null;
         // Set once its data has failed to load, for good: the page stays
         // HTMX's, and mediaListControls rolls a failed request back itself
         this.failed = false;
@@ -148,7 +150,11 @@ class AlbumClientSideFiltering {
         if (version) {
             try {
                 const stored = sessionStorage.getItem(key);
-                if (stored) return JSON.parse(stored);
+                if (stored) {
+                    const data = JSON.parse(stored);
+                    this.dataVersion = data.version;
+                    return data;
+                }
             } catch (e) {
                 // Private mode, blocked storage, or a truncated entry.
             }
@@ -170,7 +176,22 @@ class AlbumClientSideFiltering {
                 // Over quota: filtering still works, it just refetches.
             }
         }
+        // Kept, since data of another version cannot continue the page's
+        // rows (followsPage)
+        this.dataVersion = data.version;
         return data;
+    }
+
+    /**
+     * Whether the data is the version the page was rendered from. The
+     * renderer continues the page's rows by position, so data of another
+     * version - an import committed between the page and its payload - has
+     * to render the list itself rather than take it over
+     * @returns {boolean}
+     */
+    followsPage() {
+        return Boolean(this.dataVersion) &&
+            this.dataVersion === (window.albumDataVersion || '');
     }
 
     /**
@@ -289,6 +310,8 @@ class AlbumClientSideFiltering {
      * @param {Object} filters
      * @param {Object} [options]
      * @param {number} [options.highlightId]
+     * @param {number[]} [options.range] - [start, end) to render in place of
+     *     the first page: the rows a page had, when its data has moved on
      */
     applyFilters(filters, options = {}) {
         if (!this.isInitialized) return;
@@ -303,11 +326,23 @@ class AlbumClientSideFiltering {
         if (!container) return;
 
         this.renderer.reset();
-        this.renderer.render(albums, container, {
-            showRank,
-            highlightId: options.highlightId || null,
-            viewMode: this.viewMode
-        });
+        if (options.range) {
+            // From an empty window, so the range replaces the page's rows
+            // rather than growing them
+            this.renderer.currentItems = albums;
+            this.renderer._currentShowRank = showRank;
+            const [start, end] = options.range.map(at => Math.min(at, albums.length));
+            this.renderer.showRange(container, start, end, {
+                showRank,
+                viewMode: this.viewMode
+            });
+        } else {
+            this.renderer.render(albums, container, {
+                showRank,
+                highlightId: options.highlightId || null,
+                viewMode: this.viewMode
+            });
+        }
 
         this._updatePaging();
         this._publishFacets(filters, albums);
@@ -962,6 +997,18 @@ function initAlbumFiltering() {
             // still to come, pushes the whole one. A failed search's commit
             // has been spent, so it is pushed here
             rerender({ push: !masked });
+        } else if (!csf.followsPage()) {
+            // The data is not the version the page was rendered from, so its
+            // rows cannot continue the page's: the same positions are
+            // rendered from it, a `?page=N` link's included, and then a page
+            // the load overtook. The filters are the page's, so the URL stays
+            const start = csf.pageStart;
+            const shown = loadedAlbumCount();
+            const page = start === 0 && shown <= csf.renderer.PAGE_SIZE;
+            csf.applyFilters(csf.readFilters(form), {
+                range: page ? null : [start, start + shown]
+            });
+            if (pageRequest) csf.loadMore();
         } else if (pageRequest) {
             csf.loadMore();
         } else if (csf.pageStart > 0) {
