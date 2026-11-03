@@ -18,6 +18,36 @@ it in `scripts/browser_smoke.js` first.
    `docs/ASSISTIVE_TECH_CHECKLIST.md` is the script: run it, record the
    results there, and file what fails here.
 
+## Open bugs (found 2026-11-03)
+
+Older bugs the reviews of 2026-11-03's work turned up, already on `main`
+before it; none came from it.
+
+2. **Games: a Load More answered by something other than its page sticks.**
+   A 200 response without `#load-more-meta` (not the append partial)
+   appends its rows and leaves the button loading and disabled for good
+   (`utils-loadmore.js`, `appendPageResults`/`handleLoadMore`).
+3. **Games: a Load More clicked while Back's server render is on its way**
+   (before the engine) fetches from the URL Back has moved to, and if its
+   page lands first, the other list's rows go in under the one shown.
+4. **Music: a failed request sent before Alpine starts stays ahead.** Enter
+   in the search box or a row's genre, sent before the controls exist, that
+   fails while the engine's data also fails, leaves the form and controls
+   ahead of the list: the controls cannot tell a request they never saw
+   from a change of the reader's. So does a saved filter whose blob stores
+   its years as strings, or a hand-edited `?genres=5,abc`, which read as
+   the reader having moved on.
+5. **Music: "Back keeps the artist in the heading" races.** The heading
+   reads the form's `artists` field, which only the engine's popstate
+   listener restores, so it rests on that listener running first. Under
+   three parallel browsers `main` failed the check 10 times in 12; alone it
+   passes. Have the controls restore `artists` themselves.
+6. **Games' cached bare pages carry no data version.** Music's do since
+   2026-11-03 (`get_page_cache_version`): its client joins the page's rows
+   to the payload's by position. If the games engine seeds from the server's
+   rows the same way, a cached `/` from before an import beside a fresh
+   payload repeats and drops games for up to five minutes. Unverified.
+
 The browser harnesses used for v905 are in the ashgabat worktree's
 `.context/ygrid/`, which is gitignored and so exists only there:
 `matrix.js`, `musicrace.js`, `loadmore.js`, `round8.js`-`round10.js`, and
@@ -29,7 +59,7 @@ The section is public at `music.acclaimedmedia.org`, beside the games site and
 a landing page at the apex (2026-10-30; AGENTS.md, "Domain"). The pages keep a
 "Beta" badge while `music.config.MUSIC_BETA` is on.
 
-6. **New brand artwork.** The favicons still read "Acclaimed Video Games"
+7. **New brand artwork.** The favicons still read "Acclaimed Video Games"
    (`games/static/games/brand/`), and a page without artwork of its own has
    no `og:image` since the old one was removed; every page title already
    says Acclaimed Media. A new default goes in `base.html`'s `og_image` block,
@@ -42,7 +72,7 @@ The rankings page is 690 KB anonymous and 833 KB logged in, and the dyno
 runs gthread with three threads per worker (AGENTS.md, "Production memory
 budget").
 
-7. **Check `--threads 3` after a week.** The `Procfile` went from two
+8. **Check `--threads 3` after a week.** The `Procfile` went from two
    threads per worker to three on 2026-11-03, on a week of gthread at two
    (2026-10-27 to 11-02) that peaked at 342 MiB RSS of the 512 MiB quota,
    with swap never above 13 MiB. Around 2026-11-10, re-read

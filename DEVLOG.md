@@ -7,7 +7,7 @@
   pushed even with focus in the box, while the box still holds exactly
   what was sent; with no engine to come, the controls, form and heading go
   back to the filters the list shows, unless the reader has changed
-  something since (ROADMAP bug 4)
+  something since. Held on a branch since 2026-11-02
 - **Games: overtaken server work is answered for the list it was asked
   for.** A server jump overtaken by a filter change jumped on the filter's
   list, a client jump or the played filter dropped a server Load More, and
@@ -15,7 +15,8 @@
   101-200). The late response now asks where it lands whether the list is
   still the one it was asked for, and the engine answers it if so. A page
   that lands moves its button past its rows before anything can throw, so a
-  retry no longer appends the same page twice (ROADMAP bugs 2-3)
+  retry no longer appends the same page twice. Held on a branch since
+  2026-11-02
 - **Music's bare pages are cached for anonymous visitors**: the rankings
   page for five minutes, the 22 genre and decade landing pages and the
   browse index for an hour, as games' are. Measured first: ~90 KB deflated
@@ -39,7 +40,7 @@
   peaked at 342 MiB of the 512 MiB quota with swap under 13 MiB, and a
   thread costs only its in-flight render. Six requests run at once, and the
   web dyno holds at most 15 of Postgres' 20 connections during an import.
-  ROADMAP item 7 re-reads the memory a week on
+  ROADMAP item 8 re-reads the memory a week on
 
 ## 2026-11-02
 
