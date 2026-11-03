@@ -53,8 +53,9 @@ if SENTRY_ENABLED:
 # Core Django settings
 DEBUG = env("DEBUG", default=False)  # Default to True for development
 
-# Feature flags - Books app is in development, only show in DEBUG/TEST mode
-BOOKS_ENABLED = DEBUG or TEST_MODE
+# Feature flags - the Books links in the nav. The section itself is staff-only
+# whatever this says (core.mixins.StaffOnlyMixin)
+BOOKS_ENABLED = env.bool("BOOKS_ENABLED", default=False)
 
 SECRET_KEY = env(
     "SECRET_KEY",

@@ -1488,6 +1488,28 @@ class MobileSheetBuildsItsOwnYearOptionsTests(SimpleTestCase):
         )
 
 
+class MobileTimeSheetSaysWhatIsSelectedTests(SimpleTestCase):
+    """The Decade / Year / Range switch and the decade buttons showed their
+    state by colour alone, where the sidebar's year grid says it in
+    `aria-pressed`. A screen reader could not tell which one was on."""
+
+    def test_every_toggle_carries_its_pressed_state(self):
+        template = (
+            Path(settings.BASE_DIR)
+            / "core/templates/core/includes/_mobile_filter_time.html"
+        ).read_text()
+        for mode in ("decade", "year", "range"):
+            self.assertIn(
+                f""":aria-pressed="mode === '{mode}' ? 'true' : 'false'\"""", template
+            )
+        self.assertIn(
+            """:aria-pressed="isDecadeSelected(decade) ? 'true' : 'false'\"""",
+            template,
+        )
+        self.assertIn(""":aria-expanded="expanded ? 'true' : 'false'\"""", template)
+        self.assertEqual(template.count('role="group"'), 2)
+
+
 class MusicHeadingKeepsItsHeightTests(SimpleTestCase):
     """The row followed its text, so a filter moved the sidebar under it."""
 
