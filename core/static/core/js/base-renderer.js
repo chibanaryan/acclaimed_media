@@ -204,15 +204,16 @@ class BaseMediaListRenderer {
     /**
      * Take over a list the server rendered, without re-rendering it.
      *
-     * The server always renders from the top, so the window is the first
-     * `renderedCount` items.
+     * The window is the `renderedCount` items from `start`: from the top,
+     * unless the page was a later one (music's `?page=N`).
      * @param {Array} items - The whole result set, in page order
      * @param {number} renderedCount - How many of them are on the page
+     * @param {number} [start=0] - The index of the first of them
      */
-    adopt(items, renderedCount) {
+    adopt(items, renderedCount, start = 0) {
         this.currentItems = items;
-        this.windowStart = 0;
-        this.windowEnd = Math.min(Math.max(renderedCount, 0), items.length);
+        this.windowStart = Math.min(Math.max(start, 0), items.length);
+        this.windowEnd = Math.min(this.windowStart + Math.max(renderedCount, 0), items.length);
     }
 
     /**

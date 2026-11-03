@@ -78,9 +78,10 @@
 </script>
 {% endif %}
 {# Here with no albums too: leaving an empty result renders into it. #}
+{# data-window-start: a ?page=N link starts the rows below #1, and the engine has to know where #}
 {% with empty_message='No albums match your filters.' %}
 {% include 'core/includes/_load_previous.html' %}
-<div id="album-list-container" class="isolate" :class="'view-' + viewMode" data-empty-message="{{ empty_message }}">
+<div id="album-list-container" class="isolate" :class="'view-' + viewMode" data-empty-message="{{ empty_message }}"{% if page_obj.number > 1 %} data-window-start="{{ page_obj.start_index|add:-1 }}"{% endif %}>
     {% if albums %}
     {# List view - album rows #}
     {% for album in albums %}

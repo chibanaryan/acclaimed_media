@@ -655,7 +655,7 @@ class JumpToRankRendersAWindowTests(SimpleTestCase):
             "planJump(index)",
             "showRange(container, start, end",
             "loadPrevious(container",
-            "adopt(items, renderedCount)",
+            "adopt(items, renderedCount, start = 0)",
             "windowState()",
             "captureScrollAnchor(container)",
             "getLoadPreviousHtml(state)",

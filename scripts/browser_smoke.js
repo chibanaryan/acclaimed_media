@@ -4,7 +4,10 @@
  * Alpine expression error or Content-Security-Policy violation.
  *
  *   node scripts/browser_smoke.js http://127.0.0.1:8000
+ *   SMOKE_ONLY='music Load More' node scripts/browser_smoke.js ...
  *
+ * SMOKE_ONLY, a regular expression, runs only the named checks after the
+ * page loop, and skips the loop.
  * The argument names the dev server; its port is all that is used. Each site
  * is its own host (core/sites.py), so the pages are visited as
  * localhost:PORT (the landing page), games.localhost:PORT and
@@ -228,7 +231,9 @@ async function checkLoadMoreAcrossViewToggle(page) {
  * engine's hearing, so the takeover once took the finished request for one
  * still to answer and appended a page nobody asked for, and could not abort
  * one still on its way. `landed` lets the page's response arrive before the
- * engine does, or holds it until after. Answers as above.
+ * engine does, or holds it until after. Landed, it used to append to the old
+ * list and its out-of-band button replace the filter's; the filter request
+ * now aborts it. Answers as above.
  */
 async function checkDetachedLoadMoreAcrossEngineLoad(page, engine, landed) {
     await page.setViewport({ width: 1440, height: 900 });
@@ -258,24 +263,21 @@ async function checkDetachedLoadMoreAcrossEngineLoad(page, engine, landed) {
         const more = document.querySelector('.load-more-container .load-more-button');
         return more && (more.getAttribute('hx-get') || '').includes('dir=desc');
     });
-    if (landed) {
-        await held.server.continue();
-        // Landed once its out-of-band container has replaced the live one
-        await page.waitForFunction(() => {
-            const more = document.querySelector('.load-more-container .load-more-button');
-            return !more || !(more.getAttribute('hx-get') || '').includes('dir=desc');
-        });
-    }
     const rows = '#album-list-container .media-row-wrapper';
     const before = await page.$$eval(rows, found => found.length);
+    if (landed) {
+        // Its request was aborted, so this answers nobody
+        await held.server.continue().catch(() => {});
+        await sleep(800);
+        const next = await nextPage();
+        if (!next || !next.includes('dir=desc')) {
+            return `before the engine, the stale page left "${next}"`;
+        }
+    }
     await releaseAfterEngine(page, held, engine, decade);
     await sleep(800);
     const after = await page.$$eval(rows, found => found.length);
     if (after !== before) return `the takeover turned ${before} rows into ${after}`;
-    // Landed, its out-of-band button has already replaced the live one (an
-    // older race, ROADMAP). Aborted, it cannot: the button is still the one
-    // the descending render drew.
-    if (landed) return null;
     const next = await nextPage();
     return next && next.includes('dir=desc') ? null : `the stale page left "${next}"`;
 }
@@ -693,6 +695,67 @@ async function checkJumpBoxComesOn(page) {
 }
 
 /**
+ * And a `?page=2` link whose takeover re-renders, for a filter request that
+ * failed: the engine's rows start at #1, but the server's offset stayed on
+ * the container for the next adoption to read. Answers as above.
+ */
+async function checkALaterPageForgetsItsStartOnceRendered(page) {
+    const engine = { site: music, data: '/api/all/', ready: musicReady };
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = await holdEngineLoad(page, engine, request =>
+        request.url().includes('start=1990') &&
+        ['xhr', 'fetch'].includes(request.resourceType()));
+    await page.goto(music + '/?page=2', { waitUntil: 'load' });
+    const decade = await page.waitForSelector('.year-grid-decade[title^="1990s:"]');
+    await sleep(1000);
+    await decade.click();
+    const missing = await bothHeld(held, music);
+    if (missing) return missing;
+    await held.server.respond({ status: 500, contentType: 'text/html', body: 'boom' });
+    await sleep(300);
+    await releaseAfterEngine(page, held, engine, decade);
+    await sleep(500);
+    const state = await page.evaluate(() => ({
+        attribute: Boolean(document.querySelector('[data-window-start]')),
+        start: getAlbumClientSideFiltering().pageStart,
+        windowStart: getAlbumClientSideFiltering().renderer.windowStart,
+    }));
+    if (state.windowStart !== 0) return `the 1990s list starts at row ${state.windowStart + 1}`;
+    return state.attribute || state.start
+        ? 'page 2\'s offset outlived the engine rendering from #1' : null;
+}
+
+/**
+ * A `?page=2` link renders rows 101-120, and the engine took them for 1-20:
+ * a jump to 110 appended rows already there, and one to 5 flashed row 105.
+ * It starts the window where the page does. Answers as above.
+ */
+async function checkALaterPageStartsItsWindowThere(page) {
+    await openMusicEngine(page, '/?page=2');
+    const summary = await page.$eval('[data-result-count="desktop"]', line => line.textContent);
+    if (!/101\D120 of 120/.test(summary)) return `page 2's count read "${summary.trim()}"`;
+    if (!await page.$('.load-previous-button')) return 'page 2 had no Load Previous';
+    const shown = () => page.$$eval(albumRows, found => found.map(row => row.id));
+    const repeated = ids => new Set(ids).size !== ids.length;
+    for (const position of [110, 5]) {
+        await page.evaluate(at => getAlbumClientSideFiltering().jumpTo(at), position);
+        await sleep(300);
+        const ids = await shown();
+        if (repeated(ids)) return `a jump to ${position} on page 2 repeated rows`;
+        const rank = await page.evaluate(at => {
+            const csf = getAlbumClientSideFiltering();
+            const index = at - 1 - csf.renderer.windowStart;
+            const row = document.querySelectorAll('#album-list-container .media-row-wrapper')[index];
+            return row && row.querySelector('[data-slot="rank"]').textContent.trim();
+        }, position);
+        if (rank !== String(position)) {
+            return `a jump to ${position} on page 2 found #${rank} in its place`;
+        }
+    }
+    return null;
+}
+
+/**
  * A select with no option for its value falls back to the first one, so a
  * range before the corpus read as its newest year. And an empty result had no
  * list for the engine to render into, so nothing could leave it. Answers as
@@ -787,7 +850,8 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
         args: ['--no-sandbox', '--host-resolver-rules=MAP *.localhost 127.0.0.1'],
     });
     let failures = 0;
-    for (const [width, height] of [[1440, 900], [420, 860]]) {
+    const only = process.env.SMOKE_ONLY && new RegExp(process.env.SMOKE_ONLY);
+    for (const [width, height] of only ? [] : [[1440, 900], [420, 860]]) {
         for (const url of pages) {
             const page = await browser.newPage();
             await page.setViewport({ width, height });
@@ -829,6 +893,7 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     // Each in its own context: game data cached by the pages above would skip
     // the very load these wait on
     const report = async (name, check) => {
+        if (only && !only.test(name)) return;
         const context = await browser.createBrowserContext();
         const page = await context.newPage();
         const errors = [];

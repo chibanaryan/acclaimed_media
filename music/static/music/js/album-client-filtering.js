@@ -22,6 +22,9 @@ class AlbumClientSideFiltering {
         this.currentFilters = {};
         this.viewMode = 'list';
         this.form = null;
+        // Where the server's rows start: 0, or a `?page=N` link's offset,
+        // until the renderer adopts them or the engine renders its own
+        this.pageStart = 0;
     }
 
     /**
@@ -35,6 +38,7 @@ class AlbumClientSideFiltering {
     attach(form) {
         this.form = form;
         this.currentFilters = this.readFilters(form);
+        this.pageStart = serverPageStart();
     }
 
     /**
@@ -52,7 +56,8 @@ class AlbumClientSideFiltering {
         const filters = this.form ? this.readFilters(this.form) : this.currentFilters;
         this.currentFilters = filters;
         const { albums } = this.engine.apply(filters);
-        this.renderer.adopt(albums, loadedAlbumCount());
+        this.renderer.adopt(albums, loadedAlbumCount(), this.pageStart);
+        this.pageStart = 0;
         this.renderer._currentViewMode = this.viewMode;
         this.renderer._currentShowRank = this._isFiltered(filters)
             ? 'filtered'
@@ -286,6 +291,8 @@ class AlbumClientSideFiltering {
         if (!this.isInitialized) return;
 
         this.currentFilters = filters;
+        // The engine's rows start at the top, whatever page the server's did
+        this.pageStart = 0;
         const { albums } = this.engine.apply(filters);
         const showRank = this._isFiltered(filters) ? 'filtered' : 'alltime';
 
@@ -604,6 +611,19 @@ function albumViewIsGrid(viewMode) {
     return Boolean(container && container.classList.contains('view-grid'));
 }
 
+/**
+ * The index of the first row the server rendered: 0, or a later page's start
+ * for a `?page=N` link. Read once, as the engine takes over: its own renders
+ * replace the rows under the same container, which would keep the attribute.
+ */
+function serverPageStart() {
+    const container = document.getElementById('album-list-container');
+    if (!container || !container.dataset.windowStart) return 0;
+    const start = parseInt(container.dataset.windowStart, 10) || 0;
+    delete container.dataset.windowStart;
+    return start;
+}
+
 /** How many rows are on the page now, in whichever view is showing. */
 function loadedAlbumCount() {
     const container = document.getElementById('album-list-container');
@@ -905,6 +925,11 @@ function initAlbumFiltering() {
             rerender({ push: !typing });
         } else if (pageRequest) {
             csf.loadMore();
+        } else if (csf.pageStart > 0) {
+            // A `?page=N` link: the rows above it get their Load Previous,
+            // and the count names the range
+            csf._syncRendererWithPage();
+            csf._updatePaging();
         }
         if (highlightPending) {
             csf._syncRendererWithPage();
