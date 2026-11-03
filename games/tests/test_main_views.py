@@ -34,6 +34,7 @@ from games.models import (
     PlayedGame,
     Post,
     Publication,
+    Series,
     SiteMetadata,
     WantToPlayGame,
     WikipediaGenre,
@@ -5076,3 +5077,40 @@ class LighthouseFindingsTests(TestCase):
                         select_id and f'for="{select_id.group(1)}"' in html
                     )
                     self.assertTrue(labelled, tag)
+
+
+class SidebarListsFollowTheDataVersionTests(TestCase):
+    """The genre and series lists are kept for a day, and nothing drops them.
+
+    A page rendered between an import and the fetch that gives its added
+    games their series kept the lists without them until the day was out.
+    """
+
+    def setUp(self):
+        clear_all_caches()
+        self.addCleanup(clear_all_caches)
+        user = User.objects.create_user(username="reader", password="pw")
+        self.client.force_login(user)  # a signed-in page is never stored whole
+        self.games = [
+            Game.objects.create(name=f"Game {i}", rank=i, igdb_id=i) for i in (1, 2)
+        ]
+
+    def series_names(self):
+        response = self.client.get(reverse("home"))
+        return [s["name"] for s in response.context["series_list"]]
+
+    def test_a_series_added_after_the_list_was_kept_is_listed(self):
+        self.assertEqual(self.series_names(), [])
+        series = Series.objects.create(name="Saga", slug="saga", igdb_id=1)
+        for game in self.games:
+            game.series.add(series)
+        self.assertEqual(self.series_names(), ["Saga"])
+
+    def test_the_list_is_kept_while_the_version_stands(self):
+        self.series_names()
+        with CaptureQueriesContext(connection) as captured:
+            self.series_names()
+        # The list's own query: series counted by their games
+        self.assertFalse(
+            [q for q in captured if 'AS "game_count" FROM "games_series"' in q["sql"]]
+        )

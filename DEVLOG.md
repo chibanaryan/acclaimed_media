@@ -2,6 +2,9 @@
 
 ## 2026-11-03
 
+- **Games: the sidebar's genre and series lists follow the data version.**
+  Nothing dropped them, so a page rendered between an import and the fetch
+  after it kept the lists without the added games' series for a day
 - **An IGDB pool thread closes its connection after each game.** Nothing
   did, so each held a Postgres slot until the garbage collector reached the
   thread. The pool runs only with batching off (`--batch-games 0`), which no

@@ -1886,6 +1886,11 @@ import's commit is labelled with no version and cached nowhere. The
 A payload of another version is still used, so the engine taking over asks
 `ClientSideFiltering.followsPage()` and, if not, renders the page's rows from
 the payload, as far down as the page had got, rather than continuing them.
+The sidebar's genre and series lists, which nothing drops, are kept a day
+under keys carrying the same version (`genres_cache_key`,
+`series_cache_key`), so the fetch after an import shows its series at once.
+That costs a partial render the version's six queries, which a full page
+already pays.
 
 Music's cache keys all live in `music/config.py` as `CACHE_KEYS`, which
 `caching.invalidate_music_caches()` iterates - add a cached value there or it
@@ -2020,7 +2025,7 @@ That arithmetic sets the shape of the `Procfile`:
   importer's pool of 8 runs only with batching off (`get_igdb --batch-games
   0`); every caller batches on its own thread, and a pool thread closes its
   connection after each game. A games and a music fetch at once, beside a
-  one-off dyno, come to about 10 of the essential-1 plan's 20.
+  one-off dyno, come to about a dozen of the essential-1 plan's 20.
   `core.services.background.start_background_thread` closes the background
   thread's connection when it finishes; left alone it lingered until the
   cyclic garbage collector reached the thread's wrapper.

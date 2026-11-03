@@ -44,8 +44,24 @@ from ._helpers import (
 )
 from .filter_titles import _build_filter_title, _build_tab_title
 
-GENRES_CACHE_KEY = f"search_wikipedia_genres_list_with_counts:{config.CACHE_VERSION}"
-SERIES_CACHE_KEY = f"search_series_list_with_counts:{config.CACHE_VERSION}"
+
+def genres_cache_key(data_version):
+    """The sidebar's genres, with counts, for this version of the game data.
+
+    Keyed on the version because nothing drops them: a page rendered just
+    before an import would otherwise show the old counts for a day. The
+    24-hour timeout only clears the entries a moved version leaves.
+    """
+    return (
+        f"search_wikipedia_genres_list_with_counts:{config.CACHE_VERSION}"
+        f":{data_version}"
+    )
+
+
+def series_cache_key(data_version):
+    """The sidebar's series, as ``genres_cache_key``: IGDB's series for the
+    games an import added land in a fetch after it, which moves the version."""
+    return f"search_series_list_with_counts:{config.CACHE_VERSION}:{data_version}"
 
 
 def _order_games(qs, params):
@@ -113,8 +129,8 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
 
     @cached_property
     def game_data_version(self):
-        """Read once a request, and only by a full page or a cache hit: what
-        the cache checks, stores and the page names are the same value."""
+        """Read once a request: what the cache checks, stores and the page
+        names are the same value, and the sidebar's lists are keyed on it."""
         return compute_game_data_version()
 
     @cached_property
@@ -160,8 +176,8 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
     def _prefetch_cache_keys(self):
         """Every shared-cache key the page reads before it renders."""
         keys = [
-            GENRES_CACHE_KEY,
-            SERIES_CACHE_KEY,
+            genres_cache_key(self.game_data_version),
+            series_cache_key(self.game_data_version),
             PLATFORMS_CACHE_KEY,
             config.CACHE_KEY_YEAR_STATS,
             HERO_STATS_CACHE_KEY,
@@ -241,7 +257,8 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         # Convert IDs to strings for proper Alpine.js binding
         # Includes game_count for heatmap visualization and hierarchy fields
         # Filter out genres with 0 games (but keep parents if children have games)
-        genres = cache_get(GENRES_CACHE_KEY)
+        genres_key = genres_cache_key(self.game_data_version)
+        genres = cache_get(genres_key)
         if genres is None:
             all_genres = list(
                 models.WikipediaGenre.objects.annotate(
@@ -269,7 +286,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
                 if g["id"] in visible_genre_ids
             ]
             cache_set(
-                GENRES_CACHE_KEY,
+                genres_key,
                 genres,
                 config.CACHE_TIMEOUT_DEFAULT,
             )
@@ -277,9 +294,9 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         platforms = platforms_lookup()
 
         # Get series list with game counts (only show series with 2+ games)
-        # Use version-based cache key (bump CACHE_VERSION in config to invalidate)
         MIN_SERIES_GAMES = 2
-        series_list = cache_get(SERIES_CACHE_KEY)
+        series_key = series_cache_key(self.game_data_version)
+        series_list = cache_get(series_key)
         if series_list is None:
             series_list = list(
                 models.Series.objects.annotate(game_count=Count("games"))
@@ -290,7 +307,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
             # Convert IDs to strings for Alpine.js
             series_list = [{**s, "id": str(s["id"])} for s in series_list]
             cache_set(
-                SERIES_CACHE_KEY,
+                series_key,
                 series_list,
                 config.CACHE_TIMEOUT_DEFAULT,
             )
