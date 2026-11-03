@@ -24,11 +24,13 @@ Use these skills for common workflows:
 - `/upgrade-deps` - Monthly upkeep: Dependabot PRs, package bumps, audits, performance and end-of-life checks
 
 Import the music ranking release with `python manage.py import_music_data`,
-then populate its metadata with `/music-metadata`
-(`python manage.py fetch_album_metadata`).
+which then fetches the metadata it left missing (`/music-metadata`,
+`python manage.py fetch_album_metadata`).
 `python manage.py import_games_data` loads the games release from the
-command line, as the staff import page does; both default to the files in
-`acclaimedgames/test_input_files/`.
+command line, as the staff import page does, then refetches IGDB for every
+game and Wikipedia and HLTB for those missing them. Both default to the files
+in `acclaimedgames/test_input_files/`, and `--no-metadata` skips the fetch
+(see "Imports start their metadata fetch").
 
 ### Review before merging
 
@@ -1245,19 +1247,89 @@ call, once it has committed: dropped inside the transaction, a page load
 before it commits would refill them from the old rows. The pass is behind a
 one-query existence check, so an untracked database pays nothing.
 
-**An import does not fetch metadata.** A kept album needs none - its rows,
-genres and covers never left it - so after a release that mostly repeats the
-last, `fetch_album_metadata --with-musicbrainz` skips nearly everything and
-finishes in seconds. An added album renders with placeholder artwork and no
-genres until that run. An album returning from an earlier release has its
-old rows waiting as orphans, and every pass adopts them by external id before
-fetching: Wikidata and Discogs by their ids, and covers and MusicBrainz by
-`release_group_mbid` through `_musicbrainz_record`, which adopts the *whole*
-row - title, dates, genres and cover ids - rather than making an empty one
-and letting the cover pass copy only the cover ids across. The games import page
-has the same split (its "Metadata Operations" panel, with its own buttons);
-music's import page shows what is missing and the command to run. The weekly
-scheduled fetch (below) closes the gap by the next Sunday if nobody does.
+**Imports start their metadata fetch** (2026-11-03). A kept album needs
+none - its rows, genres and covers never left it - so after a release that
+mostly repeats the last, `fetch_album_metadata --with-musicbrainz` skips
+nearly everything: about a minute of Wikidata and the corpus-wide rebuilds,
+plus a few seconds for each added album, which renders with placeholder
+artwork and no genres until it lands. An album returning from an earlier
+release has its old rows waiting as orphans, and every pass adopts them by
+external id before fetching: Wikidata and Discogs by their ids, and covers and
+MusicBrainz by `release_group_mbid` through `_musicbrainz_record`, which
+adopts the *whole* row - title, dates, genres and cover ids - rather than
+making an empty one and letting the cover pass copy only the cover ids across.
+
+So an import runs that fetch itself (`music/services/post_import.py`), and a
+games import runs games' (`games/services/post_import.py`): IGDB `--force`
+for every game, then Wikipedia and HLTB missing-only. The IGDB pass is forced
+because a games import recreates every `Game` and reattaches the stored IGDB,
+Wikipedia and HLTB rows, but the slug, developers and series live on `Game`
+and only `Game.get_igdb_data` writes them: until it runs, every game links to
+`/games/None/`, and the missing-only IGDB button skips every reattached game.
+Measured on the 1400-game release (2026-11-03): under three minutes on the
+free IGDB tier, and every slug and developer back. Carrying those fields
+across the import would close that window; nothing does yet.
+
+- **The commands fetch in the foreground**, after the import's own output;
+  `--no-metadata` skips it, and `--dry-run` never fetches.
+- **The staff pages fetch on a background thread**
+  (`core.services.post_import.schedule_after_commit`), started once the
+  import commits and only when the games file was part of it. The page says
+  so: music's summary, games' success message or the streamed import's toast
+  (a `metadata` event). Reload to watch the counts fall.
+- **One fetch per section at a time**, across workers and dynos, the
+  commands' included: a `cache.add` lock on the shared `default` alias. An
+  import while one runs starts none, says so, and asks the running one to go
+  round again when it finishes. Skipping it was not enough: the running round
+  works from the rows it read as it began, and a games import recreates every
+  game, so its forced IGDB pass would leave the new ones without slugs.
+- **The lock lives two minutes, and a heartbeat touches it every 30 s.** A
+  first version held it for the longest fetch, two hours, so a fetch killed
+  with its worker told every import in that time that it would go again.
+  The heartbeat only touches (a `set` could recreate the lock just after the
+  fetch released it), so a lock the cache culls stays culled. A release
+  re-checks for an import that asked as it let go, and an import that asks
+  tries the lock once more after, in case the fetch let go in between.
+- **A failure is reported, not hidden.** Each job returns the steps that
+  failed; they are logged at ERROR, for Sentry, since staff were told the
+  fetch was under way, and the commands print them as warnings, never as a
+  failed import. `get_igdb` reports a service it cannot start (expired
+  credentials) and returns normally, and one whose requests start failing
+  part way catches each batch's error, so the slugs are the test: more than
+  `SLUGLESS_TOLERANCE` (10) games left without one counts as `get_igdb`
+  failing. Fewer is only a warning: IGDB can stop returning a game, and
+  counting that a failure would alert on every import.
+- **HLTB's saves leave a connection on asgiref's executor thread**, which
+  outlives the fetch: `fetch_hltb_data` saves through `sync_to_async`, and
+  outside an async server that runs on one thread for the process's life.
+  `games.services.post_import` closes it there afterwards.
+- **A games fetch moves the data version twice**: as soon as the IGDB pass
+  has given slugs back, raised part way or not, and again at the end.
+  `get_igdb` saves slugs with `update_fields`, which leaves `modified` alone,
+  and Wikipedia's genres for the added games move nothing the version reads,
+  so a page or `/api/games/all/` payload cached during the fetch would go on
+  serving `/games/None/` links, or the new games without genres. Each move
+  touches one game's `modified`, which moves `Max(modified)` as well as all
+  1400 would.
+- **It runs inside a web worker**, so it spends from the 512 MB budget (see
+  "Production memory budget"). Either fetch peaked at ~173 MB for a whole
+  process that idles at ~87 MB, so ~85 MB on top of a worker for a minute
+  or three. Music's did not, at first: the Wikidata pass held every album's
+  and artist's raw entity until the last batch landed, ~415 MB, and
+  `WikidataClient.fetch_entities` now keeps only the claims its callers
+  read (`keep_claims`), as each batch arrives.
+- **A deploy or a worker recycle kills the thread** (it is a daemon), and the
+  lock lapses within two minutes; the weekly scheduled fetch (below)
+  finishes the work by Sunday, or an import after the lapse does. A start
+  that fails is logged and reported, never as a failed import, since the
+  release is live by then.
+- **`METADATA_AFTER_IMPORT`** turns all of it off. It is off under test,
+  where there is no network; the tests of the feature turn it on and patch
+  the fetch. `scripts/setup_cloud.sh` passes `metadata=False`, having no
+  credentials.
+
+The import pages keep their manual controls: games' "Metadata Operations"
+buttons, and music's missing counts with the command to run.
 
 **A cache error does not fail a committed import.** The release is live by the
 time `import_batch` drops the caches, and staff told it failed would re-run
@@ -1339,7 +1411,8 @@ Radiohead and Rihanna among them.
 
 ## Music Metadata Pipeline
 
-Run `/music-metadata` (`python manage.py fetch_album_metadata`) after an import.
+An import runs `/music-metadata` (`python manage.py fetch_album_metadata
+--with-musicbrainz`) itself; see "Imports start their metadata fetch".
 Nearly every album carries a Wikidata QID, which supplies the Discogs and
 MusicBrainz identifiers the other sources are keyed by. Two fallbacks fill
 its gaps. An album with no MusicBrainz release group (P436) is searched for
@@ -1941,7 +2014,11 @@ That arithmetic sets the shape of the `Procfile`:
   each request opens and closes its own, and the web dyno holds at most
   workers x threads (6) at once, plus an import's: its background thread
   and the IGDB importer's pool of 8. That is 15 of the essential-1 plan's
-  20. `import_handler._start_import_thread`
+  20. The metadata fetch an import starts is one such thread, which runs
+  the IGDB pool for a games import, and only once the import's own thread
+  is done; its heartbeat closes its connection after each touch, and HLTB's
+  executor thread's is closed when the fetch ends. A games and a music
+  fetch at once, beside a one-off dyno, would come close to 20. `core.services.background.start_background_thread`
   closes the background thread's connection when it finishes; left alone it
   lingered until the cyclic garbage collector reached the thread's wrapper.
 - **No `--preload`.** Measured with a fork test: a child touched ~160 MB of
@@ -2089,7 +2166,11 @@ Measure with real clicks, at 1x and 4x, through the Event Timing API
 so scroll a sidebar control into view first.
 
 Anything that grows the rendered page, the boot imports, or a per-process
-cache is spending from that 512 MB twice over. `heroku ps`, and the
+cache is spending from that 512 MB twice over. The metadata fetch an import
+starts spends ~85 MB in one worker while it runs (see "Imports start their
+metadata fetch"); a week's peak of 342 MiB leaves room for one. The lock is
+per section, so a games and a music import together would run two: stagger
+them. `heroku ps`, and the
 metrics API (`api.metrics.heroku.com/apps/<id>/formation/web/metrics/memory
 ?start_time=..&end_time=..&step=1h&process_type=web`, with
 `memory.rss.bytes.max` and `memory.swap.bytes.max`), are how to check it.
@@ -2113,6 +2194,9 @@ Environment variables are managed via django-environ (`.env` file):
 - `CACHE_URL` - Cache backend URL. Production uses `dbcache://cache_table`;
   local dev falls back to LocMem whatever this says, and tests set
   `locmemcache://`. See the Caching section
+- `METADATA_AFTER_IMPORT` - Whether an import fetches the metadata it left
+  missing (default: on, off under test). See "Imports start their metadata
+  fetch"
 - `SENTRY_ENVIRONMENT` - Sentry's environment tag. Defaults to `production`
   when `DYNO` is set (any Heroku dyno) and `development` everywhere else.
   `development` sends nothing, neither errors nor CSP reports, even with

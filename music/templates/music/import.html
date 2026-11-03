@@ -36,6 +36,7 @@
     <div>
         <h3 class="font-bold">Import complete</h3>
         <p class="text-sm">{{ summary.message }}</p>
+        {% if summary.metadata %}<p class="text-sm">{{ summary.metadata }}</p>{% endif %}
     </div>
 </div>
 {% for warning in summary.warnings %}
@@ -61,7 +62,7 @@
 
 {# Metadata state, as the games import page carries its "Metadata #}
 {# Operations" panel: albums new to a release have no cover art or genres #}
-{# until the metadata pass fetches them. #}
+{# until the metadata pass fetches them, which an import starts itself. #}
 <div class="card bg-base-200 p-4 mb-4">
     <h2 class="font-semibold mb-2 flex items-center gap-2">
         <span class="mdi mdi-database" aria-hidden="true"></span>
@@ -75,7 +76,9 @@
     {% else %}
     <p class="text-sm text-base-content/70 mb-2">
         Albums an import adds have no cover art or genres until the metadata
-        pass next runs, so they show placeholders until it does.
+        pass runs, so they show placeholders until it does. An import starts
+        the pass itself, in the background: a minute or two, plus a few
+        seconds for each added album. Reload to watch these counts fall.
     </p>
     <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm mb-3">
         <span>Missing Wikidata: <span class="font-semibold tabular-nums">{{ metadata.missing_wikidata|intcomma }}</span></span>

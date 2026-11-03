@@ -199,6 +199,35 @@ class FetchEntitiesTests(WikidataClientTestCase):
             self.assertEqual(client.fetch_entities([]), {})
         get.assert_not_called()
 
+    def test_keep_claims_drops_every_other_claim_as_it_arrives(self):
+        """The raw claims of the whole corpus took a pass to ~415 MB."""
+        client = self.build()
+        payload = {
+            "entities": {
+                "Q1": {
+                    "claims": {"P434": ["kept"], "P31": ["dropped"]},
+                    "sitelinks": {"enwiki": {"title": "Kept"}},
+                },
+                "Q2": {"labels": {"en": {"value": "No claims"}}},
+                "Q3": {"id": "Q3", "missing": ""},
+            }
+        }
+        with mock.patch.object(client, "get_json", return_value=payload):
+            result = client.fetch_entities(["Q1", "Q2", "Q3"], keep_claims=["P434"])
+        self.assertEqual(result["Q1"]["claims"], {"P434": ["kept"]})
+        self.assertEqual(result["Q1"]["sitelinks"], {"enwiki": {"title": "Kept"}})
+        self.assertNotIn("claims", result["Q2"])
+        self.assertEqual(result["Q3"], {"id": "Q3", "missing": ""})
+
+    def test_without_keep_claims_every_claim_is_kept(self):
+        client = self.build()
+        claims = {"P434": ["a"], "P31": ["b"]}
+        with mock.patch.object(
+            client, "get_json", return_value={"entities": {"Q1": {"claims": claims}}}
+        ):
+            result = client.fetch_entities(["Q1"])
+        self.assertEqual(result["Q1"]["claims"], claims)
+
 
 class FetchAlbumMetadataTests(WikidataClientTestCase):
     def full_entity(self):
@@ -221,6 +250,20 @@ class FetchAlbumMetadataTests(WikidataClientTestCase):
             },
             "sitelinks": {"enwiki": {"title": "Abbey Road"}},
         }
+
+    def test_the_claims_kept_are_every_one_the_metadata_reads(self):
+        """Read through the slimming, an entity gives what it gives whole."""
+        client = self.build()
+        entity = self.full_entity()
+        entity["claims"]["P31"] = [entity_claim({"id": "Q482994"})]
+        whole = client._build_album_metadata("Q173643", entity)
+        with mock.patch.object(
+            client, "get_json", return_value={"entities": {"Q173643": entity}}
+        ):
+            slimmed = client.fetch_album_metadata(["Q173643"])["Q173643"]
+        self.assertEqual(slimmed, whole)
+        self.assertEqual(slimmed.discogs_master_id, 24047)
+        self.assertNotIn("P31", entity["claims"])
 
     def test_every_property_is_read(self):
         client = self.build()
@@ -348,6 +391,24 @@ class FetchArtistsTests(WikidataClientTestCase):
                 name="The Beatles",
                 musicbrainz_id="b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d",
             ),
+        )
+
+    def test_only_the_musicbrainz_claim_is_kept(self):
+        client = self.build()
+        entity = {
+            "labels": {"en": {"value": "The Beatles"}},
+            "claims": {
+                config.WIKIDATA_ARTIST_MUSICBRAINZ_PROPERTY: [entity_claim("b10b")],
+                "P527": [entity_claim({"id": "Q2632"})],
+            },
+        }
+        with mock.patch.object(
+            client, "get_json", return_value={"entities": {"Q1299": entity}}
+        ):
+            artist = client.fetch_artists(["Q1299"])["Q1299"]
+        self.assertEqual(artist.musicbrainz_id, "b10b")
+        self.assertEqual(
+            list(entity["claims"]), [config.WIKIDATA_ARTIST_MUSICBRAINZ_PROPERTY]
         )
 
     def test_the_english_wikipedia_title_is_read_from_the_sitelink(self):

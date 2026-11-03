@@ -517,7 +517,7 @@
             <span class="mdi mdi-database" aria-hidden="true"></span>
             Metadata Operations
         </h2>
-        <p class="text-sm opacity-70 mb-4">Run once when first importing games, or when adding new games that need enrichment</p>
+        <p class="text-sm opacity-70 mb-4">An import of the games file starts these itself, in the background: IGDB for every game, since the import leaves them without slugs, then Wikipedia and HowLongToBeat for the games missing them. The buttons are for running one by hand: wait for the import's to finish first, as the two would share IGDB's rate limit and the database's connections.</p>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <!-- Fetch IGDB Data -->
@@ -844,6 +844,7 @@
                     let buffer = ''
                     let hasError = false
                     let currentFile = null
+                    let metadataNote = ''
 
                     while (true) {
                         const { done, value } = await reader.read()
@@ -882,6 +883,8 @@
                                             document.getElementById(`${fileId}-progress-bar`).style.width = '100%'
                                             document.getElementById(`${fileId}-percentage`).textContent = '100%'
                                         }
+                                    } else if (data.event === 'metadata') {
+                                        metadataNote = data.message
                                     } else if (data.event === 'error') {
                                         hasError = true
                                         errorsContainer.style.display = 'block'
@@ -906,8 +909,15 @@
                             <span class="mdi mdi-check-circle" aria-hidden="true"></span>
                             <span>Import completed successfully!</span>
                         `
+                        if (metadataNote) {
+                            const note = document.createElement('span')
+                            note.className = 'block text-sm'
+                            note.textContent = metadataNote
+                            alert.lastElementChild.appendChild(note)
+                        }
                         document.body.appendChild(alert)
-                        setTimeout(() => window.location.reload(), 2000)
+                        // Long enough to read the metadata note before the reload.
+                        setTimeout(() => window.location.reload(), metadataNote ? 5000 : 2000)
                     } else {
                         // Reset button for retry
                         submitBtn.disabled = false

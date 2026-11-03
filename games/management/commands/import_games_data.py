@@ -6,6 +6,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from games import models
+from games.services import post_import
 from games.services.import_handler import import_batch
 
 DEFAULT_DIR = Path(settings.BASE_DIR) / "acclaimedgames" / "test_input_files"
@@ -16,7 +17,9 @@ class Command(BaseCommand):
         "Import game rankings from the platforms, lists, games and positions "
         "TSV files, in a single transaction, as the staff import page does. "
         "Games are recreated; tracking rows and fetched metadata are "
-        "reconnected to them."
+        "reconnected to them. Then fetches IGDB for every game (it restores "
+        "their slugs) and Wikipedia and HLTB for those missing them, unless "
+        "--no-metadata."
     )
 
     def add_arguments(self, parser):
@@ -39,6 +42,15 @@ class Command(BaseCommand):
             "--positions",
             default=str(DEFAULT_DIR / "GamePositions.txt"),
             help="TSV of each game's positions in the source lists",
+        )
+        parser.add_argument(
+            "--no-metadata",
+            dest="metadata",
+            action="store_false",
+            help=(
+                "Skip the metadata fetch that otherwise follows the import. "
+                "Until IGDB is fetched again every game has no slug"
+            ),
         )
 
     def handle(self, *args, **options):
@@ -75,3 +87,8 @@ class Command(BaseCommand):
                 members=models.ListMembership.objects.count(),
             )
         )
+
+        # In the foreground, unlike the staff page's thread: whoever ran the
+        # import is watching, and a one-off dyno has no requests to serve.
+        if options["metadata"]:
+            post_import.run_in_foreground(self)

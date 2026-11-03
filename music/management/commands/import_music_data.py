@@ -7,7 +7,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from core import constants as core_constants
 from music import models
-from music.services import import_handler
+from music.services import import_handler, post_import
 
 DEFAULT_DIR = Path(settings.BASE_DIR) / "acclaimedgames" / "test_input_files" / "music"
 
@@ -17,7 +17,8 @@ class Command(BaseCommand):
         "Import album rankings from the artists, lists, albums and positions "
         "TSV files, in a single transaction. Albums are matched to the ones "
         "already stored by Wikidata id and updated in place; lists and list "
-        "positions are replaced."
+        "positions are replaced. Then fetches the metadata the release left "
+        "missing, unless --no-metadata."
     )
 
     def add_arguments(self, parser):
@@ -40,6 +41,15 @@ class Command(BaseCommand):
             "--positions",
             default=str(DEFAULT_DIR / "ListPositions.txt"),
             help="TSV of listIndex:position pairs, one row per album",
+        )
+        parser.add_argument(
+            "--no-metadata",
+            dest="metadata",
+            action="store_false",
+            help=(
+                "Skip the metadata fetch that otherwise follows the import "
+                "(fetch_album_metadata --with-musicbrainz)"
+            ),
         )
         parser.add_argument(
             "--dry-run",
@@ -88,6 +98,11 @@ class Command(BaseCommand):
                 members=models.AlbumListMembership.objects.count(),
             )
         )
+
+        # In the foreground, unlike the staff page's thread: whoever ran the
+        # import is watching, and a one-off dyno has no requests to serve.
+        if options["metadata"]:
+            post_import.run_in_foreground(self)
 
     def _report_dry_run(self, paths):
         """Show what would be imported without touching the database."""

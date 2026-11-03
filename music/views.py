@@ -62,7 +62,7 @@ from core.services import genre_tree, seo
 from core.services.query_params import parse_direction, parse_id_list, parse_int
 from music import config, models
 from music.forms import MusicImportForm
-from music.services import caching, import_handler, landing_pages
+from music.services import caching, import_handler, landing_pages, post_import
 from music.services.credits import (
     album_ids_by_artist,
     artists_matching,
@@ -1762,6 +1762,7 @@ class MusicImportView(StaffOnlyMixin, View):
                     "message": message,
                     "warnings": warnings,
                     "counts": _music_counts(),
+                    "metadata": post_import.schedule(),
                 }
 
         return render(

@@ -94,13 +94,14 @@ with redirect_stdout(StringIO()):
     call_command("migrate", interactive=False, skip_checks=True, stdout=StringIO())
 
 # Each section is imported only while it is empty, so a re-run after a failure
-# picks up where it stopped.
+# picks up where it stopped. No metadata fetch: the session has none of the
+# fetchers' credentials.
 if not Game.objects.exists():
     print("Importing the games release")
-    call_command("import_games_data", stdout=StringIO())
+    call_command("import_games_data", metadata=False, stdout=StringIO())
 if not Album.objects.exists():
     print("Importing the music release")
-    call_command("import_music_data", stdout=StringIO())
+    call_command("import_music_data", metadata=False, stdout=StringIO())
 
 print(f"Database ready: {Game.objects.count()} games, {Album.objects.count()} albums")
 EOF

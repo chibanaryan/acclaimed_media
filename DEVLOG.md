@@ -19,6 +19,12 @@
   that landed after a search under the search's list.
   `core/js/entity-load-more.js` follows games' rules. The authors page
   never set its paging context, so it stopped at 100 with no Load More
+- **Imports start their metadata fetch.** Music's runs the routine
+  `fetch_album_metadata`; games' a forced IGDB pass, since an import leaves
+  every game without a slug until one, then Wikipedia and HLTB. Staff pages
+  run it on a thread under a heartbeat lock, the commands in the
+  foreground. The music Wikidata pass keeps only the claims it reads: ~415
+  MB to ~173 MB
 - **Games: cached pages and the payload follow the data version.** The
   engine joins the rows a page rendered to `/api/games/all/`'s by position,
   and nothing made them agree: a cached `/` from before an import beside

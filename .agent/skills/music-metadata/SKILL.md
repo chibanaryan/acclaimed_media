@@ -211,9 +211,13 @@ orphans (the metadata tables use `on_delete=SET_NULL`), and every pass,
 MusicBrainz included, re-adopts them by external ID without a request:
 
 ```bash
-python manage.py import_music_data      # reports kept / added / removed
-python manage.py fetch_album_metadata --with-musicbrainz   # mostly skips
+python manage.py import_music_data      # reports kept / added / removed, then
+                                        # runs fetch_album_metadata --with-musicbrainz
+python manage.py import_music_data --no-metadata   # the import alone
 ```
+
+An import from the staff page starts the same fetch on a background thread
+once it commits; see "Imports start their metadata fetch" in `AGENTS.md`.
 
 ## Result Format
 

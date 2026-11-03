@@ -22,6 +22,7 @@ from django.db.models import Q
 from core.services.background import start_background_thread
 from games.platform_years import years_for
 from games import config, constants, models
+from games.services import post_import
 from games.services.genre_normalizer import (
     canonicalize_genre_payload,
     get_or_create_genre,
@@ -801,6 +802,7 @@ def import_batch_with_progress(data: Dict[str, Any]):
     try:
 
         def run_import():
+            games_imported = False
             try:
                 with transaction.atomic():
                     for (
@@ -838,6 +840,8 @@ def import_batch_with_progress(data: Dict[str, Any]):
                             f = TextIOWrapper(file_obj, encoding="utf-8")
                             with transaction.atomic():
                                 handler(f, progress_callback)
+                            if field_name == "games_file":
+                                games_imported = True
                         except Exception:
                             logger.exception("%s import failed", display_name)
                             _queue_event(
@@ -850,6 +854,12 @@ def import_batch_with_progress(data: Dict[str, Any]):
                                 )
                             )
 
+                # Committed: the recreated games have no slugs until IGDB is
+                # fetched again, so start it, and tell the page.
+                if games_imported:
+                    note = post_import.schedule()
+                    if note:
+                        _queue_event(json.dumps({"event": "metadata", "message": note}))
             except Exception:  # pragma: no cover
                 # A disconnect raises to roll back; that is no error to report
                 if not stop_event.is_set():

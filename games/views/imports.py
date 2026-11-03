@@ -15,8 +15,15 @@ from django.views.generic import FormView
 from core.mixins import StaffOnlyMixin
 from games import models, utils
 from games.forms import ImportForm
+from games.services import post_import
 
 logger = logging.getLogger(__name__)
+
+
+def _with_metadata_note(message):
+    """Start the post-import fetch, and say so under the import's message."""
+    note = post_import.schedule()
+    return f"{message}\n{note}" if note else message
 
 
 class ImportView(StaffOnlyMixin, FormView):
@@ -235,7 +242,7 @@ class ImportView(StaffOnlyMixin, FormView):
                     fh.close()
 
             if res:
-                self.request.session["import_success"] = (
+                self.request.session["import_success"] = _with_metadata_note(
                     "Loaded bundled test data.\n" + message
                 )
             else:
@@ -259,6 +266,9 @@ class ImportView(StaffOnlyMixin, FormView):
             # Process batch import immediately
             res, message = utils.import_batch(import_data)
             if res:
+                # A lists-only import leaves the games as they were.
+                if import_data.get("games_file"):
+                    message = _with_metadata_note(message)
                 # Store success message in session (persist across redirect)
                 self.request.session["import_success"] = message
             else:

@@ -159,6 +159,18 @@ def _date_precision(value: Any) -> str:
     return "day" if value["precision"] >= PRECISION_DAY and day != "00" else "month"
 
 
+# The album properties _build_album_metadata reads.
+ALBUM_CLAIMS = (
+    config.WIKIDATA_LABEL_PROPERTY,
+    config.WIKIDATA_DISCOGS_MASTER_PROPERTY,
+    config.WIKIDATA_RELEASE_DATE_PROPERTY,
+    config.WIKIDATA_SPOTIFY_PROPERTY,
+    config.WIKIDATA_MUSICBRAINZ_RELEASE_GROUP_PROPERTY,
+    config.WIKIDATA_PERFORMER_PROPERTY,
+    config.WIKIDATA_GENRE_PROPERTY,
+)
+
+
 class WikidataClient(RateLimitedClient):
     """Batched reads from the Wikidata Action API."""
 
@@ -169,12 +181,20 @@ class WikidataClient(RateLimitedClient):
         qids: Iterable[str],
         props: str = "claims",
         extra_params: Optional[Dict[str, str]] = None,
+        keep_claims: Optional[Iterable[str]] = None,
     ) -> Dict[str, Any]:
         """Return the raw entities for ``qids``, in batches of 50.
 
         A failed batch is logged and skipped rather than aborting the run, so
         one bad request costs 50 albums their metadata and nothing else.
+
+        ``keep_claims`` names the properties a caller reads; every other
+        claim is dropped as its batch arrives. An entity carries all of its
+        claims, with their references, and a famous band's runs to hundreds:
+        held whole, the corpus's albums and artists took a pass to ~415 MB,
+        which the web dyno cannot spare for the fetch an import starts.
         """
+        keep = set(keep_claims) if keep_claims is not None else None
         qids = list(dict.fromkeys(qids))
         entities: Dict[str, Any] = {}
 
@@ -196,6 +216,13 @@ class WikidataClient(RateLimitedClient):
                     "Wikidata returned no entities for a batch of %d", len(batch)
                 )
                 continue
+            if keep is not None:
+                for entity in payload["entities"].values():
+                    claims = entity.get("claims")
+                    if claims:
+                        entity["claims"] = {
+                            prop: claims[prop] for prop in keep if prop in claims
+                        }
             entities.update(payload["entities"])
 
         return entities
@@ -206,6 +233,7 @@ class WikidataClient(RateLimitedClient):
             qids,
             props="claims|sitelinks",
             extra_params={"sitefilter": "enwiki"},
+            keep_claims=ALBUM_CLAIMS,
         )
 
         results: Dict[str, AlbumMetadata] = {}
@@ -281,7 +309,10 @@ class WikidataClient(RateLimitedClient):
         ``mul`` fallback.
         """
         entities = self.fetch_entities(
-            qids, props="labels|claims|sitelinks", extra_params={"sitefilter": "enwiki"}
+            qids,
+            props="labels|claims|sitelinks",
+            extra_params={"sitefilter": "enwiki"},
+            keep_claims=(config.WIKIDATA_ARTIST_MUSICBRAINZ_PROPERTY,),
         )
 
         artists: Dict[str, ArtistMetadata] = {}

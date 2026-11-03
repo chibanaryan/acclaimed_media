@@ -397,6 +397,12 @@ if TEST_MODE:
     IGDB_CLIENT_ID = IGDB_CLIENT_SECRET = "XXX"
     WIKIDATA_ACCESS_TOKEN = DISCOGS_TOKEN = None
 
+# An import fetches the metadata it leaves missing (core.services.post_import):
+# the staff pages on a background thread, the import commands in the
+# foreground. Off under test, where there is no network to fetch from; the
+# tests of the feature turn it on and patch the fetch.
+METADATA_AFTER_IMPORT = env.bool("METADATA_AFTER_IMPORT", default=not TEST_MODE)
+
 # Email configuration (Brevo SMTP)
 # In dev: print to console. In prod: send via Brevo SMTP.
 # Brevo requires verified sender - contact@acclaimedvideogames.com is verified
