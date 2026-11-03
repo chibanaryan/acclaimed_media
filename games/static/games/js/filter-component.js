@@ -62,6 +62,10 @@ document.addEventListener('alpine:init', () => {
         _debouncedUpdate: null,
         _debouncedFilter: null,
         _urlFilterKey: '',
+        // Moves whenever the URL's filters do: one list's visits apart, so a
+        // server page asked for on it before a sort and Back is not taken
+        // for this visit's (utils-loadmore.js, serverListKey)
+        _urlFilterVisit: 0,
         clientFilterReady: false,
         _clientFilteringInitRequested: false,
         _csf: null,
@@ -138,7 +142,7 @@ document.addEventListener('alpine:init', () => {
             if (dirParam && (dirParam === 'asc' || dirParam === 'desc')) {
                 this.filters.sortDirection = dirParam;
             }
-            this._urlFilterKey = this._filterKey();
+            this._setUrlFilterKey(this._filterKey());
 
             // Defer non-critical initialization to reduce TBT
             const deferredInit = () => {
@@ -395,7 +399,6 @@ document.addEventListener('alpine:init', () => {
                             // The engine takes over from here: nothing queued
                             // or in flight may repeat this render or undo it.
                             const interrupted = self.isLoading;
-                            const pageLoading = document.querySelector('.load-more-button.is-loading');
                             self.fetchManager.abort();
                             if (interrupted) clearLoading('game-results-container');
                             if (self._debouncedFilter) self._debouncedFilter.cancel();
@@ -412,10 +415,6 @@ document.addEventListener('alpine:init', () => {
                                 self.performClientUpdate({ historyMethod: null });
                             } else {
                                 self.updateFacetCounts();
-                            }
-                            // A render replaced the button, so its page is dropped
-                            if (!changed && pageLoading && !pageLoading.isConnected) {
-                                handleLoadMoreCSF(self._csf);
                             }
                         }
                     });
@@ -888,7 +887,13 @@ document.addEventListener('alpine:init', () => {
                 end: url.end === null ? this.maxYear : url.end,
                 hltb_preset: this.calculateHltbPreset(url.hltb_min, url.hltb_max)
             });
-            this._urlFilterKey = this._filterKey();
+            this._setUrlFilterKey(this._filterKey());
+        },
+
+        /** Record the filters the URL now holds, and a new visit if they moved. */
+        _setUrlFilterKey(key) {
+            if (key !== this._urlFilterKey) this._urlFilterVisit += 1;
+            this._urlFilterKey = key;
         },
 
         /** The filters as one value. A highlight is spent by the first update. */
@@ -909,7 +914,7 @@ document.addEventListener('alpine:init', () => {
                 method = 'replaceState';
             }
             window.history[method]({}, '', url);
-            this._urlFilterKey = key;
+            this._setUrlFilterKey(key);
         },
 
         resetSearch() {
@@ -1177,7 +1182,9 @@ document.addEventListener('alpine:init', () => {
         },
 
         performClientUpdate(options = {}) {
-            // historyMethod: null re-renders without touching the URL
+            // historyMethod: null re-renders without touching the URL. A
+            // server page or jump this overtakes is answered or dropped when
+            // it lands (utils-loadmore.js, engineForSameList).
             const { historyMethod = 'pushState' } = options;
 
             this.isLoading = true;
@@ -1436,14 +1443,9 @@ document.addEventListener('alpine:init', () => {
                 // A view is not a filter: re-render, leave the URL alone. It
                 // used to replaceState with _filterUrl(), which on an
                 // unfiltered page wrote /games/?start=..&end=.. over `/`.
-                const pageLoading = document.querySelector('.load-more-button.is-loading');
+                // A server page this overtakes is answered when it lands, the
+                // list being the same (utils-loadmore.js, engineForSameList).
                 this.performClientUpdate({ historyMethod: null });
-                // The render replaced the button a server page was on its way
-                // to, so the page is dropped; the list is the same one, so the
-                // engine answers the click, as it does when it takes over.
-                if (pageLoading && !pageLoading.isConnected) {
-                    handleLoadMoreCSF(this._csf);
-                }
             } else if (mode === 'grid') {
                 // Until the bundle renders a grid, grid mode shows the server's
                 // rows (styles.css hides them only once a .game-grid exists).

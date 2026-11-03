@@ -410,6 +410,57 @@ class GamesGridIsClientRenderedTests(SimpleTestCase):
                 )
 
 
+class GamesOvertakenServerWorkHasOneOwnerTests(SimpleTestCase):
+    """A server Load More or jump whose button a render replaced.
+
+    Each render once answered it its own way, or not at all: a client jump
+    dropped a Load More, every answer restarted at 100 rows, and a server
+    jump overtaken by a filter change jumped on the new list. Now the late
+    response asks one question where it lands: is the list the one it was
+    asked for (the filters the URL was last written with, on the same visit
+    of them)? scripts/browser_smoke.js runs both ("games server jump
+    overtaken by a filter", and "... and Back", "games Load More across a
+    client jump").
+    """
+
+    def _read(self, relative_path):
+        return (Path(settings.BASE_DIR) / relative_path).read_text()
+
+    def test_the_late_response_answers_only_for_the_same_list(self):
+        loadmore = self._read("games/static/games/js/utils-loadmore.js")
+        self.assertIn(
+            "if (key === null || key !== serverListKey()) return null;", loadmore
+        )
+        # The list on the page, which the takeover's rewritten URL keeps, and
+        # none while a server render is still bringing another one in
+        self.assertIn(
+            "return `list:${component._urlFilterVisit}:${component._urlFilterKey}`;",
+            loadmore,
+        )
+        # Landed or failed, an overtaken click is answered the same way
+        self.assertIn(
+            "if (csf) answerLoadMore(csf, loaded + csf.renderer.PAGE_SIZE);", loadmore
+        )
+        body = loadmore[loadmore.index("async function jumpToRankServerSide(") :]
+        body = body[: body.index("\nasync function ")]
+        self.assertIn("const csf = engineForSameList(key);", body)
+        self.assertEqual(body.count("overtaken()"), 2)
+        # No render answers it itself any more, so none can answer it twice
+        component = self._read("games/static/games/js/filter-component.js")
+        self.assertNotIn("pageLoading", component)
+        self.assertNotIn("handleLoadMoreCSF", component)
+        for minified in (
+            "games/static/games/js/utils-loadmore.min.js",
+            "games/static/games/js/filter-component.min.js",
+        ):
+            with self.subTest(minified=minified):
+                self.assertNotIn("pageLoading", self._read(minified))
+        self.assertIn(
+            "engineForSameList",
+            self._read("games/static/games/js/utils-loadmore.min.js"),
+        )
+
+
 class ClientLoadMoreClaimsItsClickTests(SimpleTestCase):
     """A client-rendered Load More must load one page, not two.
 

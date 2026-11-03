@@ -2,6 +2,14 @@
 
 ## 2026-11-03
 
+- **Games: overtaken server work is answered for the list it was asked
+  for.** A server jump overtaken by a filter change jumped on the filter's
+  list, a client jump or the played filter dropped a server Load More, and
+  every answer restarted at 100 rows (a click for rows 201-300 got
+  101-200). The late response now asks where it lands whether the list is
+  still the one it was asked for, and the engine answers it if so. A page
+  that lands moves its button past its rows before anything can throw, so a
+  retry no longer appends the same page twice (ROADMAP bugs 2-3)
 - **Music's bare pages are cached for anonymous visitors**: the rankings
   page for five minutes, the 22 genre and decade landing pages and the
   browse index for an hour, as games' are. Measured first: ~90 KB deflated

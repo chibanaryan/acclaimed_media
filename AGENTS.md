@@ -1982,10 +1982,25 @@ every click's INP under 200 ms even at 4x. Four things mattered:
   skipping a repeated commit each broke something (a typed search, a `?q=`
   link, Clear All on a jumped list). Only `pushUrl` guards, statelessly, against
   pushing the URL it is on: a search used to leave two entries. A games Load More or server jump whose button has gone is dropped
-  (`utils-loadmore.js`) and answered by the engine. Whatever replaced the
-  button answers: the engine's takeover, unless it rendered a change, and a
-  list/grid toggle (`setViewMode`). The page landing later cannot tell a
-  toggle from a jump or a filter change, so it never answers.
+  (`utils-loadmore.js`), unless the list is still the one it was asked
+  for: `filterComponent._urlFilterKey`, the filters the URL was last
+  written with, is unchanged, on the same visit of them (`_urlFilterVisit`,
+  since a sort and Back bring the filters back while the list went back to
+  its top), and no server render is on its way (`serverListKey`,
+  `engineForSameList`). Not the filters asked for, which run
+  ahead of the list while a change is on its way, and not the URL, which
+  the takeover rewrites into its normal form. Then the engine answers it,
+  wherever it lands or fails, so no render that replaces the button has
+  to: the takeover of the page's own filters, a list/grid toggle, a client
+  jump, the engine's Load More. A jump becomes the engine's jump, and a
+  Load More renders to the row the click asked for, not one page past the
+  100 a render leaves. A filter change or Back changes the key, so both are
+  dropped: a late server jump used to jump on the filter's list. Asking at
+  render time instead needed every render to remember, and a pending jump
+  to be forgotten once answered. A page that lands moves its button past
+  its rows before anything that can throw (`appendPageResults`): left
+  asking for the same page, a retry appended it twice; if the rows
+  themselves throw part-way, the button stays off.
 - **Sidebar bindings scanned the page's reactive arrays.** Every
   platform, genre and series row called `find()`/`filter()` over
   `platforms`/`genres`/`seriesList`. Each scan read, and subscribed to,

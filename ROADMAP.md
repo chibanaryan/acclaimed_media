@@ -6,11 +6,12 @@ What is left, why it matters, and what it costs. Ordered within each group.
 ## Open bugs (found 2026-11-01)
 
 Found while shipping v905's filter-engine work and the music metadata refresh
-that followed. Four more from the same list were fixed on 2026-11-02
-(`DEVLOG.md`). Bugs 2-4 had fixes written that day, held back after five
-review rounds each found another edge in them: they are on the local branch
+that followed. Four more from the same list were fixed on 2026-11-02, and
+games' overtaken server work on 2026-11-03 (`DEVLOG.md`). Bug 4 had a fix
+written on 2026-11-02, held back after five review rounds each found another
+edge in it: it is on the local branch
 `roadmap-wip-overtaken-and-failed-requests` (in the main checkout's
-repository, not pushed), with their browser checks, and the notes below say
+repository, not pushed), with its browser checks, and the notes below say
 what the rounds found.
 `music/static/music/js/album-client-filtering.js`'s `change` listener has
 broken three times when given state, so keep any fix there stateless and pin
@@ -21,24 +22,6 @@ it in `scripts/browser_smoke.js` first.
    Chrome's accessibility tree, but never with VoiceOver, NVDA or iOS Safari.
    `docs/ASSISTIVE_TECH_CHECKLIST.md` is the script: run it, record the
    results there, and file what fails here.
-2. **Games: a server jump overtaken by a filter change still jumps.** Before
-   the engine is ready, jump to 500, so the server fetches pages 2-5; the
-   engine loads and a filter change re-renders at #1. When the pages land,
-   `jumpToRankServerSide` finds its button gone and calls
-   `jumpToRankClientSide` on the new list, undoing the reset to the top.
-3. **Games: other re-renders still drop an in-flight server Load More**, and
-   the answers restart at 100 rows (a click for rows 201-300 gets 101-200).
-   A client jump and the played-filter re-render drop it outright. The held
-   fix for 2 and 3 answers either where the response lands, if the list is
-   still the one it was asked for. What the reviews found that a fix has to
-   hold: the "same list" key must name the list on the page
-   (`_urlFilterKey`), not the filters asked for, and must be unknown while a
-   server render is on its way, Back's included; the URL itself is no key,
-   since the takeover rewrites it (`?start=1990` gains its end); a failed
-   fetch needs answering as a landed one; and an append that throws must not
-   re-enable a button whose rows already went in, or a retry adds them
-   twice (the last open point). Answering at render time instead needs every
-   render to remember, and a pending jump to be forgotten once answered.
 4. **Music: a failed filter request can leave the sidebar ahead of the
    list**: at the takeover while a search box has focus, and with no engine
    at all. The held fix renders a failed search at the takeover, and rolls

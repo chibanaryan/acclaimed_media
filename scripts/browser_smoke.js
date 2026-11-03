@@ -161,6 +161,312 @@ async function startGamesEngine(page) {
 }
 
 /**
+ * A server jump the engine's load overtook, then a filter change: when the
+ * jump's pages landed the engine made the jump itself, on the new list,
+ * undoing the change's return to the top. They are dropped now. Answers as
+ * above.
+ */
+async function checkServerJumpOvertakenByAFilter(page, back = false) {
+    const engine = {
+        site: games, data: '/api/games/all/',
+        ready: element => Alpine.$data(element).clientFilterReady,
+    };
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = await holdEngineLoad(page, engine, request =>
+        request.url().includes('append=true'));
+    await page.goto(games + '/', { waitUntil: 'load' });
+    const component = await page.waitForSelector('[x-data*="filterComponent"]');
+    await sleep(1000);
+    const box = (await page.evaluateHandle(() => [...document.querySelectorAll(
+        '.jump-to-rank-input')].find(input => input.offsetParent))).asElement();
+    // One server page: the jump waits 3 s for the engine, held, then fetches
+    await box.type('110');
+    await box.press('Enter');
+    const missing = await bothHeld(held, games);
+    if (missing) return missing;
+    const body = await page.evaluate(
+        url => fetch(url + '?smoke=1').then(response => response.text()),
+        games + engine.data
+    );
+    await held.data.respond({ status: 200, contentType: 'application/json', body });
+    await page.waitForFunction(engine.ready, {}, component);
+    await page.evaluate(element => Alpine.$data(element).updateSort('name'), component);
+    await sleep(500);
+    if (back) {
+        // Back to the list the jump was asked on, at its top: the same
+        // filters, but not the same visit, so the jump is still dropped
+        await page.evaluate(() => history.back());
+        await sleep(800);
+    }
+    await held.server.continue().catch(() => {});
+    await sleep(800);
+    const [start, end] = await page.evaluate(() => {
+        const renderer = getClientSideFiltering().renderer;
+        return [renderer.windowStart, renderer.windowEnd];
+    });
+    return start === 0 && end === 100 ? null
+        : `games: a server jump overtaken by a sort change${back ? ' and Back' : ''} ` +
+            `rendered rows ${start + 1}-${end}`;
+}
+
+/**
+ * A server jump the engine's load overtook without a render (an unfiltered
+ * list), then the engine's own Load More, which redraws the button the
+ * jump's pages were on their way to. The list is the same, so the jump is
+ * made, not dropped. Answers as above.
+ */
+async function checkServerJumpAcrossAnEngineLoadMore(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    // The jump fetches pages 2 and 3, so every page is held, not the last
+    const held = { data: null, pages: [] };
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        if (url.startsWith(games + '/api/games/all/') && !url.includes('smoke=1')) {
+            held.data = request;
+        } else if (url.includes('append=true')) {
+            held.pages.push(request);
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(games + '/', { waitUntil: 'load' });
+    const filters = await page.waitForSelector('[x-data*="filterComponent"]');
+    await sleep(1000);
+    const box = (await page.evaluateHandle(() => [...document.querySelectorAll(
+        '.jump-to-rank-input')].find(input => input.offsetParent))).asElement();
+    // Past the 200 rows the engine's Load More reaches by itself
+    await box.type('250');
+    await box.press('Enter');
+    for (let tries = 0; held.pages.length < 2 && tries < 200; tries += 1) await sleep(50);
+    if (!held.data || held.pages.length < 2) return 'games: the jump sent no server pages';
+    const body = await page.evaluate(
+        url => fetch(url + '?smoke=1').then(response => response.text()),
+        games + '/api/games/all/'
+    );
+    await held.data.respond({ status: 200, contentType: 'application/json', body });
+    await page.waitForFunction(element => Alpine.$data(element).clientFilterReady, {}, filters);
+    await page.evaluate(() => handleLoadMoreCSF(getClientSideFiltering()));
+    for (const request of held.pages) await request.continue().catch(() => {});
+    await sleep(800);
+    const [start, end] = await page.evaluate(() => {
+        const renderer = getClientSideFiltering().renderer;
+        return [renderer.windowStart, renderer.windowEnd];
+    });
+    return start <= 249 && end > 249 ? null
+        : `games: a server jump to 250 was dropped, the rows ${start + 1}-${end}`;
+}
+
+/**
+ * A server Load More the engine's takeover overtook, on a link the takeover
+ * rewrites (`?start=1990` gains its end), or whose request then fails. The
+ * list is the same either way, so the engine answers the click: the key
+ * that says so is the filter component's, not the URL's, and a failed page
+ * is answered as a landed one. Answers as above.
+ */
+async function checkLoadMoreAcrossARewrittenTakeover(page, fails) {
+    const engine = {
+        site: games, data: '/api/games/all/',
+        ready: element => Alpine.$data(element).clientFilterReady,
+    };
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = await holdEngineLoad(page, engine, request =>
+        request.url().includes('append=true'));
+    await page.goto(games + '/?start=1990', { waitUntil: 'load' });
+    const decade = await page.waitForSelector('.year-grid-decade');
+    const rows = '#game-list-container .game-row-wrapper';
+    await sleep(1000);
+    await page.click('.load-more-button');
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('acclaimed:need-csf')));
+    const missing = await bothHeld(held, games);
+    if (missing) return missing;
+    const body = await page.evaluate(
+        url => fetch(url + '?smoke=1').then(response => response.text()),
+        games + engine.data
+    );
+    await held.data.respond({ status: 200, contentType: 'application/json', body });
+    await page.waitForFunction(engine.ready, {}, decade);
+    if (fails) {
+        await held.server.respond({ status: 500, contentType: 'text/html', body: 'boom' });
+    } else {
+        await held.server.continue().catch(() => {});
+    }
+    await sleep(800);
+    const count = await page.$$eval(rows, found => found.length);
+    return count === 200 ? null
+        : `games: an overtaken Load More${fails ? ' that failed' : ''} left ${count} rows on ${page.url()}`;
+}
+
+/**
+ * A server Load More clicked on the list on the page while a filter change's
+ * render was on its way: its key named the list asked for, so when the
+ * engine took over and rendered that list the page was answered on it,
+ * undoing the change's return to the top. Answers as above.
+ */
+async function checkLoadMoreBehindAFilterChange(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = { data: null, render: null, page: null };
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        if (url.startsWith(games + '/api/games/all/') && !url.includes('smoke=1')) {
+            held.data = request;
+        } else if (url.includes('append=true')) {
+            held.page = request;
+        } else if (url.startsWith(games + '/games/?') &&
+                ['xhr', 'fetch'].includes(request.resourceType())) {
+            held.render = request;
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(games + '/', { waitUntil: 'load' });
+    const filters = await page.waitForSelector('[x-data*="filterComponent"]');
+    await sleep(1000);
+    await page.evaluate(element => Alpine.$data(element).updateSort('name'), filters);
+    for (let tries = 0; !held.render && tries < 100; tries += 1) await sleep(50);
+    if (!held.render) return 'games: the sort sent no server render';
+    // Under the render's loading overlay, so not a mouse click
+    await page.evaluate(() => document.querySelector('.load-more-button').click());
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('acclaimed:need-csf')));
+    for (let tries = 0; !(held.page && held.data) && tries < 100; tries += 1) await sleep(50);
+    if (!held.page) return 'games: the Load More click sent nothing';
+    if (!held.data) return 'games: the engine asked for no data';
+    const body = await page.evaluate(
+        url => fetch(url + '?smoke=1').then(response => response.text()),
+        games + '/api/games/all/'
+    );
+    await held.data.respond({ status: 200, contentType: 'application/json', body });
+    await page.waitForFunction(element => Alpine.$data(element).clientFilterReady, {}, filters);
+    await held.page.continue().catch(() => {});
+    await held.render.continue().catch(() => {});
+    await sleep(800);
+    const end = await page.evaluate(() => getClientSideFiltering().renderer.windowEnd);
+    return end === 100 ? null : `games: the old list's Load More extended the sorted one to ${end}`;
+}
+
+/**
+ * A server Load More whose rows fail to go in: the button was left loading,
+ * and disabled, for good. Answers as above.
+ */
+async function checkLoadMoreThatFailsToAppend(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    await page.goto(games + '/', { waitUntil: 'networkidle2' });
+    await sleep(500);
+    // Thrown once the rows are in: the button must still move past them,
+    // or the next click asks for the same page and appends it twice
+    await page.evaluate(() => {
+        window.smokeProcess = htmx.process;
+        htmx.process = () => { throw new Error('smoke: htmx.process failed'); };
+    });
+    await page.click('.load-more-button');
+    await sleep(1500);
+    const state = await page.$eval('.load-more-button',
+        button => ({ loading: button.classList.contains('is-loading'), disabled: button.disabled }));
+    if (state.loading || state.disabled) return 'a failed append left Load More stuck';
+    await page.evaluate(() => { htmx.process = window.smokeProcess; });
+    await page.click('.load-more-button');
+    await sleep(1500);
+    const ranks = await page.$$eval('#game-list-container .game-row.desktop [data-slot="rank"]',
+        cells => cells.map(cell => cell.textContent.trim()));
+    if (new Set(ranks).size !== ranks.length) {
+        return `a retry after a failed append repeated rows (${ranks.length} rows, ` +
+            `${new Set(ranks).size} ranks)`;
+    }
+    return ranks.length === 300 ? null : `${ranks.length} rows after two Load Mores, not 300`;
+}
+
+/**
+ * Back before the engine, then a server Load More on the list still shown
+ * while Back's render is on its way: the key already named Back's list, so
+ * the engine answered the click on it. Answers as above.
+ */
+async function checkLoadMoreBehindBack(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = { data: null, back: null, page: null };
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        if (url.startsWith(games + '/api/games/all/') && !url.includes('smoke=1')) {
+            held.data = request;
+        } else if (url.includes('append=true')) {
+            held.page = request;
+        } else if (url.startsWith(games + '/games/?') && !url.includes('sort=name') &&
+                ['xhr', 'fetch'].includes(request.resourceType())) {
+            held.back = request;
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(games + '/', { waitUntil: 'load' });
+    const filters = await page.waitForSelector('[x-data*="filterComponent"]');
+    await sleep(1000);
+    await page.evaluate(element => Alpine.$data(element).updateSort('name'), filters);
+    await page.waitForFunction(() => location.search.includes('sort=name'));
+    await sleep(500);
+    await page.evaluate(() => history.back());
+    for (let tries = 0; !held.back && tries < 100; tries += 1) await sleep(50);
+    if (!held.back) return "games: Back sent no server render";
+    // On the sorted list, still shown under Back's loading overlay
+    await page.evaluate(() => document.querySelector('.load-more-button').click());
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('acclaimed:need-csf')));
+    for (let tries = 0; !(held.page && held.data) && tries < 100; tries += 1) await sleep(50);
+    if (!held.page) return 'games: the Load More click sent nothing';
+    if (!held.data) return 'games: the engine asked for no data';
+    const body = await page.evaluate(
+        url => fetch(url + '?smoke=1').then(response => response.text()),
+        games + '/api/games/all/'
+    );
+    await held.data.respond({ status: 200, contentType: 'application/json', body });
+    await page.waitForFunction(element => Alpine.$data(element).clientFilterReady, {}, filters);
+    await held.page.continue().catch(() => {});
+    await held.back.continue().catch(() => {});
+    await sleep(800);
+    const end = await page.evaluate(() => getClientSideFiltering().renderer.windowEnd);
+    return end === 100 ? null : `games: the sorted list's Load More extended Back's list to ${end}`;
+}
+
+/**
+ * A server Load More for rows 201-300, then a client jump that redrew the
+ * button the page was on its way to: the page was dropped and the click went
+ * unanswered, and the takeover's and the view toggle's answers started again
+ * from 100 rows, giving 101-200. Answers as above.
+ */
+async function checkLoadMoreAcrossAClientJump(page) {
+    const engine = {
+        site: games, data: '/api/games/all/',
+        ready: element => Alpine.$data(element).clientFilterReady,
+    };
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = await holdEngineLoad(page, engine, request =>
+        request.url().includes('append=true') && request.url().includes('page=3'));
+    await page.goto(games + '/', { waitUntil: 'load' });
+    const component = await page.waitForSelector('[x-data*="filterComponent"]');
+    const rows = '#game-list-container .game-row-wrapper';
+    await sleep(1000);
+    await page.click('.load-more-button');
+    await page.waitForFunction(selector =>
+        document.querySelectorAll(selector).length === 200, {}, rows);
+    await sleep(300);
+    await page.click('.load-more-button');
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('acclaimed:need-csf')));
+    const missing = await bothHeld(held, games);
+    if (missing) return missing;
+    const body = await page.evaluate(
+        url => fetch(url + '?smoke=1').then(response => response.text()),
+        games + engine.data
+    );
+    await held.data.respond({ status: 200, contentType: 'application/json', body });
+    await page.waitForFunction(engine.ready, {}, component);
+    await page.evaluate(() => jumpToRankClientSide(getClientSideFiltering(), 50));
+    await held.server.continue().catch(() => {});
+    await sleep(800);
+    const ids = await page.$$eval(rows, found => found.map(row => row.id));
+    if (new Set(ids).size !== ids.length) return 'games: a row is shown twice';
+    return ids.length === 300 ? null : `games: the click for rows 201-300 left ${ids.length} rows`;
+}
+
+/**
  * A games jump filtered the whole corpus three times, where once gives it every
  * game it needs. And Clear All from a jumped list, whose filters it leaves as
  * they were, pushed `/` over `/`, so Back needed two presses. Answers as above.
@@ -974,6 +1280,18 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     }
     await report('games jump then Clear All', checkJumpThenClearAll);
     await report('games Load More across a view toggle', checkLoadMoreAcrossViewToggle);
+    await report('games server jump overtaken by a filter', checkServerJumpOvertakenByAFilter);
+    await report('games server jump overtaken by a filter and Back',
+        page => checkServerJumpOvertakenByAFilter(page, true));
+    await report('games Load More across a client jump', checkLoadMoreAcrossAClientJump);
+    await report('games server jump across an engine Load More', checkServerJumpAcrossAnEngineLoadMore);
+    await report('games Load More behind a filter change', checkLoadMoreBehindAFilterChange);
+    await report('games Load More behind Back', checkLoadMoreBehindBack);
+    await report('games Load More that fails to append', checkLoadMoreThatFailsToAppend);
+    for (const fails of [false, true]) {
+        await report(`games Load More across a rewritten takeover${fails ? ', failed' : ''}`,
+            page => checkLoadMoreAcrossARewrittenTakeover(page, fails));
+    }
     // The third is spelled as the server would not echo it, which the engine
     // must not read as a form left ahead of the list
     for (const path of ['/?q=smoke', '/genres/smoke-rock/?utm_source=smoke',
