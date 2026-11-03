@@ -194,6 +194,27 @@ function mediaListControlsData(config) {
                 }
             };
             document.body.addEventListener('htmx:afterSwap', this._swapListener);
+
+            // A filter request that fails (a 429, a 500, the network) leaves
+            // the sidebar and the heading on the filters it asked for, while
+            // the list stays on the ones it was rendered with. An engine still
+            // loading renders the form as it takes over; with none to come,
+            // the controls go back to what the list shows.
+            this._failedRequestListener = event => {
+                const form = this._form();
+                const detail = event.detail || {};
+                if (!form || detail.elt !== form || detail.successful) return;
+                const engine = this._clientEngine();
+                if (engine && !engine.failed) return;
+                this._answerFailedRequest(detail.requestConfig && detail.requestConfig.parameters);
+            };
+            this._engineFailedListener = event => {
+                this._answerFailedRequest(event.detail && event.detail.parameters);
+            };
+            if (settings.renderedFiltersId) {
+                document.body.addEventListener('htmx:afterRequest', this._failedRequestListener);
+                window.addEventListener('client-engine-failed', this._engineFailedListener);
+            }
             // Let the subcomponents build themselves from the state the
             // server rendered before any of them can ask for a refilter -
             // and before the first counts go out, since Alpine initialises
@@ -222,6 +243,11 @@ function mediaListControlsData(config) {
             if (this._facetRefreshListener) {
                 window.removeEventListener('mobile-filter-opened', this._facetRefreshListener);
                 this._facetRefreshListener = null;
+            }
+            if (this._failedRequestListener) {
+                document.body.removeEventListener('htmx:afterRequest', this._failedRequestListener);
+                window.removeEventListener('client-engine-failed', this._engineFailedListener);
+                this._failedRequestListener = null;
             }
             if (this._leadingCommit) this._leadingCommit.cancel();
             if (this._savedFilterResetHandler) {
@@ -864,28 +890,16 @@ function mediaListControlsData(config) {
         },
 
         /**
-         * Write the filter state onto the form and announce it.
-         *
-         * A year range covering everything is written as empty, because
-         * that is how the server spells "no year filter" - the grid spells
-         * it as the full range.
+         * Write the filter state onto the form (_fieldValues) and announce it.
          */
         commit({ historyReplace = false } = {}) {
             const form = this._form();
             if (!form) return;
 
-            const setField = (name, value) => {
+            Object.entries(this._fieldValues()).forEach(([name, value]) => {
                 const field = form.querySelector(`[name="${name}"]`);
                 if (field) field.value = value;
-            };
-            const hasYears = this.hasYearFilter();
-            setField('q', this.filters.q || '');
-            setField('start', hasYears ? this.filters.start : '');
-            setField('end', hasYears ? this.filters.end : '');
-            setField('genres', this.filters.genres.join(','));
-            setField(statusKey, (this.filters[statusKey] || []).join(','));
-            setField('sort', this.filters.sort);
-            setField('dir', this.filters.sortDirection);
+            });
 
             this._applyTitle();
             // `historyReplace` asks a client engine to replace rather than
@@ -898,34 +912,148 @@ function mediaListControlsData(config) {
         },
 
         /**
+         * A failed filter request with nobody else to answer it: the
+         * controls go back to the list, unless the reader has moved on.
+         * @private
+         */
+        _answerFailedRequest(sent) {
+            if (!this._movedOnFrom(sent)) this.rollBackToTheList();
+        },
+
+        /**
+         * Whether the reader has changed anything since a request sent
+         * `sent` (htmx's parameters). A newer change answers for itself:
+         * one still in a debounce, which only `filters` holds yet, and one
+         * queued behind the request or on its way, which htmx sends from
+         * the form as it stands then. Rolling back under either lost the
+         * newer click, or sent the old filters in its place.
+         *
+         * What was sent is read back into the controls' own terms, as the
+         * URL is on Back (`_filtersFrom`), and compared with what they hold
+         * now: a form the server rendered can spell a filter otherwise
+         * (`?start=1990` sends no end; `filters` has one), and a request
+         * goes out from paths that are not a commit (Enter, a row's genre),
+         * so no record of what a commit wrote can stand in for it.
+         * @private
+         */
+        _movedOnFrom(sent) {
+            const form = this._form();
+            if (!form || !sent) return false;
+            const asSent = Object.assign({ genres: this.filters.genres },
+                this._filtersFrom(name => {
+                    const value = htmxParameter(sent, name);
+                    return value === undefined ? null : value;
+                }));
+            if (JSON.stringify(this._fieldValues()) !==
+                    JSON.stringify(this._fieldValues(asSent))) {
+                return true;
+            }
+            return [...form.elements].some(field => {
+                // An unnamed control sends nothing, so it cannot differ
+                if (!field.name) return false;
+                const value = htmxParameter(sent, field.name);
+                return value !== undefined && value !== field.value;
+            });
+        },
+
+        /**
+         * What commit() writes into the form for `filters`. A year range
+         * covering everything is written as empty, which is how the server
+         * spells "no year filter"; the grid spells it as the full range.
+         * @private
+         */
+        _fieldValues(filters = this.filters) {
+            const hasYears = !isWholeYearRange(
+                filters.start, filters.end, this.minYear, this.maxYear
+            );
+            return {
+                q: filters.q || '',
+                start: hasYears ? filters.start : '',
+                end: hasYears ? filters.end : '',
+                genres: filters.genres.join(','),
+                [statusKey]: (filters[statusKey] || []).join(','),
+                sort: filters.sort,
+                dir: filters.sortDirection,
+            };
+        },
+
+        /**
+         * Put the form, the controls and the heading back on the filters the
+         * list was rendered with: `settings.renderedFiltersId`, the server's
+         * echo of its request, spelled as the form's fields are.
+         */
+        rollBackToTheList() {
+            const form = this._form();
+            const echo = settings.renderedFiltersId &&
+                document.getElementById(settings.renderedFiltersId);
+            if (!form || !echo) return;
+            if (this._leadingCommit) this._leadingCommit.cancel();
+            // A page with no genre tree echoes no genres
+            const rendered = name => (echo.hasAttribute('data-' + name)
+                ? echo.getAttribute('data-' + name) || ''
+                : null);
+            ['q', 'start', 'end', 'artists', 'genres', statusKey, 'sort', 'dir']
+                .forEach(name => {
+                    const field = form.querySelector(`[name="${name}"]`);
+                    if (field && rendered(name) !== null) field.value = rendered(name);
+                });
+            this._takeFilters(rendered);
+        },
+
+        /**
+         * Set `filters` from a source of the form's parameters - the URL, or
+         * the list's echo - and rebuild the heading. A name the source does
+         * not give reads as empty, its default, except genres, which a
+         * source with no genre tree gives as null and which then keep their
+         * value.
+         * @private
+         */
+        _takeFilters(get) {
+            Object.assign(this.filters, this._filtersFrom(get));
+            // On a landing page's path the path itself is the filter
+            this._applyTitle({
+                onLandingPath: Boolean(settings.landingPath) &&
+                    window.location.pathname === settings.landingPath
+            });
+        },
+
+        /**
+         * The filters a source of the form's parameters names, by the rules
+         * `_takeFilters` sets them with. Genres a source does not give keep
+         * their value; anything else reads as empty, its default.
+         * @private
+         */
+        _filtersFrom(get) {
+            const text = name => get(name) || '';
+            const number = (name, fallback) => {
+                const parsed = parseInt(get(name), 10);
+                return Number.isFinite(parsed) ? parsed : fallback;
+            };
+            const list = name => text(name).split(',').filter(Boolean);
+            return {
+                q: text('q'),
+                start: number('start', this.minYear),
+                end: number('end', this.maxYear),
+                // Left out, not copied, so the reactive array is not replaced
+                ...(get('genres') !== null ? { genres: list('genres') } : {}),
+                [statusKey]: list(statusKey),
+                sort: text('sort') || this.defaultSort,
+                sortDirection: text('dir') || 'asc',
+            };
+        },
+
+        /**
          * Re-read the filter state from the URL after a Back/Forward.
          * @private
          */
         _syncFromUrl() {
             // Nothing queued before Back may apply after it.
             if (this._leadingCommit) this._leadingCommit.cancel();
-            // On a landing page's path the path itself is the filter
-            const onLandingPath = Boolean(settings.landingPath) &&
-                window.location.pathname === settings.landingPath;
             const params = landingFilterParams(
                 settings.landingPath, settings.landingSearch
             );
-            const number = (name, fallback) => {
-                const parsed = parseInt(params.get(name), 10);
-                return Number.isFinite(parsed) ? parsed : fallback;
-            };
-            this.filters.q = params.get('q') || '';
-            this.filters.start = number('start', this.minYear);
-            this.filters.end = number('end', this.maxYear);
-            this.filters.genres = (params.get('genres') || '')
-                .split(',')
-                .filter(Boolean);
-            this.filters[statusKey] = (params.get(statusKey) || '')
-                .split(',')
-                .filter(Boolean);
-            this.filters.sort = params.get('sort') || this.defaultSort;
-            this.filters.sortDirection = params.get('dir') || 'asc';
-            this._applyTitle({ onLandingPath });
+            // Every name, so that one the URL leaves out is cleared
+            this._takeFilters(name => params.get(name) || '');
         }
     };
 }

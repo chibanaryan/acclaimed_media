@@ -1054,6 +1054,39 @@ class AlbumFilterClicksApplyAtOnceTests(SimpleTestCase):
         )
         self.assertIn("htmx:afterRequest", bundle)
 
+    def test_a_failed_filter_request_never_leaves_the_controls_ahead(self):
+        # Case by case in scripts/browser_smoke.js ("music failed ..."): the
+        # engine renders a failed search as it takes over, focus or not, and
+        # with no engine to come the controls go back to the list's filters.
+        engine = self._source("music/static/music/js/album-client-filtering.js")
+        self.assertIn("if (filterRequest || formAhead) {", engine)
+        self.assertIn("csf.failed = true;", engine)
+        # A failed search is rendered even with focus in the box, without
+        # forcing a render when the form already matches the list
+        self.assertIn("const masked = typing && !searchFailed;", engine)
+        # Only while the box holds exactly what was sent: compared trimmed,
+        # a space typed after a failed search unmasked it mid-word
+        self.assertIn(
+            "htmxParameter(failedParams, 'q') === document.activeElement.value;",
+            engine,
+        )
+        self.assertIn("rerender({ push: !masked });", engine)
+        self.assertIn(
+            "element === form && xhr.readyState !== XMLHttpRequest.DONE", engine
+        )
+        self.assertIn("new CustomEvent('client-engine-failed', {", engine)
+        controls = self._source("core/static/core/js/media-list-controls.js")
+        self.assertIn("if (engine && !engine.failed) return;", controls)
+        # A newer change, still in a debounce or queued, answers for itself:
+        # what was sent is read back into the controls' own terms and
+        # compared with what they hold now, whatever path sent it
+        self.assertIn(
+            "if (!this._movedOnFrom(sent)) this.rollBackToTheList();", controls
+        )
+        self.assertIn("JSON.stringify(this._fieldValues(asSent))", controls)
+        self.assertIn("if (!field.name) return false;", controls)
+        self.assertNotIn("_sentFieldValues", controls)
+
 
 class HtmxKeepsNoHistorySnapshotsTests(SimpleTestCase):
     """Back onto an entry htmx pushed reloads it, on every page.

@@ -516,6 +516,21 @@ function mergedFilterParams(implied) {
 }
 
 /**
+ * One parameter of an htmx request, from its `requestConfig.parameters`, as
+ * the server reads it: htmx 1.9 sends a repeated name as an array, and the
+ * server takes the last value.
+ * @param {?Object} parameters
+ * @param {string} name
+ * @returns {string|undefined} undefined when the request did not send it
+ */
+function htmxParameter(parameters, name) {
+    if (!parameters || parameters[name] === undefined || parameters[name] === null) {
+        return undefined;
+    }
+    return String([].concat(parameters[name]).pop());
+}
+
+/**
  * The filter params on a page with a landing path: on that bare path, which
  * Back can return to with no query string, the path's own filters count too.
  * @param {string} landingPath - The landing page's path, or '' for none

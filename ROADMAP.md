@@ -7,12 +7,7 @@ What is left, why it matters, and what it costs. Ordered within each group.
 
 Found while shipping v905's filter-engine work and the music metadata refresh
 that followed. Four more from the same list were fixed on 2026-11-02, and
-games' overtaken server work on 2026-11-03 (`DEVLOG.md`). Bug 4 had a fix
-written on 2026-11-02, held back after five review rounds each found another
-edge in it: it is on the local branch
-`roadmap-wip-overtaken-and-failed-requests` (in the main checkout's
-repository, not pushed), with its browser checks, and the notes below say
-what the rounds found.
+the three held back that day on 2026-11-03 (`DEVLOG.md`).
 `music/static/music/js/album-client-filtering.js`'s `change` listener has
 broken three times when given state, so keep any fix there stateless and pin
 it in `scripts/browser_smoke.js` first.
@@ -22,17 +17,6 @@ it in `scripts/browser_smoke.js` first.
    Chrome's accessibility tree, but never with VoiceOver, NVDA or iOS Safari.
    `docs/ASSISTIVE_TECH_CHECKLIST.md` is the script: run it, record the
    results there, and file what fails here.
-4. **Music: a failed filter request can leave the sidebar ahead of the
-   list**: at the takeover while a search box has focus, and with no engine
-   at all. The held fix renders a failed search at the takeover, and rolls
-   the controls back to `#album-rendered-filters` when no engine is coming.
-   What the reviews found: a roll-back must not lose a newer change, one
-   still in a debounce (only `filters` holds it) or one queued behind the
-   failed request (htmx sends it from the form as it then stands); a
-   failed search counts as one only while the box holds exactly what was
-   sent, untrimmed, or a reader typing "pink " after a failed "pink" gets it
-   rendered and pushed mid-word (the last open point); and a failure
-   forcing a render threw away appended rows.
 
 The browser harnesses used for v905 are in the ashgabat worktree's
 `.context/ygrid/`, which is gitignored and so exists only there:

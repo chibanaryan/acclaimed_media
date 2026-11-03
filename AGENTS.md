@@ -490,9 +490,29 @@ each pinned by `scripts/browser_smoke.js`:
   failed before then leaves behind. It compares with
   `#album-rendered-filters`, the server's echo of the request, not with the
   URL, which the server cleans up (`?artists=Prince` is `prince`, a repeated
-  parameter its last value), and leaves out a search still being typed.
-  Putting the form back on the URL instead lost a click in flight and the
-  search being typed.
+  parameter its last value), and leaves out a search still being typed -
+  unless the form's last request was that search and failed, which it
+  renders whatever has focus, and pushes, the search's own commit having
+  been spent. It is that search only while the box holds exactly what htmx
+  sent, untrimmed: compared trimmed, "pink " typed after a failed "pink"
+  was rendered and pushed mid-word. Putting the form back on the URL
+  instead lost a click in flight and the search being typed. With no
+  engine to come (its data failed, or the bundle is missing), a failed
+  request puts the controls, the form and the heading back on that echo
+  instead (`mediaListControls.rollBackToTheList`, through
+  `renderedFiltersId` and the `client-engine-failed` event), so the click
+  is lost but nothing claims a filter the list does not show - unless the
+  reader has changed something since the failed request: a change still
+  in a debounce lives only in `filters`, and one queued behind the request
+  is sent by htmx from the form as it stands then, so a roll-back would
+  lose it or send the old filters in its place. `_movedOnFrom` reads what
+  was sent back into the controls' terms (`_filtersFrom`, the rules Back
+  reads the URL by) and compares it with `filters` now, then the form's
+  named fields with what was sent. A record of what the controls held as
+  the request went out cannot stand in: a queued request is sent after a
+  newer click's debounce began, and Enter and a row's genre send without a
+  commit. A request sent before Alpine started is not covered: the
+  controls cannot tell it from a change of the reader's (ROADMAP).
 - **The jump box waits for the engine**, which alone answers it: it renders
   disabled (`jump_awaits_engine`) and the bundle switches it on.
 

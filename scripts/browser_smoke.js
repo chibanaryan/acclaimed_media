@@ -781,6 +781,211 @@ async function checkFailedFilterRequest(page) {
 }
 
 /**
+ * The same, for a search: a search box with focus as the engine took over
+ * masked the query, for fear of rendering one half typed, so a search whose
+ * own request had failed was never rendered and the box named a query the
+ * list did not show. Answers as above.
+ */
+async function checkFailedSearchAcrossTheTakeover(page, text = 'album 11') {
+    const engine = { site: music, data: '/api/all/', ready: musicReady };
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = await holdEngineLoad(page, engine, request =>
+        request.url().includes('q=album') &&
+        ['xhr', 'fetch'].includes(request.resourceType()));
+    await page.goto(music + '/', { waitUntil: 'load' });
+    const decade = await page.waitForSelector('.year-grid-decade');
+    await sleep(1000);
+    await page.type('#album-filters input[name="q"]', text);
+    const missing = await bothHeld(held, music);
+    if (missing) return missing;
+    await held.server.respond({ status: 500, contentType: 'text/html', body: 'boom' });
+    await sleep(500);
+    // The focus is still in the box
+    await releaseAfterEngine(page, held, engine, decade);
+    await sleep(500);
+    const rows = await page.$$eval(albumRows, found => found.length);
+    if (rows !== 11) return `after a failed search the list has ${rows} rows, not 11`;
+    // Its commit was spent on the failed request, so the takeover pushes it
+    return page.url().includes('q=album') ? null : `the failed search left the URL on ${page.url()}`;
+}
+
+/**
+ * A failed search, then the reader typing on - a space before the next word
+ * - as the engine arrives: the box no longer holds what failed, so it is a
+ * search being typed, neither rendered nor pushed mid-word. Compared trimmed,
+ * "album 11 " passed for the failed "album 11", and the takeover pushed it.
+ * Answers as above.
+ */
+async function checkTypingOnAfterAFailedSearch(page) {
+    const engine = { site: music, data: '/api/all/', ready: musicReady };
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = await holdEngineLoad(page, engine, request =>
+        request.url().includes('q=album') &&
+        ['xhr', 'fetch'].includes(request.resourceType()));
+    await page.goto(music + '/', { waitUntil: 'load' });
+    const decade = await page.waitForSelector('.year-grid-decade');
+    await sleep(1000);
+    const box = '#album-filters input[name="q"]';
+    await page.type(box, 'album 11');
+    const missing = await bothHeld(held, music);
+    if (missing) return missing;
+    await held.server.respond({ status: 500, contentType: 'text/html', body: 'boom' });
+    await sleep(500);
+    // As the next keystroke leaves the box, without the event, so that no
+    // commit of its own races the takeover; the focus stays in the box
+    await page.$eval(box, input => { input.value += ' '; });
+    const before = page.url();
+    await releaseAfterEngine(page, held, engine, decade);
+    await sleep(500);
+    if (page.url() !== before) return `a half-typed search was pushed: ${page.url()}`;
+    const rows = await page.$$eval(albumRows, found => found.length);
+    return rows === 11 ? 'a half-typed search was rendered at the takeover' : null;
+}
+
+/**
+ * An older failure of a request for the list's own filters, then a search
+ * still being typed as the engine arrives: the failure once unmasked the
+ * search, so the takeover took the typing for a form left ahead and
+ * rendered the half-typed query. Answers as above.
+ */
+async function checkAnOlderFailureLeavesTheTypingAlone(page) {
+    const engine = { site: music, data: '/api/all/', ready: musicReady };
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = await holdEngineLoad(page, engine, request =>
+        request.url().startsWith(music + '/?') && !request.url().includes('append=true') &&
+        ['xhr', 'fetch'].includes(request.resourceType()));
+    await page.goto(music + '/', { waitUntil: 'load' });
+    const decade = await page.waitForSelector('.year-grid-decade');
+    await sleep(1000);
+    await page.evaluate(() => document.getElementById('album-filters').dispatchEvent(
+        new CustomEvent('change', { bubbles: true, detail: {} })));
+    const missing = await bothHeld(held, music);
+    if (missing) return missing;
+    await held.server.respond({ status: 500, contentType: 'text/html', body: 'boom' });
+    await sleep(300);
+    // Fetched first, so the engine arrives before the typing is committed
+    const body = await page.evaluate(
+        url => fetch(url + '?smoke=1').then(response => response.text()), music + engine.data
+    );
+    await page.type('#album-filters input[name="q"]', 'smo');
+    await held.data.respond({ status: 200, contentType: 'application/json', body });
+    await page.waitForFunction(engine.ready, {}, decade);
+    // A render leaves the renderer owning the list; taking over without one
+    // leaves it empty until the next interaction
+    const rendered = await page.evaluate(
+        () => getAlbumClientSideFiltering().renderer.currentItems.length
+    );
+    return rendered ? 'the takeover rendered the half-typed search' : null;
+}
+
+/**
+ * With no engine, on `?start=1990`, a search sent by Enter that fails. The
+ * form sends no end year where the controls hold one, so comparing them
+ * with what was sent read the two spellings as a newer change, and the
+ * sidebar was never rolled back. Answers as above.
+ */
+async function checkFailedEnterWithoutTheEngine(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        if (url.startsWith(music + '/api/all/') || (url.startsWith(music + '/?') &&
+                ['xhr', 'fetch'].includes(request.resourceType()))) {
+            request.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(music + '/?start=1990', { waitUntil: 'networkidle2' });
+    await sleep(500);
+    const box = '#album-filters input[name="q"]';
+    await page.type(box, 'zzz');
+    await page.keyboard.press('Enter');
+    await sleep(1500);
+    const value = await page.$eval(box, input => input.value);
+    const heading = await page.$eval('#search-title-text', title => title.textContent);
+    if (value) return `the failed search stayed in the box as "${value}"`;
+    return /zzz/.test(heading) ? `the heading kept the failed search: "${heading.trim()}"` : null;
+}
+
+/**
+ * With no engine, a failed request while a search is still in its input
+ * debounce: the roll-back reset the box under the reader's typing. Answers
+ * as above.
+ */
+async function checkTypingBehindAFailureWithoutTheEngine(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    let first = null;
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        if (url.startsWith(music + '/api/all/')) {
+            request.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        } else if (!first && url.includes('start=1990') &&
+                ['xhr', 'fetch'].includes(request.resourceType())) {
+            first = request;
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(music + '/', { waitUntil: 'networkidle2' });
+    await sleep(500);
+    await (await page.waitForSelector('.year-grid-decade[title^="1990s:"]')).click();
+    for (let tries = 0; !first && tries < 100; tries += 1) await sleep(50);
+    if (!first) return 'the 1990s click sent no request';
+    const box = '#album-filters input[name="q"]';
+    await page.type(box, 'album');
+    await first.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+    await sleep(100);
+    const value = await page.$eval(box, input => input.value);
+    return value === 'album' ? null : `the roll-back left the search box on "${value}"`;
+}
+
+/**
+ * And with no engine to come, the controls go back to the list: before, the
+ * sidebar and the heading stayed on the decade the failed request asked for
+ * while the list showed every year. `engineFirst` fails the engine's data
+ * before the click, or after the click's request has failed. Answers as above.
+ */
+async function checkFailedRequestWithoutTheEngine(page, engineFirst) {
+    await page.setViewport({ width: 1440, height: 900 });
+    let data = null;
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        if (url.startsWith(music + '/api/all/') && !engineFirst) {
+            data = request;
+        } else if (url.startsWith(music + '/api/all/') ||
+                (url.startsWith(music + '/?') &&
+                    ['xhr', 'fetch'].includes(request.resourceType()))) {
+            request.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(music + '/', { waitUntil: 'load' });
+    const title = () => page.$eval('#search-title-text', element => element.textContent.trim());
+    const heading = await title();
+    const decade = await page.waitForSelector('.year-grid-decade[title^="1990s:"]');
+    await sleep(1000);
+    await decade.click();
+    await sleep(1500);
+    if (!engineFirst) {
+        for (let tries = 0; !data && tries < 100; tries += 1) await sleep(50);
+        if (!data) return 'the engine never asked for its data';
+        await data.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        await sleep(500);
+    }
+    const start = await page.$eval('#album-filters [name="start"]', field => field.value);
+    if (start) return `the form stayed on start=${start}`;
+    const pressed = await page.$eval('.year-grid-decade[title^="1990s:"]',
+        tile => tile.getAttribute('aria-pressed'));
+    if (pressed !== 'false') return 'the year grid stayed on the 1990s';
+    const now = await title();
+    return now === heading ? null : `the heading read "${now}", not "${heading}"`;
+}
+
+/**
  * A server Load More pushed its own address, `?page=2&append=true`, and Back,
  * Forward or a reload onto it rendered the rows alone, with no page. It is
  * rows to append, not an address, so it pushes nothing. Answers as above.
@@ -1036,6 +1241,152 @@ async function checkJumpBoxComesOn(page) {
     const disabled = await page.$$eval('.jump-to-rank-input, .jump-to-rank-btn',
         found => found.filter(element => element.disabled).length);
     return disabled ? `${disabled} jump controls stayed off with the engine ready` : null;
+}
+
+/**
+ * With no engine, a filter change queued behind a request that fails: htmx
+ * sends the queued one from the form as it stands then, so the failure's
+ * roll-back sent the old filters in its place. Answers as above.
+ */
+async function checkAChangeQueuedBehindAFailure(page, queued = true) {
+    await page.setViewport({ width: 1440, height: 900 });
+    let first = null;
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        if (url.startsWith(music + '/api/all/')) {
+            request.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        } else if (!first && url.includes('start=1990') &&
+                ['xhr', 'fetch'].includes(request.resourceType())) {
+            first = request;
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(music + '/', { waitUntil: 'networkidle2' });
+    await sleep(500);
+    await (await page.waitForSelector('.year-grid-decade[title^="1990s:"]')).click();
+    for (let tries = 0; !first && tries < 100; tries += 1) await sleep(50);
+    if (!first) return 'the 1990s click sent no request';
+    await (await page.waitForSelector('.year-grid-decade[title^="2000s:"]')).click();
+    // Queued behind the request, or still in the controls' 250 ms debounce
+    if (queued) await sleep(800);
+    await first.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+    await page.waitForFunction(() => location.search.includes('start=2000'), { timeout: 5000 })
+        .catch(() => {});
+    const start = await page.$eval('#album-filters [name="start"]', field => field.value);
+    if (start !== '2000') return `the queued 2000s click was sent as start="${start}"`;
+    return page.url().includes('start=2000') ? null : `the list ended on ${page.url()}`;
+}
+
+/**
+ * With no engine, a queued request that is sent, and fails, while a newer
+ * click is still in the controls' debounce: htmx sends the queued one from
+ * the form its commit wrote, but the controls once noted what they held as
+ * it went out, which by then was the newer click, so the failure looked
+ * like the reader's last word and its roll-back lost that click. Answers
+ * as above.
+ */
+async function checkAClickBehindAQueuedFailure(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    let first = null;
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        const xhr = ['xhr', 'fetch'].includes(request.resourceType());
+        if (url.startsWith(music + '/api/all/')) {
+            request.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        } else if (!first && xhr && url.includes('start=1990')) {
+            first = request;
+        } else if (xhr && url.includes('start=2000')) {
+            // The queued request, failing as soon as it is sent
+            request.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(music + '/', { waitUntil: 'networkidle2' });
+    await sleep(500);
+    await (await page.waitForSelector('.year-grid-decade[title^="1990s:"]')).click();
+    for (let tries = 0; !first && tries < 100; tries += 1) await sleep(50);
+    if (!first) return 'the 1990s click sent no request';
+    await (await page.waitForSelector('.year-grid-decade[title^="2000s:"]')).click();
+    await sleep(800);
+    // The 2000s request waits behind the 1990s one; the 2010s click is still
+    // in its debounce when the 1990s one lands and lets the 2000s one go
+    await (await page.waitForSelector('.year-grid-decade[title^="2010s:"]')).click();
+    await first.continue();
+    await page.waitForFunction(() => location.search.includes('start=2010'), { timeout: 5000 })
+        .catch(() => {});
+    const start = await page.$eval('#album-filters [name="start"]', field => field.value);
+    if (start !== '2010') return `the 2010s click was lost: the form says start="${start}"`;
+    return page.url().includes('start=2010') ? null : `the list ended on ${page.url()}`;
+}
+
+/**
+ * With no engine, a genre clicked in a row while a decade click is still in
+ * the controls' debounce, and the genre's request fails: it is sent without
+ * a commit, so the decade is not in it, and the reader has moved on from it.
+ * The controls once took what they held as it went out for what was sent,
+ * and the roll-back lost the decade. Answers as above.
+ */
+async function checkARowGenreFailingBehindAClick(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    await page.setRequestInterception(true);
+    let failed = false;
+    page.on('request', request => {
+        const url = request.url();
+        const xhr = ['xhr', 'fetch'].includes(request.resourceType());
+        if (url.startsWith(music + '/api/all/')) {
+            request.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        } else if (!failed && xhr && /[?&]genres=\d/.test(url) && !/start=\d/.test(url)) {
+            failed = true;
+            request.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(music + '/', { waitUntil: 'networkidle2' });
+    await sleep(500);
+    await (await page.waitForSelector('.year-grid-decade[title^="1990s:"]')).click();
+    const genre = await page.waitForSelector('#album-list-container [data-add-genre]');
+    await genre.evaluate(element => element.scrollIntoView({ block: 'center' }));
+    await genre.click();
+    await page.waitForFunction(() => location.search.includes('start=1990'), { timeout: 5000 })
+        .catch(() => {});
+    if (!failed) return 'the genre click sent no request without the decade';
+    const start = await page.$eval('#album-filters [name="start"]', field => field.value);
+    if (start !== '1990') return `the 1990s click was lost: the form says start="${start}"`;
+    return page.url().includes('start=1990') ? null : `the list ended on ${page.url()}`;
+}
+
+/**
+ * A failed request for the filters the list already shows leaves nothing to
+ * catch up on, so the takeover renders nothing: it once re-rendered, which
+ * threw away the rows a server Load More had appended. Answers as above.
+ */
+async function checkAFailedRequestForTheListKeepsItsRows(page) {
+    const engine = { site: music, data: '/api/all/', ready: musicReady };
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = await holdEngineLoad(page, engine, request =>
+        request.url().startsWith(music + '/?') && !request.url().includes('append=true') &&
+        ['xhr', 'fetch'].includes(request.resourceType()));
+    await page.goto(music + '/', { waitUntil: 'load' });
+    const decade = await page.waitForSelector('.year-grid-decade');
+    await sleep(1000);
+    await page.click('.load-more-button');
+    await page.waitForFunction(rows => document.querySelectorAll(rows).length === 120, {}, albumRows);
+    // A request for the same filters, as commit() sends
+    await page.evaluate(() => document.getElementById('album-filters').dispatchEvent(
+        new CustomEvent('change', { bubbles: true, detail: {} })));
+    const missing = await bothHeld(held, music);
+    if (missing) return missing;
+    await held.server.respond({ status: 500, contentType: 'text/html', body: 'boom' });
+    await sleep(300);
+    await releaseAfterEngine(page, held, engine, decade);
+    await sleep(500);
+    const rows = await page.$$eval(albumRows, found => found.length);
+    return rows === 120 ? null : `the takeover turned 120 rows into ${rows}`;
 }
 
 /**
@@ -1325,6 +1676,18 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     await report('music click out of the search', checkClickOutOfTheSearch);
     await report('music marking keeps the place', checkMarkingKeepsThePlace);
     await report('music failed filter request', checkFailedFilterRequest);
+    await report('music failed search across the takeover', checkFailedSearchAcrossTheTakeover);
+    // Sent as typed, read trimmed: the two once failed to match
+    await report('music failed search with a trailing space',
+        page => checkFailedSearchAcrossTheTakeover(page, 'album 11 '));
+    await report('music typing on after a failed search', checkTypingOnAfterAFailedSearch);
+    await report('music failed Enter on a link with no end year', checkFailedEnterWithoutTheEngine);
+    await report('music an older failure leaves the typing alone', checkAnOlderFailureLeavesTheTypingAlone);
+    await report('music typing behind a failure without the engine', checkTypingBehindAFailureWithoutTheEngine);
+    for (const engineFirst of [true, false]) {
+        await report(`music failed request, engine failed ${engineFirst ? 'first' : 'after'}`,
+            page => checkFailedRequestWithoutTheEngine(page, engineFirst));
+    }
     await report('music Back onto an htmx entry', checkBackOntoAnHtmxEntry);
     await report('music Back before the engine', checkBackBeforeTheEngine);
     await report('music Back past an old snapshot', checkBackPastAnOldSnapshot);
@@ -1335,6 +1698,14 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     await report('music jump box comes on', checkJumpBoxComesOn);
     await report('music page 2 starts its window there', checkALaterPageStartsItsWindowThere);
     await report('music page 2 forgets its start once rendered', checkALaterPageForgetsItsStartOnceRendered);
+    await report('music a change queued behind a failure', checkAChangeQueuedBehindAFailure);
+    await report('music a change still in the debounce behind a failure',
+        page => checkAChangeQueuedBehindAFailure(page, false));
+    await report('music a click behind a queued request that fails',
+        checkAClickBehindAQueuedFailure);
+    await report('music a row genre failing behind a click', checkARowGenreFailingBehindAClick);
+    await report('music a failed request for the list itself keeps its rows',
+        checkAFailedRequestForTheListKeepsItsRows);
     for (const [url, input, text] of [
         [music + '/artists/', '#artist-search', 'smo'],
         [music + '/lists/', '#music-list-search', 'smo'],

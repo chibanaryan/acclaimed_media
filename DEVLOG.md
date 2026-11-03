@@ -2,6 +2,12 @@
 
 ## 2026-11-03
 
+- **Music: a failed filter request no longer leaves the sidebar ahead of
+  the list.** At the engine's takeover a failed search is rendered and
+  pushed even with focus in the box, while the box still holds exactly
+  what was sent; with no engine to come, the controls, form and heading go
+  back to the filters the list shows, unless the reader has changed
+  something since (ROADMAP bug 4)
 - **Games: overtaken server work is answered for the list it was asked
   for.** A server jump overtaken by a filter change jumped on the filter's
   list, a client jump or the played filter dropped a server Load More, and

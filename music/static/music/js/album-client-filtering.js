@@ -25,6 +25,9 @@ class AlbumClientSideFiltering {
         // Where the server's rows start: 0, or a `?page=N` link's offset,
         // until the renderer adopts them or the engine renders its own
         this.pageStart = 0;
+        // Set once its data has failed to load, for good: the page stays
+        // HTMX's, and mediaListControls rolls a failed request back itself
+        this.failed = false;
     }
 
     /**
@@ -729,12 +732,21 @@ function initAlbumFiltering() {
     // the xhr: when the asker has been swapped out, htmx re-fires
     // afterRequest on an ancestor as its `elt`.
     const pending = new Map();
+    // The parameters of the form's last request if it failed, which leaves
+    // the form ahead of the list just as one still in flight does
+    let failedParams = null;
     const track = event => {
         const asker = event.detail.elt;
         if (asker !== form && !asker.matches('.load-more-button')) return;
         pending.set(event.detail.xhr, asker);
     };
-    const untrack = event => pending.delete(event.detail.xhr);
+    const untrack = event => {
+        if (pending.get(event.detail.xhr) === form) {
+            const config = event.detail.requestConfig;
+            failedParams = event.detail.successful ? null : (config && config.parameters) || {};
+        }
+        pending.delete(event.detail.xhr);
+    };
     const tracking = on => [form, results].forEach(element => {
         const method = on ? 'addEventListener' : 'removeEventListener';
         element[method]('htmx:beforeSend', track);
@@ -811,9 +823,23 @@ function initAlbumFiltering() {
 
     csf.init().then(async ok => {
         if (!ok) {
-            // HTMX keeps the page, and nothing will read the record
+            // HTMX keeps the page, and nothing will read the record. A
+            // failed request has nobody left to answer it, so the controls
+            // go back to the list (mediaListControls.rollBackToTheList) -
+            // unless a newer one is on its way, which answers for itself.
+            // Finished ones can still be listed (see the takeover below)
+            const inFlight = [...pending].some(([xhr, element]) =>
+                element === form && xhr.readyState !== XMLHttpRequest.DONE
+            );
             tracking(false);
             pending.clear();
+            csf.failed = true;
+            if (failedParams && !inFlight) {
+                // The controls compare it with what the reader has done since
+                window.dispatchEvent(new CustomEvent('client-engine-failed', {
+                    detail: { parameters: failedParams },
+                }));
+            }
             return;
         }
         ready = true;
@@ -909,20 +935,30 @@ function initAlbumFiltering() {
         // appended the form's rows to the server's. The sidebar says what
         // the reader last asked for, so that is what the engine renders.
         // Compared, not remembered: both states are on the page. Except a
-        // search still being typed, which its own commit will answer.
+        // search still being typed, which its own commit will answer -
+        // unless the search's own request is the one that failed.
         const typing = document.activeElement &&
             // Either search box: the sidebar's and the mobile sheet's
             document.activeElement.matches('[data-filter-search]');
+        // A search whose own request failed is not still being typed: the
+        // box holds exactly the query that was sent, as htmx sent it. One
+        // typed since, or an older failure of another filter, is. Untrimmed:
+        // "pink " typed after a failed "pink" trims to it, and was rendered
+        // and pushed mid-word
+        const searchFailed = Boolean(failedParams) && typing &&
+            htmxParameter(failedParams, 'q') === document.activeElement.value;
+        const masked = typing && !searchFailed;
         const comparable = filters => JSON.stringify(
-            typing ? Object.assign({}, filters, { q: '' }) : filters
+            masked ? Object.assign({}, filters, { q: '' }) : filters
         );
         const rendered = csf.renderedFilters();
         const formAhead = Boolean(rendered) &&
             comparable(csf.readFilters(form)) !== comparable(rendered);
         if (filterRequest || formAhead) {
             // Not pushed mid-search: the query is half typed, and its commit,
-            // still to come, pushes the whole one
-            rerender({ push: !typing });
+            // still to come, pushes the whole one. A failed search's commit
+            // has been spent, so it is pushed here
+            rerender({ push: !masked });
         } else if (pageRequest) {
             csf.loadMore();
         } else if (csf.pageStart > 0) {
