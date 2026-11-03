@@ -12,8 +12,7 @@ One fetch per section runs at a time, across every worker and dyno: the lock
 is a ``cache.add`` on the shared ``default`` alias, holding a token only its
 fetch renews. An import while one runs starts none but asks the running one
 to go round again when it finishes, since that one works from the rows it
-read as it began: a games import recreates every game, so the forced IGDB
-pass of the last one would leave the new ones without slugs.
+read as it began, and would leave what the later import added unfetched.
 
 The lock lives ``LOCK_SECONDS`` and a heartbeat renews it, so a fetch killed
 with its worker (a deploy, ``--max-requests``; see

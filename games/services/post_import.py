@@ -1,12 +1,11 @@
 """The metadata fetch a games import starts (see ``core.services.post_import``).
 
-A games import recreates every ``Game``. It reattaches the stored IGDB,
-Wikipedia and HLTB rows, but the slug, developers and series live on
-``Game`` and only ``Game.get_igdb_data`` writes them, so until IGDB is
-fetched again every game links to ``/games/None/``. Hence a *forced* IGDB
-pass: the missing-only one skips every reattached game. Wikipedia and HLTB
-are missing-only, which after an import means the games it added, and the
-few neither has ever matched.
+A games import recreates every ``Game``, reattaching the stored IGDB,
+Wikipedia and HLTB rows and carrying across the slug, developers and series
+IGDB wrote on the old one. So every pass is missing-only, which after an
+import means the games it added, and the few a source has never matched.
+For IGDB that includes a game left without a slug (``needing_igdb``), which
+the slugs it links by cannot do without.
 """
 
 import asyncio
@@ -25,7 +24,7 @@ logger = logging.getLogger(__name__)
 IGDB = "get_igdb"
 MOVE_VERSION = "Moving the games data version"
 
-# After the forced IGDB pass, which restores the slugs the pages link by.
+# After the IGDB pass, which gives the added games the slugs pages link by.
 MISSING_ONLY = (
     ("fetch_wikipedia_metadata", {"save": True}),
     ("fetch_hltb_data", {"save": True}),
@@ -66,13 +65,13 @@ def _run_step(name, options, stdout):
 
 
 def _run_igdb(stdout):
-    """The forced IGDB pass; whether it gave the games their slugs back.
+    """The IGDB pass; whether it gave every game a slug.
 
     ``get_igdb`` reports a service it cannot start (expired credentials, say)
     on its output and returns, and one whose requests start failing part way
     catches each batch's error, so the slugs are the test of whether it ran.
     """
-    ran = _run_step(IGDB, {"force": True}, stdout)
+    ran = _run_step(IGDB, {}, stdout)
     # Even after a pass that raised part way: the slugs it did restore are
     # hidden behind cached pages until the version moves. A move that fails
     # here is tried again, and named, at the end.

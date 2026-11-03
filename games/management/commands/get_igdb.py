@@ -102,7 +102,7 @@ class Command(BaseCommand):
         if force:
             games = Game.objects.exclude(igdb_id__isnull=True)
         else:
-            games = Game.objects.filter(primary_igdb_game_data__isnull=True)
+            games = Game.objects.needing_igdb()
 
         total_games = games.count()
 

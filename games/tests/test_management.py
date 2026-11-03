@@ -360,6 +360,7 @@ class GetIgdbCommandTests(TestCase):
             rank=1,
             igdb_id=1,
             year_of_release=2000,
+            slug="game-with-art",
         )
         igdb_data, _ = models.IGDBGameData.objects.update_or_create(
             game=game,

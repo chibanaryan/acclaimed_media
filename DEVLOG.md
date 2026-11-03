@@ -2,6 +2,13 @@
 
 ## 2026-11-03
 
+- **A games import keeps each game's slug, developers and series.** They
+  live on `Game`, which an import recreates, so every game linked to
+  `/games/None/` until the forced IGDB pass that followed restored them, or
+  until Sunday if that fetch died. The import now carries them across by
+  the IGDB record it reattaches, and the pass after it is missing-only, as
+  Wikipedia's and HLTB's are. A game with an IGDB record but no slug counts
+  as missing, so a fetch cut short is finished by the next
 - **Both engines render the list from a payload of another version.** A
   page rendered just before an import committed fetched its payload just
   after, and the engine took the page's rows over with the new data, so

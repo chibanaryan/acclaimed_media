@@ -76,9 +76,7 @@ class ImportView(StaffOnlyMixin, FormView):
             connected_hltb = total_hltb_metadata - orphaned_hltb
 
             # Count games that need metadata (for fetch button)
-            games_needing_igdb = models.Game.objects.filter(
-                primary_igdb_game_data__isnull=True
-            ).count()
+            games_needing_igdb = models.Game.objects.needing_igdb().count()
             games_needing_wikipedia = models.Game.objects.filter(
                 Q(primary_wikipedia_game_data__isnull=True)
                 | Q(primary_wikipedia_game_data__page_title="")

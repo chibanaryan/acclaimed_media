@@ -295,9 +295,7 @@ def import_igdb_with_progress(
             if force_refresh:
                 games = models.Game.objects.all().order_by("rank")
             else:
-                games = models.Game.objects.filter(
-                    primary_igdb_game_data__isnull=True
-                ).order_by("rank")
+                games = models.Game.objects.needing_igdb().order_by("rank")
 
             # Run import in a thread to avoid blocking the generator
             def run_import():
@@ -1316,6 +1314,35 @@ def import_listmemberships(
         raise
 
 
+DeveloperLink = models.Game.developers.through
+SeriesLink = models.Game.series.through
+
+
+def _igdb_fields_by_record():
+    """What IGDB wrote on each game, keyed by the IGDB record it came from.
+
+    The slug, developers and series live on ``Game``, which an import
+    recreates, so without this every game would link to ``/games/None/``
+    until IGDB was fetched again. Keyed by the game's primary IGDB record,
+    which the import reattaches: a game the release gives another primary
+    IGDB id still finds its record through its others, and with it the
+    fields that record's fetch wrote.
+    """
+    games = models.Game.objects.filter(primary_igdb_game_data__isnull=False)
+    developers = {}
+    for game_id, pk in DeveloperLink.objects.values_list("game_id", "developer_id"):
+        developers.setdefault(game_id, []).append(pk)
+    series = {}
+    for game_id, pk in SeriesLink.objects.values_list("game_id", "series_id"):
+        series.setdefault(game_id, []).append(pk)
+    return {
+        record: (slug, developers.get(game_id, ()), series.get(game_id, ()))
+        for game_id, record, slug in games.values_list(
+            "pk", "primary_igdb_game_data", "slug"
+        )
+    }
+
+
 def import_games(
     f: TextIOWrapper, progress_callback: Optional[Callable[[str, Dict], None]] = None
 ) -> Tuple[bool, str]:
@@ -1324,8 +1351,9 @@ def import_games(
     rank, name, year, platforms (comma-separated codes), IGDB id, Wikidata id.
 
     Deletes all existing games and creates fresh ones. Orphans user tracking
-    (PlayedGame/WantToPlayGame) and metadata (Wikipedia/HLTB) before deleting,
-    then reconnects them after creating new games.
+    (PlayedGame/WantToPlayGame) and metadata (IGDB/Wikipedia/HLTB) before
+    deleting, then reconnects them after creating new games, and gives each
+    game the slug, developers and series its IGDB record's game had.
 
     Args:
         f: File object to read from
@@ -1355,6 +1383,9 @@ def import_games(
         # Delete all existing games first
         # Orphan user tracking and metadata so they can be reconnected
         deleted_count = models.Game.objects.count()
+        carried = _igdb_fields_by_record()
+        developer_links = []
+        series_links = []
         models.PlayedGame.objects.all().update(game=None)
         models.WantToPlayGame.objects.all().update(game=None)
         models.WikipediaGameData.objects.all().update(game=None)
@@ -1481,6 +1512,20 @@ def import_games(
                         game.primary_igdb_game_data = igdb_data
                         update_fields.append("primary_igdb_game_data")
                         needs_save = True
+                        slug, developer_ids, series_ids = carried.get(
+                            igdb_data.pk, (None, (), ())
+                        )
+                        if slug:
+                            game.slug = slug
+                            update_fields.append("slug")
+                        developer_links += [
+                            DeveloperLink(game_id=game.pk, developer_id=pk)
+                            for pk in developer_ids
+                        ]
+                        series_links += [
+                            SeriesLink(game_id=game.pk, series_id=pk)
+                            for pk in series_ids
+                        ]
                         break
 
             if needs_save:
@@ -1504,6 +1549,9 @@ def import_games(
                         ),
                     },
                 )
+
+        DeveloperLink.objects.bulk_create(developer_links)
+        SeriesLink.objects.bulk_create(series_links)
 
         # Update year and decade ranks for all games
         games_ranked, years_processed = update_year_decade_ranks()

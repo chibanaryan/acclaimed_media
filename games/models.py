@@ -980,6 +980,18 @@ class GameQuerySet(models.QuerySet):
             "primary_hltb_game_data",
         )
 
+    def needing_igdb(self):
+        """Games an IGDB pass that skips the fetched ones should still fetch.
+
+        Those with no IGDB row, and those with one but no slug: a fetch cut
+        short leaves the slug unwritten, and only IGDB writes it.
+        """
+        from django.db.models import Q
+
+        return self.filter(
+            Q(primary_igdb_game_data__isnull=True) | Q(slug__isnull=True) | Q(slug="")
+        )
+
     def with_played_status(self, user):
         """Annotate games with played and want-to-play status for the given user."""
         if not user or not user.is_authenticated:

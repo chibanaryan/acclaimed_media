@@ -739,6 +739,72 @@ class ImportGamesTests(TestCase):
         self.assertEqual(want.igdb_id, 12345)  # Normalized to primary
 
 
+class ImportCarriesIGDBFieldsTests(TestCase):
+    """The slug, developers and series IGDB wrote survive a re-import.
+
+    They live on ``Game``, which every import recreates; without them every
+    game linked to ``/games/None/`` until IGDB was fetched again.
+    """
+
+    def fetched(self, data):
+        """Import ``data``, then do what an IGDB fetch does to its one game."""
+        self.assertTrue(utils.import_games(StringIO(data))[0])
+        game = models.Game.objects.get()
+        record = models.IGDBGameData.objects.create(
+            game=game, igdb_id=game.igdb_id, is_primary=True
+        )
+        game.primary_igdb_game_data = record
+        game.slug = "test-game"
+        game.save()
+        self.developer = models.Developer.objects.create(name="Studio", igdb_id=10)
+        self.series = models.Series.objects.create(name="Saga", slug="saga", igdb_id=1)
+        game.developers.set([self.developer])
+        game.series.set([self.series])
+        return record
+
+    def test_a_kept_game_keeps_its_igdb_fields(self):
+        data = "1\tTest Game\t2024\tPC\t12345\tQ1\r\n"
+        self.fetched(data)
+        self.assertTrue(utils.import_games(StringIO(data))[0])
+        game = models.Game.objects.get()
+        self.assertEqual(game.slug, "test-game")
+        self.assertEqual(list(game.developers.all()), [self.developer])
+        self.assertEqual(list(game.series.all()), [self.series])
+        self.assertFalse(models.Game.objects.needing_igdb().exists())
+
+    def test_a_new_primary_id_carries_what_its_record_had(self):
+        """The record is found through the game's other ids, and so are its
+        fields."""
+        self.fetched("1\tTest Game\t2024\tPC\t12345\tQ1\r\n")
+        self.assertTrue(
+            utils.import_games(StringIO("1\tTest Game\t2024\tPC\t999,12345\tQ1\r\n"))[0]
+        )
+        game = models.Game.objects.get()
+        self.assertEqual(game.slug, "test-game")
+        self.assertEqual(list(game.developers.all()), [self.developer])
+
+    def test_a_game_whose_record_did_not_return_carries_nothing(self):
+        self.fetched("1\tTest Game\t2024\tPC\t12345\tQ1\r\n")
+        self.assertTrue(
+            utils.import_games(StringIO("1\tOther Game\t2024\tPC\t777\tQ2\r\n"))[0]
+        )
+        game = models.Game.objects.get()
+        self.assertIsNone(game.slug)
+        self.assertFalse(game.developers.exists())
+        self.assertFalse(game.series.exists())
+        self.assertEqual(list(models.Game.objects.needing_igdb()), [game])
+
+    def test_a_record_whose_game_had_no_slug_still_needs_igdb(self):
+        """A fetch cut short left the slug unwritten; the next pass fills it."""
+        data = "1\tTest Game\t2024\tPC\t12345\tQ1\r\n"
+        self.fetched(data)
+        models.Game.objects.update(slug=None)
+        self.assertTrue(utils.import_games(StringIO(data))[0])
+        game = models.Game.objects.get()
+        self.assertIsNotNone(game.primary_igdb_game_data)
+        self.assertEqual(list(models.Game.objects.needing_igdb()), [game])
+
+
 class ImportPlatformsTests(TestCase):
 
     def test_import_platforms_creates_and_updates(self):
@@ -1651,12 +1717,29 @@ class ImportIGDBWithProgressTests(InlineImportThreadMixin, TestCase):
             game=self.game, igdb_id=123, is_primary=True
         )
         self.game.primary_igdb_game_data = igdb_data
-        self.game.save(update_fields=["primary_igdb_game_data"])
+        self.game.slug = "test-game"
+        self.game.save(update_fields=["primary_igdb_game_data", "slug"])
 
         list(utils.import_igdb_with_progress())
 
         queryset = mock_service.import_games.call_args.args[0]
         self.assertEqual(list(queryset), [])
+
+    @mock.patch("games.services.igdb_importer.IGDBImportService")
+    def test_without_force_a_game_with_no_slug_is_fetched(self, mock_service_class):
+        """Its record came back from an import, but no fetch wrote its slug."""
+        mock_service = mock.MagicMock()
+        mock_service_class.return_value = mock_service
+        igdb_data = models.IGDBGameData.objects.create(
+            game=self.game, igdb_id=123, is_primary=True
+        )
+        self.game.primary_igdb_game_data = igdb_data
+        self.game.save(update_fields=["primary_igdb_game_data"])
+
+        list(utils.import_igdb_with_progress())
+
+        queryset = mock_service.import_games.call_args.args[0]
+        self.assertEqual(list(queryset), [self.game])
 
     @mock.patch("games.services.igdb_importer.IGDBImportService")
     @mock.patch("queue.Queue")

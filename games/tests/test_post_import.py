@@ -1,4 +1,4 @@
-"""A games import starts the metadata fetch that restores what it dropped."""
+"""A games import starts the metadata fetch for what it added."""
 
 import asyncio
 import itertools
@@ -50,14 +50,15 @@ class RefreshAfterImportTests(TestCase):
         self.close_async = patcher.start()
         self.addCleanup(patcher.stop)
 
-    def test_a_forced_igdb_pass_then_the_missing_only_ones(self):
+    def test_every_pass_is_missing_only(self):
+        """The import carries each kept game's slug, developers and series."""
         out = StringIO()
         with mock.patch("games.services.post_import.call_command") as command:
             self.assertEqual(post_import.refresh_after_import(out), [])
         self.assertEqual(
             command.call_args_list,
             [
-                mock.call("get_igdb", stdout=out, force=True),
+                mock.call("get_igdb", stdout=out),
                 mock.call("fetch_wikipedia_metadata", stdout=out, save=True),
                 mock.call("fetch_hltb_data", stdout=out, save=True),
             ],

@@ -27,8 +27,8 @@ Import the music ranking release with `python manage.py import_music_data`,
 which then fetches the metadata it left missing (`/music-metadata`,
 `python manage.py fetch_album_metadata`).
 `python manage.py import_games_data` loads the games release from the
-command line, as the staff import page does, then refetches IGDB for every
-game and Wikipedia and HLTB for those missing them. Both default to the files
+command line, as the staff import page does, then fetches IGDB, Wikipedia and
+HLTB for the games missing them. Both default to the files
 in `acclaimedgames/test_input_files/`, and `--no-metadata` skips the fetch
 (see "Imports start their metadata fetch").
 
@@ -1260,15 +1260,16 @@ adopts the *whole* row - title, dates, genres and cover ids - rather than
 making an empty one and letting the cover pass copy only the cover ids across.
 
 So an import runs that fetch itself (`music/services/post_import.py`), and a
-games import runs games' (`games/services/post_import.py`): IGDB `--force`
-for every game, then Wikipedia and HLTB missing-only. The IGDB pass is forced
-because a games import recreates every `Game` and reattaches the stored IGDB,
-Wikipedia and HLTB rows, but the slug, developers and series live on `Game`
-and only `Game.get_igdb_data` writes them: until it runs, every game links to
-`/games/None/`, and the missing-only IGDB button skips every reattached game.
-Measured on the 1400-game release (2026-11-03): under three minutes on the
-free IGDB tier, and every slug and developer back. Carrying those fields
-across the import would close that window; nothing does yet.
+games import runs games' (`games/services/post_import.py`): IGDB, Wikipedia
+and HLTB, each missing-only. A games import recreates every `Game` and
+reattaches the stored IGDB, Wikipedia and HLTB rows; the slug, developers and
+series live on `Game`, so it carries them across too, keyed by the IGDB record
+each came from (`_igdb_fields_by_record`), and a kept game is whole the moment
+the import commits. Until 2026-11-03 it did not: every game linked to
+`/games/None/` until a forced IGDB pass restored them, under three minutes on
+the free tier, or until Sunday if the fetch died. "Missing" for IGDB is
+`Game.objects.needing_igdb()`: no IGDB row, or one but no slug, which a
+fetch cut short leaves; the button, its count and `get_igdb` all use it.
 
 - **The commands fetch in the foreground**, after the import's own output;
   `--no-metadata` skips it, and `--dry-run` never fetches.
@@ -1281,8 +1282,8 @@ across the import would close that window; nothing does yet.
   commands' included: a `cache.add` lock on the shared `default` alias. An
   import while one runs starts none, says so, and asks the running one to go
   round again when it finishes. Skipping it was not enough: the running round
-  works from the rows it read as it began, and a games import recreates every
-  game, so its forced IGDB pass would leave the new ones without slugs.
+  works from the rows it read as it began, so it would leave the games or
+  albums the later import added without their metadata.
 - **The lock lives two minutes, and a heartbeat touches it every 30 s.** A
   first version held it for the longest fetch, two hours, so a fetch killed
   with its worker told every import in that time that it would go again.
@@ -1304,7 +1305,7 @@ across the import would close that window; nothing does yet.
   outside an async server that runs on one thread for the process's life.
   `games.services.post_import` closes it there afterwards.
 - **A games fetch moves the data version twice**: as soon as the IGDB pass
-  has given slugs back, raised part way or not, and again at the end.
+  has given the added games slugs, raised part way or not, and again at the end.
   `get_igdb` saves slugs with `update_fields`, which leaves `modified` alone,
   and Wikipedia's genres for the added games move nothing the version reads,
   so a page or `/api/games/all/` payload cached during the fetch would go on

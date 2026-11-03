@@ -17,9 +17,9 @@ class Command(BaseCommand):
         "Import game rankings from the platforms, lists, games and positions "
         "TSV files, in a single transaction, as the staff import page does. "
         "Games are recreated; tracking rows and fetched metadata are "
-        "reconnected to them. Then fetches IGDB for every game (it restores "
-        "their slugs) and Wikipedia and HLTB for those missing them, unless "
-        "--no-metadata."
+        "reconnected to them, with the slugs, developers and series IGDB "
+        "gave them. Then fetches IGDB, Wikipedia and HLTB for the games "
+        "missing them, unless --no-metadata."
     )
 
     def add_arguments(self, parser):
