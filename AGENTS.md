@@ -2013,15 +2013,17 @@ That arithmetic sets the shape of the `Procfile`:
   `add`s before it `incr`s so two threads meeting a new key both count.
 - **Database connections are per thread.** `CONN_MAX_AGE` is left at 0, so
   each request opens and closes its own, and the web dyno holds at most
-  workers x threads (6) at once, plus an import's: its background thread
-  and the IGDB importer's pool of 8. That is 15 of the essential-1 plan's
-  20. The metadata fetch an import starts is one such thread, which runs
-  the IGDB pool for a games import, and only once the import's own thread
-  is done; its heartbeat closes its connection after each touch, and HLTB's
-  executor thread's is closed when the fetch ends. A games and a music
-  fetch at once, beside a one-off dyno, would come close to 20. `core.services.background.start_background_thread`
-  closes the background thread's connection when it finishes; left alone it
-  lingered until the cyclic garbage collector reached the thread's wrapper.
+  workers x threads (6) at once, plus an import's background thread and
+  the metadata fetch it starts, which runs once the import's own thread is
+  done. The fetch's heartbeat closes its connection after each touch, and
+  HLTB's executor thread's is closed when the fetch ends. The IGDB
+  importer's pool of 8 runs only with batching off (`get_igdb --batch-games
+  0`); every caller batches on its own thread, and a pool thread closes its
+  connection after each game. A games and a music fetch at once, beside a
+  one-off dyno, come to about 10 of the essential-1 plan's 20.
+  `core.services.background.start_background_thread` closes the background
+  thread's connection when it finishes; left alone it lingered until the
+  cyclic garbage collector reached the thread's wrapper.
 - **No `--preload`.** Measured with a fork test: a child touched ~160 MB of
   the parent's pages within 20 requests, because CPython refcounts dirty the
   page holding every object they read. Copy-on-write saved nothing (593 MB

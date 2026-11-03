@@ -2,6 +2,10 @@
 
 ## 2026-11-03
 
+- **An IGDB pool thread closes its connection after each game.** Nothing
+  did, so each held a Postgres slot until the garbage collector reached the
+  thread. The pool runs only with batching off (`--batch-games 0`), which no
+  caller does by default
 - **A games import keeps each game's slug, developers and series.** They
   live on `Game`, which an import recreates, so every game linked to
   `/games/None/` until the forced IGDB pass that followed restored them, or

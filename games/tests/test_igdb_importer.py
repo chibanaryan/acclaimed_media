@@ -1,5 +1,6 @@
 """Tests for IGDBImportService."""
 
+import threading
 from unittest import mock
 
 from django.test import TestCase
@@ -116,6 +117,32 @@ class IGDBImportServiceTests(TestCase):
         # Should have progress notification (line 195)
         progress_events = [e for e in callback_events if e[0] == "progress"]
         self.assertGreater(len(progress_events), 0)
+
+    @mock.patch("games.services.igdb_importer.get_api")
+    def test_a_pool_thread_closes_its_connection_after_each_game(self, mock_get_api):
+        """Nothing else would: it held a Postgres slot until the thread was
+        collected."""
+        mock_get_api.return_value = mock.MagicMock(max_batch_size=50)
+        service = IGDBImportService(batch_size=0, concurrency=2)
+        closed_on = []
+        ran_on = []
+
+        def process(game):
+            ran_on.append(threading.get_ident())
+            return (True, game, None)
+
+        with (
+            mock.patch.object(service, "_process_game", side_effect=process),
+            mock.patch("games.services.igdb_importer.connection") as connection,
+        ):
+            connection.close.side_effect = lambda: closed_on.append(
+                threading.get_ident()
+            )
+            service.import_games(models.Game.objects.filter(pk=self.game.pk))
+
+        self.assertEqual(len(ran_on), 1)
+        self.assertNotEqual(ran_on[0], threading.get_ident())
+        self.assertEqual(closed_on, ran_on)
 
     @mock.patch("games.services.igdb_importer.get_api")
     def test_import_batched_success_notification(self, mock_get_api):
@@ -258,9 +285,12 @@ class IGDBImportServiceTests(TestCase):
         service = IGDBImportService()
 
         # Make get_igdb_data() raise an exception to test error handling
-        with mock.patch.object(
-            self.game, "get_igdb_data", side_effect=Exception("Processing error")
-        ), self.assertLogs("games.services.igdb_importer", "WARNING") as logs:
+        with (
+            mock.patch.object(
+                self.game, "get_igdb_data", side_effect=Exception("Processing error")
+            ),
+            self.assertLogs("games.services.igdb_importer", "WARNING") as logs,
+        ):
             results = service._process_game_batch([self.game])
 
         # Should catch exception and mark as error. The message reaches the

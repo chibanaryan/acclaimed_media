@@ -9,6 +9,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, Dict, List, Optional, Tuple
 
+from django.db import connection
+
 from games.igdb import get_api
 from games.models import Game
 
@@ -204,7 +206,8 @@ class IGDBImportService:
                 chunk = list(Game.objects.filter(pk__in=chunk_pks))
 
                 future_to_game = {
-                    executor.submit(self._process_game, game): game for game in chunk
+                    executor.submit(self._process_game_on_pool, game): game
+                    for game in chunk
                 }
 
                 for future in as_completed(future_to_game):
@@ -278,6 +281,20 @@ class IGDBImportService:
                             "message": error_msg,
                         },
                     )
+
+    def _process_game_on_pool(self, game: Game) -> Tuple[bool, Game, Optional[str]]:
+        """``_process_game`` on a pool thread, closing its connection after.
+
+        Django's connections are per thread, and nothing else closes a pool
+        thread's: in a web worker it would hold a Postgres slot until the
+        garbage collector reached the thread. A connection per game, but
+        only with batching off (``--batch-games 0``); batches run on the
+        caller's thread.
+        """
+        try:
+            return self._process_game(game)
+        finally:
+            connection.close()
 
     def _process_game(self, game: Game) -> Tuple[bool, Game, Optional[str]]:
         """
