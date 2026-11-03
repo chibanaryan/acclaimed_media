@@ -79,6 +79,21 @@ def site_host(site):
     return urlsplit(settings.SITE_ORIGINS[site]).netloc
 
 
+class NoHeartbeatMixin:
+    """Keep the metadata lock's heartbeat thread from starting.
+
+    The IGDB and Wikipedia streams and the weekly commands take the lock for
+    real. A heartbeat thread that a test leaves behind closes its connection
+    whenever it ends, under whatever a later test has patched.
+    """
+
+    def setUp(self):
+        super().setUp()
+        patcher = mock.patch("core.services.post_import._start_heartbeat")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+
 class CommitHooksRunNowMixin:
     """Run `core.cache_helpers.drop_on_commit` where it is called.
 

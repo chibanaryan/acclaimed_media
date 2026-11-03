@@ -4,6 +4,7 @@ import logging
 from contextlib import nullcontext
 from datetime import datetime
 from io import StringIO
+import threading
 from unittest import mock
 
 from django.core.cache import caches
@@ -127,12 +128,17 @@ class StartBackgroundThreadTests(SimpleTestCase):
 
         ran = []
         with mock.patch("core.services.background.connection") as connection:
+            connection.close.side_effect = lambda: closed_on.append(
+                threading.get_ident()
+            )
+            closed_on = []
             thread = start_background_thread(lambda: ran.append(True))
             thread.join(timeout=5)
 
         self.assertEqual(ran, [True])
         self.assertTrue(thread.daemon)
-        connection.close.assert_called_once()
+        # Its own: another test's thread may close one while this patch stands
+        self.assertEqual(closed_on.count(thread.ident), 1)
 
     def test_closes_the_connection_even_when_the_target_raises(self):
         from core.services.background import start_background_thread
@@ -140,12 +146,17 @@ class StartBackgroundThreadTests(SimpleTestCase):
         def boom():
             raise RuntimeError("boom")
 
+        closed_on = []
         with mock.patch(
             "core.services.background.connection"
         ) as connection, mock.patch("threading.excepthook"):
-            start_background_thread(boom).join(timeout=5)
+            connection.close.side_effect = lambda: closed_on.append(
+                threading.get_ident()
+            )
+            thread = start_background_thread(boom)
+            thread.join(timeout=5)
 
-        connection.close.assert_called_once()
+        self.assertEqual(closed_on.count(thread.ident), 1)
 
 
 class AllowedHostsTests(SimpleTestCase):

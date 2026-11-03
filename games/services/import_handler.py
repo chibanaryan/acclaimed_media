@@ -20,7 +20,7 @@ from django.db import connection, transaction
 from django.db.models import Q
 
 from core.services.background import start_background_thread
-from core.services.post_import import BUSY, LogStream
+from core.services.post_import import BUSY, RUN_ON_A_THREAD, LogStream
 from games.platform_years import years_for
 from games import config, constants, models
 from games.services import post_import
@@ -138,7 +138,7 @@ def _holding_the_fetch_lock(events):
     finally:
         if not started:
             # On the request's thread, so any fetch it owes runs on another
-            taken.end(LogStream(), background=True)
+            taken.end(LogStream(), owed=RUN_ON_A_THREAD)
 
 
 def import_igdb_with_progress(

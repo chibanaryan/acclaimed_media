@@ -6,6 +6,7 @@ from django.db.models import Max
 from django.test import TestCase
 
 from core.models import User
+from core.tests.utils import NoHeartbeatMixin
 from .. import models, utils
 
 
@@ -1669,7 +1670,7 @@ class ImportDataTests(TestCase):
             self.assertGreaterEqual(metadata_after.last_full_update, last_update_before)
 
 
-class ImportIGDBWithProgressTests(InlineImportThreadMixin, TestCase):
+class ImportIGDBWithProgressTests(NoHeartbeatMixin, InlineImportThreadMixin, TestCase):
     """Tests for import_igdb_with_progress generator."""
 
     def setUp(self):

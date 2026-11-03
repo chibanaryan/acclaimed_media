@@ -1347,7 +1347,10 @@ and `get_igdb` all use it.
   reload. The page reads the marker again under the lock, so two loads
   cannot both restart a fetch. A button's or a weekly job's hold also runs
   a fetch owed when it lets go, unless a weekly job's work raised, which
-  leaves it to the page; an import's request starts the count afresh. A start that
+  leaves it to the page; an import's request starts the count afresh. One
+  rule decides what is owed, and at what count (`_owed`), and every release
+  goes through `_let_go`, which takes the lock back for an import that asked
+  as it went. A start that
   fails is logged and reported, never as a failed import, since the release
   is live by then.
 - **`METADATA_AFTER_IMPORT`** turns all of it off. It is off under test,

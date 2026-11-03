@@ -12,12 +12,13 @@ from unittest import mock
 from django.core.management import call_command
 from django.test import TestCase
 
+from core.tests.utils import NoHeartbeatMixin
 from music import models
 
 COMMAND = "music.management.commands.fetch_album_metadata"
 
 
-class FetchAlbumMetadataCommandTests(TestCase):
+class FetchAlbumMetadataCommandTests(NoHeartbeatMixin, TestCase):
     def setUp(self):
         models.Album.objects.create(name="Pet Sounds", rank=1, slug="pet-sounds")
 

@@ -8,6 +8,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 
+from core.tests.utils import NoHeartbeatMixin
 from .. import models, utils
 
 
@@ -442,7 +443,7 @@ class ImportDataRoutingTests(TestCase):
         self.assertIn('Unknown import type "Z"', message)
 
 
-class RefreshAllMetadataCommandTests(TestCase):
+class RefreshAllMetadataCommandTests(NoHeartbeatMixin, TestCase):
     """Tests for refresh_all_metadata management command"""
 
     def setUp(self):
