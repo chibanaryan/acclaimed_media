@@ -481,7 +481,7 @@ async function jumpToRankServerSide(targetRank, loaded, perPage) {
 
         // Fetch all pages concurrently
         const pageResults = await Promise.all(
-            pagesToLoad.map(page => fetchPage(page))
+            pagesToLoad.map(page => fetchPage(page, button))
         );
 
         // The list was re-rendered meanwhile, so the pages are dropped
@@ -510,15 +510,21 @@ async function jumpToRankServerSide(targetRank, loaded, perPage) {
 /**
  * Fetches a specific page and returns parsed results (without appending to DOM)
  * @param {number} page - The page number to load
+ * @param {?HTMLElement} button - The Load More button of the list it extends
  * @returns {Promise<{page: number, rows: NodeList, meta: Object, button: ?HTMLElement}>}
  */
-async function fetchPage(page) {
-    const button = document.querySelector('.load-more-button');
-    const params = new URLSearchParams(window.location.search);
+async function fetchPage(page, button) {
+    // The list's own address, which the server renders onto its button: Back
+    // moves the URL before its render replaces the list, and a page fetched
+    // from there meanwhile was Back's list's, appended under this one
+    const listUrl = new URL(
+        (button && button.dataset.listUrl) || window.location.href, window.location.origin
+    );
+    const params = listUrl.searchParams;
     params.set('page', page);
     params.set('append', 'true');
 
-    const url = window.location.pathname + '?' + params.toString();
+    const url = listUrl.pathname + '?' + params.toString();
 
     const response = await fetch(url, {
         headers: {
@@ -730,7 +736,7 @@ async function handleLoadMore(event) {
 
     let result = null;
     try {
-        result = await fetchPage(nextPage);
+        result = await fetchPage(nextPage, button);
     } catch (err) {
         console.error('Load more error:', err);
     }

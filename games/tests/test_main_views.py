@@ -17,6 +17,7 @@ from django.http import HttpResponse, StreamingHttpResponse
 from django.test import Client, TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from django.utils.html import escape
 
 from core.models import User
 from core.tests.utils import DatabaseCacheTestCase, clear_all_caches
@@ -1308,6 +1309,17 @@ class GameSearchLoadMoreTest(TestCase):
         self.assertEqual(response.context["total_count"], 150)
         self.assertEqual(response.context["remaining_count"], 50)
         self.assertFalse(response.context["max_loaded"])
+
+    def test_load_more_button_names_its_lists_address(self):
+        """The button carries the address of the list it extends.
+
+        Back moves the URL before its render replaces the list, so a Load
+        More fetching from the URL meanwhile got Back's list's page.
+        """
+        for path in ("/", "/?sort=name&dir=desc", "/games/2020s/"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertContains(response, f'data-list-url="{escape(path)}"')
 
     def test_z_append_mode_returns_append_template(self):
         """Test that append=true returns the append template.

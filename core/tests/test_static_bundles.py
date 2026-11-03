@@ -482,6 +482,30 @@ class GamesLoadMoreTakesOnlyItsOwnPageTests(SimpleTestCase):
         ).read_text()
         self.assertNotIn("metaScript ? JSON.parse", source)
 
+    def test_a_page_is_fetched_from_its_lists_own_address(self):
+        """Not the URL, which Back moves before its render replaces the list.
+
+        A Load More clicked meanwhile fetched Back's list's page and appended
+        it under the one shown ("games Load More landing before Back").
+        """
+        for path in (
+            "games/static/games/js/utils-loadmore.js",
+            "games/static/games/js/utils-loadmore.min.js",
+        ):
+            with self.subTest(path=path):
+                self.assertIn(
+                    "dataset.listUrl", (Path(settings.BASE_DIR) / path).read_text()
+                )
+        source = (
+            Path(settings.BASE_DIR) / "games/static/games/js/utils-loadmore.js"
+        ).read_text()
+        self.assertIn("fetchPage(nextPage, button)", source)
+        self.assertIn("fetchPage(page, button)", source)
+        self.assertNotIn(
+            "new URLSearchParams(window.location.search);\n    params.set('page'",
+            source,
+        )
+
 
 class ClientLoadMoreClaimsItsClickTests(SimpleTestCase):
     """A client-rendered Load More must load one page, not two.

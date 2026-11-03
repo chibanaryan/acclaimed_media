@@ -465,6 +465,62 @@ async function checkLoadMoreBehindBack(page) {
 }
 
 /**
+ * As above with no engine, the Load More's page landing before Back's render:
+ * it was fetched from the address Back had moved to, so Back's list's rows
+ * went in under the sorted one. The button names its own list now. Answers
+ * as above.
+ */
+async function checkLoadMoreLandingBeforeBack(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = { back: null, page: null };
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        if (url.startsWith(games + '/api/games/all/')) {
+            // Never answered: the sort asks for the engine, which would
+            // otherwise answer Back itself
+        } else if (url.includes('append=true')) {
+            held.page = request;
+        } else if (url.startsWith(games + '/games/?') && !url.includes('sort=name') &&
+                ['xhr', 'fetch'].includes(request.resourceType())) {
+            held.back = request;
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(games + '/', { waitUntil: 'load' });
+    const filters = await page.waitForSelector('[x-data*="filterComponent"]');
+    await sleep(1000);
+    await page.evaluate(element => Alpine.$data(element).updateSort('name'), filters);
+    await page.waitForFunction(() => location.search.includes('sort=name'));
+    await sleep(500);
+    const names = () => page.$$eval('#game-list-container .game-row.desktop [data-slot="name"]',
+        cells => cells.map(cell => cell.textContent.trim()));
+    const sorted = (await names()).slice(0, 100);
+    await page.evaluate(() => history.back());
+    for (let tries = 0; !held.back && tries < 100; tries += 1) await sleep(50);
+    if (!held.back) return "games: Back sent no server render";
+    // On the sorted list, still shown under Back's loading overlay
+    await page.evaluate(() => document.querySelector('.load-more-button').click());
+    for (let tries = 0; !held.page && tries < 100; tries += 1) await sleep(50);
+    if (!held.page) return 'games: the Load More click sent nothing';
+    const asked = held.page.url();
+    await held.page.continue().catch(() => {});
+    await sleep(800);
+    const extended = await names();
+    const byName = [...extended].sort((a, b) => a.localeCompare(b));
+    await held.back.continue().catch(() => {});
+    await sleep(800);
+    const after = await names();
+    if (!asked.includes('sort=name')) return `games: the sorted list's Load More asked for ${asked}`;
+    if (extended.length !== 200 || extended.slice(0, 100).join() !== sorted.join() ||
+            extended.join() !== byName.join()) {
+        return `games: the sorted list's Load More gave ${extended.length} rows out of name order`;
+    }
+    return after.length === 100 ? null : `games: Back's render left ${after.length} rows`;
+}
+
+/**
  * A server Load More for rows 201-300, then a client jump that redrew the
  * button the page was on its way to: the page was dropped and the click went
  * unanswered, and the takeover's and the view toggle's answers started again
@@ -1676,6 +1732,7 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     await report('games server jump across an engine Load More', checkServerJumpAcrossAnEngineLoadMore);
     await report('games Load More behind a filter change', checkLoadMoreBehindAFilterChange);
     await report('games Load More behind Back', checkLoadMoreBehindBack);
+    await report('games Load More landing before Back', checkLoadMoreLandingBeforeBack);
     await report('games Load More that fails to append', checkLoadMoreThatFailsToAppend);
     await report('games Load More answered by another page', checkLoadMoreAnsweredByAnotherPage);
     for (const fails of [false, true]) {
