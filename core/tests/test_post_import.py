@@ -29,7 +29,7 @@ def _run_inline(target, **kwargs):
 class PostImportTestCase(TestCase):
     def setUp(self):
         # Django's runner does not clear caches between tests.
-        for key in (LOCK, AGAIN, PENDING, post_import.resumed_key("test")):
+        for key in (LOCK, AGAIN, PENDING):
             cache.delete(key)
             self.addCleanup(cache.delete, key)
         # Inline, a heartbeat would beat until its fetch stopped it, and the
@@ -242,7 +242,7 @@ class CutShortFetchTests(PostImportTestCase):
         seen = []
         self.job.side_effect = lambda stdout: seen.append(cache.get(PENDING)) or []
         self.run_inline()
-        self.assertEqual(seen, [True])
+        self.assertEqual(seen, [0])  # an import's own fetch, never restarted
         self.assertIsNone(cache.get(PENDING))
 
     def test_a_round_that_raised_is_not_pending(self):
@@ -257,35 +257,62 @@ class CutShortFetchTests(PostImportTestCase):
             return post_import.resume_if_cut_short("test", self.job)
 
     def test_a_fetch_cut_short_is_restarted_once(self):
-        cache.set(PENDING, True)
+        cache.set(PENDING, 0)
+        seen = []
+        self.job.side_effect = lambda stdout: seen.append(cache.get(PENDING)) or []
         with self.assertLogs("core.services.post_import", "WARNING"):
             self.assertEqual(self.resume(), post_import.RESUMED)
-        self.job.assert_called_once()
+        self.assertEqual(seen, [1])  # marked as a restart while it runs
         self.assertIsNone(cache.get(PENDING))
         self.assertIsNone(self.resume())
         self.job.assert_called_once()
 
-    def test_one_that_dies_again_is_not_restarted_within_the_hour(self):
-        """A fetch that takes its worker down would otherwise take one down
-        on every reload."""
-        cache.set(PENDING, True)
+    def test_a_restart_cut_short_too_is_left_to_sunday_and_said_once(self):
+        """One that takes its worker down would take one down on every
+        reload; and staff reloading are told, once."""
+        cache.set(PENDING, 1)
+        with self.assertLogs("core.services.post_import", "ERROR"):
+            self.assertEqual(self.resume(), post_import.GAVE_UP)
+        self.job.assert_not_called()
+        self.assertIsNone(cache.get(PENDING))
+        self.assertIsNone(self.resume())
+
+    def test_a_later_imports_fetch_cut_short_is_restarted_too(self):
+        """It is not the restart that died."""
+        cache.set(PENDING, 0)
         with self.assertLogs("core.services.post_import", "WARNING"):
             self.resume()
-        cache.set(PENDING, True)  # it died again
-        with self.assertLogs("core.services.post_import", "ERROR"):
-            self.assertIsNone(self.resume())
-        self.job.assert_called_once()
+        cache.set(PENDING, 0)
+        with self.assertLogs("core.services.post_import", "WARNING"):
+            self.assertEqual(self.resume(), post_import.RESUMED)
+        self.assertEqual(self.job.call_count, 2)
+
+    def test_an_import_after_a_restart_starts_from_none(self):
+        """The rounds an import asks for while a restart runs are its own."""
+        seen = []
+
+        def job(stdout):
+            seen.append(cache.get(PENDING))
+            if len(seen) == 1:
+                cache.set(AGAIN, True)
+            return []
+
+        cache.set(PENDING, 0)
+        with self.assertLogs("core.services.post_import", "WARNING"):
+            with mock.patch(THREAD, side_effect=_run_inline):
+                post_import.resume_if_cut_short("test", job)
+        self.assertEqual(seen, [1, 0])
 
     def test_the_marker_and_the_lock_are_read_together(self):
         """Apart, a fetch finishing between the two reads looked cut short."""
-        cache.set(PENDING, True)
+        cache.set(PENDING, 0)
         cache.add(LOCK, "theirs")
         with mock.patch.object(post_import.cache, "get", side_effect=AssertionError):
             self.assertIsNone(self.resume())
 
     def test_a_live_fetch_is_left_alone(self):
         """Its marker stands beside its lock."""
-        cache.set(PENDING, True)
+        cache.set(PENDING, 0)
         cache.add(LOCK, "theirs")
         self.assertIsNone(self.resume())
         self.job.assert_not_called()
@@ -296,7 +323,7 @@ class CutShortFetchTests(PostImportTestCase):
         self.job.assert_not_called()
 
     def test_nothing_with_the_setting_off(self):
-        cache.set(PENDING, True)
+        cache.set(PENDING, 0)
         with override_settings(METADATA_AFTER_IMPORT=False):
             self.assertIsNone(self.resume())
         self.job.assert_not_called()
@@ -362,26 +389,39 @@ class HoldTests(PostImportTestCase):
         self.assertIsNone(cache.get(AGAIN))
 
     def test_a_fetch_cut_short_is_finished_after(self):
-        cache.set(PENDING, True)
+        cache.set(PENDING, 0)
+        seen = []
+        self.job.side_effect = lambda stdout: seen.append(cache.get(PENDING)) or []
         taken = post_import.hold("test", self.job)
         taken.end(StringIO())
-        self.job.assert_called_once()
+        self.assertEqual(seen, [1])
         self.assertIsNone(cache.get(PENDING))
 
-    def test_work_that_covers_the_fetch_clears_one_cut_short(self):
-        cache.set(PENDING, True)
+    def test_a_restart_cut_short_too_is_not_run_by_a_hold_either(self):
+        cache.set(PENDING, 1)
         taken = post_import.hold("test", self.job)
-        taken.end(StringIO(), covers=True)
+        with self.assertLogs("core.services.post_import", "ERROR"):
+            taken.end(StringIO())
         self.job.assert_not_called()
         self.assertIsNone(cache.get(PENDING))
         self.assertIsNone(cache.get(LOCK))
 
-    def test_work_that_covers_the_fetch_still_runs_one_asked_for(self):
-        """The import came after the work had read its rows."""
+    def test_a_fetch_owed_can_be_left_to_the_page(self):
+        """An import's request becomes a marker the page restarts."""
         taken = post_import.hold("test", self.job)
         cache.set(AGAIN, True)
-        taken.end(StringIO(), covers=True)
-        self.job.assert_called_once()
+        taken.end(StringIO(), run_owed=False)
+        self.job.assert_not_called()
+        self.assertEqual(cache.get(PENDING), 0)
+        self.assertIsNone(cache.get(AGAIN))
+        self.assertIsNone(cache.get(LOCK))
+
+    def test_a_cut_short_fetch_left_to_the_page_keeps_its_count(self):
+        cache.set(PENDING, 0)
+        taken = post_import.hold("test", self.job)
+        taken.end(StringIO(), run_owed=False)
+        self.job.assert_not_called()
+        self.assertEqual(cache.get(PENDING), 0)
 
     def test_a_fetch_owed_can_run_on_a_thread(self):
         taken = post_import.hold("test", self.job)
@@ -431,14 +471,17 @@ class HoldTests(PostImportTestCase):
 
 
 class RunWeeklyTests(PostImportTestCase):
-    def test_the_work_runs_under_the_lock_and_covers_the_fetch(self):
-        cache.set(PENDING, True)
+    def test_the_work_runs_under_the_lock_then_any_fetch_owed(self):
+        """Every pass of the fetch is missing-only, so after the weekly
+        work it costs little; and the weekly's own failures are warnings,
+        which cannot say whether it did the fetch's work."""
+        cache.set(PENDING, 0)
         seen = []
         post_import.run_weekly(
             "test", self.job, _Command(), lambda: seen.append(cache.get(LOCK))
         )
         self.assertTrue(seen[0])
-        self.job.assert_not_called()
+        self.job.assert_called_once()
         self.assertIsNone(cache.get(LOCK))
         self.assertIsNone(cache.get(PENDING))
 
@@ -460,20 +503,23 @@ class RunWeeklyTests(PostImportTestCase):
             post_import.run_weekly("test", self.job, _Command(), work)
         work.assert_called_once_with()
 
-    def test_work_that_raised_covers_nothing(self):
-        cache.set(PENDING, True)
+    def test_work_that_raised_leaves_the_fetch_owed_to_the_page(self):
+        """Run now, it would hold the job's error back behind a whole fetch,
+        likely against the same failing service."""
+        cache.set(AGAIN, True)
 
         def work():
             raise RuntimeError("IGDB down")
 
         with self.assertRaises(RuntimeError):
             post_import.run_weekly("test", self.job, _Command(), work)
-        self.job.assert_called_once()
-        self.assertIsNone(cache.get(PENDING))
+        self.job.assert_not_called()
+        self.assertEqual(cache.get(PENDING), 0)
+        self.assertIsNone(cache.get(LOCK))
 
     def test_an_imports_request_outlives_the_longest_weekly_hold(self):
-        """Lapsed, the hold's end would read nothing asked, and clear the
-        marker of the fetch the import needed."""
+        """Lapsed, the hold's end would read nothing asked, and the import's
+        fetch would never run."""
         longest_weekly = post_import.WEEKLY_WAIT_SECONDS + 3 * 60 * 60
         self.assertGreater(post_import.AGAIN_SECONDS, longest_weekly)
 

@@ -1294,8 +1294,8 @@ and `get_igdb` all use it.
   doubles the rate limit and the connections. A button pressed while it is
   held says so and starts nothing; a weekly job waits up to an hour, then
   gives up the week at ERROR, and runs without the lock if the cache
-  fails. One that held it while an import asked for a
-  fetch runs that fetch before letting go. Only the weekly music run takes
+  fails. One that held it while an import asked for a fetch runs that fetch
+  before letting go. Only the weekly music run takes
   it: an import's music fetch *is* `fetch_album_metadata`, run under it.
 - **The lock's `add` cannot be won twice.** On the database cache an `add`
   over an expired row is a SELECT then an UPDATE, so two imports in the
@@ -1341,10 +1341,13 @@ and `get_igdb` all use it.
   starts and clears it before letting go, so the marker without the lock is
   a fetch that died, and the import page's next load restarts it
   (`post_import.resume_if_cut_short`), saying so; staff reload that page to
-  watch a fetch land anyway. Once an hour at most: a fetch that takes its
-  worker down would otherwise take one down on every reload. A button's hold runs it too, and a weekly job
-  clears it, having done the same work. A start that fails is logged and
-  reported, never as a failed import, since the release is live by then.
+  watch a fetch land anyway. The marker counts restarts, and a restart cut
+  short too is left to the Sunday job, at ERROR and said once on the page:
+  a fetch that takes its worker down would otherwise take one down on every
+  reload. A button's or a weekly job's hold also runs a fetch owed when it
+  lets go, unless its work raised, which leaves it to the page. A start that
+  fails is logged and reported, never as a failed import, since the release
+  is live by then.
 - **`METADATA_AFTER_IMPORT`** turns all of it off. It is off under test,
   where there is no network; the tests of the feature turn it on and patch
   the fetch. `scripts/setup_cloud.sh` passes `metadata=False`, having no
