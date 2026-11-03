@@ -980,7 +980,6 @@ function entityListControlsData(config) {
             setParam('sort', this.sort, defaultSort);
             setParam('dir', this.sortDirection, defaultDir);
             url.searchParams.delete('page');
-            window.history.pushState({}, '', url);
 
             const values = { sort: this.sort, dir: this.sortDirection };
             (settings.extraFields || []).forEach(name => {
@@ -989,10 +988,20 @@ function entityListControlsData(config) {
             });
 
             if (typeof htmx !== 'undefined') {
+                // htmx pushes the request's own address, HTMXPushURLMiddleware
+                // having asked it to, in an entry Back reloads. This tidies
+                // that entry rather than pushing a second one beside it,
+                // which took two presses of Back to leave and was not
+                // reloaded on the way.
+                const left = window.location.href;
                 htmx.ajax('GET', settings.url, {
                     target: settings.target,
                     swap: 'innerHTML',
                     values
+                }).then(() => {
+                    if (window.location.href !== left) window.history.replaceState(window.history.state, '', url);
+                }, () => {
+                    // Failed or aborted: htmx pushed nothing, and has said so
                 });
             }
         }

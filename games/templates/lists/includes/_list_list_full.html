@@ -50,7 +50,8 @@
                 url.searchParams.delete('dir');
             }
             url.searchParams.delete('page');
-            window.history.pushState({}, '', url);
+            // htmx pushes the request's address; this tidies that entry
+            const left = window.location.href;
             htmx.ajax('GET', '{% url 'list-list' %}', {
                 target: '#filter-results-wrapper',
                 swap: 'innerHTML',
@@ -61,7 +62,9 @@
                     year: document.getElementById('filter-list-year')?.value || '',
                     q: document.getElementById('publication-search')?.value || ''
                 }
-            });
+            }).then(() => {
+                if (window.location.href !== left) window.history.replaceState(window.history.state, '', url);
+            }, () => {});
         },
         toggleSortDirection() {
             this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
@@ -72,7 +75,8 @@
                 url.searchParams.delete('dir');
             }
             url.searchParams.delete('page');
-            window.history.pushState({}, '', url);
+            // htmx pushes the request's address; this tidies that entry
+            const left = window.location.href;
             htmx.ajax('GET', '{% url 'list-list' %}', {
                 target: '#filter-results-wrapper',
                 swap: 'innerHTML',
@@ -83,7 +87,9 @@
                     year: document.getElementById('filter-list-year')?.value || '',
                     q: document.getElementById('publication-search')?.value || ''
                 }
-            });
+            }).then(() => {
+                if (window.location.href !== left) window.history.replaceState(window.history.state, '', url);
+            }, () => {});
         }
      }">
     {# Hidden inputs for HTMX includes #}

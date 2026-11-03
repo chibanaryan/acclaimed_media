@@ -10,7 +10,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     {# htmx re-creates the scripts a swap brings in; this gives them the page's nonce, the one its CSP header allows #}
-    <meta name="htmx-config" content='{"inlineScriptNonce": "{{ csp_nonce }}"}'>
+    {# No history snapshots: Back onto an entry htmx pushed reloads it. A snapshot holds the DOM Alpine built, so restoring one threw an Alpine error per x-for clone, and with none stored htmx fetched the entry as a partial and swapped it in for the whole body #}
+    <meta name="htmx-config" content='{"inlineScriptNonce": "{{ csp_nonce }}", "historyCacheSize": 0, "refreshOnHistoryMiss": true}'>
     <meta name="description" content="{% block meta_description %}{% if site_key == 'music' %}Discover the most critically acclaimed albums of all time, ranked by aggregating critic lists from music publications worldwide.{% elif site_key == 'root' %}Rankings of the most critically acclaimed video games and albums of all time, built by aggregating hundreds of critic lists.{% else %}Discover the most critically acclaimed video games of all time, ranked by aggregating hundreds of critic lists from major gaming publications.{% endif %}{% endblock %}">
     <link rel="canonical" href="{% block canonical_url %}{% if page_canonical_url %}{{ page_canonical_url }}{% else %}{{ canonical_origin }}{{ request.path }}{% endif %}{% endblock %}">
     {# Content Security Policy is set via CSPMiddleware with nonce support #}

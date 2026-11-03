@@ -1004,6 +1004,40 @@ class AlbumFilterClicksApplyAtOnceTests(SimpleTestCase):
         self.assertIn("htmx:afterRequest", bundle)
 
 
+class HtmxKeepsNoHistorySnapshotsTests(SimpleTestCase):
+    """Back onto an entry htmx pushed reloads it, on every page.
+
+    A snapshot holds the DOM Alpine built, so restoring one threw an Alpine
+    error per `x-for` clone, and with none stored htmx fetched the entry as
+    a partial and swapped it in for the whole body. And the entity pages each
+    pushed an entry of their own beside htmx's (HTMXPushURLMiddleware asks
+    it to push every response), so Back took two presses.
+    scripts/browser_smoke.js ("Back from a search on ...") runs them.
+    """
+
+    def _read(self, relative_path):
+        return (Path(settings.BASE_DIR) / relative_path).read_text()
+
+    def test_htmx_stores_no_snapshot_and_reloads_instead(self):
+        base = self._read("games/templates/base.html")
+        self.assertIn('"historyCacheSize": 0, "refreshOnHistoryMiss": true', base)
+
+    def test_no_entity_page_pushes_an_entry_of_its_own(self):
+        for template in (
+            "games/templates/developers/developer_list.html",
+            "games/templates/lists/list_list.html",
+            "games/templates/lists/includes/_list_list_full.html",
+        ):
+            with self.subTest(template=template):
+                self.assertNotIn("pushState", self._read(template))
+        controls = self._read("core/static/core/js/media-list-controls.js")
+        body = controls[controls.index("function entityListControlsData(") :]
+        self.assertNotIn("pushState", body)
+        self.assertIn(
+            "window.history.replaceState(window.history.state, '', url)", body
+        )
+
+
 class MobileFilterSheetIsSharedTests(SimpleTestCase):
     """Both rankings pages use one lazy mobile sheet component.
 

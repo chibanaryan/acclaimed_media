@@ -665,6 +665,44 @@ async function checkBackPastAnOldSnapshot(page) {
 }
 
 /**
+ * Back from a search or a sort on an entity page (artists, source lists,
+ * developers). htmx restored its snapshot of the page, which held the DOM
+ * Alpine built and threw an Alpine error per `x-for` clone; with none stored
+ * it fetched the entry as a partial and swapped it in for the whole body.
+ * It reloads now (base.html's htmx-config). And each page pushed an entry of
+ * its own beside htmx's, so Back took two presses and the first reloaded
+ * nothing. Answers as above.
+ */
+async function checkBackOnAnEntityPage(page, url, input, text, evict) {
+    await page.setViewport({ width: 1440, height: 900 });
+    const alpine = [];
+    page.on('console', message => {
+        if (/Alpine Expression Error/.test(message.text())) alpine.push(message.text());
+    });
+    await page.goto(url, { waitUntil: 'networkidle2' });
+    const entries = await page.evaluate(() => history.length);
+    await page.type(input, text);
+    await page.waitForFunction(left => location.href !== left, {}, url);
+    await sleep(800);
+    const added = await page.evaluate(() => history.length) - entries;
+    // Another tab's, saved before snapshots were turned off, under the key
+    // htmx gives a path: no trailing slash
+    const stale = '<p id="stale">stale</p>';
+    if (evict) {
+        await page.evaluate((content, path) => localStorage.setItem('htmx-history-cache',
+            JSON.stringify([{ url: path.replace(/\/+$/, ''), content, title: 'stale', scroll: 0 }])),
+        stale, new URL(url).pathname);
+    }
+    await page.evaluate(() => history.back());
+    await sleep(1500);
+    if (added !== 1) return `${url}: one search added ${added} history entries`;
+    if (page.url() !== url) return `${url}: Back landed on ${page.url()}`;
+    if (await page.$('#stale')) return `${url}: Back restored a stored snapshot`;
+    if (!await page.$('.site-menu')) return `${url}: Back left a page with no sidebar`;
+    return alpine.length ? `${url}: Back threw ${alpine.length} Alpine errors` : null;
+}
+
+/**
  * The jump box is answered by the engine alone, so without its data it took a
  * number and ignored Enter. It waits for the engine, disabled. Answers as
  * above.
@@ -977,6 +1015,19 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     await report('music server Load More adds no entry', checkServerLoadMoreAddsNoEntry);
     await report('music jump box waits for the engine', checkJumpBoxWaitsForTheEngine);
     await report('music jump box comes on', checkJumpBoxComesOn);
+    await report('music page 2 starts its window there', checkALaterPageStartsItsWindowThere);
+    await report('music page 2 forgets its start once rendered', checkALaterPageForgetsItsStartOnceRendered);
+    for (const [url, input, text] of [
+        [music + '/artists/', '#artist-search', 'smo'],
+        [music + '/lists/', '#music-list-search', 'smo'],
+        [games + '/developers/', '#developer-search', 'nin'],
+        [games + '/lists/', '#publication-search', 'smo'],
+    ]) {
+        for (const evict of [false, true]) {
+            await report(`Back from a search on ${url}${evict ? ', a snapshot stored' : ''}`,
+                page => checkBackOnAnEntityPage(page, url, input, text, evict));
+        }
+    }
     await report('games empty range', page => checkRangeOutsideTheCorpus(page, games));
     await report('music empty range', page => checkRangeOutsideTheCorpus(page, music));
     await browser.close();
