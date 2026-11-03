@@ -1558,20 +1558,21 @@ async function checkEngineFollowsThePagesVersion(page, engine, path, stale, keep
  * taken to the album, in a list or a grid; one who has moved on is left
  * there, with the album flashed in place. Answers as above.
  */
-async function checkHighlightAcrossAnotherVersion(page, engine, { readerMoves, albumMoves, grid }) {
-    const id = 5;
+async function checkHighlightAcrossAnotherVersion(page, engine, { readerMoves, albumMoves, grid, early, stale = true, id = 5 }) {
     const path = `/?highlight=${id}`;
     await page.setViewport({ width: 1440, height: 900 });
     if (grid) {
         await page.evaluateOnNewDocument(() => localStorage.setItem('albumViewMode', 'grid'));
     }
     // Ranked last, past the first page: the engine orders by rank
-    const sent = await servePayload(page, engine, true, albumMoves && (list => {
+    const sent = await servePayload(page, engine, stale, albumMoves && (list => {
         list.find(album => album.id === id).r = 1000;
     }));
+    // Early: the data is there before the landing has scrolled
+    if (early) sent.open();
     await page.goto(music + path, { waitUntil: 'networkidle2' });
     // Past the server row's own scroll
-    await sleep(600);
+    if (!early) await sleep(600);
     if (readerMoves) {
         // As a scrollbar drag does, which in Firefox and Safari sends no
         // input event to listen for
@@ -1595,7 +1596,7 @@ async function checkHighlightAcrossAnotherVersion(page, engine, { readerMoves, a
             scrollY: window.scrollY,
         };
     }, album);
-    const label = `music ${path}${grid ? ' (grid)' : ''}`;
+    const label = `music ${path}${grid ? ' (grid)' : ''}${early ? ' (early)' : ''}`;
     if (readerMoves) {
         const now = await page.evaluate(() => window.scrollY);
         if (Math.abs(now - before) > 5) {
@@ -2234,15 +2235,21 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     // Shorter than the page's start: the top of the list, not an empty one
     await report('music /?page=2 engine with another, shorter version',
         page => checkEngineFollowsThePagesVersion(page, versioned.music, '/?page=2', true, 90));
-    for (const [readerMoves, albumMoves, grid] of [
-        [true, false, false], [false, false, false], [false, true, false], [false, true, true],
+    for (const [readerMoves, albumMoves, grid, early] of [
+        [true, false, false, false], [false, false, false, false], [false, true, false, false],
+        [false, true, true, false], [false, true, false, true],
     ]) {
         const name = [readerMoves && 'a reader who moved', albumMoves && 'an album that moved',
-            grid && 'a grid'].filter(Boolean).join(', ') || 'a reader who stayed';
+            grid && 'a grid', early && 'data before the landing'].filter(Boolean).join(', ') ||
+            'a reader who stayed';
         await report(`music highlight across another version, ${name}`,
             page => checkHighlightAcrossAnotherVersion(
-                page, versioned.music, { readerMoves, albumMoves, grid }));
+                page, versioned.music, { readerMoves, albumMoves, grid, early }));
     }
+    // The page's own version, and an album past the rows the server rendered
+    await report('music highlight past the first page',
+        page => checkHighlightAcrossAnotherVersion(
+            page, versioned.music, { stale: false, id: 110 }));
     await report('games empty range', page => checkRangeOutsideTheCorpus(page, games));
     await report('music empty range', page => checkRangeOutsideTheCorpus(page, music));
     await browser.close();

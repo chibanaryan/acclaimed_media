@@ -642,7 +642,8 @@ function scrollToAlbumById(albumId, viewMode, { scroll = true } = {}) {
 }
 
 /**
- * Whether any of an album's rows or its card is on screen.
+ * Whether one of an album's rows, or its card, has its middle on screen: a
+ * sliver under the sticky header is a row scrolled past.
  * @param {number} albumId
  * @returns {boolean}
  */
@@ -651,7 +652,8 @@ function albumInView(albumId) {
         const element = document.getElementById(`music-${albumId}${suffix}`);
         if (!element || element.offsetParent === null) return false;
         const box = element.getBoundingClientRect();
-        return box.bottom > 0 && box.top < window.innerHeight;
+        const middle = (box.top + box.bottom) / 2;
+        return middle > 0 && middle < window.innerHeight;
     });
 }
 
@@ -876,24 +878,28 @@ function initAlbumFiltering() {
         }
     }
     /**
-     * Land on the highlighted album once the engine has rendered it: bring
-     * its row onto the page, then, after a beat, scroll to it and flash it.
-     * The beat is the one the landing waits on load: the page above the list
-     * is still laying out, and a scroll at once fell short of the album. A
-     * reader who scrolls during it keeps their place, with the album flashed
-     * where it is.
+     * Land again on a highlighted album the engine has just rendered from
+     * data of another version, which may have moved it: bring its row onto
+     * the page, then, after a beat, scroll to it and flash it. The beat is
+     * the one the landing waits on load: the page above the list is still
+     * laying out, and a scroll at once fell short of the album. A reader who
+     * scrolls, clicks or types during it keeps their place, with the album
+     * flashed where it is.
      */
-    const landOnHighlight = () => {
+    const landOnHighlightAgain = () => {
         const position = csf.renderer.currentItems.findIndex(
             album => album.id === highlightOnLoad
         ) + 1;
         // Not in this result set at all: nothing to land on.
         if (position === 0) return;
         csf.jumpTo(position);
-        const scrolled = window.scrollY;
+        let moved = false;
+        const events = ['wheel', 'touchstart', 'keydown', 'pointerdown'];
+        const move = () => { moved = true; };
+        events.forEach(type => window.addEventListener(type, move, { capture: true, passive: true }));
         setTimeout(() => {
-            const stayed = Math.abs(window.scrollY - scrolled) < 2;
-            scrollToAlbumById(highlightOnLoad, csf.viewMode, { scroll: stayed });
+            events.forEach(type => window.removeEventListener(type, move, { capture: true }));
+            scrollToAlbumById(highlightOnLoad, csf.viewMode, { scroll: !moved });
         }, 300);
     };
 
@@ -1046,17 +1052,19 @@ function initAlbumFiltering() {
             const page = start === 0 && shown <= csf.renderer.PAGE_SIZE;
             // The render replaces the highlighted row the link landed on,
             // and the new data may move the album. Read first: a reader
-            // still looking at the row is taken to the album, wherever it
-            // is now, and one who has moved on keeps their place
-            const atLanding = highlightOnLoad !== null && !highlightPending &&
-                albumInView(highlightOnLoad);
+            // still at the landing - looking at the row, or at the top of a
+            // page whose landing has yet to scroll - is taken to the album,
+            // wherever it is now, and one who has moved on keeps their place
+            const landed = highlightOnLoad !== null && !highlightPending;
+            const atLanding = landed &&
+                (window.scrollY === 0 || albumInView(highlightOnLoad));
             csf.applyFilters(csf.readFilters(form), {
                 range: page ? null : [start, start + shown]
             });
             if (pageRequest) csf.loadMore();
             if (atLanding) {
-                landOnHighlight();
-            } else if (highlightOnLoad !== null && !highlightPending) {
+                landOnHighlightAgain();
+            } else if (landed) {
                 scrollToAlbumById(highlightOnLoad, csf.viewMode, { scroll: false });
             }
         } else if (pageRequest) {
@@ -1069,7 +1077,14 @@ function initAlbumFiltering() {
         }
         if (highlightPending) {
             csf._syncRendererWithPage();
-            landOnHighlight();
+            const position = csf.renderer.currentItems.findIndex(
+                album => album.id === highlightOnLoad
+            ) + 1;
+            // Not in this result set at all: nothing to land on.
+            if (position > 0) {
+                csf.jumpTo(position);
+                scrollToAlbumById(highlightOnLoad, csf.viewMode);
+            }
         }
     });
 }

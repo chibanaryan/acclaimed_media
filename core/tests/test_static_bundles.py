@@ -601,10 +601,10 @@ class EnginesRenderAPayloadOfAnotherVersionTests(SimpleTestCase):
         """The render replaces the row a `?highlight=` link scrolled to, and
         can move it. smoke: "music highlight across another version"."""
         source = self._read("music/static/music/js/album-client-filtering.js")
-        self.assertIn("albumInView(highlightOnLoad);", source)
+        self.assertIn("albumInView(highlightOnLoad));", source)
         self.assertIn("if (atLanding) {", source)
         self.assertIn(
-            "scrollToAlbumById(highlightOnLoad, csf.viewMode, { scroll: stayed });",
+            "scrollToAlbumById(highlightOnLoad, csf.viewMode, { scroll: !moved });",
             source,
         )
 
