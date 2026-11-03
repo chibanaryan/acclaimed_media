@@ -1265,11 +1265,14 @@ and HLTB, each missing-only. A games import recreates every `Game` and
 reattaches the stored IGDB, Wikipedia and HLTB rows; the slug, developers and
 series live on `Game`, so it carries them across too, keyed by the IGDB record
 each came from (`_igdb_fields_by_record`), and a kept game is whole the moment
-the import commits. Until 2026-11-03 it did not: every game linked to
+the import commits. Only to a game whose primary id is that record's: one the
+release gives a new primary id reattaches its old id's record, which is
+another IGDB game, so it carries nothing and is fetched. Until 2026-11-03 it did not: every game linked to
 `/games/None/` until a forced IGDB pass restored them, under three minutes on
 the free tier, or until Sunday if the fetch died. "Missing" for IGDB is
-`Game.objects.needing_igdb()`: no IGDB row, or one but no slug, which a
-fetch cut short leaves; the button, its count and `get_igdb` all use it.
+`Game.objects.needing_igdb()`: no IGDB row, one but no slug, which a fetch
+cut short leaves, or one for another of the game's ids; the button, its count
+and `get_igdb` all use it.
 
 - **The commands fetch in the foreground**, after the import's own output;
   `--no-metadata` skips it, and `--dry-run` never fetches.
@@ -1287,10 +1290,11 @@ fetch cut short leaves; the button, its count and `get_igdb` all use it.
 - **Every metadata pass but a manual command's takes that lock**: the
   import page's IGDB and Wikipedia buttons and the weekly jobs
   (`refresh_all_metadata --weekly`, `fetch_album_metadata --weekly`) take
-  it through `post_import.hold`, so none runs beside an import's fetch and
+  it through `post_import.hold` and `run_weekly`, so none runs beside an import's fetch and
   doubles the rate limit and the connections. A button pressed while it is
   held says so and starts nothing; a weekly job waits up to an hour, then
-  gives up the week at ERROR. One that held it while an import asked for a
+  gives up the week at ERROR, and runs without the lock if the cache
+  fails. One that held it while an import asked for a
   fetch runs that fetch before letting go. Only the weekly music run takes
   it: an import's music fetch *is* `fetch_album_metadata`, run under it.
 - **The lock's `add` cannot be won twice.** On the database cache an `add`
@@ -1337,7 +1341,8 @@ fetch cut short leaves; the button, its count and `get_igdb` all use it.
   starts and clears it before letting go, so the marker without the lock is
   a fetch that died, and the import page's next load restarts it
   (`post_import.resume_if_cut_short`), saying so; staff reload that page to
-  watch a fetch land anyway. A button's hold runs it too, and a weekly job
+  watch a fetch land anyway. Once an hour at most: a fetch that takes its
+  worker down would otherwise take one down on every reload. A button's hold runs it too, and a weekly job
   clears it, having done the same work. A start that fails is logged and
   reported, never as a failed import, since the release is live by then.
 - **`METADATA_AFTER_IMPORT`** turns all of it off. It is off under test,

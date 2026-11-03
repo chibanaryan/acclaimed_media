@@ -983,13 +983,21 @@ class GameQuerySet(models.QuerySet):
     def needing_igdb(self):
         """Games an IGDB pass that skips the fetched ones should still fetch.
 
-        Those with no IGDB row, and those with one but no slug: a fetch cut
-        short leaves the slug unwritten, and only IGDB writes it.
+        Those with no IGDB row; those with one but no slug, which a fetch cut
+        short leaves, since only IGDB writes it; and those whose row is for
+        another of their ids, which an import that changed the primary id
+        reattaches, and which describes another IGDB game.
         """
-        from django.db.models import Q
+        from django.db.models import F, Q
 
         return self.filter(
-            Q(primary_igdb_game_data__isnull=True) | Q(slug__isnull=True) | Q(slug="")
+            Q(primary_igdb_game_data__isnull=True)
+            | Q(slug__isnull=True)
+            | Q(slug="")
+            | (
+                Q(igdb_id__isnull=False)
+                & ~Q(primary_igdb_game_data__igdb_id=F("igdb_id"))
+            )
         )
 
     def with_played_status(self, user):

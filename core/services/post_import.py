@@ -51,13 +51,17 @@ logger = logging.getLogger(__name__)
 
 HEARTBEAT_SECONDS = 30
 LOCK_SECONDS = 120
-# A request to go again needs only to outlive the round it waits on, which
-# the heartbeat keeps alive however long it runs.
-AGAIN_SECONDS = 2 * 60 * 60
-# Long enough to outlast a weekend: the Sunday job does the work too.
-PENDING_SECONDS = 7 * 24 * 60 * 60
 # How long a weekly job waits for a running fetch before giving up the week.
 WEEKLY_WAIT_SECONDS = 60 * 60
+# A request to go again must outlive whatever holds the lock as it is made:
+# a fetch's round, or a weekly job, which can wait its hour and then run for
+# its cron monitor's three.
+AGAIN_SECONDS = 6 * 60 * 60
+# Long enough to outlast a weekend: the Sunday job does the work too.
+PENDING_SECONDS = 7 * 24 * 60 * 60
+# A fetch restarted once is not restarted again for this long: one that
+# takes its worker down would otherwise take one down on every reload.
+RESUME_SECONDS = 60 * 60
 
 STARTED = "Fetching metadata in the background; reload this page to see it land."
 ALREADY_RUNNING = (
@@ -87,6 +91,10 @@ def again_key(section):
 
 def pending_key(section):
     return f"post-import-metadata:{section}:pending"
+
+
+def resumed_key(section):
+    return f"post-import-metadata:{section}:resumed"
 
 
 class LogStream:
@@ -161,7 +169,16 @@ def resume_if_cut_short(section, job):
     if not settings.METADATA_AFTER_IMPORT:
         return None
     try:
-        if not cache.get(pending_key(section)) or cache.get(lock_key(section)):
+        # One read: apart, a fetch finishing between the two looked cut short
+        held = cache.get_many([lock_key(section), pending_key(section)])
+        if lock_key(section) in held or pending_key(section) not in held:
+            return None
+        if not cache.add(resumed_key(section), True, RESUME_SECONDS):
+            logger.error(
+                "A %s metadata fetch was cut short again within the hour of "
+                "its restart; leaving it to the Sunday job",
+                section,
+            )
             return None
     except Exception:
         logger.exception("Could not check for a cut-short %s metadata fetch", section)
@@ -207,7 +224,11 @@ class Hold:
                 self._finish(stdout, first=asked)
         except Exception:
             logger.exception("Could not let go of the %s metadata lock", self.section)
-            _release(lock_key(self.section), self.token)
+            try:
+                _release(lock_key(self.section), self.token)
+            except Exception:
+                # It lapses in LOCK_SECONDS; the heartbeat has stopped.
+                logger.exception("Could not release the %s metadata lock", self.section)
 
     def _finish(self, stdout, *, first):
         try:
@@ -216,6 +237,8 @@ class Hold:
             logger.exception(
                 "The %s metadata fetch after an import failed", self.section
             )
+        finally:
+            stdout.flush()
 
 
 def hold(section, job, *, wait=0):
@@ -248,9 +271,19 @@ def run_weekly(section, job, command, work):
 
     It waits up to ``WEEKLY_WAIT_SECONDS`` for a fetch to finish, and with
     the lock still held gives up the week, at ERROR so Sentry hears of it.
-    Its work covers the fetch's, so a fetch cut short needs no restart after.
+    Its work, once done, covers the fetch's, so a fetch cut short needs no
+    restart after. A cache error taking the lock runs the work without it.
     """
-    taken = hold(section, job, wait=WEEKLY_WAIT_SECONDS)
+    try:
+        taken = hold(section, job, wait=WEEKLY_WAIT_SECONDS)
+    except Exception:
+        # The refresh matters more than the lock that keeps it apart
+        logger.exception(
+            "Could not take the %s metadata lock; running the weekly job anyway",
+            section,
+        )
+        work()
+        return
     if taken is None:
         logger.error(
             "The weekly %s metadata job gave up waiting for a fetch to finish",
@@ -262,10 +295,13 @@ def run_weekly(section, job, command, work):
             )
         )
         return
+    done = False
     try:
         work()
+        done = True
     finally:
-        taken.end(command.stdout, covers=True)
+        # Work that raised covered nothing, so a fetch cut short still runs
+        taken.end(command.stdout, covers=done)
 
 
 def _add(key, token):
@@ -349,11 +385,14 @@ def _rounds(section, job, token, stdout, *, first=True):
     key = lock_key(section)
     stop = threading.Event()
     failed = []
+    beating = False
     try:
-        _start_heartbeat(key, stop)
         go = first
         while True:
             if go or cache.get(again_key(section)):
+                if not beating:
+                    _start_heartbeat(key, stop)
+                    beating = True
                 # Left behind if this worker dies mid-round, for the import
                 # page to restart; cleared before the release, so it never
                 # stands beside a live fetch's lock.

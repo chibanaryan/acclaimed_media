@@ -1376,9 +1376,8 @@ def _igdb_fields_by_record():
     The slug, developers and series live on ``Game``, which an import
     recreates, so without this every game would link to ``/games/None/``
     until IGDB was fetched again. Keyed by the game's primary IGDB record,
-    which the import reattaches: a game the release gives another primary
-    IGDB id still finds its record through its others, and with it the
-    fields that record's fetch wrote.
+    which the import reattaches; ``import_games`` carries them only to a
+    game whose primary id is that record's.
     """
     games = models.Game.objects.filter(primary_igdb_game_data__isnull=False)
     developers = {}
@@ -1564,9 +1563,15 @@ def import_games(
                         game.primary_igdb_game_data = igdb_data
                         update_fields.append("primary_igdb_game_data")
                         needs_save = True
-                        slug, developer_ids, series_ids = carried.get(
-                            igdb_data.pk, (None, (), ())
-                        )
+                        # Only the primary id's own record: one found through
+                        # another id is another IGDB game's, whose fields
+                        # would stand until a refetch, which the slug skips.
+                        if igdb_data.igdb_id == primary_igdb_id:
+                            slug, developer_ids, series_ids = carried.get(
+                                igdb_data.pk, (None, (), ())
+                            )
+                        else:
+                            slug, developer_ids, series_ids = None, (), ()
                         if slug:
                             game.slug = slug
                             update_fields.append("slug")

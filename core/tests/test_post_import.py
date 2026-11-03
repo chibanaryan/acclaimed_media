@@ -29,7 +29,7 @@ def _run_inline(target, **kwargs):
 class PostImportTestCase(TestCase):
     def setUp(self):
         # Django's runner does not clear caches between tests.
-        for key in (LOCK, AGAIN, PENDING):
+        for key in (LOCK, AGAIN, PENDING, post_import.resumed_key("test")):
             cache.delete(key)
             self.addCleanup(cache.delete, key)
         # Inline, a heartbeat would beat until its fetch stopped it, and the
@@ -265,6 +265,24 @@ class CutShortFetchTests(PostImportTestCase):
         self.assertIsNone(self.resume())
         self.job.assert_called_once()
 
+    def test_one_that_dies_again_is_not_restarted_within_the_hour(self):
+        """A fetch that takes its worker down would otherwise take one down
+        on every reload."""
+        cache.set(PENDING, True)
+        with self.assertLogs("core.services.post_import", "WARNING"):
+            self.resume()
+        cache.set(PENDING, True)  # it died again
+        with self.assertLogs("core.services.post_import", "ERROR"):
+            self.assertIsNone(self.resume())
+        self.job.assert_called_once()
+
+    def test_the_marker_and_the_lock_are_read_together(self):
+        """Apart, a fetch finishing between the two reads looked cut short."""
+        cache.set(PENDING, True)
+        cache.add(LOCK, "theirs")
+        with mock.patch.object(post_import.cache, "get", side_effect=AssertionError):
+            self.assertIsNone(self.resume())
+
     def test_a_live_fetch_is_left_alone(self):
         """Its marker stands beside its lock."""
         cache.set(PENDING, True)
@@ -284,7 +302,9 @@ class CutShortFetchTests(PostImportTestCase):
         self.job.assert_not_called()
 
     def test_a_cache_error_does_not_break_the_page(self):
-        with mock.patch.object(post_import.cache, "get", side_effect=ConnectionError):
+        with mock.patch.object(
+            post_import.cache, "get_many", side_effect=ConnectionError
+        ):
             with self.assertLogs("core.services.post_import", "ERROR"):
                 self.assertIsNone(self.resume())
 
@@ -382,6 +402,22 @@ class HoldTests(PostImportTestCase):
         ):
             taken.end(StringIO())
 
+    def test_a_cache_that_stays_down_does_not_raise(self):
+        """It is called from finally blocks: a weekly job's, a stream's."""
+        taken = post_import.hold("test", self.job)
+        with (
+            mock.patch.object(post_import.cache, "get", side_effect=ConnectionError),
+            self.assertLogs("core.services.post_import", "ERROR"),
+        ):
+            taken.end(StringIO())
+
+    def test_nothing_owed_starts_no_heartbeat(self):
+        taken = post_import.hold("test", self.job)
+        self.heartbeat.reset_mock()
+        taken.end(StringIO())
+        self.heartbeat.assert_not_called()
+        self.assertIsNone(cache.get(LOCK))
+
     def test_a_cache_error_still_lets_go(self):
         taken = post_import.hold("test", self.job)
         with (
@@ -413,6 +449,33 @@ class RunWeeklyTests(PostImportTestCase):
         with self.assertRaises(RuntimeError):
             post_import.run_weekly("test", self.job, _Command(), work)
         self.assertIsNone(cache.get(LOCK))
+
+    def test_a_cache_error_does_not_skip_the_week(self):
+        """The refresh matters more than the lock that keeps it apart."""
+        work = mock.Mock()
+        with (
+            mock.patch.object(post_import, "hold", side_effect=ConnectionError),
+            self.assertLogs("core.services.post_import", "ERROR"),
+        ):
+            post_import.run_weekly("test", self.job, _Command(), work)
+        work.assert_called_once_with()
+
+    def test_work_that_raised_covers_nothing(self):
+        cache.set(PENDING, True)
+
+        def work():
+            raise RuntimeError("IGDB down")
+
+        with self.assertRaises(RuntimeError):
+            post_import.run_weekly("test", self.job, _Command(), work)
+        self.job.assert_called_once()
+        self.assertIsNone(cache.get(PENDING))
+
+    def test_an_imports_request_outlives_the_longest_weekly_hold(self):
+        """Lapsed, the hold's end would read nothing asked, and clear the
+        marker of the fetch the import needed."""
+        longest_weekly = post_import.WEEKLY_WAIT_SECONDS + 3 * 60 * 60
+        self.assertGreater(post_import.AGAIN_SECONDS, longest_weekly)
 
     def test_a_fetch_that_outlasts_the_wait_skips_the_week(self):
         command = _Command()

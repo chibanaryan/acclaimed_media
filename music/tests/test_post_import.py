@@ -57,18 +57,15 @@ class RefreshAfterImportTests(TestCase):
 
 
 class LockWrappersTests(TestCase):
-    def test_hold_resume_and_weekly_are_the_music_section_s(self):
+    def test_resume_and_weekly_are_the_music_section_s(self):
         command, work = object(), object()
         with (
-            mock.patch.object(core_post_import, "hold") as hold,
             mock.patch.object(core_post_import, "resume_if_cut_short") as resume,
             mock.patch.object(core_post_import, "run_weekly") as weekly,
         ):
-            post_import.hold()
             post_import.resume()
             post_import.run_weekly(command, work)
         job = post_import.refresh_after_import
-        hold.assert_called_once_with("music", job)
         resume.assert_called_once_with("music", job)
         weekly.assert_called_once_with("music", job, command, work)
 

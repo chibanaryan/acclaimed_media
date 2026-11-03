@@ -772,16 +772,27 @@ class ImportCarriesIGDBFieldsTests(TestCase):
         self.assertEqual(list(game.series.all()), [self.series])
         self.assertFalse(models.Game.objects.needing_igdb().exists())
 
-    def test_a_new_primary_id_carries_what_its_record_had(self):
-        """The record is found through the game's other ids, and so are its
-        fields."""
+    def test_a_new_primary_id_carries_nothing_and_is_fetched(self):
+        """The record found through the game's old id is another IGDB game's:
+        its slug and developers would stand until Sunday, as a missing-only
+        pass skips a game with a record and a slug."""
         self.fetched("1\tTest Game\t2024\tPC\t12345\tQ1\r\n")
         self.assertTrue(
             utils.import_games(StringIO("1\tTest Game\t2024\tPC\t999,12345\tQ1\r\n"))[0]
         )
         game = models.Game.objects.get()
-        self.assertEqual(game.slug, "test-game")
-        self.assertEqual(list(game.developers.all()), [self.developer])
+        self.assertEqual(game.primary_igdb_game_data.igdb_id, 12345)
+        self.assertIsNone(game.slug)
+        self.assertFalse(game.developers.exists())
+        self.assertEqual(list(models.Game.objects.needing_igdb()), [game])
+
+    def test_a_game_on_another_ids_record_needs_igdb_whatever_its_slug(self):
+        """As one left so by an import before this one."""
+        self.fetched("1\tTest Game\t2024\tPC\t12345\tQ1\r\n")
+        models.Game.objects.update(igdb_id=999)
+        self.assertEqual(
+            list(models.Game.objects.needing_igdb()), [models.Game.objects.get()]
+        )
 
     def test_a_game_whose_record_did_not_return_carries_nothing(self):
         self.fetched("1\tTest Game\t2024\tPC\t12345\tQ1\r\n")
