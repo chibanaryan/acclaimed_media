@@ -2,8 +2,9 @@
 
 Every artist's slug is rebuilt from its name - by each import, and by each
 metadata run, which is when new artists get their Wikipedia titles - so a
-renamed act's URL follows its name. Nothing redirects a replaced slug yet, by
-decision, so a renamed act's old links 404.
+renamed act's URL follows its name. A replaced slug is kept in
+``ArtistSlugHistory`` (``record_slug_changes``), and the artist page
+redirects it to the current one.
 
 Most names are unique and get the plain slug. Where two acts' names slugify
 alike, the English Wikipedia titles their Wikidata ids point to tell them
@@ -91,6 +92,23 @@ def plan_artist_slugs(entries: Iterable[SlugSource]) -> Dict[int, str]:
     return slugs
 
 
+def record_slug_changes(changes: Iterable[Tuple[models.Artist, str, str]]) -> None:
+    """Keep each ``(artist, old, new)`` change's old slug for the redirect.
+
+    Called once the new slugs are saved. An old slug another artist held
+    before moves to this one, the newest claim; one some artist holds now
+    is dropped, so the live page always wins over a redirect.
+    """
+    for artist, old, new in changes:
+        if old and old != new:
+            models.ArtistSlugHistory.objects.update_or_create(
+                slug=old, defaults={"artist": artist}
+            )
+    models.ArtistSlugHistory.objects.filter(
+        slug__in=models.Artist.objects.filter(slug__isnull=False).values("slug")
+    ).delete()
+
+
 def rebuild_artist_slugs() -> List[Tuple[int, str, str]]:
     """Re-plan every stored artist's slug; ``(source_id, old, new)`` changed."""
     artists = list(models.Artist.objects.filter(source_id__isnull=False))
@@ -102,13 +120,14 @@ def rebuild_artist_slugs() -> List[Tuple[int, str, str]]:
     for artist in artists:
         new = slugs[artist.source_id]
         if artist.slug != new:
-            changed.append((artist.source_id, artist.slug, new))
+            changed.append((artist, artist.slug, new))
             artist.slug = new
             updated.append(artist)
     models.Artist.objects.bulk_update(updated, ["slug"])
+    record_slug_changes(changed)
     if updated:
         # `/api/music/all/` names artists by slug, and its version follows
         # the albums' `modified`: without this a browser's stored copy would
         # keep linking and filtering by the old slugs.
         models.Album.objects.filter(artists__in=updated).update(modified=timezone.now())
-    return changed
+    return [(artist.source_id, old, new) for artist, old, new in changed]
