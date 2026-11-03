@@ -461,7 +461,13 @@ filters server-side on its own; the bundle suppresses those requests only once
 it has data and a renderer, so a failed or slow bundle leaves a working page.
 Load More and the list/grid toggle work either way, and jump-to-rank once the
 engine is there: it seeds itself from what the server rendered (`attach()` and
-`_syncRendererWithPage()`) rather than re-rendering the page on load.
+`_syncRendererWithPage()`) rather than re-rendering the page on load - unless
+its data is not the version the page names (`followsPage()`), which an import
+committing between the page and its payload causes. Then it renders the rows
+the page had from the payload, a `?page=N` link's included
+(`applyFilters(..., { range })`), since it continues the page's rows by
+position. `/api/all/` reads the version before and after its rows, and labels
+rows read across a commit with none, which no page names and no tab stores.
 
 Four rules keep the server path and the engine from stepping on each other,
 each pinned by `scripts/browser_smoke.js`:
@@ -973,6 +979,16 @@ rules follow, both since 2026-11-02 and both run by `scripts/browser_smoke.js`
   `history.replaceState(history.state, '', url)`, on its `htmx:afterRequest`
   or after `htmx.ajax(...)` resolves, since htmx pushes before either.
 
+The developers, games source-lists and authors pages share one Load More,
+`core/js/entity-load-more.js`, configured by its button's data attributes
+(`data-entity-load-more`, `data-list-url`, `data-append`, ...). It keeps
+games' rules: it fetches from the list's own address, which the server
+renders onto the button, not from the URL; a response without
+`#load-more-meta` is a failed page; a page whose button a search has replaced
+is dropped; and the button moves on before anything else can throw. Until
+2026-11-03 each page had an inline copy that did none of this (smoke:
+"Load More answered by another page", "Load More behind a search").
+
 ### Google Analytics Integration
 
 The site uses Google Analytics 4 (GA4) with custom HTMX tracking for comprehensive page view analytics:
@@ -1481,7 +1497,7 @@ content is ever shown as-is.
 | `/music/` | 443 | 26 |
 | `/music/?genres=<root>` | 439 | 16 |
 | `/music/artists/` | 305 | 6 |
-| `/api/music/all/` | 1218 | 10 |
+| `/api/music/all/` | 1218 | 13: 10, and its version read twice since 2026-11-03 |
 
 - **`core/services/genre_tree.py` answers the hierarchy in one query.**
   `descendants_by_id(pairs)` maps every genre id to the ids below it from a
@@ -1793,6 +1809,9 @@ server never keys on `?v=`, so the parameter cannot fill the shared cache
 with copies of the payload. A payload whose rows were read across an
 import's commit is labelled with no version and cached nowhere. The
 `/api/games/version/` endpoint went: no page was left without a version.
+A payload of another version is still used, so the engine taking over asks
+`ClientSideFiltering.followsPage()` and, if not, renders the page's rows from
+the payload, as far down as the page had got, rather than continuing them.
 
 Music's cache keys all live in `music/config.py` as `CACHE_KEYS`, which
 `caching.invalidate_music_caches()` iterates - add a cached value there or it

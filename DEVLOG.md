@@ -2,6 +2,21 @@
 
 ## 2026-11-03
 
+- **Both engines render the list from a payload of another version.** A
+  page rendered just before an import committed fetched its payload just
+  after, and the engine took the page's rows over with the new data, so
+  that visit's first Load More or jump repeated and dropped items. The
+  engine now asks whether its data is the page's version as it takes over,
+  and if not renders the same rows from the payload, a music `?page=N`
+  link's included. Music's `/api/all/` also labelled rows read across an
+  import's commit with the new version, which stored the last release's
+  rows under it for the session; it labels them with none, as games does
+- **The developers, source-lists and authors pages share one Load More.**
+  Each had an inline copy that fetched from the URL, left the button
+  loading for good on a response without its meta, and appended a page
+  that landed after a search under the search's list.
+  `core/js/entity-load-more.js` follows games' rules. The authors page
+  never set its paging context, so it stopped at 100 with no Load More
 - **Games: cached pages and the payload follow the data version.** The
   engine joins the rows a page rendered to `/api/games/all/`'s by position,
   and nothing made them agree: a cached `/` from before an import beside
@@ -9,6 +24,7 @@
   jump, as did a fresh page beside a payload `cache_page` kept for an hour.
   The pages store and name their version, the payload is cached under the
   version it computes, and the client keeps only a copy of the page's
+  version
 - **Games: a Load More fetches the next page of the list it extends.**
   Clicked while Back's server render was on its way, it fetched from the
   URL Back had moved to, and Back's list's rows went in under the one

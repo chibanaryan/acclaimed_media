@@ -8,7 +8,9 @@ What is left, why it matters, and what it costs. Ordered within each group.
 Found while shipping v905's filter-engine work and the music metadata refresh
 that followed. Four more from the same list were fixed on 2026-11-02, and
 the three held back that day on 2026-11-03 (`DEVLOG.md`). The five older
-bugs the 2026-11-03 reviews turned up were fixed the same day.
+bugs the 2026-11-03 reviews turned up were fixed the same day, and the two
+filed then (the entity pages' Load More, an engine on a payload of another
+version) later that day.
 `music/static/music/js/album-client-filtering.js`'s `change` listener has
 broken three times when given state, so keep any fix there stateless and pin
 it in `scripts/browser_smoke.js` first.
@@ -18,24 +20,6 @@ it in `scripts/browser_smoke.js` first.
    Chrome's accessibility tree, but never with VoiceOver, NVDA or iOS Safari.
    `docs/ASSISTIVE_TECH_CHECKLIST.md` is the script: run it, record the
    results there, and file what fails here.
-
-## Open bugs (found 2026-11-03)
-
-2. **The developers, source-lists and books Load More stick on a page
-   without its meta**, as games' did until 2026-11-03: each page has its
-   own inline copy of the fetch (`developer_list.html`, `list_list.html`,
-   `author_list.html`), which leaves the button loading when
-   `#load-more-meta` is missing. They also build their URL from
-   `window.location`. Move them onto the games behaviour, or onto one
-   shared script.
-3. **Both engines still adopt a payload that is not the page's version.**
-   A page rendered just before an import commits fetches its payload just
-   after, and gets the new data: games' `GameDataCache` and music's
-   `_loadData` keep such a copy out of storage, but the engine still joins
-   the page's rows to it by position, so that one visit's Load More or jump
-   can repeat and drop items. The window is the page's lifetime across an
-   import. Re-render the list from the payload when the versions differ,
-   rather than adopting the server's rows.
 
 The browser harnesses used for v905 are in the ashgabat worktree's
 `.context/ygrid/`, which is gitignored and so exists only there:
@@ -48,7 +32,7 @@ The section is public at `music.acclaimedmedia.org`, beside the games site and
 a landing page at the apex (2026-10-30; AGENTS.md, "Domain"). The pages keep a
 "Beta" badge while `music.config.MUSIC_BETA` is on.
 
-4. **New brand artwork.** The favicons still read "Acclaimed Video Games"
+2. **New brand artwork.** The favicons still read "Acclaimed Video Games"
    (`games/static/games/brand/`), and a page without artwork of its own has
    no `og:image` since the old one was removed; every page title already
    says Acclaimed Media. A new default goes in `base.html`'s `og_image` block,
@@ -61,7 +45,7 @@ The rankings page is 690 KB anonymous and 833 KB logged in, and the dyno
 runs gthread with three threads per worker (AGENTS.md, "Production memory
 budget").
 
-5. **Check `--threads 3` after a week.** The `Procfile` went from two
+3. **Check `--threads 3` after a week.** The `Procfile` went from two
    threads per worker to three on 2026-11-03, on a week of gthread at two
    (2026-10-27 to 11-02) that peaked at 342 MiB RSS of the 512 MiB quota,
    with swap never above 13 MiB. Around 2026-11-10, re-read
@@ -105,4 +89,5 @@ budget").
 - **Books.** The client-side filtering stack was repaired on 2026-10-17 so it
   runs, but books still has no filter UI at all, and its sort controls
   reference an Alpine `filters` variable no component provides (5 console
-  errors per page load). Deprioritized by the owner.
+  errors per page load). An author's page renders a Load More button that
+  nothing answers (`author_detail.html`). Deprioritized by the owner.
