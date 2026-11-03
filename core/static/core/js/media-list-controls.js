@@ -1052,6 +1052,12 @@ function mediaListControlsData(config) {
             const params = landingFilterParams(
                 settings.landingPath, settings.landingSearch
             );
+            // The heading names the artist from the form's field, so it is
+            // restored here, before the heading is rebuilt, and not left to
+            // the engine's popstate listener, which may run after this one
+            const form = this._form();
+            const artists = form && form.querySelector('[name="artists"]');
+            if (artists) artists.value = params.get('artists') || '';
             // Every name, so that one the URL leaves out is cleared
             this._takeFilters(name => params.get(name) || '');
         }

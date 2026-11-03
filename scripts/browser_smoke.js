@@ -1169,12 +1169,19 @@ async function checkTypingAcrossTheTakeover(page) {
 
 /**
  * Back onto an artist's albums after Clear All emptied the artist. The heading
- * names the artist from the form's field, which the controls do not restore
- * from the URL and the engine's popstate listener does, so this rests on the
- * engine writing the field before the heading is rebuilt. Answers as above.
+ * names the artist from the form's field, which only the engine's popstate
+ * listener restored, so the heading rested on that listener running first:
+ * it did when the engine loaded before Alpine, and not under load. The data
+ * is held here until the controls are up, so their listener always comes
+ * first. Answers as above.
  */
 async function checkBackKeepsTheArtistInTheHeading(page) {
-    await openMusicEngine(page, '/?artists=smoke-band');
+    await page.setViewport({ width: 1440, height: 900 });
+    const held = await holdMusicData(page);
+    await page.goto(music + '/?artists=smoke-band', { waitUntil: 'load' });
+    const decade = await page.waitForSelector('.year-grid-decade');
+    await page.waitForFunction(element => Alpine.$data(element).initialized, {}, decade);
+    await held.release();
     await press(page, /^Clear All$/);
     await page.waitForFunction(() => !location.search.includes('artists'));
     await sleep(300);
@@ -1794,7 +1801,7 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
         page => checkTabTitleMatchesAReload(page, music, '/genres/smoke-rock/',
             ['the 1990s', 'no 1990s', 'Back', 'Back']));
     // No control picks an artist, so only Back brings one back, and the
-    // title reads it from the form field the filtering bundle rewrites
+    // title reads it from the form field the controls restore on Back
     await report('music tab title with an artist',
         page => checkTabTitleMatchesAReload(page, music, '/?artists=smoke-band',
             ['Clear All', 'Back']));

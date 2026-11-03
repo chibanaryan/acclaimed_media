@@ -532,6 +532,34 @@ class GamesDataFollowsThePageTests(SimpleTestCase):
         self.assertIn("cached && cached.version === pageVersion", source)
 
 
+class MusicBackRestoresTheArtistItselfTests(SimpleTestCase):
+    """The controls restore the artist field on Back before the heading.
+
+    The heading reads it from the form, and only the engine's popstate
+    listener wrote it, so the heading rested on that listener running first;
+    under three parallel browsers it did not, 10 times in 12.
+    scripts/browser_smoke.js holds the engine's data to put the controls'
+    listener first ("music Back keeps the artist in the heading").
+    """
+
+    def test_sync_from_url_writes_the_artist_field(self):
+        source = (
+            Path(settings.BASE_DIR) / "core/static/core/js/media-list-controls.js"
+        ).read_text()
+        body = source[source.index("        _syncFromUrl() {") :]
+        self.assertLess(
+            body.index("""querySelector('[name="artists"]')"""),
+            body.index("this._takeFilters("),
+        )
+        minified = (
+            Path(settings.BASE_DIR) / "core/static/core/js/media-list-controls.min.js"
+        ).read_text()
+        self.assertRegex(
+            minified,
+            r'\w\.value=(\w)\.get\("artists"\)\|\|""\),this\._takeFilters\(\w=>\1\.get',
+        )
+
+
 class ClientLoadMoreClaimsItsClickTests(SimpleTestCase):
     """A client-rendered Load More must load one page, not two.
 
