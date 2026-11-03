@@ -1573,8 +1573,9 @@ async function checkHighlightAcrossAnotherVersion(page, engine, { readerMoves, a
     // Past the server row's own scroll
     await sleep(600);
     if (readerMoves) {
-        await page.mouse.move(700, 450);
-        await page.mouse.wheel({ deltaY: 3000 });
+        // As a scrollbar drag does, which in Firefox and Safari sends no
+        // input event to listen for
+        await page.evaluate(() => window.scrollBy(0, 3000));
         await sleep(500);
     }
     const before = await page.evaluate(() => window.scrollY);
@@ -1600,7 +1601,8 @@ async function checkHighlightAcrossAnotherVersion(page, engine, { readerMoves, a
         if (Math.abs(now - before) > 5) {
             return `${label}: the render pulled a reader who had moved on from ${before} to ${now}`;
         }
-        return state && !state.highlighted ? `${label}: the render lost the album's highlight` : null;
+        if (!state) return `${label}: the render left the album off the page`;
+        return state.highlighted ? null : `${label}: the render lost the album's highlight`;
     }
     if (!state) return `${label}: the render left the album off the page`;
     if (!state.highlighted) return `${label}: the render lost the album's highlight`;

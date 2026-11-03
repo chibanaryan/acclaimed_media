@@ -642,6 +642,20 @@ function scrollToAlbumById(albumId, viewMode, { scroll = true } = {}) {
 }
 
 /**
+ * Whether any of an album's rows or its card is on screen.
+ * @param {number} albumId
+ * @returns {boolean}
+ */
+function albumInView(albumId) {
+    return ['', '-mobile', '-grid'].some(suffix => {
+        const element = document.getElementById(`music-${albumId}${suffix}`);
+        if (!element || element.offsetParent === null) return false;
+        const box = element.getBoundingClientRect();
+        return box.bottom > 0 && box.top < window.innerHeight;
+    });
+}
+
+/**
  * Whether the list is in grid view: `viewMode` if given, otherwise the
  * container's class. The class is Alpine's `:class`, which on a fresh load
  * may not be applied yet when the engine is ready, so a caller that knows
@@ -861,16 +875,27 @@ function initAlbumFiltering() {
             highlightPending = true;
         }
     }
-    // A reader who scrolls, clicks or types has moved on from where the
-    // link landed, and a later render must not pull them back. Input, not
-    // scroll events, which the landing's own scroll fires too
-    let readerMoved = false;
-    if (highlightOnLoad !== null) {
-        const moved = () => { readerMoved = true; };
-        ['wheel', 'touchstart', 'keydown', 'pointerdown'].forEach(type =>
-            window.addEventListener(type, moved, { once: true, capture: true, passive: true })
-        );
-    }
+    /**
+     * Land on the highlighted album once the engine has rendered it: bring
+     * its row onto the page, then, after a beat, scroll to it and flash it.
+     * The beat is the one the landing waits on load: the page above the list
+     * is still laying out, and a scroll at once fell short of the album. A
+     * reader who scrolls during it keeps their place, with the album flashed
+     * where it is.
+     */
+    const landOnHighlight = () => {
+        const position = csf.renderer.currentItems.findIndex(
+            album => album.id === highlightOnLoad
+        ) + 1;
+        // Not in this result set at all: nothing to land on.
+        if (position === 0) return;
+        csf.jumpTo(position);
+        const scrolled = window.scrollY;
+        setTimeout(() => {
+            const stayed = Math.abs(window.scrollY - scrolled) < 2;
+            scrollToAlbumById(highlightOnLoad, csf.viewMode, { scroll: stayed });
+        }, 300);
+    };
 
     csf.init().then(async ok => {
         if (!ok) {
@@ -1019,32 +1044,20 @@ function initAlbumFiltering() {
             const start = csf.pageStart;
             const shown = loadedAlbumCount();
             const page = start === 0 && shown <= csf.renderer.PAGE_SIZE;
+            // The render replaces the highlighted row the link landed on,
+            // and the new data may move the album. Read first: a reader
+            // still looking at the row is taken to the album, wherever it
+            // is now, and one who has moved on keeps their place
+            const atLanding = highlightOnLoad !== null && !highlightPending &&
+                albumInView(highlightOnLoad);
             csf.applyFilters(csf.readFilters(form), {
                 range: page ? null : [start, start + shown]
             });
             if (pageRequest) csf.loadMore();
-            // A row the server rendered and scrolled to was rendered again,
-            // without its highlight, and maybe elsewhere. A reader still where
-            // the link landed is taken to it, below if it has left the rows
-            // rendered; one who has moved on keeps their place, and it is
-            // flashed where it is
-            if (highlightOnLoad !== null && !highlightPending) {
-                if (readerMoved) {
-                    scrollToAlbumById(highlightOnLoad, csf.viewMode, { scroll: false });
-                } else {
-                    const position = csf.renderer.currentItems.findIndex(
-                        album => album.id === highlightOnLoad
-                    ) + 1;
-                    if (position > 0) {
-                        csf.jumpTo(position);
-                        // After a beat, as on load: the page above the
-                        // list is still laying out, and a scroll now fell
-                        // short of the album
-                        setTimeout(() => {
-                            if (!readerMoved) scrollToAlbumById(highlightOnLoad, csf.viewMode);
-                        }, 300);
-                    }
-                }
+            if (atLanding) {
+                landOnHighlight();
+            } else if (highlightOnLoad !== null && !highlightPending) {
+                scrollToAlbumById(highlightOnLoad, csf.viewMode, { scroll: false });
             }
         } else if (pageRequest) {
             csf.loadMore();
@@ -1056,14 +1069,7 @@ function initAlbumFiltering() {
         }
         if (highlightPending) {
             csf._syncRendererWithPage();
-            const position = csf.renderer.currentItems.findIndex(
-                album => album.id === highlightOnLoad
-            ) + 1;
-            // Not in this result set at all: nothing to land on.
-            if (position > 0) {
-                csf.jumpTo(position);
-                scrollToAlbumById(highlightOnLoad, csf.viewMode);
-            }
+            landOnHighlight();
         }
     });
 }
