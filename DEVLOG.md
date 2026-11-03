@@ -2,6 +2,12 @@
 
 ## 2026-11-03
 
+- **Games' source lists use the shared sort control**, the last page with a
+  copy of its own. The shared control now leaves a direction out of the URL
+  only when it is that sort's own, so a reload keeps Z-A names on every
+  entity page; one default for every sort lost it. Music's source lists
+  named a default sort the server does not use, so "# Lists" wrote default
+  parameters; games' Clear filters link dropped a Z-A sort
 - **Close a reflected XSS through `?sort=` and `?dir=`.** Music's rankings,
   artists and source-lists pages and games' source lists rendered them
   unchecked into Alpine `x-data`, where autoescaping's `&#x27;` decodes

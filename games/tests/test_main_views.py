@@ -2110,6 +2110,48 @@ class ListListViewTest(TestCase):
                 self.assertNotIn("alert(1)", response.content.decode())
                 self.assertEqual(response.context["sort_direction"], "desc")
 
+    def test_the_shared_sort_control_offers_each_modes_sorts(self):
+        for group_by, options in (
+            ("publication", config.LIST_SORT_OPTIONS),
+            ("type", config.LIST_TYPE_SORT_OPTIONS),
+        ):
+            page = self.client.get(
+                reverse("list-list"), {"group_by": group_by}
+            ).content.decode()
+            for option in options:
+                with self.subTest(group_by=group_by, sort=option["value"]):
+                    self.assertIn(f"updateSort('{option['value']}')", page)
+            self.assertIn("entityListControls({", page)
+            self.assertIn("core/js/media-list-controls", page)
+
+    def test_clear_filters_keeps_the_sort_and_a_direction_not_its_own(self):
+        cases = (
+            ({"sort": "alpha", "dir": "desc"}, "sort=alpha&dir=desc"),
+            ({"sort": "alpha"}, "sort=alpha"),
+            ({"dir": "asc"}, "dir=asc"),
+            # A type's year sort becomes the publications' default, and its
+            # direction, oldest or newest, means nothing there
+            ({"type": "all-time", "sort": "release", "dir": "asc"}, ""),
+            ({"q": "R&B"}, "q=R%26B"),
+        )
+        for params, expected in cases:
+            with self.subTest(params=params):
+                response = self.client.get(
+                    reverse("list-list"), {"year": "2020", **params}
+                )
+                self.assertEqual(response.context["clear_filters_query"], expected)
+        response = self.client.get(
+            reverse("list-list"), {"year": "2020", "sort": "alpha"}
+        )
+        self.assertContains(response, 'href="/lists/?sort=alpha"')
+
+    def test_the_sort_fields_are_rendered_before_alpine(self):
+        page = self.client.get(
+            reverse("list-list"), {"sort": "alpha", "dir": "desc"}
+        ).content.decode()
+        self.assertIn('name="sort" value="alpha"', page)
+        self.assertIn('name="dir" value="desc"', page)
+
     def test_clear_filters_keeps_a_search_with_an_ampersand(self):
         response = self.client.get(reverse("list-list"), {"year": "2020", "q": "R&B"})
         self.assertContains(response, "q=R%26B")
@@ -2429,7 +2471,7 @@ class ListListFacetedFilterTest(TestCase):
         """Test that type grouping uses correct sort options."""
         response = self.client.get(reverse("list-list") + "?group_by=type")
         sort_options = response.context["sort_options"]
-        sort_values = [s[0] for s in sort_options]
+        sort_values = [s["value"] for s in sort_options]
         self.assertIn("alpha", sort_values)
         self.assertIn("release", sort_values)
         self.assertNotIn("importance", sort_values)
@@ -2438,7 +2480,7 @@ class ListListFacetedFilterTest(TestCase):
         """Test that publication grouping uses correct sort options."""
         response = self.client.get(reverse("list-list") + "?group_by=publication")
         sort_options = response.context["sort_options"]
-        sort_values = [s[0] for s in sort_options]
+        sort_values = [s["value"] for s in sort_options]
         self.assertIn("importance", sort_values)
         self.assertIn("alpha", sort_values)
         self.assertNotIn("release", sort_values)

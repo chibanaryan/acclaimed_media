@@ -939,26 +939,29 @@ function mediaListControlsData(config) {
  * such page shows, instead of a pair of native selects on some of them.
  *
  * Config: url, target (the HTMX swap target), sort, dir, defaultSort,
- * defaultDir, and extraFields - the names of other inputs whose values have
- * to ride along with the request.
+ * ascendingSorts, and extraFields - the names of other inputs whose values
+ * have to ride along with the request.
  */
 function entityListControlsData(config) {
     const settings = config || {};
     const defaultSort = settings.defaultSort || settings.sort || '';
-    const defaultDir = settings.defaultDir || 'desc';
+    // Each sort has a direction that is obviously right first time: a name
+    // reads A-Z, a count or a year reads biggest first. It is also the one
+    // the server takes when the URL names none, so the URL leaves it out
+    // per sort: one default for every sort put Z-A names back to A-Z on a
+    // reload. Each view's ASCENDING_SORTS agrees (music/views.py,
+    // games/views/lists.py).
+    const ascending = settings.ascendingSorts || ['name', 'alpha', 'order', 'rank'];
+    const directionFor = sort => (ascending.indexOf(sort) === -1 ? 'desc' : 'asc');
 
     return {
         sort: settings.sort || defaultSort,
-        sortDirection: settings.dir || defaultDir,
+        sortDirection: settings.dir || directionFor(settings.sort || defaultSort),
 
         updateSort(newSort) {
             if (newSort === this.sort) return;
             this.sort = newSort;
-            // Each sort has a direction that is obviously right first time:
-            // a name reads A-Z, a count or a year reads biggest first. The
-            // games source-lists page picks the same way.
-            const ascending = settings.ascendingSorts || ['name', 'alpha', 'order', 'rank'];
-            this.sortDirection = ascending.indexOf(newSort) === -1 ? 'desc' : 'asc';
+            this.sortDirection = directionFor(newSort);
             this._request();
         },
 
@@ -978,7 +981,7 @@ function entityListControlsData(config) {
                 }
             };
             setParam('sort', this.sort, defaultSort);
-            setParam('dir', this.sortDirection, defaultDir);
+            setParam('dir', this.sortDirection, directionFor(this.sort));
             url.searchParams.delete('page');
 
             const values = { sort: this.sort, dir: this.sortDirection };

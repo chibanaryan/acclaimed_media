@@ -2,11 +2,51 @@
 
 from django.db.models import Case, Count, Q, When, Value, IntegerField
 from django.db.models.functions import Lower
+from django.utils.http import urlencode
 from django.views.generic import ListView
 
 from core.mixins import HTMXPartialMixin, RobustPaginationMixin
 from core.services.query_params import parse_direction
-from games import constants, models
+from games import config, constants, models
+
+# Each grouping's sorts and the one it takes when the URL names none
+MODE_SORTS = {
+    "type": (config.LIST_TYPE_SORT_OPTIONS, "release"),
+    "publication": (config.LIST_SORT_OPTIONS, "importance"),
+}
+# A name reads A-Z; a count or a year reads biggest first. The shared sort
+# control's `directionFor` picks the same way.
+ASCENDING_SORTS = frozenset({"alpha"})
+
+
+def default_direction(sort):
+    """The direction a sort runs in when the URL does not say."""
+    return "asc" if sort in ASCENDING_SORTS else "desc"
+
+
+def _sort_state(params, group_by):
+    """The sort and direction asked for, as values the grouping knows."""
+    options, default = MODE_SORTS["type" if group_by == "type" else "publication"]
+    raw = params.get("sort", "")
+    sort = raw if raw in {option["value"] for option in options} else default
+    return sort, parse_direction(params.get("dir"), default_direction(sort))
+
+
+def _clear_filters_query(sort, direction, search_query):
+    """The query string of the Clear filters link, which drops the year and
+    type and keeps the sort, its direction and the search. With no type the
+    page groups by publication, where a year sort becomes the default, and
+    its direction, which meant oldest or newest, goes with it."""
+    params = {}
+    if sort == "alpha":
+        params["sort"] = sort
+        if direction != default_direction(sort):
+            params["dir"] = direction
+    elif sort == "importance" and direction != default_direction(sort):
+        params["dir"] = direction
+    if search_query:
+        params["q"] = search_query
+    return urlencode(params)
 
 
 class ListListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
@@ -202,12 +242,6 @@ class ListListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
             )
         context["grand_total_list_count"] = grand_total_qs.count()
 
-        # Sort options for type grouping mode
-        context["sort_options"] = [
-            ("release", "Year"),
-            ("alpha", "Alphabetical"),
-        ]
-
         # Total lists count (filtered by type)
         context["total_list_count"] = grand_total_lists
 
@@ -226,11 +260,7 @@ class ListListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
         if group_by == "type":
             return models.Publication.objects.none()
 
-        raw_sort = self.request.GET.get("sort", "")
-        sort = raw_sort if raw_sort in ("importance", "alpha") else "importance"
-        # Default direction depends on sort type: desc for importance, asc for alpha
-        default_dir = "asc" if sort == "alpha" else "desc"
-        sort_direction = parse_direction(self.request.GET.get("dir"), default_dir)
+        sort, sort_direction = _sort_state(self.request.GET, group_by)
 
         # Base list queryset for filtering
         list_filter = Q()
@@ -356,18 +386,20 @@ class ListListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
             self._get_list_filters()
         )
 
-        # Default sort depends on group_by mode
-        # Normalize sort to valid options for the current mode to handle
-        # stale values when the type filter switches the grouping mode
-        raw_sort = self.request.GET.get("sort", "")
-        if group_by == "type":
-            sort = raw_sort if raw_sort in ("release", "alpha") else "release"
-            default_dir = "desc" if sort == "release" else "asc"
-        else:
-            sort = raw_sort if raw_sort in ("importance", "alpha") else "importance"
-            default_dir = "asc" if sort == "alpha" else "desc"
-
-        sort_direction = parse_direction(self.request.GET.get("dir"), default_dir)
+        # Normalized to the grouping's own sorts: the type filter switches
+        # the grouping, and the sort a URL carries may be the other's
+        sort, sort_direction = _sort_state(self.request.GET, group_by)
+        options, default_sort = MODE_SORTS[
+            "type" if group_by == "type" else "publication"
+        ]
+        context["sort_options"] = options
+        context["default_sort"] = default_sort
+        context["default_sort_label"] = next(
+            option["label"] for option in options if option["value"] == default_sort
+        )
+        context["clear_filters_query"] = _clear_filters_query(
+            sort, sort_direction, search_query
+        )
 
         # Handle type grouping mode
         if group_by == "type":
@@ -480,12 +512,6 @@ class ListListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
         context["sort"] = sort
         context["sort_direction"] = sort_direction
         context["group_by"] = group_by
-
-        # Sort options for publication grouping mode
-        context["sort_options"] = [
-            ("importance", "# Lists"),
-            ("alpha", "Alphabetical"),
-        ]
 
         # Total list count for display (loaded publications only)
         total_lists = sum(g["total_count"] for g in publication_groups)

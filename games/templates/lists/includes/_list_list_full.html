@@ -14,136 +14,24 @@
     {% endif %}
 </h2>
 
+{# The sort control is the shared one. Its state lives here, inside the #}
+{# swapped content, so each swap starts it again with this mode's default #}
+{# sort; the outer updateUrl still answers the type and year selects. #}
 <div class="flex flex-wrap items-center gap-2 mb-6 min-h-[2.5rem]"
-     x-data="{
-        allExpanded: false,
-        sort: '{{ sort|escapejs }}',
-        sortDirection: '{{ sort_direction|default:'desc'|escapejs }}',
-        sortOpen: false,
-        getSortLabel() {
-            const labels = {
-                importance: '# Lists',
-                alpha: 'Alphabetical',
-                release: 'Year'
-            };
-            return labels[this.sort] || this.sort;
-        },
-        updateSort(newSort) {
-            this.sort = newSort;
-            this.sortOpen = false;
-            // Set appropriate default direction for the sort type
-            // Alphabetical: ascending (A-Z), Year/# Lists: descending (newest/most first)
-            this.sortDirection = newSort === 'alpha' ? 'asc' : 'desc';
-            const url = new URL(window.location);
-            // Default sort depends on current group mode (determined by type filter)
-            const hasTypeFilter = document.getElementById('filter-list-type')?.value;
-            const defaultSort = hasTypeFilter ? 'release' : 'importance';
-            if (newSort !== defaultSort) {
-                url.searchParams.set('sort', newSort);
-            } else {
-                url.searchParams.delete('sort');
-            }
-            // Update direction in URL (only if not default 'desc')
-            if (this.sortDirection !== 'desc') {
-                url.searchParams.set('dir', this.sortDirection);
-            } else {
-                url.searchParams.delete('dir');
-            }
-            url.searchParams.delete('page');
-            // htmx pushes the request's address; this tidies that entry
-            const left = window.location.href;
-            htmx.ajax('GET', '{% url 'list-list' %}', {
-                target: '#filter-results-wrapper',
-                swap: 'innerHTML',
-                values: {
-                    sort: newSort,
-                    dir: this.sortDirection,
-                    type: document.getElementById('filter-list-type')?.value || '',
-                    year: document.getElementById('filter-list-year')?.value || '',
-                    q: document.getElementById('publication-search')?.value || ''
-                }
-            }).then(() => {
-                if (window.location.href !== left) window.history.replaceState(window.history.state, '', url);
-            }, () => {});
-        },
-        toggleSortDirection() {
-            this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
-            const url = new URL(window.location);
-            if (this.sortDirection !== 'desc') {
-                url.searchParams.set('dir', this.sortDirection);
-            } else {
-                url.searchParams.delete('dir');
-            }
-            url.searchParams.delete('page');
-            // htmx pushes the request's address; this tidies that entry
-            const left = window.location.href;
-            htmx.ajax('GET', '{% url 'list-list' %}', {
-                target: '#filter-results-wrapper',
-                swap: 'innerHTML',
-                values: {
-                    sort: this.sort,
-                    dir: this.sortDirection,
-                    type: document.getElementById('filter-list-type')?.value || '',
-                    year: document.getElementById('filter-list-year')?.value || '',
-                    q: document.getElementById('publication-search')?.value || ''
-                }
-            }).then(() => {
-                if (window.location.href !== left) window.history.replaceState(window.history.state, '', url);
-            }, () => {});
-        }
-     }">
+     x-data="entityListControls({
+         url: '{% url 'list-list' %}',
+         target: '#filter-results-wrapper',
+         sort: '{{ sort|escapejs }}',
+         dir: '{{ sort_direction|default:'desc'|escapejs }}',
+         defaultSort: '{{ default_sort|escapejs }}',
+         extraFields: ['q', 'type', 'year']
+     })">
     {# Hidden inputs for HTMX includes #}
-    <input type="hidden" name="sort" :value="sort">
-    <input type="hidden" name="dir" :value="sortDirection">
+    {# Rendered too: updateUrl reads them before Alpine reaches a swap #}
+    <input type="hidden" name="sort" value="{{ sort }}" :value="sort">
+    <input type="hidden" name="dir" value="{{ sort_direction }}" :value="sortDirection">
 
-    {# Sort toggle - far left #}
-    {# Desktop: Custom dropdown with direction button #}
-    <div class="hidden desktop:flex items-center gap-2">
-        <div class="dropdown" @click.away="sortOpen = false">
-            <button type="button"
-                    class="flex items-center gap-1 text-base-content/70 hover:text-base-content transition-colors cursor-pointer"
-                    @click="sortOpen = !sortOpen">
-                <span class="mdi mdi-sort text-base" aria-hidden="true"></span>
-                <span class="text-sm" x-text="getSortLabel()"></span>
-                <span class="mdi mdi-chevron-down text-xs" aria-hidden="true"></span>
-            </button>
-            <ul x-show="sortOpen" x-cloak
-                class="dropdown-content menu menu-sm bg-base-200 rounded-box shadow-lg z-50 w-fit p-2 mt-1">
-                {% for sort_value, sort_label in sort_options %}
-                <li><button type="button" @click="updateSort('{{ sort_value }}')" :class="sort === '{{ sort_value }}' ? 'active' : ''">{{ sort_label }}</button></li>
-                {% endfor %}
-            </ul>
-        </div>
-        {# Direction flip button #}
-        <button type="button"
-                class="flex items-center gap-1 text-base-content/70 hover:text-base-content transition-colors cursor-pointer"
-                @click="toggleSortDirection()"
-                :title="sortDirection === 'asc' ? 'Ascending order' : 'Descending order'">
-            <span class="mdi text-base" aria-hidden="true" :class="sortDirection === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending'"></span>
-            <span class="text-xs" x-text="sortDirection === 'asc' ? 'Asc' : 'Desc'"></span>
-        </button>
-    </div>
-    {# Mobile: Native select for touch compatibility #}
-    <div class="desktop:hidden flex items-center gap-1">
-        <span class="mdi mdi-sort text-base text-base-content/70" aria-hidden="true"></span>
-        <select id="sort-select"
-                aria-label="Sort by"
-                name="sort-mobile"
-                class="select select-sm select-bordered bg-base-200"
-                style="width: fit-content; max-width: 100%;"
-                @change="updateSort($event.target.value)">
-            {% for sort_value, sort_label in sort_options %}
-            <option value="{{ sort_value }}" :selected="sort === '{{ sort_value }}'">{{ sort_label }}</option>
-            {% endfor %}
-        </select>
-        {# Direction flip button #}
-        <button type="button"
-                class="p-1 text-base-content/70 hover:text-base-content transition-colors"
-                @click="toggleSortDirection()"
-                :title="sortDirection === 'asc' ? 'Ascending order' : 'Descending order'">
-            <span class="mdi text-lg" aria-hidden="true" :class="sortDirection === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending'"></span>
-        </button>
-    </div>
+    {% include 'core/includes/_entity_sort_controls.html' with sort_options=sort_options default_sort_label=default_sort_label %}
 
     {# Separator #}
     <div class="w-px h-6 bg-base-content/20"></div>
@@ -192,7 +80,7 @@
 
     {# Clear filters button - preserves sort, direction, and search query #}
     {% if filters.year or filters.type %}
-    <a href="{% url 'list-list' %}{% if sort == 'alpha' or sort_direction != 'desc' or filters.q %}?{% if sort == 'alpha' %}sort=alpha{% endif %}{% if sort_direction != 'desc' %}{% if sort == 'alpha' %}&{% endif %}dir={{ sort_direction }}{% endif %}{% if filters.q %}{% if sort == 'alpha' or sort_direction != 'desc' %}&{% endif %}q={{ filters.q|urlencode }}{% endif %}{% endif %}"
+    <a href="{% url 'list-list' %}{% if clear_filters_query %}?{{ clear_filters_query }}{% endif %}"
        class="btn btn-ghost btn-sm">
         <span class="mdi mdi-close" aria-hidden="true"></span>
         <span>Clear filters</span>
@@ -206,6 +94,7 @@
     {% if group_by != 'type' %}
     <button type="button"
             class="btn btn-ghost btn-sm text-base-content/70"
+            x-data="{ allExpanded: false }"
             @click="allExpanded = !allExpanded; $dispatch(allExpanded ? 'publications-expand-all' : 'publications-collapse-all')"
             :title="allExpanded ? 'Collapse all' : 'Expand all'">
         <span class="mdi" aria-hidden="true" :class="allExpanded ? 'mdi-unfold-less-horizontal' : 'mdi-unfold-more-horizontal'"></span>

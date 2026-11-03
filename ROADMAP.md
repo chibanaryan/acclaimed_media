@@ -93,9 +93,6 @@ budget").
   subsidiary filter. 0 of 629 artists in this corpus have sub-acts, so the
   panel would always be empty. Revisit only if the metadata pass starts
   filling `Artist.parent`.
-- **Games' source-lists page still carries its own inline sort control**
-  rather than `core/includes/_entity_sort_controls.html`. It looks identical;
-  it is the last un-shared duplicate, so it is tidying, not parity.
 - **Migrating games and books onto the shared `core/includes/` partials** -
   `_tracking_button.html`, `_status_filter.html`,
   `_saved_filters_dropdown.html`, `_saved_filter_modals.html` and

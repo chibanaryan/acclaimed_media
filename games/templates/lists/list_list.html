@@ -1,10 +1,15 @@
 {% extends 'base.html' %}
 {% load game_filters %}
-{% load humanize %}
+{% load humanize static %}
 
 {% block title %}Source Lists | Acclaimed Media{% endblock %}
 {% block meta_description %}The critics' lists from games publications that the video game rankings are aggregated from, grouped by publication.{% endblock %}
 {% block og_title %}Source Lists | Acclaimed Media{% endblock %}
+
+{% block pre_alpine %}
+{# The shared sort control binds to this; it must load before Alpine core. #}
+<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/media-list-controls.min.js" %}');</script>
+{% endblock %}
 
 {% block content %}
 <div class="max-w-[860px] mx-auto">

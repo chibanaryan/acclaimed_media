@@ -41,6 +41,18 @@ DEFAULT_PAGE_SIZE = 100
 SEARCH_PAGE_SIZE = 100
 POST_PAGE_SIZE = 5
 
+# The source-lists page's sort choices, by grouping: publications sort by
+# what they contribute or by name, list types by year or by name. Rendered
+# by core/includes/_entity_sort_controls.html.
+LIST_SORT_OPTIONS = (
+    {"value": "importance", "label": "# Lists"},
+    {"value": "alpha", "label": "Alphabetical"},
+)
+LIST_TYPE_SORT_OPTIONS = (
+    {"value": "release", "label": "Year"},
+    {"value": "alpha", "label": "Alphabetical"},
+)
+
 # The developer list's sort choices, rendered by
 # core/includes/_entity_sort_controls.html as the artist list's are.
 DEVELOPER_SORT_OPTIONS = (
