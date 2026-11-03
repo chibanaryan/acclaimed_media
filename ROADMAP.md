@@ -26,13 +26,26 @@ The browser harnesses used for v905 are in the ashgabat worktree's
 `matrix.js`, `musicrace.js`, `loadmore.js`, `round8.js`-`round10.js`, and
 `xbrowser.js` for WebKit and Firefox.
 
+## Open bugs (found 2026-11-03, second session)
+
+2. **A `?highlight=` landing can miss when an import commits during the
+   page's load.** The engine then renders from the new data
+   (`followsPage()`), and lands on the album again only for a reader still at
+   the landing: the first landing not yet scrolled, or the row's middle on
+   screen. Three edges are left, each needing a page load to straddle an
+   import as well: a landing's smooth scroll still in motion counts as moved
+   on, so the album is flashed where the old row was; a phone's momentum
+   fling begun before the render is not seen as moving; and a row whose
+   middle sits under the sticky header still counts as on screen. Six review
+   rounds went into this case, so weigh any fix against how rare it is.
+
 ## Music: after launch
 
 The section is public at `music.acclaimedmedia.org`, beside the games site and
 a landing page at the apex (2026-10-30; AGENTS.md, "Domain"). The pages keep a
 "Beta" badge while `music.config.MUSIC_BETA` is on.
 
-2. **New brand artwork.** The favicons still read "Acclaimed Video Games"
+3. **New brand artwork.** The favicons still read "Acclaimed Video Games"
    (`games/static/games/brand/`), and a page without artwork of its own has
    no `og:image` since the old one was removed; every page title already
    says Acclaimed Media. A new default goes in `base.html`'s `og_image` block,
@@ -45,7 +58,7 @@ The rankings page is 690 KB anonymous and 833 KB logged in, and the dyno
 runs gthread with three threads per worker (AGENTS.md, "Production memory
 budget").
 
-3. **Check `--threads 3` after a week.** The `Procfile` went from two
+4. **Check `--threads 3` after a week.** The `Procfile` went from two
    threads per worker to three on 2026-11-03, on a week of gthread at two
    (2026-10-27 to 11-02) that peaked at 342 MiB RSS of the 512 MiB quota,
    with swap never above 13 MiB. Around 2026-11-10, re-read

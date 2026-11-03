@@ -8,9 +8,11 @@
   that visit's first Load More or jump repeated and dropped items. The
   engine now asks whether its data is the page's version as it takes over,
   and if not renders the same rows from the payload, a music `?page=N`
-  link's included. Music's `/api/all/` also labelled rows read across an
-  import's commit with the new version, which stored the last release's
-  rows under it for the session; it labels them with none, as games does
+  link's included, and a `?highlight=` album is landed on again for a
+  reader still at the landing. Music's `/api/all/` also labelled rows read
+  across an import's commit with the new version, which stored the last
+  release's rows under it for the session; it labels them with none, as
+  games does
 - **The developers, source-lists and authors pages share one Load More.**
   Each had an inline copy that fetched from the URL, left the button
   loading for good on a response without its meta, and appended a page

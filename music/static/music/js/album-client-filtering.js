@@ -867,12 +867,17 @@ function initAlbumFiltering() {
     const highlightOnLoad = currentHighlight();
     const viewModeOnLoad = csf._storedViewMode();
     let highlightPending = false;
+    // The landing on a row the server rendered, until it has scrolled
+    let landingTimer = null;
     if (highlightOnLoad !== null) {
         const onPage =
             document.getElementById(`music-${highlightOnLoad}`) ||
             document.getElementById(`music-${highlightOnLoad}-grid`);
         if (onPage) {
-            setTimeout(() => scrollToAlbumById(highlightOnLoad, viewModeOnLoad), 300);
+            landingTimer = setTimeout(() => {
+                landingTimer = null;
+                scrollToAlbumById(highlightOnLoad, viewModeOnLoad);
+            }, 300);
         } else {
             highlightPending = true;
         }
@@ -1052,12 +1057,15 @@ function initAlbumFiltering() {
             const page = start === 0 && shown <= csf.renderer.PAGE_SIZE;
             // The render replaces the highlighted row the link landed on,
             // and the new data may move the album. Read first: a reader
-            // still at the landing - looking at the row, or at the top of a
-            // page whose landing has yet to scroll - is taken to the album,
-            // wherever it is now, and one who has moved on keeps their place
+            // still at the landing - looking at the row, or on a page whose
+            // landing has yet to scroll, which this one replaces - is taken
+            // to the album, wherever it is now, and one who has moved on
+            // keeps their place
             const landed = highlightOnLoad !== null && !highlightPending;
             const atLanding = landed &&
-                (window.scrollY === 0 || albumInView(highlightOnLoad));
+                (landingTimer !== null || albumInView(highlightOnLoad));
+            clearTimeout(landingTimer);
+            landingTimer = null;
             csf.applyFilters(csf.readFilters(form), {
                 range: page ? null : [start, start + shown]
             });
