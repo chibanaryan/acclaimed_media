@@ -1523,13 +1523,24 @@ async function checkEngineFollowsThePagesVersion(page, engine, path, stale, keep
     const sent = await servePayload(page, engine, stale, keep);
     await page.goto(site + path, { waitUntil: 'networkidle2' });
     await page.$eval(rows, row => { row.dataset.smokeServer = '1'; });
-    // Past the server row's own highlight, which the render replaces
-    if (path.includes('highlight=')) await sleep(600);
+    const highlight = new URLSearchParams(path.split('?')[1] || '').get('highlight');
+    if (highlight) {
+        // Past the server row's own scroll, and then on down the page, where
+        // the render must leave the reader
+        await sleep(600);
+        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+        await sleep(300);
+    }
+    const scrolled = await page.evaluate(() => window.scrollY);
     sent.open();
     await start(page);
     await sleep(500);
-    if (path.includes('highlight=') && !await page.$('#album-list-container .is-highlighted')) {
-        return `${site}${path}: the render lost the highlight`;
+    if (highlight) {
+        if (!await page.$(`#music-${highlight} .is-highlighted, #music-${highlight}.is-highlighted`)) {
+            return `${site}${path}: the render lost the album's highlight`;
+        }
+        const now = await page.evaluate(() => window.scrollY);
+        if (Math.abs(now - scrolled) > 5) return `${site}${path}: the render scrolled from ${scrolled} to ${now}`;
     }
     const kept = Boolean(await page.$(`${rows}[data-smoke-server]`));
     if (!stale) return kept ? null : `${site}${path}: the page's own version re-rendered its rows`;
@@ -1548,7 +1559,7 @@ async function checkEngineFollowsThePagesVersion(page, engine, path, stale, keep
               `${expected[0]} to ${expected[expected.length - 1]}`;
     };
     const first = await shown();
-    if (first || keep || path.includes('highlight=')) return first;
+    if (first || keep || highlight) return first;
     const button = path.includes('page=') ? '.load-previous-button' : '.load-more-button';
     if (!await page.$(button)) return `${site}${path}: no ${button} after the render`;
     await page.click(button);

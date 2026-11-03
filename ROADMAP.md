@@ -90,4 +90,7 @@ budget").
   runs, but books still has no filter UI at all, and its sort controls
   reference an Alpine `filters` variable no component provides (5 console
   errors per page load). An author's page renders a Load More button that
-  nothing answers (`author_detail.html`). Deprioritized by the owner.
+  nothing answers (`author_detail.html`), and the authors list pushes its own
+  history entry beside htmx's on every search and sort, so Back takes two
+  presses (AGENTS.md, "A page never pushes an entry of its own"). Deprioritized
+  by the owner.

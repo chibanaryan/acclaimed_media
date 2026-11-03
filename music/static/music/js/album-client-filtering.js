@@ -604,9 +604,11 @@ function scrollToAlbumPosition(position) {
  * soon as the reader hovers another row.
  * @param {number} albumId
  * @param {string} [viewMode] - see albumViewIsGrid
+ * @param {Object} [options]
+ * @param {boolean} [options.scroll=true] - false flashes it where it is
  * @returns {boolean} Whether the album is on the page
  */
-function scrollToAlbumById(albumId, viewMode) {
+function scrollToAlbumById(albumId, viewMode, { scroll = true } = {}) {
     const isGrid = albumViewIsGrid(viewMode);
 
     let target = null;
@@ -635,7 +637,7 @@ function scrollToAlbumById(albumId, viewMode) {
 
     if (!target) return false;
 
-    flashHighlight(target, highlight);
+    flashHighlight(scroll ? target : null, highlight);
     return true;
 }
 
@@ -1011,8 +1013,12 @@ function initAlbumFiltering() {
                 range: page ? null : [start, start + shown]
             });
             if (pageRequest) csf.loadMore();
-            // Its row was rendered again, without the highlight
-            highlightPending = highlightOnLoad !== null;
+            // A row the server rendered and scrolled to was rendered again,
+            // without its highlight. It is flashed where it is: the reader
+            // may have scrolled on, or asked for more, since
+            if (highlightOnLoad !== null && !highlightPending) {
+                scrollToAlbumById(highlightOnLoad, csf.viewMode, { scroll: false });
+            }
         } else if (pageRequest) {
             csf.loadMore();
         } else if (csf.pageStart > 0) {
