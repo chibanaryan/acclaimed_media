@@ -69,11 +69,24 @@ class ArtistAdmin(MusicSiteAdminMixin, admin.ModelAdmin):
         "wikidata_id",
         "album_count",
     ]
-    search_fields = ["name", "slug", "musicbrainz_id", "wikidata_id", "=source_id"]
+    search_fields = [
+        "name",
+        "name_normalized",
+        "slug",
+        "musicbrainz_id",
+        "wikidata_id",
+        "=source_id",
+    ]
     # The names and ids come from ArtistInfo.txt and every import rewrites
     # them, so an edit here would last only until the next one.
     # The slug too: every import rebuilds it from the name.
-    readonly_fields = ["source_id", "slug", "name_variants", "all_wikidata_ids"]
+    readonly_fields = [
+        "source_id",
+        "slug",
+        "name_normalized",
+        "name_variants",
+        "all_wikidata_ids",
+    ]
 
     def has_add_permission(self, request):
         # Artists come from ArtistInfo.txt alone; one added here would have
@@ -107,8 +120,14 @@ class ArtistSlugHistoryAdmin(admin.ModelAdmin):
 @admin.register(models.AlbumCredit)
 class AlbumCreditAdmin(admin.ModelAdmin):
     list_display = ["album", "position", "artist", "credited_name"]
-    search_fields = ["album__name", "artist__name", "credited_name"]
-    readonly_fields = ["variant", "credited_name"]
+    search_fields = [
+        "album__name",
+        "artist__name",
+        "artist__name_normalized",
+        "credited_name",
+        "credited_name_normalized",
+    ]
+    readonly_fields = ["variant", "credited_name", "credited_name_normalized"]
     list_select_related = ["album", "artist"]
     raw_id_fields = ["album", "artist"]
 
@@ -155,13 +174,19 @@ class AlbumAdmin(MusicSiteAdminMixin, admin.ModelAdmin):
         "name_normalized",
         "slug",
         "artist_credit",
+        "artist_credit_normalized",
         "wikidata_id",
         "musicbrainz_release_group_id",
     ]
     filter_horizontal = ["genres"]
     inlines = [AlbumCreditInline]
     prepopulated_fields = {"slug": ("name",)}
-    readonly_fields = ["created", "modified", "name_normalized"]
+    readonly_fields = [
+        "created",
+        "modified",
+        "name_normalized",
+        "artist_credit_normalized",
+    ]
     ordering = ["rank"]
 
     def get_queryset(self, request):

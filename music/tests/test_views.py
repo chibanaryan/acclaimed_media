@@ -147,6 +147,13 @@ class AlbumHomePageViewTests(MusicDataMixin, TestCase):
         response = self.client.get(reverse("music:home"), {"q": "Deja"})
         self.assertIn(album, response.context["albums"])
 
+    def test_search_matches_the_credit_without_its_accents(self):
+        album = models.Album.objects.create(
+            name="Homogenic", rank=4, artist_credit="Björk", year_released=1997
+        )
+        response = self.client.get(reverse("music:home"), {"q": "bjork"})
+        self.assertEqual(list(response.context["albums"]), [album])
+
     def test_year_range_filters_both_ends(self):
         response = self.client.get(
             reverse("music:home"), {"start": "1970", "end": "1990"}
@@ -900,6 +907,19 @@ class ArtistListViewTests(MusicDataMixin, TestCase):
         response = self.client.get(reverse("music:artist-list"), {"q": "stray"})
         self.assertEqual(list(response.context["artists"]), [])
 
+    def test_a_search_matches_a_name_without_its_accents(self):
+        bjork = models.Artist.objects.create(name="Björk", slug="bjork")
+        models.Album.objects.create(name="Post", rank=4).artists.set([bjork])
+        response = self.client.get(reverse("music:artist-list"), {"q": "bjork"})
+        self.assertEqual([a.name for a in response.context["artists"]], ["Björk"])
+
+    def test_a_search_matches_a_credited_name_without_its_accents(self):
+        credit = models.AlbumCredit.objects.get(album=self.rust)
+        credit.credited_name = "Neil Young & Ståndarna"
+        credit.save()
+        response = self.client.get(reverse("music:artist-list"), {"q": "standarna"})
+        self.assertEqual([a.name for a in response.context["artists"]], ["Neil Young"])
+
     def test_an_unknown_sort_falls_back_to_album_count(self):
         response = self.client.get(reverse("music:artist-list"), {"sort": "nope"})
         self.assertEqual(response.status_code, 200)
@@ -1164,6 +1184,11 @@ class AlbumSearchViewTests(MusicDataMixin, TestCase):
     def test_matches_on_the_artist_credit(self):
         response = self.client.get(reverse("music:search"), {"q": "radiohead"})
         self.assertContains(response, "Kid A")
+
+    def test_matches_on_the_artist_credit_without_its_accents(self):
+        models.Album.objects.create(name="Homogenic", rank=4, artist_credit="Björk")
+        response = self.client.get(reverse("music:search"), {"q": "bjork"})
+        self.assertEqual([a.name for a in response.context["albums"]], ["Homogenic"])
 
     def test_no_query_returns_nothing(self):
         response = self.client.get(reverse("music:search"))

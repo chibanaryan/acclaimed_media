@@ -543,9 +543,16 @@ same 900 rows down as at the top.
 Two payload fields exist to keep the client and the server agreeing exactly:
 
 - `nn` is `name_normalized`, the `unidecode(name)` column the server's `q`
-  searches alongside `name` and `artist_credit`. Sent rather than recomputed,
+  searches alongside `name` and `artist_credit`, and `cn` is
+  `artist_credit_normalized`, the same for the credit line, so "bjork" finds
+  Björk (`credits.album_search_q`, 2026-11-04). Sent rather than recomputed,
   because reimplementing unidecode in the browser would be a second copy of the
-  rule that drifts.
+  rule that drifts. `cn` is sent only for the albums that have one. The
+  query is never folded for matching, on either side, only for ranking
+  (`search_ranking`). The
+  artist search folds the same way, through `Artist.name_normalized` and
+  `AlbumCredit.credited_name_normalized`; the import fills the latter itself,
+  since it bulk-creates credits.
 - `ni` is the album's position in the server's own `Lower(name)` ordering. No
   JavaScript comparator reproduces a database collation: `localeCompare` files
   "Ágætis byrjun" next to the A's while SQLite sorts it past Z, and punctuation

@@ -165,7 +165,12 @@ class AdminInlineTests(TestCase):
             music_admin.AlbumCreditInline,
             music_admin.AlbumCreditAdmin,
         ):
-            self.assertEqual(admin_class.readonly_fields, ["variant", "credited_name"])
+            self.assertIn("variant", admin_class.readonly_fields)
+            self.assertIn("credited_name", admin_class.readonly_fields)
+        # save() derives the folded copy; the inline does not show it.
+        self.assertIn(
+            "credited_name_normalized", music_admin.AlbumCreditAdmin.readonly_fields
+        )
 
     def test_genre_child_inline_points_at_the_parent_fk(self):
         inline = music_admin.MusicGenreChildInline

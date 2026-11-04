@@ -49,15 +49,36 @@ def artist_summary(albums_count: int) -> str:
     return f"{albums_count} album{'' if albums_count == 1 else 's'}"
 
 
+def album_search_q(q: str) -> Q:
+    """Albums whose title or credit line contains ``q``, accents or none.
+
+    The one rule for an album search, page, API and the client engine
+    alike (``AlbumFilterEngine`` reads the same four columns from
+    ``/api/all/``): "agaetis" finds Ágætis byrjun and "bjork" Björk's
+    albums through the folded copies the models store. ``q`` itself is not
+    folded, since the engine cannot fold it the way unidecode would.
+    """
+    return (
+        Q(name__icontains=q)
+        | Q(name_normalized__icontains=q)
+        | Q(artist_credit__icontains=q)
+        | Q(artist_credit_normalized__icontains=q)
+    )
+
+
 def artists_matching(q: str):
     """Artists named ``q``, or credited under a name that contains it.
 
     The one rule for an artist search, page and API alike: "Revolution"
     finds Prince through Purple Rain's credit. Only names a credit uses, as
-    "Also credited as" shows.
+    "Also credited as" shows. Each name is matched without its accents
+    too, so "bjork" finds Björk.
     """
     return models.Artist.objects.filter(
-        Q(name__icontains=q) | Q(album_credits__credited_name__icontains=q)
+        Q(name__icontains=q)
+        | Q(name_normalized__icontains=q)
+        | Q(album_credits__credited_name__icontains=q)
+        | Q(album_credits__credited_name_normalized__icontains=q)
     ).distinct()
 
 

@@ -1,5 +1,16 @@
 # Developer Log
 
+## 2026-11-04
+
+- **"bjork" finds Björk on the music site.** Album titles were searched
+  without their accents, artist names never were: the rankings search, the
+  sidebar search, the artists page and the API all compared "Björk" as
+  written. Albums, artists and credits now store their names through
+  unidecode beside them (migration `0014`), every album search goes through
+  one rule (`credits.album_search_q`), and the browser engine reads the
+  folded credit line from the payload's new `cn`. `/api/` and `/api/search/`
+  now match accent-free titles too
+
 ## 2026-11-03
 
 - **A metadata fetch that cannot start is left for the page to start.** An

@@ -42,16 +42,19 @@ class AlbumFilterEngine {
             this._ancestorsById[genre.id] = chain;
         });
 
-        // One haystack per album, built once from exactly the three columns
-        // the server's `q` searches - name, name_normalized, artist_credit -
-        // lowercased and otherwise untouched. `icontains` is case-insensitive
-        // but does not fold accents, so neither does this: folding here would
-        // make "Sigur Ros" match a credit the server would not.
+        // One haystack per album, built once from exactly the four columns
+        // the server's `q` searches (`credits.album_search_q`) - the name and
+        // the credit line, each as written and through unidecode - lowercased
+        // and otherwise untouched. The server folds accents only through
+        // those stored copies, never in the query, so neither does this.
         this._haystacks = new Map();
         this.albums.forEach(album => {
             this._haystacks.set(
                 album.id,
-                [album.n, album.nn, album.c].filter(Boolean).join(' ').toLowerCase()
+                [album.n, album.nn, album.c, album.cn]
+                    .filter(Boolean)
+                    .join(' ')
+                    .toLowerCase()
             );
         });
     }

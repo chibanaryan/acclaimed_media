@@ -383,7 +383,7 @@ class AlbumAllDataAPITests(MusicAPITestMixin, TestCase):
             sorted(album),
             ["ar", "c", "g", "id", "lc", "n", "ni", "nn", "r", "rd", "s", "t", "y"],
         )
-        # "cv" and "va" are sent only for the albums that need them.
+        # "cv", "va" and "cn" are sent only for the albums that need them.
         self.assertEqual(album["id"], self.kid_a.id)
         self.assertEqual(album["s"], "kid-a")
         self.assertEqual(album["y"], 2000)
@@ -718,3 +718,68 @@ class MusicUnifiedSearchViewTests(MusicAPITestMixin, TestCase):
         self.assertEqual(
             [a["name"] for a in artists], ["Radiohead Tribute Band", "Radiohead"]
         )
+
+
+class AccentFoldedSearchAPITests(MusicAPITestMixin, TestCase):
+    """ "bjork" finds Björk, by name and by credit, wherever a search runs.
+
+    Album titles were folded through `name_normalized`; artist names were
+    not, so a search for "bjork" found nothing by Björk anywhere.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.bjork = models.Artist.objects.create(
+            name="Björk", slug="bjork", name_variants=["Björk", "Bjørk Trio"]
+        )
+        self.homogenic = models.Album.objects.create(
+            name="Homogenic", rank=3, artist_credit="Björk", year_released=1997
+        )
+        self.homogenic.artists.set([self.bjork])
+        # Credited under another of her names, which has its own accent.
+        self.trio = models.Album.objects.create(
+            name="Live", rank=4, artist_credit="Bjørk Trio", year_released=1990
+        )
+        models.AlbumCredit.objects.create(
+            album=self.trio, artist=self.bjork, variant=1, credited_name="Bjørk Trio"
+        )
+
+    def test_the_album_list_finds_a_credit_without_its_accent(self):
+        data = self.payload(reverse("music-api:album-list"), q="bjork")
+        self.assertEqual([a["name"] for a in data["results"]], ["Homogenic", "Live"])
+
+    def test_the_album_list_finds_a_title_without_its_accent(self):
+        models.Album.objects.create(name="Ágætis byrjun", rank=5)
+        data = self.payload(reverse("music-api:album-list"), q="agaetis")
+        self.assertEqual([a["name"] for a in data["results"]], ["Ágætis byrjun"])
+
+    def test_the_album_search_finds_a_credit_without_its_accent(self):
+        data = self.payload(reverse("music-api:album-search"), q="bjork")
+        self.assertEqual([a["name"] for a in data], ["Homogenic", "Live"])
+
+    def test_the_album_search_finds_a_title_without_its_accent(self):
+        models.Album.objects.create(name="Ágætis byrjun", rank=5)
+        data = self.payload(reverse("music-api:album-search"), q="agaetis")
+        self.assertEqual([a["name"] for a in data], ["Ágætis byrjun"])
+
+    def test_the_artist_list_finds_a_name_without_its_accent(self):
+        data = self.payload(reverse("music-api:artist-list"), q="bjork")
+        self.assertEqual([a["name"] for a in data["results"]], ["Björk"])
+
+    def test_the_artist_list_finds_a_credited_name_without_its_accent(self):
+        data = self.payload(reverse("music-api:artist-list"), q="bjork trio")
+        self.assertEqual([a["name"] for a in data["results"]], ["Björk"])
+
+    def test_the_unified_search_puts_the_artist_first(self):
+        data = self.payload(reverse("music-api:unified-search"), q="bjork")
+        self.assertEqual([a["name"] for a in data["artists"]], ["Björk"])
+        self.assertEqual([a["name"] for a in data["albums"]], ["Homogenic", "Live"])
+        self.assertEqual(data["order"], ["artists", "albums"])
+
+    def test_the_payload_sends_the_folded_credit(self):
+        data = self.payload(reverse("music-api:album-all-data"))
+        sent = {entry["id"]: entry.get("cn") for entry in data["albums"]}
+        self.assertEqual(sent[self.homogenic.id], "Bjork")
+        self.assertEqual(sent[self.trio.id], "Bjork Trio")
+        # Stored only when it differs from the credit, and sent only then.
+        self.assertIsNone(sent[self.kid_a.id])

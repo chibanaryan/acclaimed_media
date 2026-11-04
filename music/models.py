@@ -14,6 +14,7 @@ from typing import Any, Iterable, List, Optional
 from django.db import models
 from django.db.models import Count, Exists, OuterRef
 from django.utils.text import slugify
+from unidecode import unidecode
 
 from core.models import (
     ExternalDataBase,
@@ -26,6 +27,21 @@ from core.models import (
 )
 from core.sites import MUSIC, canonical_url, site_reverse
 from music import config
+
+
+def folded(instance: models.Model, source: str, target: str) -> None:
+    """Set ``target`` to ``source`` through unidecode, or None if that changes nothing.
+
+    How a name is found without its accents: "bjork" finds Björk. Stored
+    only when it differs, as ``name_normalized`` is, and sent to the
+    browser as it is, since unidecode has no JavaScript twin. Cut to the
+    column, since unidecode can lengthen text ("坂本龍一" is
+    "Ban Ben Long Yi ") and Postgres refuses a value that does not fit.
+    """
+    text = getattr(instance, source)
+    max_length = instance._meta.get_field(target).max_length
+    result = unidecode(text or "")[:max_length]
+    setattr(instance, target, result if result != text else None)
 
 
 class Artist(models.Model):
@@ -50,6 +66,12 @@ class Artist(models.Model):
     """
 
     name = models.CharField(max_length=200, db_index=True)
+    name_normalized = models.CharField(
+        max_length=200,
+        null=True,
+        blank=True,
+        help_text="The name without its accents, for search; set on save",
+    )
     slug = models.SlugField(
         max_length=210,
         null=True,
@@ -111,6 +133,10 @@ class Artist(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        folded(self, "name", "name_normalized")
+        super().save(*args, **kwargs)
 
     def get_absolute_url(self) -> str:
         return site_reverse(MUSIC, "music:artist-detail", kwargs={"slug": self.slug})
@@ -376,6 +402,12 @@ class Album(MediaItemBase):
             "and the CSV export."
         ),
     )
+    artist_credit_normalized = models.CharField(
+        max_length=300,
+        null=True,
+        blank=True,
+        help_text="The credit line without its accents, for search; set on save",
+    )
     various_artists = models.BooleanField(
         default=False,
         help_text=(
@@ -449,6 +481,7 @@ class Album(MediaItemBase):
         """Generate a unique slug, then defer to MediaItemBase for the rest."""
         if not self.slug:
             self.slug = self._build_unique_slug()
+        folded(self, "artist_credit", "artist_credit_normalized")
         super().save(*args, **kwargs)
 
     def _build_unique_slug(self) -> str:
@@ -630,6 +663,12 @@ class AlbumCredit(models.Model):
         blank=True,
         help_text="The name the album is credited under; blank is the artist's own",
     )
+    credited_name_normalized = models.CharField(
+        max_length=200,
+        null=True,
+        blank=True,
+        help_text="The credited name without its accents, for search; set on save",
+    )
 
     class Meta:
         db_table = "music_albumcredit"
@@ -642,6 +681,12 @@ class AlbumCredit(models.Model):
 
     def __str__(self) -> str:
         return f"{self.album_id} #{self.position}: {self.artist_id}"
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        # The import bulk-creates credits, which skips this, so it calls
+        # `folded` itself.
+        folded(self, "credited_name", "credited_name_normalized")
+        super().save(*args, **kwargs)
 
     @property
     def name(self) -> str:

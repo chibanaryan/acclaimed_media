@@ -65,6 +65,7 @@ from music.forms import MusicImportForm
 from music.services import caching, import_handler, landing_pages, post_import
 from music.services.credits import (
     album_ids_by_artist,
+    album_search_q,
     artists_matching,
     split_by_credit,
     variant_names_by_artist,
@@ -407,11 +408,7 @@ def apply_album_filters(queryset, params, skip=(), user=None, descendants=None):
     """
     q = params.get("q")
     if q and "q" not in skip:
-        queryset = queryset.filter(
-            Q(name__icontains=q)
-            | Q(name_normalized__icontains=q)
-            | Q(artist_credit__icontains=q)
-        )
+        queryset = queryset.filter(album_search_q(q))
 
     if "year" not in skip:
         start = parse_int(params.get("start"))
@@ -1528,11 +1525,7 @@ class AlbumSearchView(ListView):
             return models.Album.objects.none()
         return (
             models.Album.objects.with_relations()
-            .filter(
-                Q(name__icontains=q)
-                | Q(name_normalized__icontains=q)
-                | Q(artist_credit__icontains=q)
-            )
+            .filter(album_search_q(q))
             .order_by("rank")[:20]
         )
 

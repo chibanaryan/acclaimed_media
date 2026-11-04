@@ -756,8 +756,8 @@ def import_albums(
         if not row.wikidata_ids:
             id_to_album[album.tracking_key] = album
 
-        credits.extend(
-            models.AlbumCredit(
+        for position, (artist, variant, name) in enumerate(credited):
+            credit = models.AlbumCredit(
                 album=album,
                 artist=artist,
                 position=position,
@@ -766,8 +766,9 @@ def import_albums(
                 # rename in the admin rather than freezing the old one.
                 credited_name=name if variant else "",
             )
-            for position, (artist, variant, name) in enumerate(credited)
-        )
+            # bulk_create skips the save() that would do this.
+            models.folded(credit, "credited_name", "credited_name_normalized")
+            credits.append(credit)
 
         if progress_callback:
             progress_callback(

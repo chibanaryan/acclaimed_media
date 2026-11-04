@@ -259,6 +259,7 @@ class MusicParityTests(ParityTestCase):
             "q=abbey",
             "q=agaetis",
             "q=bjork",
+            "q=sigur ros",
             "q=sugarcubes",
             "q=various",
             "sort=name",
@@ -280,6 +281,24 @@ class MusicParityTests(ParityTestCase):
             r'id="music-(\d+)"',
             payload,
         )
+
+    def test_a_credit_is_found_without_its_accents(self):
+        # The parity above holds just as well when both sides find nothing,
+        # which is how "bjork" passed it while finding no Björk anywhere.
+        for query, credit in (("bjork", "Björk"), ("sigur ros", "Sigur Rós")):
+            with self.subTest(query=query):
+                expected = list(
+                    music.Album.objects.filter(artist_credit=credit).values_list(
+                        "id", flat=True
+                    )
+                )
+                self.assertTrue(expected)
+                self.assertCountEqual(
+                    self._server_order(
+                        f"/?q={query}&partial=true", r'id="music-(\d+)"'
+                    ),
+                    expected,
+                )
 
     def test_the_renderer_writes_the_servers_credit_line(self):
         # Each credit under its credited name, linked to the artist, and

@@ -25,6 +25,29 @@ class ArtistTests(TestCase):
         self.assertEqual(self.young.name_variants, [])
         self.assertEqual(self.young.all_wikidata_ids, [])
 
+    def test_an_accented_name_keeps_a_folded_copy_for_search(self):
+        bjork = models.Artist.objects.create(name="Björk")
+        self.assertEqual(bjork.name_normalized, "Bjork")
+        # None for a name with nothing to fold, and cleared by a rename to one.
+        self.assertIsNone(self.young.name_normalized)
+        bjork.name = "Bjork"
+        bjork.save()
+        self.assertIsNone(bjork.name_normalized)
+
+    def test_a_folded_copy_fits_its_column(self):
+        # unidecode can lengthen text ("坂本龍一" is "Ban Ben Long Yi "),
+        # and Postgres refuses a value longer than the column; SQLite, which
+        # the tests run on, would not notice.
+        long_name = "坂本龍一" * 50
+        artist = models.Artist.objects.create(name=long_name)
+        self.assertEqual(len(artist.name_normalized), 200)
+        album = models.Album.objects.create(name="X", rank=9, artist_credit=long_name)
+        self.assertEqual(len(album.artist_credit_normalized), 300)
+        credit = models.AlbumCredit.objects.create(
+            album=album, artist=artist, variant=1, credited_name=long_name
+        )
+        self.assertEqual(len(credit.credited_name_normalized), 200)
+
     def test_source_id_is_unique(self):
         models.Artist.objects.create(name="A", source_id=7)
         with self.assertRaises(IntegrityError), transaction.atomic():
@@ -97,6 +120,25 @@ class AlbumTests(TestCase):
             artist_credit="The Beach Boys",
             year_released=1966,
         )
+
+    def test_an_accented_credit_keeps_a_folded_copy_for_search(self):
+        self.assertIsNone(self.album.artist_credit_normalized)
+        self.album.artist_credit = "Sigur Rós & Björk"
+        self.album.save()
+        self.assertEqual(self.album.artist_credit_normalized, "Sigur Ros & Bjork")
+        self.album.artist_credit = "Sigur Ros"
+        self.album.save()
+        self.assertIsNone(self.album.artist_credit_normalized)
+
+    def test_an_accented_credited_name_keeps_a_folded_copy_for_search(self):
+        artist = models.Artist.objects.create(name="Prince")
+        credit = models.AlbumCredit.objects.create(
+            album=self.album, artist=artist, variant=1, credited_name="Prínce"
+        )
+        self.assertEqual(credit.credited_name_normalized, "Prince")
+        credit.credited_name = ""
+        credit.save()
+        self.assertIsNone(credit.credited_name_normalized)
 
     def test_slug_is_generated_from_the_name(self):
         self.assertEqual(self.album.slug, "pet-sounds")

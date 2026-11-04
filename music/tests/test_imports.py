@@ -532,6 +532,25 @@ class ImportAlbumsTests(TestCase):
         self.assertEqual(credit.name, "Beach Boys")
         self.assertFalse(credit.uses_variant)
 
+    def test_an_accented_name_is_imported_with_its_folded_copy(self):
+        # The credits are bulk-created, which skips save(), so the import
+        # folds the credited name itself; artists and albums are saved.
+        import_artists("5\t\tRöyksopp\tRöyksopp & Robyn\n")
+        import_handler.import_albums(
+            StringIO("1\tMelody A.M.\t5,0\t2001\n2\tDo It Again\t5,1\t2014\n")
+        )
+        self.assertEqual(
+            models.Artist.objects.get(source_id=5).name_normalized, "Royksopp"
+        )
+        album = models.Album.objects.get(rank=2)
+        self.assertEqual(album.artist_credit_normalized, "Royksopp & Robyn")
+        self.assertEqual(
+            album.credits.get().credited_name_normalized, "Royksopp & Robyn"
+        )
+        # The artist's own name is left blank on the credit, folded or not.
+        own = models.Album.objects.get(rank=1).credits.get()
+        self.assertEqual((own.credited_name, own.credited_name_normalized), ("", None))
+
     def test_various_artists_after_a_named_artist(self):
         import_handler.import_albums(
             StringIO("1\tThe Harder They Come\t56,0;VA\t1972\tQ937034\n")

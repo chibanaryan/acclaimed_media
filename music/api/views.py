@@ -13,7 +13,7 @@ now applies to this module, where before no unsafe method existed to trigger
 it.
 """
 
-from django.db.models import Count, Max, Min, Q
+from django.db.models import Count, Max, Min
 from django.db.models.functions import Lower
 from django.shortcuts import get_object_or_404
 from rest_framework import status
@@ -32,6 +32,7 @@ from .. import config, models
 from ..services.credits import (
     album_ids_by_artist,
     artist_summary,
+    album_search_q,
     artists_matching,
     split_by_credit,
     variant_names_by_artist,
@@ -140,12 +141,12 @@ class AlbumAllDataView(MusicReadAPIMixin, APIView):
             entry = {
                 "id": album.id,
                 "n": album.name,
-                # The server's text search is `name OR name_normalized OR
-                # artist_credit`, all three case-insensitive and none of
-                # them accent-folded. `name_normalized` is `unidecode(name)`
-                # and is stored only when it differs, so it is sent as it
-                # is: reimplementing unidecode in the browser would be a
-                # second, drifting copy of the rule.
+                # The server's text search is `credits.album_search_q`: the
+                # name and the credit line, each as written and through
+                # unidecode, case-insensitive. The unidecode copies are
+                # stored only when they differ, and sent as they are (the
+                # credit's, "cn", below): reimplementing unidecode in the
+                # browser would be a second, drifting copy of the rule.
                 "nn": album.name_normalized or "",
                 "s": album.slug,
                 "r": album.rank,
@@ -164,6 +165,8 @@ class AlbumAllDataView(MusicReadAPIMixin, APIView):
                 entry["cv"] = credited_names  # credited as another name
             if album.various_artists:
                 entry["va"] = 1  # the credit ends in "Various Artists"
+            if album.artist_credit_normalized:
+                entry["cn"] = album.artist_credit_normalized  # "Bjork", for q
             albums_data.append(entry)
 
         # One fetch for the table, one in-memory walk for the descendants.
@@ -236,11 +239,7 @@ class MusicUnifiedSearchView(MusicReadAPIMixin, APIView):
         # reads the MusicBrainz row, so it is joined, as /api/music/all/ does.
         albums = list(
             search_ranking.exact_first(
-                models.Album.objects.filter(
-                    Q(name__icontains=q)
-                    | Q(name_normalized__icontains=q)
-                    | Q(artist_credit__icontains=q)
-                ),
+                models.Album.objects.filter(album_search_q(q)),
                 "rank",
                 name=q,
                 name_normalized=unidecode(q),
@@ -320,7 +319,7 @@ class AlbumListView(MusicReadAPIMixin, ListAPIView):
 
         q = params.get("q")
         if q:
-            qs = qs.filter(name__icontains=q) | qs.filter(artist_credit__icontains=q)
+            qs = qs.filter(album_search_q(q))
 
         artist = params.get("artist")
         if artist:
@@ -362,11 +361,7 @@ class AlbumSearchAPIView(MusicReadAPIMixin, ListAPIView):
         if not q:
             return models.Album.objects.none()
         qs = models.Album.objects.with_relations()
-        return (
-            (qs.filter(name__icontains=q) | qs.filter(artist_credit__icontains=q))
-            .distinct()
-            .order_by("rank")[:20]
-        )
+        return qs.filter(album_search_q(q)).distinct().order_by("rank")[:20]
 
 
 def _artists_with_albums(queryset, with_variant_names=False):
