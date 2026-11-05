@@ -1,6 +1,6 @@
 /**
  * Rank Distribution Chart Component
- * A compact SVG area chart showing game distribution across rankings
+ * A compact SVG area chart showing how items are distributed across rankings
  * Supports dynamic max rank via data-max-rank attribute
  * Pure vanilla JS implementation - no Alpine.js dependency
  */
@@ -145,6 +145,9 @@
         this.svg = container.querySelector('.rank-distribution-svg');
         this.path = container.querySelector('.rank-distribution-fill');
         this.tooltip = container.querySelector('.rank-distribution-tooltip');
+        // The template names what is counted: games, or albums on music
+        this.itemNounSingular = container.dataset.itemNounSingular || 'game';
+        this.itemNounPlural = container.dataset.itemNounPlural || 'games';
         this.rectsContainer = container.querySelector('.rank-distribution-rects');
         // Peak indicator is in the parent section's header
         var section = container.closest('.rank-distribution-section');
@@ -346,7 +349,8 @@
     RankDistributionChart.prototype.getTooltipText = function() {
         if (this.hoveredBin === null || !this.bins[this.hoveredBin]) return '';
         var bin = this.bins[this.hoveredBin];
-        return bin.count + ' game' + (bin.count !== 1 ? 's' : '') + ' ranked ' + bin.binStart + '-' + bin.binEnd;
+        var noun = bin.count === 1 ? this.itemNounSingular : this.itemNounPlural;
+        return bin.count + ' ' + noun + ' ranked ' + bin.binStart + '-' + bin.binEnd;
     };
 
     // Cleanup method for memory leak prevention

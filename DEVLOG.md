@@ -1,5 +1,12 @@
 # Developer Log
 
+## 2026-11-05
+
+- **The rank distribution chart counts albums on the music site.** Its
+  tooltip read "12 games ranked 1-100" on the album rankings and artist
+  pages, since the shared chart's script spelled the noun; the template now
+  names it (`item_noun`, default "game")
+
 ## 2026-11-04
 
 - **"bjork" finds Björk on the music site.** Album titles were searched

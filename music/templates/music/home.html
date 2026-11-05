@@ -164,7 +164,7 @@ var listenStatusOptions = JSON.parse(
     </div>
     {# Rank distribution, sidebar-width, once a filter narrows the set #}
     <div style="width: 357px; flex-shrink: 0; display: none;" x-show="hasActiveFilters()">
-        {% include 'core/includes/_rank_distribution.html' %}
+        {% include 'core/includes/_rank_distribution.html' with item_noun_singular="album" item_noun_plural="albums" %}
     </div>
 </div>
 

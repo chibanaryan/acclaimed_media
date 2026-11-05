@@ -1088,6 +1088,22 @@ class RankDistributionMorphsInEveryBrowserTests(SimpleTestCase):
         self.assertNotRegex(styles, r"transition:\s*d\b")
 
 
+class RankDistributionNamesWhatItCountsTests(SimpleTestCase):
+    """The tooltip takes its noun from the chart, not from the script.
+
+    The script is shared by the games and music sites, and it said "games"
+    on music's rankings and artist pages.
+    """
+
+    def test_the_noun_comes_from_the_chart_element(self):
+        for relative_path in RankDistributionMorphsInEveryBrowserTests.SOURCES:
+            with self.subTest(path=relative_path):
+                source = (Path(settings.BASE_DIR) / relative_path).read_text()
+                self.assertIn("itemNounSingular", source)
+                self.assertIn("itemNounPlural", source)
+                self.assertNotRegex(source, r"[\"'] game[\"']")
+
+
 class FilterSidebarLookupsAreIndexedTests(SimpleTestCase):
     """The sidebar's per-row helpers look items up by index, not by scanning.
 

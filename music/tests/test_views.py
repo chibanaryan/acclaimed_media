@@ -1659,6 +1659,14 @@ class RankDistributionTests(MusicDataMixin, TestCase):
         self.assertEqual(sum(entry["count"] for entry in bins), 1)
         self.assertIn("rank-distribution", response.content.decode())
 
+    def test_the_chart_counts_albums_not_games(self):
+        # The tooltip read "12 games ranked 1-100" on both pages.
+        for url in (reverse("music:home"), self.beatles.get_absolute_url()):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertContains(response, 'data-item-noun-singular="album"')
+                self.assertContains(response, 'data-item-noun-plural="albums"')
+
 
 class ArtistSortTests(MusicDataMixin, TestCase):
     """Artists sort the way developers do, including by their best work."""

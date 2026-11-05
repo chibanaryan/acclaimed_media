@@ -162,6 +162,12 @@ class HomePageViewTest(TestCase):
         self.assertEqual(response.context["rank_distribution"][-1]["binEnd"], 1400)
         self.assertContains(response, 'data-max-rank="1400"')
 
+    def test_rank_distribution_counts_games(self):
+        """The chart's tooltip names what it counts: games, here."""
+        response = self.client.get(reverse("home"))
+        self.assertContains(response, 'data-item-noun-singular="game"')
+        self.assertContains(response, 'data-item-noun-plural="games"')
+
     def test_rank_distribution_reuses_cached_bins(self):
         """A repeat render reads the rank distribution back from the cache."""
         User.objects.create_user(username="rankcache", password="pass")
