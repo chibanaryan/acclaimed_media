@@ -1,9 +1,9 @@
 {# Grid Card Template #}
 {# Single source of truth: Used for both server-side rendering and JS template cloning #}
-{# Props: game (optional), show_rank ('alltime'|'filtered'|'none'), index (filtered rank), highlight (game ID) #}
+{# Props: game (optional), show_rank ('alltime'|'filtered'|'none'), index (filtered rank) #}
 {# When game is not provided, renders empty template structure for JS cloning with all elements present #}
 {% load game_filters static %}
-<div class="game-card-grid {% if game and highlight and game.id == highlight %}is-highlighted{% endif %}"
+<div class="game-card-grid"
      {% if game %}id="game-{{ game.id }}-grid"{% endif %}
      data-slot="root">
     {# Cover image with rank badge overlay #}

@@ -1,5 +1,5 @@
 {# GameRow component #}
-{# Props: game, index (optional, for filtered rank), show_rank (default: 'alltime'), show_rank_in_details (default: False), highlight (optional game ID) #}
+{# Props: game, index (optional, for filtered rank), show_rank (default: 'alltime'), show_rank_in_details (default: False) #}
 {# This file now delegates to _game_row_desktop.html and _game_row_mobile.html for the actual rendering #}
-{% include 'games/includes/_game_row_desktop.html' with game=game show_rank=show_rank index=index highlight=highlight show_rank_in_details=show_rank_in_details %}
-{% include 'games/includes/_game_row_mobile.html' with game=game show_rank=show_rank index=index highlight=highlight %}
+{% include 'games/includes/_game_row_desktop.html' with game=game show_rank=show_rank index=index show_rank_in_details=show_rank_in_details %}
+{% include 'games/includes/_game_row_mobile.html' with game=game show_rank=show_rank index=index %}

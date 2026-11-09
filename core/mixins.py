@@ -11,6 +11,8 @@ from django.http import Http404, HttpResponse
 from django.middleware.csp import get_nonce as get_csp_nonce
 from django.middleware.csrf import get_token
 
+from core.services import render_budget
+
 
 class RobustPaginationMixin:
     """Pagination mixin with graceful handling of invalid page numbers.
@@ -60,11 +62,15 @@ class AnonymousResponseCacheMixin:
     here needs cross-process agreement; see `core.cache_config`.
 
     The body is stored deflated. These pages are big - a rankings page is
-    ~700 KB of HTML, games' or music's - and there are ~75 cacheable URLs
-    between the two sites' home and landing pages, which at full size would
-    be tens of MB in every gunicorn worker on a 512 MB dyno. Deflate cuts
-    that by about 8x, and inflating on a hit costs a few milliseconds
-    against the ~300-600 ms the render it replaces takes.
+    ~700 KB of HTML, games' or music's - and there are ~275 cacheable pages
+    between the two sites' home and landing pages and games' single-facet
+    ones, which at full size would be a hundred MB in every gunicorn worker
+    on a 512 MB dyno. Deflate cuts that by about 8x, and inflating on a hit
+    costs a few milliseconds against the ~300-600 ms the render it replaces
+    takes.
+
+    An anonymous request with no key is a render nothing else bounds, so it
+    is counted against the worker's budget (`core.services.render_budget`).
     """
 
     page_cache_timeout = None
@@ -110,6 +116,28 @@ class AnonymousResponseCacheMixin:
         version often would fill it.
         """
         return None
+
+    def may_store_page(self):
+        """Whether the page about to be rendered is one to keep under its key.
+
+        Asked on a miss, before the render, of a request that had a key. For
+        a key the view cannot vouch for from the address alone: a page
+        filtered to an id is worth keeping only if the id is a real one. A
+        page that is not kept is a render nothing else bounds, like one with
+        no key, and is counted the same way.
+        """
+        return True
+
+    def _dispatch_unkept(self, request, *args, **kwargs):
+        """Answer a request the cache has no part in.
+
+        An anonymous page that cannot be kept is the render nothing else
+        bounds, so it is counted against this worker's budget, and refused
+        past it only when that is turned on (core.services.render_budget).
+        """
+        return render_budget.refusal(request) or super().dispatch(
+            request, *args, **kwargs
+        )
 
     @classmethod
     def _serialize_headers(cls, response):
@@ -224,7 +252,7 @@ class AnonymousResponseCacheMixin:
 
         cache_key = self.get_page_cache_key()
         if cache_key is None:
-            return super().dispatch(request, *args, **kwargs)
+            return self._dispatch_unkept(request, *args, **kwargs)
         # Keyed on the host as well: a page names the other sites by absolute
         # URL (core.sites.site_origin), and those follow the host it was
         # rendered for, so no two hosts may share one copy.
@@ -265,6 +293,9 @@ class AnonymousResponseCacheMixin:
             # Drop anything older - response objects, and the uncompressed
             # `content` payloads this replaced - and rebuild.
             cache.delete(cache_key)
+
+        if not self.may_store_page():
+            return self._dispatch_unkept(request, *args, **kwargs)
 
         # Generate response and cache it
         response = super().dispatch(request, *args, **kwargs)

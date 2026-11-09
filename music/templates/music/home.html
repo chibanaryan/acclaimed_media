@@ -238,12 +238,15 @@ var listenStatusOptions = JSON.parse(
                 <div class="flex gap-2 items-center relative">
                     <span id="album-loading" class="htmx-indicator loading loading-spinner loading-xs"></span>
                     {% include 'core/includes/_saved_filters_dropdown.html' with max_saved=max_saved_filters signed_out_hint='Sign in to save filters' %}
-                    <a :href="'{% url 'music:download' %}?' + downloadQuery()"
-                       class="btn btn-ghost btn-xs text-base-content/70 hover:text-success"
-                       title="Download CSV">
+                    {# A button, as on games: a link here is one more address for a scraper. #}
+                    <button type="button"
+                            data-download-url="{% url 'music:download' %}"
+                            @click="downloadCsv($el.dataset.downloadUrl)"
+                            class="btn btn-ghost btn-xs text-base-content/70 hover:text-success"
+                            title="Download CSV">
                         <span class="mdi mdi-download" aria-hidden="true"></span>
                         <span>CSV</span>
-                    </a>
+                    </button>
                     <button type="button"
                             @click="resetAllFilters()"
                             class="btn btn-ghost btn-xs text-base-content/70 hover:text-error"

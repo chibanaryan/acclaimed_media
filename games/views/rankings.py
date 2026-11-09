@@ -1,12 +1,13 @@
 """The games rankings page and its SEO landing pages."""
 
+import datetime
 import re
 from functools import cached_property
 from urllib.parse import urlencode
 
 from django.db.models import Count, Max, Q
 from django.db.models.functions import Lower
-from django.http import Http404
+from django.http import Http404, QueryDict
 from django.urls import reverse
 from django.utils.decorators import method_decorator
 from django.views.decorators.vary import vary_on_headers
@@ -43,6 +44,99 @@ from ._helpers import (
     _get_year_bounds,
 )
 from .filter_titles import _build_filter_title, _build_tab_title
+
+# The first year a rankings page is kept for. A fixed bound, not the corpus's
+# own first year: that is a shared-cache read, which in production is a query,
+# on a path whose whole point is to make none
+FIRST_CACHEABLE_YEAR = 1950
+YEAR = re.compile(r"[0-9]{4}")
+# A row id as a link writes it. Not "041" or "+41": the page renders the
+# parameter as given into its filter state, so each spelling is another page
+ROW_ID = re.compile(r"[1-9][0-9]{0,8}")
+
+
+def cacheable_facet(query_string):
+    """Name the one facet a rankings query filters by, or None for any other.
+
+    The pages worth keeping whole for anonymous visitors are the ones a row
+    links to: a year, a platform, a genre, and the decade a detail page links
+    to. Twice a day a scraper asked for about 4,000 of those links in five
+    minutes, each from another address and each with its own ``highlight``,
+    so each was a render (Sentry uptime, 2026-11-03 to 11-09).
+
+    ``highlight`` is left out: the browser reads it from the address, and
+    the page holds nothing of it. So is a tracking tag (`page_query`). What
+    is left must be exactly one facet, each parameter given once, in any
+    order - the scraper replays a list it re-serialises
+    (``?highlight=1458&start=2009&end=2009``) - and spelt as a link spells
+    it, so a page has one key. Anything else is rendered.
+    """
+    params = dict(page_query(query_string).lists())
+    if not params:
+        return "default"
+    if any(len(values) != 1 for values in params.values()):
+        return None
+    params = {name: values[0] for name, values in params.items()}
+    if set(params) == {"start", "end"}:
+        start, end = params["start"], params["end"]
+        if not (YEAR.fullmatch(start) and YEAR.fullmatch(end)):
+            return None
+        start, end = int(start), int(end)
+        if not FIRST_CACHEABLE_YEAR <= start <= datetime.date.today().year + 1:
+            return None
+        if start == end:
+            return f"year:{start}"
+        if start % 10 == 0 and end == start + 9:
+            return f"decade:{start}"
+        return None
+    for name, kind in (("platforms", "platform"), ("genres", "genre")):
+        if set(params) == {name} and ROW_ID.fullmatch(params[name]):
+            return f"{kind}:{params[name]}"
+    return None
+
+
+# What a link picks up on its way here and the page never reads: the tags
+# of the campaign or the share it was followed from. A link shared on
+# Facebook arrives as `/?fbclid=...`, a different one for every reader.
+TRACKING_PARAMS = frozenset(
+    {
+        "dclid",
+        "fbclid",
+        "gbraid",
+        "gclid",
+        "igsh",
+        "igshid",
+        "mc_cid",
+        "mc_eid",
+        "msclkid",
+        "ref",
+        "wbraid",
+    }
+)
+
+
+def page_query(query_string):
+    """The query the page is rendered from: as sent, less what it never shows.
+
+    That is ``highlight``, where a reader landed, which is the browser's to
+    act on, and the tracking tags. Neither may reach a page that is kept for
+    the next visitor, nor make a second copy of it.
+    """
+    query = QueryDict(query_string, mutable=True)
+    for name in list(query):
+        if name == "highlight" or name in TRACKING_PARAMS or name.startswith("utm_"):
+            del query[name]
+    return query
+
+
+def _list_url(request):
+    """Where Load More asks for more of the list: the path and `page_query`.
+
+    From the query as sent, not ``request.GET``: a landing page's own
+    filters are injected there, and its list is asked for at its path.
+    """
+    query = page_query(request.META.get("QUERY_STRING", ""))
+    return request.path + (f"?{query.urlencode(safe=',')}" if query else "")
 
 
 def genres_cache_key(data_version):
@@ -109,14 +203,35 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
     context_object_name = "games"
     paginate_by = 100
     paginate_orphans = 0
-    page_cache_timeout = config.CACHE_TIMEOUT_HOME_PAGE
+
+    @property
+    def page_cache_timeout(self):
+        """Five minutes for the unfiltered page, and an hour for a facet's,
+        which is a landing page (`/games/1994/`) by another address."""
+        if self._page_cache_facet == "default":
+            return config.CACHE_TIMEOUT_HOME_PAGE
+        return config.CACHE_TIMEOUT_LANDING_PAGE
+
+    @cached_property
+    def _page_cache_facet(self):
+        return cacheable_facet(self.request.META.get("QUERY_STRING", ""))
 
     def get_page_cache_key(self):
-        """Cache rendered home page content for anonymous users to reduce TTFB."""
-        # Only cache the default home page (no query string)
-        if self.request.META.get("QUERY_STRING", ""):
+        """The unfiltered page, and each page a row links to (`cacheable_facet`)."""
+        if self._page_cache_facet is None:
             return None
-        return f"home_page:{config.CACHE_VERSION}:default"
+        return f"home_page:{config.CACHE_VERSION}:{self._page_cache_facet}"
+
+    def may_store_page(self):
+        """Not a platform or genre page for an id the site does not have.
+
+        A year is bounded where its key is made; an id can only be looked
+        up, which costs a query, so it waits for a miss. Unchecked, every
+        number anyone cared to ask for would be a page to keep.
+        """
+        kind, _, value = (self._page_cache_facet or "").partition(":")
+        model = {"platform": models.Platform, "genre": models.WikipediaGenre}.get(kind)
+        return model is None or model.objects.filter(pk=value).exists()
 
     def get_page_cache_version(self):
         """A stored page is served only while the game data is the same.
@@ -451,11 +566,11 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         )
         context["min_year"] = min_year
         context["max_year"] = max_year
-        # Convert highlight to int for comparison with game.id in template
-        highlight_str = self.request.GET.get("highlight")
-        context["highlight"] = (
-            int(highlight_str) if highlight_str and highlight_str.isdigit() else None
-        )
+        # No `highlight` here: the page is kept whole for anonymous visitors
+        # whatever it says (`cacheable_facet`), so the browser reads it from
+        # the address, and nothing of one visitor's may be rendered. Nor in
+        # the address Load More asks for more of the list at
+        context["list_url"] = _list_url(self.request)
         context["is_filtered"] = True  # GameSearch is always filtered
         context["filter_title"] = _build_filter_title(
             filters, genres, platforms, min_year, max_year, series_list

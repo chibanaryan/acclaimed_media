@@ -1940,6 +1940,57 @@ under keys carrying the same version (`genres_cache_key`,
 That costs a partial render the version's six queries, which a full page
 already pays.
 
+**Games' single-facet pages are kept whole too, whatever `highlight` says**
+(2026-11-09). Twice a day, from 2026-11-03, a scraper on a residential-proxy
+network asked for 3,500-4,800 rows' filter links in five minutes
+(`/?start=2002&end=2002&highlight=1695`), one address a request with a
+browser's user agent, so the per-IP limit never saw it. It ignores the
+`nofollow` and robots.txt rules, and it runs a real browser: it followed the
+CSV link, which was only ever an Alpine binding. Each page was a 17-query
+render, the six threads filled, and Sentry's uptime check timed out 11 times
+in a week. What changed:
+
+- **The key is made from the parsed query** (`rankings.cacheable_facet`):
+  with `highlight` and the tracking tags left out (`page_query`: `utm_*`,
+  `fbclid`, ..., so a shared link's `/?fbclid=...` is the home page it is),
+  nothing (the home page's own key), one year or
+  whole decade, one platform id or one genre id, each parameter once, in any
+  order, since the scraper replays a list it re-serialises. A year is bounded
+  statically, which keeps a shared-cache read off the hit path; a platform or
+  genre id is looked up on a miss (`may_store_page`), and a page for one the
+  site does not have is rendered, counted and not kept, or any number would
+  be a page to keep. A facet's page is kept an hour, as the landing page it
+  duplicates is; the unfiltered page keeps its five minutes. Of 100 burst
+  URLs, 70 were years, 12 platforms, 4 genres and 10 series, which stay
+  rendered: there are 705.
+- **`highlight` is the browser's alone on games.** The view puts none in the
+  context, no row is rendered `is-highlighted`, `home.html`'s landing script
+  reads the id from the address, and Load More's `data-list-url` leaves it
+  out, so a page holds nothing of the visitor it was rendered for. The row
+  lights up ~300 ms after load, not at first paint. Music still renders its
+  highlight: its landing leans on the server's row, and its page cache still
+  declines every query string.
+- **The CSV control is a button** (`downloadCsv`), on both sites, and asks
+  for the list without `highlight` or a whole year range. Still a
+  navigation: fetching the file and saving a blob was tried in review and
+  dropped, since in-app browsers ignore a scripted blob download. So once
+  refusals are on, a refused CSV replaces the page with the 429's one line,
+  and Back returns.
+- **A render budget counts what is left** (`core/services/render_budget.py`):
+  an anonymous page the cache declined or will not keep, and an anonymous
+  CSV, against a per-process token bucket (five at once, one a second). Past
+  it, it logs as a burst's count passes 10 (WARNING), then 100 and 1,000
+  (ERROR, which Sentry takes). It refuses nothing until
+  `ANON_RENDER_BUDGET_ENFORCE` is set, which waits on a week of those
+  reports: a real visitor to a page that cannot be kept would be refused in
+  a burst too. HTMX partials are not counted. The apex answers an old filter
+  link in `dispatch`, ahead of the cache and the budget.
+
+That is ~200 more keys in `local` at ~60 KB deflated, ~12 MB a worker.
+`scripts/browser_smoke.js` pins the landing ("games highlight ..."), which
+nothing did before, and `FilteredPagesAreCachedWhateverTheHighlightTests` the
+rule.
+
 Music's cache keys all live in `music/config.py` as `CACHE_KEYS`, which
 `caching.invalidate_music_caches()` iterates - add a cached value there or it
 will not be invalidated. Every key carries `CACHE_VERSION`, so bumping that
@@ -2083,8 +2134,11 @@ That arithmetic sets the shape of the `Procfile`:
   preloaded vs 585 MB not).
 - **`--timeout 600` stays.** The games importer streams progress over SSE and
   a shorter timeout kills that mid-import.
-- `--max-requests 500` is a guard against slow growth, not a memory lever: a
-  recycled worker is back at the plateau within ~15 page renders.
+- `--max-requests 2000` is a guard against slow growth, not a memory lever: a
+  recycled worker is back at the plateau within ~15 page renders. It was 500
+  until 2026-11-09, which recycled each worker about four times inside one
+  scraper burst, emptying its page cache each time. Memory was measured flat
+  only to 1,000 renders, so check `memory.rss.bytes.max` against it.
 
 **Template indentation is stripped at load.** `core/template_loaders.py`
 wraps both loaders, in dev and prod alike, and removes the leading whitespace
@@ -2253,6 +2307,9 @@ Environment variables are managed via django-environ (`.env` file):
 - `METADATA_AFTER_IMPORT` - Whether an import fetches the metadata it left
   missing (default: on, off under test). See "Imports start their metadata
   fetch"
+- `ANON_RENDER_BUDGET_ENFORCE` - Answer 429 to anonymous renders past the
+  per-process budget, which otherwise only reports them (default: off). See
+  "Caching"
 - `SENTRY_ENVIRONMENT` - Sentry's environment tag. Defaults to `production`
   when `DYNO` is set (any Heroku dyno) and `development` everywhere else.
   `development` sends nothing, neither errors nor CSP reports, even with

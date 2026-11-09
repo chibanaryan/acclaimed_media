@@ -1610,6 +1610,121 @@ async function checkHighlightAcrossAnotherVersion(page, engine, { readerMoves, a
     return state.inView ? null : `${label}: the render left the album out of view`;
 }
 
+/** Whether a game's row half for this width is marked and on screen. */
+const gameRowState = (page, id) => page.evaluate(gameId => {
+    const desktop = window.matchMedia('(min-width: 962px)').matches;
+    const element = document.getElementById(`game-${gameId}${desktop ? '' : '-mobile'}`);
+    if (!element) return null;
+    const box = element.getBoundingClientRect();
+    return {
+        highlighted: Boolean(element.matches('.is-highlighted') ||
+            element.querySelector('.is-highlighted')),
+        inView: box.bottom > 0 && box.top < window.innerHeight,
+    };
+}, id);
+
+/**
+ * A games `?highlight=` link lands on its game: the row is marked and
+ * scrolled to, at either width, with the engine's data held back and then
+ * let go, and for a game past the rows the server rendered, which only the
+ * engine can reach. Music's landing has cases of its own; games' had none.
+ * Answers as above.
+ */
+async function checkGamesHighlightLands(page, path, id, { width = 1440, hold = false } = {}) {
+    await page.setViewport({ width, height: 900 });
+    const sent = await servePayload(page, {
+        site: games, data: '/api/games/all/', items: payload => payload.data.games,
+    }, false);
+    if (!hold) sent.open();
+    await page.goto(games + path, { waitUntil: 'load' });
+    const label = `games ${path} at ${width}px${hold ? ', data held' : ''}`;
+    if (hold) {
+        // Past the landing's own beat: the row is marked before the engine
+        await sleep(1200);
+        const early = await gameRowState(page, id);
+        if (!early) return `${label}: the page has no row for the game`;
+        if (!early.highlighted) return `${label}: no highlight before the engine`;
+        sent.open();
+    }
+    // Past the landing's beat, a jump and a smooth scroll the length of a page
+    let state = null;
+    for (let tries = 0; tries < 40; tries += 1) {
+        state = await gameRowState(page, id);
+        if (state && state.highlighted && state.inView) break;
+        await sleep(250);
+    }
+    // The page asks for its data whatever the landing needed of it: let the
+    // answer go out before the page closes under it
+    for (let tries = 0; tries < 100 && !sent.names; tries += 1) await sleep(50);
+    await sleep(200);
+    if (state && state.highlighted && state.inView) return null;
+    if (!state) return `${label}: the game never reached the page`;
+    if (!state.highlighted) return `${label}: the game was never highlighted`;
+    return `${label}: the game was left out of view`;
+}
+
+/**
+ * Two visitors land on one year's page for different games. The page is kept
+ * whole for anonymous visitors whatever the highlight, so the second is
+ * handed the first's copy: each must see their own game marked, and not the
+ * other's. Answers as above.
+ */
+async function checkGamesHighlightFromAKeptPage(page) {
+    // smoke_seed.py: games 5 and 40 are both of 1990
+    const path = id => `/?start=1990&end=1990&highlight=${id}`;
+    const landed = async (visitor, id) => {
+        await visitor.setViewport({ width: 1440, height: 900 });
+        await visitor.goto(games + path(id), { waitUntil: 'networkidle2' });
+        for (let tries = 0; tries < 40; tries += 1) {
+            const state = await gameRowState(visitor, id);
+            if (state && state.highlighted) return true;
+            await sleep(250);
+        }
+        return false;
+    };
+    if (!await landed(page, 5)) return `games ${path(5)}: the game was never highlighted`;
+    const second = await page.browserContext().newPage();
+    if (!await landed(second, 40)) return `games ${path(40)}: the game was never highlighted`;
+    const other = await gameRowState(second, 5);
+    if (!other) return `games ${path(40)}: the year's other game is not on the page`;
+    return other.highlighted ? `games ${path(40)}: the last visitor's game is highlighted` : null;
+}
+
+/**
+ * The CSV control asks for the list as filtered, and for nothing of where
+ * the reader landed: it carried `highlight` and the whole year range, as a
+ * link a scraper followed once per game. Answers as above.
+ */
+async function checkCsvButtonCarriesNoHighlight(page, site, path, wanted) {
+    await page.setViewport({ width: 1440, height: 900 });
+    let asked = null;
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = new URL(request.url());
+        if (url.pathname !== '/download/') {
+            request.continue();
+            return;
+        }
+        asked = url;
+        request.respond({
+            status: 200, contentType: 'text/csv', body: 'rank\n',
+            headers: { 'Content-Disposition': 'attachment; filename="smoke.csv"' },
+        });
+    });
+    await page.goto(site + path, { waitUntil: 'networkidle2' });
+    if (await page.$('a[href*="/download/"]')) return `${site}${path}: the CSV control is a link`;
+    const button = await page.waitForSelector('button[data-download-url]', { visible: true });
+    // The landing scrolls down to its row, and a click off screen hits nothing
+    await sleep(1500);
+    await button.evaluate(element => element.scrollIntoView({ block: 'center' }));
+    await sleep(300);
+    await button.click();
+    for (let tries = 0; tries < 60 && !asked; tries += 1) await sleep(50);
+    if (!asked) return `${site}${path}: the CSV button asked for nothing`;
+    const query = asked.search.slice(1);
+    return query === wanted ? null : `${site}${path}: the CSV button asked for ?${query}, not ?${wanted}`;
+}
+
 /** The text of each row an entity page lists, to tell them apart. */
 const entityRows = (page, rows) =>
     page.$$eval(rows, found => found.map(row => row.textContent.replace(/\s+/g, ' ').trim()));
@@ -2250,6 +2365,23 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     await report('music highlight past the first page',
         page => checkHighlightAcrossAnotherVersion(
             page, versioned.music, { stale: false, id: 110 }));
+    // smoke_seed.py: game 5 is of 1990, and game 150 is past the first page
+    for (const width of [1440, 420]) {
+        for (const hold of [false, true]) {
+            await report(`games highlight lands on its row, ${width}px${hold ? ', data held' : ''}`,
+                page => checkGamesHighlightLands(
+                    page, '/?start=1990&end=1990&highlight=5', 5, { width, hold }));
+        }
+    }
+    await report('games highlight past the first page',
+        page => checkGamesHighlightLands(page, '/?highlight=150', 150));
+    await report('games highlight from a kept page', checkGamesHighlightFromAKeptPage);
+    await report('games CSV button carries no highlight',
+        page => checkCsvButtonCarriesNoHighlight(
+            page, games, '/?platforms=1&highlight=5', 'platforms=1'));
+    await report('music CSV button carries no highlight',
+        page => checkCsvButtonCarriesNoHighlight(
+            page, music, '/?start=1970&end=1970&highlight=5', 'start=1970&end=1970'));
     await report('games empty range', page => checkRangeOutsideTheCorpus(page, games));
     await report('music empty range', page => checkRangeOutsideTheCorpus(page, music));
     await browser.close();

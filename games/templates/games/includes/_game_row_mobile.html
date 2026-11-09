@@ -1,10 +1,10 @@
 {# Mobile Game Row Template #}
 {# Single source of truth: Used for both server-side rendering and JS template cloning #}
-{# Props: game (optional), show_rank ('alltime'|'filtered'|'none'), index (filtered rank), highlight (game ID) #}
+{# Props: game (optional), show_rank ('alltime'|'filtered'|'none'), index (filtered rank) #}
 {# Context: max_list_count (for list count micro-bar, mobile shows count as text only) #}
 {# When game is not provided, renders empty template structure for JS cloning with all elements present #}
 {% load game_filters static humanize %}
-<div class="game-row game-card-mobile desktop:hidden grid items-center gap-3 p-2 bg-base-200 rounded-lg mb-2 cursor-pointer {% if game and highlight and game.id == highlight %}is-highlighted{% endif %}"
+<div class="game-row game-card-mobile desktop:hidden grid items-center gap-3 p-2 bg-base-200 rounded-lg mb-2 cursor-pointer"
      {% if game %}id="game-{{ game.id }}-mobile"{% endif %}
      data-slot="root"
      {% if game %}data-href="{% url 'game-detail' slug=game.slug %}"{% endif %}

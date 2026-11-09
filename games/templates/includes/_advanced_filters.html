@@ -198,12 +198,16 @@
                             <span>Saved</span>
                         </button>
                         {% endif %}
-                        <a :href="'{% url 'games-download' %}?' + buildFilterParams(filters).toString()"
-                           class="btn btn-ghost btn-xs text-base-content/70 hover:text-success"
-                           title="Download CSV">
+                        {# A button, not a link: a scraper that harvests the page's hrefs #}
+                        {# followed this one ~3,900 times a week, each a file rendered. #}
+                        <button type="button"
+                                data-download-url="{% url 'games-download' %}"
+                                @click="downloadCsv($el.dataset.downloadUrl)"
+                                class="btn btn-ghost btn-xs text-base-content/70 hover:text-success"
+                                title="Download CSV">
                             <span class="mdi mdi-download" aria-hidden="true"></span>
                             <span>CSV</span>
-                        </a>
+                        </button>
                         <button type="button"
                            @click="resetAllFilters()"
                            class="btn btn-ghost btn-xs text-base-content/70 hover:text-error"

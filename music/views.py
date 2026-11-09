@@ -58,7 +58,7 @@ from core.mixins import (
 )
 from core.models import User
 from core import sites
-from core.services import genre_tree, seo
+from core.services import genre_tree, render_budget, seo
 from core.services.query_params import parse_direction, parse_id_list, parse_int
 from music import config, models
 from music.forms import MusicImportForm
@@ -1141,6 +1141,10 @@ class AlbumDownloadView(View):
     """
 
     def get(self, request, *args, **kwargs):
+        # As games' download: an anonymous one spends from the render budget
+        refused = render_budget.anonymous_refusal(request)
+        if refused:
+            return refused
         min_year, max_year = _get_year_bounds()
         albums = _apply_sort(
             apply_album_filters(

@@ -6,6 +6,7 @@ from django.db.models import Count
 from django.http import HttpResponse
 from django.utils.text import slugify
 
+from core.services import render_budget
 from core.services.query_params import parse_id_list
 from games import config, models, utils
 from games.services import playtime
@@ -23,6 +24,11 @@ from .rankings import _order_games
 
 def download_games_csv(request):
     """Download games list as CSV, respecting current filters."""
+    # The whole list is half a second of rendering, and a scraper asked for
+    # it ~3,900 times a week: an anonymous download spends from the budget
+    refused = render_budget.anonymous_refusal(request)
+    if refused:
+        return refused
     # Get filtered queryset using same logic as HomePageView
     # with_relations() already includes all needed prefetches:
     # developers, platforms, genres, and series.

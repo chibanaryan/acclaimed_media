@@ -875,6 +875,26 @@ document.addEventListener('alpine:init', () => {
             this._writeHistory('pushState', this._filterUrl());
         },
 
+        /**
+         * Download the list as filtered. From a button: a link's address is
+         * one a scraper collects, and every one it asked for was a file
+         * rendered. A navigation all the same, which every browser, in-app
+         * ones included, knows to save: the file is an attachment, so the
+         * page stays. Without the highlight, which is where the reader landed
+         * and no filter, and without a year range that is all of them.
+         * @param {string} url - The download view's address
+         */
+        downloadCsv(url) {
+            const params = buildFilterParams(this.filters);
+            params.delete('highlight');
+            if (!this.hasYearFilter()) {
+                params.delete('start');
+                params.delete('end');
+            }
+            const query = normalizeUrl(params.toString());
+            window.location.assign(query ? url + '?' + query : url);
+        },
+
         _filterUrl() {
             const params = buildFilterParams(this.filters);
             // The whole year range is no year filter, so it stays out of the

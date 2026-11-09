@@ -759,7 +759,7 @@ function mediaListControlsData(config) {
         },
 
         /**
-         * The current filter state as a query string, for the CSV link.
+         * The current filter state as a query string, for the CSV download.
          */
         downloadQuery() {
             const params = new URLSearchParams();
@@ -781,6 +781,19 @@ function mediaListControlsData(config) {
                 params.set('dir', this.filters.sortDirection);
             }
             return params.toString();
+        },
+
+        /**
+         * Download the list as filtered. From a button: a link's address is
+         * one a scraper collects, and every one it asked for was a file
+         * rendered. A navigation all the same, which every browser, in-app
+         * ones included, knows to save: the file is an attachment, so the
+         * page stays.
+         * @param {string} url - The download view's address
+         */
+        downloadCsv(url) {
+            const query = this.downloadQuery();
+            window.location.assign(query ? url + '?' + query : url);
         },
 
         /**

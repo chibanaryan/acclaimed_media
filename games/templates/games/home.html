@@ -210,42 +210,57 @@
 {% endblock %}
 
 {% block extra_scripts %}
-{% if highlight %}
+{# A ?highlight= link lands on its game. The id is read from the address, #}
+{# not rendered here: the page is kept whole for anonymous visitors whatever #}
+{# the highlight (rankings.cacheable_facet), so nothing of one visitor's may #}
+{# be in it, and the row is marked by this script rather than by the server. #}
 <script nonce="{{ csp_nonce }}">
-    // Wait for page to settle, then trigger highlight navigation
-    setTimeout(function() {
-        var gameId = {{ highlight }};
+(function() {
+    var raw = new URLSearchParams(window.location.search).get('highlight');
+    if (!raw || !/^[0-9]{1,15}$/.test(raw)) return;
+    var gameId = parseInt(raw, 10);
 
-        // Check if game is already in DOM (position within first page)
+    // utils-base.js is deferred and says when it has run
+    function whenUtilsReady(then) {
+        if (window.utilsBaseReady) {
+            then();
+        } else {
+            window.addEventListener('utils-base-ready', then, { once: true });
+        }
+    }
+
+    // utils-loadmore.js is fetched in an idle moment and says nothing: ask
+    // until it is there, however long a slow phone takes over it
+    function whenJumpReady(then) {
+        if (typeof window.jumpToHighlightedGame === 'function') {
+            then();
+        } else {
+            setTimeout(function() { whenJumpReady(then); }, 100);
+        }
+    }
+
+    // Wait for the page to settle, then land
+    setTimeout(function() {
         var desktopElement = document.getElementById('game-' + gameId);
         var mobileElement = document.getElementById('game-' + gameId + '-mobile');
 
         if (desktopElement || mobileElement) {
-            // Game loaded - just scroll and highlight
+            // Among the rows the server rendered: scroll and highlight
             var isDesktop = window.matchMedia('(min-width: 962px)').matches;
             var element = isDesktop ? desktopElement : mobileElement;
-
-            if (element && typeof flashHighlight === 'function') {
-                flashHighlight(element, [desktopElement, mobileElement]);
+            if (element) {
+                whenUtilsReady(function() {
+                    flashHighlight(element, [desktopElement, mobileElement]);
+                });
             }
         } else {
-            // Game not loaded yet - use client-side jump
-            // This uses CSF to find the game's position in filtered results and load to that point
-            if (typeof jumpToHighlightedGame === 'function') {
+            // Past them: the engine finds the game's place in the filtered
+            // list and renders down to it
+            whenJumpReady(function() {
                 jumpToHighlightedGame(gameId);
-            } else {
-                // Wait for utils-loadmore.js to load
-                var waitForUtils = function() {
-                    if (typeof jumpToHighlightedGame === 'function') {
-                        jumpToHighlightedGame(gameId);
-                    } else {
-                        setTimeout(waitForUtils, 100);
-                    }
-                };
-                waitForUtils();
-            }
+            });
         }
     }, 300);
+})();
 </script>
-{% endif %}
 {% endblock %}

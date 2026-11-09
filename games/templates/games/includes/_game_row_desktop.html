@@ -1,6 +1,6 @@
 {# Desktop Game Row Template - Visually pleasing with visible metadata #}
 {# Single source of truth: Used for both server-side rendering and JS template cloning #}
-{# Props: game (optional), show_rank ('alltime'|'filtered'|'none'), index (filtered rank), highlight (game ID), show_rank_in_details (bool) #}
+{# Props: game (optional), show_rank ('alltime'|'filtered'|'none'), index (filtered rank), show_rank_in_details (bool) #}
 {# When game is not provided, renders empty template structure for JS cloning with all elements present #}
 {% load game_filters static humanize %}
 <div class="game-row-wrapper hidden desktop:flex items-center"
@@ -14,7 +14,7 @@
         {% endif %}
     </div>
     {% endif %}
-    <div class="game-row desktop flex-1 py-1.5 px-3 grid {% if game and highlight and game.id == highlight %}is-highlighted{% endif %}"
+    <div class="game-row desktop flex-1 py-1.5 px-3 grid"
          data-slot="game-row"
          style="grid-template-columns: auto 1fr;">
         {# Rank + Thumbnail #}

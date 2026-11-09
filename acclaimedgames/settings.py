@@ -403,6 +403,17 @@ if TEST_MODE:
 # tests of the feature turn it on and patch the fetch.
 METADATA_AFTER_IMPORT = env.bool("METADATA_AFTER_IMPORT", default=not TEST_MODE)
 
+# A per-process budget for the anonymous renders the page cache cannot answer
+# and the CSV downloads (core.services.render_budget): five at once, one a
+# second sustained, in each gunicorn worker. Past it a render is reported, and
+# refused with a 429 only if ANON_RENDER_BUDGET_ENFORCE is set, which waits on
+# a week of the reports. Off under test, where one process makes every request
+# there is; the tests of it turn it on.
+ANON_RENDER_BUDGET_ENABLED = not TEST_MODE
+ANON_RENDER_BUDGET_PER_SECOND = 1
+ANON_RENDER_BUDGET_BURST = 5
+ANON_RENDER_BUDGET_ENFORCE = env.bool("ANON_RENDER_BUDGET_ENFORCE", default=False)
+
 # Email configuration (Brevo SMTP)
 # In dev: print to console. In prod: send via Brevo SMTP.
 # Brevo requires verified sender - contact@acclaimedvideogames.com is verified

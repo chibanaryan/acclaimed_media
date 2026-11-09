@@ -1009,19 +1009,17 @@ class HomePageFilterTest(TestCase):
         response = self.client.get(reverse("home") + "?page=999")
         self.assertEqual(response.status_code, 200)
 
-    def test_highlight_parameter_in_context(self):
-        """Test that highlight parameter is passed to context as integer."""
+    def test_the_server_marks_no_row_for_a_highlight(self):
+        """The browser does, from the address: the page is kept whole
+        whatever the highlight (`FilteredPagesAreCachedWhateverTheHighlightTests`)."""
         response = self.client.get(reverse("home") + f"?highlight={self.game1.id}")
         self.assertEqual(response.status_code, 200)
-        # Should be converted to integer for comparison with game.id
-        self.assertEqual(response.context["highlight"], self.game1.id)
-        self.assertIsInstance(response.context["highlight"], int)
+        self.assertNotIn("highlight", response.context)
+        self.assertNotContains(response, "is-highlighted")
 
-    def test_highlight_invalid_value_is_none(self):
-        """Test that invalid highlight value results in None."""
+    def test_a_highlight_that_is_no_id_is_ignored(self):
         response = self.client.get(reverse("home") + "?highlight=invalid")
         self.assertEqual(response.status_code, 200)
-        self.assertIsNone(response.context["highlight"])
 
     def test_sort_by_rank_default(self):
         """Test that default sort is by rank."""
@@ -1454,8 +1452,9 @@ class GameSearchLoadMoreTest(TestCase):
         self.assertEqual(response.status_code, 200)
         # Server returns standard page size - client-side loads more if needed
         self.assertEqual(len(response.context["games"]), 100)
-        # The highlight parameter is passed to context for client-side handling
-        self.assertEqual(response.context["highlight"], game_120.id)
+        # The game is past them, and the page's script reads its id from the
+        # address to ask the engine for it
+        self.assertNotContains(response, f'id="game-{game_120.id}"')
 
     def test_highlight_within_100_loads_normal_page(self):
         """Test that highlighting a game within position 100 loads normal page size."""
@@ -4866,9 +4865,11 @@ class GamesHomeCacheRoundTripTests(DatabaseCacheTestCase):
 
     In production the default alias is a `DatabaseCache`, and `/` read fifteen
     values one query at a time (Sentry ACCLAIMED-VIDEO-GAMES-9E): a crawler's
-    `/?platforms=N&highlight=G` skips the page cache, so each hit paid all of
-    them. Warm, the page makes two reads: the view's batch, and the articles
-    check its template makes while rendering.
+    `/?platforms=N&highlight=G` skipped the page cache, so each hit paid all
+    of them. Warm, a page that is rendered makes two reads: the view's batch,
+    and the articles check its template makes while rendering. (That address
+    is itself kept whole now, `FilteredPagesAreCachedWhateverTheHighlightTests`;
+    a sort keeps these ones rendering.)
     """
 
     def setUp(self):
@@ -4881,16 +4882,20 @@ class GamesHomeCacheRoundTripTests(DatabaseCacheTestCase):
         self.game = game
 
     def test_a_filtered_page_reads_the_cache_twice(self):
-        url = f"/?platforms={self.platform.id}&highlight={self.game.id}"
+        url = f"/?platforms={self.platform.id}&sort=year&highlight={self.game.id}"
         self.assertEqual(len(self.warm_cache_reads(url)), 2)
+
+    def test_a_page_kept_whole_reads_it_not_at_all(self):
+        url = f"/?platforms={self.platform.id}&highlight={self.game.id}"
+        self.assertEqual(self.warm_cache_reads(url), [])
 
     def test_a_new_filter_reads_the_cache_twice_too(self):
         # A crawler's next platform: the lists are warm, its facets are not,
         # and the batch's misses must not be read a second time
         other = Platform.objects.create(name="Mac", code="MAC")
         self.game.platforms.add(other)
-        self.warm_cache_reads(f"/?platforms={self.platform.id}")
-        self.assertEqual(len(self.cache_reads(f"/?platforms={other.id}")), 2)
+        self.warm_cache_reads(f"/?platforms={self.platform.id}&sort=year")
+        self.assertEqual(len(self.cache_reads(f"/?platforms={other.id}&sort=year")), 2)
 
     def test_a_landing_page_reads_the_cache_three_times(self):
         # One more: setup() resolves the path through the landing decades
@@ -5120,3 +5125,243 @@ class SidebarListsFollowTheDataVersionTests(TestCase):
         self.assertFalse(
             [q for q in captured if 'AS "game_count" FROM "games_series"' in q["sql"]]
         )
+
+
+class FilteredPagesAreCachedWhateverTheHighlightTests(TestCase):
+    """A row's filter link is answered from the page cache.
+
+    Twice a day a scraper on a residential-proxy network asked for about
+    4,000 of them in five minutes (`/?start=2002&end=2002&highlight=1695`),
+    one address each, so no per-address limit saw it; every one was a render,
+    and the site timed out. The page for a year, a decade, a platform or a
+    genre is now kept whole, whatever `highlight` says, which the browser
+    reads from the address itself.
+    """
+
+    # The two values that are a request's own, each written in several places
+    TOKENS = (
+        re.compile(rb'nonce="([^"]+)"'),
+        re.compile(rb'name="csrfmiddlewaretoken" value="([^"]+)"'),
+    )
+
+    def setUp(self):
+        clear_all_caches()
+        self.addCleanup(clear_all_caches)
+        self.platform = Platform.objects.create(name="Super NES", code="SNES")
+        self.genre = WikipediaGenre.objects.create(name="Platformer", slug="platformer")
+        self.games = []
+        for rank in (1, 2, 3):
+            game = Game.objects.create(
+                name=f"Cached Game {rank}", rank=rank, year_of_release=1994
+            )
+            game.platforms.add(self.platform)
+            game.wikipedia_genres.add(self.genre)
+            self.games.append(game)
+
+    def _key(self, facet):
+        return f"testserver:home_page:{config.CACHE_VERSION}:{facet}"
+
+    def _stored(self, facet):
+        return caches["local"].get(self._key(facet))
+
+    def _mark(self, facet):
+        """Swap the stored page's body, so a hit can be told from a render."""
+        payload = self._stored(facet)
+        payload["body"] = zlib.compress(b"CACHED MARKER")
+        caches["local"].set(self._key(facet), payload, 60)
+
+    def _masked(self, url):
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        content = response.content
+        for token in self.TOKENS:
+            content = content.replace(token.search(content).group(1), b"")
+        return content
+
+    def test_each_single_facet_page_is_kept_under_its_facet(self):
+        for url, facet in (
+            ("/?start=1994&end=1994", "year:1994"),
+            ("/?start=1990&end=1999", "decade:1990"),
+            (f"/?platforms={self.platform.id}", f"platform:{self.platform.id}"),
+            (f"/?genres={self.genre.id}", f"genre:{self.genre.id}"),
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 200)
+                self.assertIsNotNone(self._stored(facet))
+
+    def test_another_highlight_is_answered_with_the_same_page(self):
+        first, second = self.games[0].id, self.games[1].id
+        self.client.get(f"/?start=1994&end=1994&highlight={first}")
+        self._mark("year:1994")
+        response = self.client.get(f"/?start=1994&end=1994&highlight={second}")
+        self.assertEqual(response.content, b"CACHED MARKER")
+
+    def test_the_parameters_may_come_in_any_order(self):
+        """The scraper replays a stored list, re-serialised:
+        `/?highlight=1458&start=2009&end=2009` (Sentry, 2026-11-09)."""
+        self.client.get("/?start=1994&end=1994")
+        self._mark("year:1994")
+        for url in (
+            "/?end=1994&start=1994",
+            f"/?highlight={self.games[0].id}&start=1994&end=1994",
+            f"/?end=1994&highlight={self.games[0].id}&start=1994",
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).content, b"CACHED MARKER")
+
+    def test_a_tracking_tag_changes_nothing_either(self):
+        """`/?fbclid=...` is the home page for everyone who follows a shared
+        link, and no two of them carry the same tag."""
+        self.client.get("/?start=1994&end=1994")
+        self._mark("year:1994")
+        self.client.get("/")
+        self._mark("default")
+        for url in (
+            "/?fbclid=IwAR0abc",
+            "/?utm_source=newsletter&utm_medium=email&utm_campaign=x",
+            "/?gclid=abc&start=1994&end=1994",
+            f"/?start=1994&utm_source=x&end=1994&highlight={self.games[0].id}",
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).content, b"CACHED MARKER")
+
+    def test_a_kept_page_holds_nothing_of_a_tracking_tag(self):
+        response = self.client.get("/?fbclid=FIRSTVISITOR&utm_source=their-post")
+        self.assertNotContains(response, "FIRSTVISITOR")
+        self.assertNotContains(response, "their-post")
+
+    def test_a_facet_page_is_kept_as_long_as_a_landing_page(self):
+        """`/?start=1994&end=1994` is `/games/1994/` by another address. The
+        unfiltered page keeps its five minutes."""
+        timeouts = {}
+        real_set = caches["local"].set
+
+        def recording_set(key, value, timeout=None, **kwargs):
+            timeouts[key] = timeout
+            return real_set(key, value, timeout, **kwargs)
+
+        with mock.patch.object(caches["local"], "set", side_effect=recording_set):
+            self.client.get("/")
+            self.client.get("/?start=1994&end=1994")
+            self.client.get(f"/?platforms={self.platform.id}")
+        self.assertEqual(
+            timeouts,
+            {
+                self._key("default"): config.CACHE_TIMEOUT_HOME_PAGE,
+                self._key("year:1994"): config.CACHE_TIMEOUT_LANDING_PAGE,
+                self._key(f"platform:{self.platform.id}"): (
+                    config.CACHE_TIMEOUT_LANDING_PAGE
+                ),
+            },
+        )
+
+    def test_a_highlight_alone_is_the_home_page(self):
+        self.client.get("/")
+        self._mark("default")
+        response = self.client.get(f"/?highlight={self.games[0].id}")
+        self.assertEqual(response.content, b"CACHED MARKER")
+
+    def test_a_hit_costs_only_the_data_version(self):
+        with CaptureQueriesContext(connection) as version:
+            compute_game_data_version()
+        self.client.get(f"/?start=1994&end=1994&highlight={self.games[0].id}")
+        with CaptureQueriesContext(connection) as hit:
+            self.client.get(f"/?start=1994&end=1994&highlight={self.games[1].id}")
+        self.assertEqual(len(hit), len(version))
+
+    def test_a_page_holds_nothing_of_its_visitors_highlight(self):
+        """Or the next visitor is handed it. A list past one page too: its
+        Load More button names the list's address."""
+        for rank in range(4, 110):
+            Game.objects.create(
+                name=f"Filler {rank}", rank=rank, year_of_release=1994
+            ).platforms.add(self.platform)
+        game = self.games[0].id
+        for url in ("/?start=1994&end=1994", f"/?platforms={self.platform.id}", "/"):
+            with self.subTest(url=url):
+                bare = self._masked(url)
+                clear_all_caches()
+                joiner = "&" if "?" in url else "?"
+                landed = self._masked(f"{url}{joiner}highlight={game}")
+                clear_all_caches()
+                self.assertIn(b"load-more-button", bare)
+                self.assertNotIn(b"is-highlighted", landed)
+                # The whole page, the Load More button's address included.
+                # (Each row's own year link names its game, in both.)
+                self.assertEqual(landed, bare)
+
+    def test_other_queries_are_rendered_and_not_kept(self):
+        for query in (
+            "start=1994&end=1995",  # a range that is no decade
+            "start=1995&end=2004",
+            "start=1994",
+            "end=1994",
+            "start=1994&end=1994&sort=name",
+            "start=1994&start=1995&end=1994",  # repeated
+            "start=1994&end=1994&end=1994",
+            "start=%EF%BC%91%EF%BC%99%EF%BC%99%EF%BC%94&end=1994",  # １９９４
+            "start=01994&end=01994",
+            "start=1800&end=1800",
+            "start=9990&end=9999",
+            "page=2",
+            "sort=name",
+            "q=cached",
+            "utmsource=x",  # no tracking tag, for all it looks like one
+            "unknown=1",
+            f"platforms={self.platform.id},{self.platform.id}",
+            f"platforms=0{self.platform.id}",
+            f"platforms={self.platform.id}&genres={self.genre.id}",
+            "platforms=mfr-nintendo",
+            "genres=abc",
+            f"genres={self.genre.id}&genres={self.genre.id}",
+            "series=1",
+        ):
+            with self.subTest(query=query):
+                with mock.patch.object(caches["local"], "set") as stored:
+                    self.assertEqual(self.client.get(f"/?{query}").status_code, 200)
+                stored.assert_not_called()
+
+    def test_an_id_the_site_does_not_have_is_rendered_and_not_kept(self):
+        """Or any number at all would be a page to keep."""
+        for query, facet in (
+            ("platforms=987654", "platform:987654"),
+            ("genres=987654", "genre:987654"),
+        ):
+            with self.subTest(query=query):
+                self.assertEqual(self.client.get(f"/?{query}").status_code, 200)
+                self.assertIsNone(self._stored(facet))
+
+    def test_a_page_from_other_game_data_is_rendered_again(self):
+        self.client.get("/?start=1994&end=1994")
+        self._mark("year:1994")
+        Game.objects.create(name="Imported", rank=9, year_of_release=1994)
+        response = self.client.get("/?start=1994&end=1994")
+        self.assertContains(response, "Imported")
+        self.assertEqual(
+            self._stored("year:1994")["version"], compute_game_data_version()
+        )
+
+    def test_a_signed_in_reader_is_not_answered_from_it(self):
+        self.client.get("/?start=1994&end=1994")
+        self._mark("year:1994")
+        self.client.force_login(User.objects.create_user(username="r", password="pw"))
+        response = self.client.get("/?start=1994&end=1994")
+        self.assertNotEqual(response.content, b"CACHED MARKER")
+
+    def test_an_htmx_request_is_not_answered_from_it(self):
+        self.client.get("/?start=1994&end=1994")
+        self._mark("year:1994")
+        response = self.client.get("/?start=1994&end=1994", HTTP_HX_REQUEST="true")
+        self.assertNotEqual(response.content, b"CACHED MARKER")
+
+    def test_a_landing_page_still_declines_a_query_string(self):
+        with mock.patch.object(caches["local"], "set") as stored:
+            self.client.get(f"/games/1990s/?highlight={self.games[0].id}")
+        stored.assert_not_called()
+
+    def test_the_landing_script_reads_the_address(self):
+        """Not a server-rendered id, which a kept page would hand to everyone."""
+        response = self.client.get(f"/?highlight={self.games[0].id}")
+        self.assertNotIn("highlight", response.context)
+        self.assertContains(response, ".get('highlight')")
+        self.assertNotContains(response, f"var gameId = {self.games[0].id};")

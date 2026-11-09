@@ -66,17 +66,16 @@ class LandingView(AnonymousResponseCacheMixin, TemplateView):
         out there is `/?genres=5`."""
         return not OLD_FILTER_PARAMS.isdisjoint(self.request.GET)
 
-    def get(self, request, *args, **kwargs):
-        if self._is_old_filter_link():
+    def dispatch(self, request, *args, **kwargs):
+        # Before the page cache has a say: it is read ahead of `get`, and an
+        # old filter link is no page to keep, count or refuse, only to send on
+        if request.method in ("GET", "HEAD") and self._is_old_filter_link():
             return redirect_to_site(request)
-        return super().get(request, *args, **kwargs)
+        return super().dispatch(request, *args, **kwargs)
 
     def get_page_cache_key(self):
-        # The cache is read before `get` runs, so an old filter link has to
-        # miss it to reach the redirect. Anything else, such as a tracking tag,
-        # changes nothing on the page and shares the entry.
-        if self._is_old_filter_link():
-            return None
+        # Anything in the query by now, such as a tracking tag, changes
+        # nothing on the page and shares the entry.
         return f"landing_root:{games_config.CACHE_VERSION}"
 
     def get_context_data(self, **kwargs):
