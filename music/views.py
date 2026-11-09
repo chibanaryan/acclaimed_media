@@ -1248,8 +1248,10 @@ class ToggleListenedAlbumView(LoginRequiredMixin, View):
             else:
                 rows_for(models.ListenedAlbum, user, album).delete()
                 rows_for(models.WantToListenAlbum, user, album).delete()
-
-        caching.invalidate_listen_caches([request.user.id])
+            # Inside the block, where it is queued for the commit beside the
+            # drop `music.signals` queues for each row written, and the two
+            # are one drop. After it, the reader's click was two.
+            caching.invalidate_listen_caches([request.user.id])
 
         response = render(
             request,

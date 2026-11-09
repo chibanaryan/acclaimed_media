@@ -110,8 +110,8 @@ class Command(BaseCommand):
                 rows_for(models.WantToListenAlbum, user, album).delete()
             for album in to_add:
                 write_tracking_row(models.ListenedAlbum, user, album)
-
-        caching.invalidate_listen_caches([user.id])
+            # Inside the block: one drop at the commit, with the signals'
+            caching.invalidate_listen_caches([user.id])
         self.stdout.write(
             self.style.SUCCESS(
                 f"Marked {len(to_add)} album(s) listened for {user.username}; "

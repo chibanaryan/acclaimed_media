@@ -60,6 +60,18 @@ def invalidate_music_caches() -> bool:
     return _drop(list(config.CACHE_KEYS))
 
 
+def invalidate_music_caches_on_commit() -> None:
+    """`invalidate_music_caches`, once the open transaction commits.
+
+    For `music.signals`, which hears every row an import adds and deletes:
+    the drops are folded into one, and none runs before the rows it is for
+    can be read.
+    """
+    cache_helpers.drop_on_commit(
+        *config.CACHE_KEYS, generation_key=config.CACHE_KEY_GENERATION
+    )
+
+
 def _listen_keys(user_ids: Iterable[int]) -> List[str]:
     """Every per-user key for these users."""
     return [
@@ -75,9 +87,9 @@ def invalidate_listen_caches(user_ids) -> None:
     Separate from `invalidate_music_caches` because these keys are per-user:
     there is no enumerable set of them, so they are dropped by the things that
     can change them rather than by a blanket sweep: a toggle and the bulk
-    command here, and an import through `invalidate_release_caches`. The
-    listener counts are one global key, but those same things normally change
-    them; a row edited in the admin or a deleted user waits out its hour.
+    command here, an import through `invalidate_release_caches`, and
+    `music.signals` for a row changed any other way, such as in the admin.
+    The listener counts are one global key, which the same things change.
 
     Runs once the open transaction commits, or at once with none open: dropped
     inside one, a page load before the commit would refill a set from the old

@@ -707,8 +707,8 @@ crowded that row. Four things it depends on:
 Per-user cache keys cannot live in `CACHE_KEYS`, which is a flat tuple an
 import iterates. They are templates in `PER_USER_CACHE_KEY_TEMPLATES`, dropped
 by `caching.invalidate_listen_caches(user_ids)` on a toggle and from the bulk
-command below, and `invalidate_release_caches(user_ids)` on an import, the only
-three moments they can go stale.
+command below, by `invalidate_release_caches(user_ids)` on an import, and by
+`music/signals.py` for a row changed any other way, such as in the admin.
 
 **The Account modal shows a reader's albums** beside their games, the current
 site's block first, on any host (`music.services.listening_stats`). Its rank
@@ -721,8 +721,18 @@ near the bottom gets a position instead, "tied for" when it is shared, since
 "more than 95%" undersells the first and "more than 0%" says nothing to the
 second. `CACHE_KEY_LISTENER_COUNTS` is one global key, in `CACHE_KEYS` for
 an import, and `invalidate_listen_caches` drops it too, for a toggle or the bulk
-command. An admin edit or a deleted user waits out its
-one-hour TTL; games' signals cover those, and music has none yet.
+command. `music/signals.py` covers the rest, as games' signals do
+(2026-11-09): a tracking row saved or deleted anywhere drops its reader's sets
+and the counts, which a deleted user's cascade reaches too, and an album,
+artist, credit, list or publication added or deleted drops the section's
+`CACHE_KEYS`. Until then an admin edit waited out an hour for the counts and
+a day for the heading's. Each drop waits for the commit and is folded into
+one, the toggle's and the bulk command's own with it (they queue theirs
+inside their transaction for that), so a click is one drop and an import pays
+one more at its commit. Still waiting out a TTL: an album's year or genres
+edited in the admin (a day, or `clear_music_caches`), and a tracking row
+given to another user or an album deleted there (the readers' sets, five
+minutes).
 
 **Marking a collection in bulk**, for importing listens matched elsewhere
 (a RateYourMusic export, say) without several hundred web requests:
