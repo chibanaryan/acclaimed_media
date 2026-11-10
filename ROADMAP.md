@@ -116,9 +116,11 @@ and either changes what a job matches or needs measuring first.
 13. **Small leftovers.**
     - `_refresh_wikipedia` in `refresh_all_metadata.py` is dead: only
       `_refresh_wikipedia_async` is called.
-    - Nothing dispatches `reset-search-state` (four listeners), and
-      `core/js/filter-subcomponents.js` dispatches `year-preview`, which
-      has had no listener since 2026-11-10.
+    - Nothing dispatches `reset-search-state` (four listeners).
+    - `RateLimitedClient.get_bytes` reads a cover's whole body before
+      `COVER_MAX_BYTES` is checked, so the ceiling bounds what is stored,
+      not what a download can cost a worker. Streaming it means reading
+      inside the retry loop's `try`, and closing what is not read.
     - `populate_platform_years` has no caller; `games/platform_years.py`
       keeps it "for re-applying the whole table after editing it".
     - `test_progress_callback_with_event_key` (`games/tests/test_imports.py`)

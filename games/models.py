@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 import markdown
 from unidecode import unidecode
 from django.conf import settings
-from django.db import models
+from django.db import IntegrityError, models, transaction
 from django.utils.text import Truncator, slugify
 
 from core.loaded_values import RemembersLoaded
@@ -1149,10 +1149,12 @@ class Game(RemembersLoaded, MediaItemBase):
         be given a slug IGDB has moved from one not yet refreshed. The
         suffixed slug lasts until the next refresh finds the plain one free.
         """
-        if not candidate:
+        # The slug the game already holds is its own: no query for the
+        # refresh of a game whose slug has not moved, which is nearly all
+        if not candidate or candidate == self.slug:
             return candidate
         taken = Game.objects.filter(slug=candidate).exclude(pk=self.pk).exists()
-        return f"{candidate}-{self.igdb_id}" if taken else candidate
+        return f"{candidate}-{self.igdb_id or self.pk}" if taken else candidate
 
     def get_igdb_data(
         self,
@@ -1315,19 +1317,36 @@ class Game(RemembersLoaded, MediaItemBase):
         igdb_slug = dev_data.get("slug")
         igdb_url = f"https://www.igdb.com/companies/{igdb_slug}" if igdb_slug else None
 
+        defaults = {
+            "name": dev_data["name"],
+            # Named here, since update_or_create saves only its defaults
+            "name_normalized": normalize_name(dev_data["name"]),
+            "parent": parent,
+            # Only root developers get slugs
+            "slug": igdb_slug if is_root else None,
+            "igdb_url": igdb_url,
+        }
         # update_or_create prevents duplicates - matches on igdb_id
-        developer, _ = Developer.objects.update_or_create(
-            igdb_id=dev_data["id"],  # Lookup key - ensures no duplicates
-            defaults={
-                "name": dev_data["name"],
-                # Named here, since update_or_create saves only its defaults
-                "name_normalized": normalize_name(dev_data["name"]),
-                "parent": parent,
-                # Only root developers get slugs
-                "slug": igdb_slug if is_root else None,
-                "igdb_url": igdb_url,
-            },
-        )
+        try:
+            # In a savepoint, so that a refused write leaves the caller's
+            # transaction usable
+            with transaction.atomic():
+                developer, _ = Developer.objects.update_or_create(
+                    igdb_id=dev_data["id"], defaults=defaults
+                )
+        except IntegrityError:
+            # Another developer holds the slug (`unique_developer_slug`):
+            # IGDB has moved it from a company whose row here is not yet
+            # refreshed. The game being refreshed would fail with it, on
+            # every refresh, so this one takes its IGDB id as a suffix until
+            # a later refresh finds the plain slug free, as `_free_slug`
+            # does for a game.
+            if not defaults["slug"]:
+                raise
+            defaults["slug"] = f"{defaults['slug']}-{dev_data['id']}"
+            developer, _ = Developer.objects.update_or_create(
+                igdb_id=dev_data["id"], defaults=defaults
+            )
         return developer
 
     def _update_relationships_from_data(self, game_data: dict) -> None:

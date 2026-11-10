@@ -1178,6 +1178,79 @@ async function checkGamesFailedRequestWithoutTheEngine(page, engineFirst) {
 }
 
 /**
+ * Back is not a control's change: the address has moved by the time its
+ * render fails, so the controls stay with the address. Rolled back to the
+ * list, they named the page Back had left, under an address that did not,
+ * and the next change replaced that entry instead of pushing. Answers as
+ * above.
+ */
+async function checkGamesFailedBackWithoutTheEngine(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    let failing = false;
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        const render = url.startsWith(games + '/?') &&
+            ['xhr', 'fetch'].includes(request.resourceType());
+        if (url.startsWith(games + '/api/games/all/') || (render && failing)) {
+            request.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(games + '/', { waitUntil: 'load' });
+    const pressed = () => page.$eval('.year-grid-decade[title^="1990s:"]',
+        tile => tile.getAttribute('aria-pressed'));
+    const decade = await page.waitForSelector('.year-grid-decade[title^="1990s:"]');
+    await sleep(1000);
+    await decade.click();
+    for (let tries = 0; tries < 60 && new URL(page.url()).pathname === '/'; tries += 1) {
+        await sleep(100);
+    }
+    if (new URL(page.url()).pathname === '/') return 'the server never rendered the 1990s';
+    failing = true;
+    await page.goBack();
+    await sleep(1500);
+    const address = new URL(page.url());
+    if (address.pathname !== '/' || address.search) return `Back went to ${page.url()}`;
+    return await pressed() === 'false'
+        ? null : 'the year grid named the 1990s under the address of every year';
+}
+
+/**
+ * And a search still being typed is left in its box when its request fails:
+ * the roll-back emptied it, and the next keystrokes searched for the tail
+ * of the word. Answers as above.
+ */
+async function checkGamesFailedSearchKeepsTheTyping(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    let failed = 0;
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        if (url.startsWith(games + '/api/games/all/') ||
+                (url.startsWith(games + '/?') &&
+                    ['xhr', 'fetch'].includes(request.resourceType()))) {
+            if (!url.includes('/api/')) failed += 1;
+            request.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(games + '/', { waitUntil: 'load' });
+    const box = '#desktop-filter-sidebar [data-filter-search], [data-filter-search]';
+    const input = await page.waitForSelector(box, { visible: true });
+    await sleep(1000);
+    await input.click();
+    await page.keyboard.type('gam');
+    for (let tries = 0; tries < 80 && !failed; tries += 1) await sleep(50);
+    if (!failed) return 'the search was never sent';
+    await sleep(800);
+    const value = await input.evaluate(element => element.value);
+    return value === 'gam' ? null : `the search box was left on "${value}"`;
+}
+
+/**
  * A request sent before Alpine starts, which fails while the engine's data
  * fails too: a row's genre (`how` 'genre') or Enter in the search box. The
  * controls start from the list the server rendered, so they read the
@@ -2405,6 +2478,8 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
         await report(`games failed request, engine failed ${engineFirst ? 'first' : 'after'}`,
             page => checkGamesFailedRequestWithoutTheEngine(page, engineFirst));
     }
+    await report('games failed Back without the engine', checkGamesFailedBackWithoutTheEngine);
+    await report('games failed search keeps the typing', checkGamesFailedSearchKeepsTheTyping);
     for (const engineFirst of [true, false]) {
         await report(`music a row genre failing before Alpine, engine failed ${engineFirst ? 'first' : 'after'}`,
             page => checkAFailureBeforeAlpine(page, 'genre', engineFirst));

@@ -38,6 +38,10 @@ logger = logging.getLogger(__name__)
 IGDB_FAILED = "IGDB import failed; see the server logs."
 WIKIPEDIA_FAILED = "Wikipedia lookup failed; see the server logs."
 IMPORT_FAILED = "Import failed; see the server logs."
+POSITIONS_SKIPPED = (
+    "Not imported: the lists or games file in this batch failed, and positions "
+    "are attached to their rows by order."
+)
 
 
 class ImportFileError(ValueError):
@@ -861,6 +865,12 @@ def import_batch_with_progress(data: Dict[str, Any]):
 
         def run_import():
             games_imported = False
+            # The files that failed, by field. A file is imported in a
+            # savepoint and the next one goes on, but positions are attached
+            # to lists and to games by their order in those two files:
+            # behind one that was not imported they would go onto the
+            # previous release's rows, and be committed there.
+            failed = set()
             try:
                 with transaction.atomic():
                     for (
@@ -876,9 +886,25 @@ def import_batch_with_progress(data: Dict[str, Any]):
                         if not file_obj:
                             continue
 
+                        if field_name == "memberships_file" and failed & {
+                            "lists_file",
+                            "games_file",
+                        }:
+                            _queue_event(
+                                json.dumps(
+                                    {
+                                        "event": "error",
+                                        "file": display_name,
+                                        "message": POSITIONS_SKIPPED,
+                                    }
+                                )
+                            )
+                            continue
+
                         # Validate prerequisites
                         validation_error = _validate_prerequisites(import_type)
                         if validation_error:
+                            failed.add(field_name)
                             _queue_event(
                                 json.dumps(
                                     {
@@ -903,6 +929,7 @@ def import_batch_with_progress(data: Dict[str, Any]):
                         except ImportFileError as error:
                             # The file's own fault, in words: no traceback,
                             # and the message as written
+                            failed.add(field_name)
                             logger.warning("%s import refused: %s", display_name, error)
                             _queue_event(
                                 json.dumps(
@@ -914,6 +941,7 @@ def import_batch_with_progress(data: Dict[str, Any]):
                                 )
                             )
                         except Exception:
+                            failed.add(field_name)
                             logger.exception("%s import failed", display_name)
                             _queue_event(
                                 json.dumps(

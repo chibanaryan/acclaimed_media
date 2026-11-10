@@ -404,3 +404,13 @@ class RemovedCodeStaysRemovedTests(SimpleTestCase):
         ):
             with self.subTest(path=path):
                 self.assertNotIn("YearPreview", read(path))
+
+    def test_nor_is_the_event_it_listened_for_sent(self):
+        """The year grid went on dispatching `year-preview` on every drag
+        step, to nothing."""
+        for path in (
+            "core/static/core/js/filter-subcomponents.js",
+            "core/static/core/js/filter-subcomponents.min.js",
+        ):
+            with self.subTest(path=path):
+                self.assertNotIn("year-preview", read(path))

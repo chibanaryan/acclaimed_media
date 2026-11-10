@@ -761,7 +761,6 @@
                 this.dragAnchorEnd = end;
                 this.dragEnd = end;
                 this.wasAlreadySelected = filters.start === start && filters.end === end;
-                this.dispatchPreview();
             },
 
             startDragDecade: function (decadeStart, event) {
@@ -771,7 +770,6 @@
             updateDragDecade: function (decadeStart) {
                 if (this.isDragging) {
                     this.dragEnd = decadeStart < this.dragStart ? decadeStart : decadeStart + 9;
-                    this.dispatchPreview();
                 }
             },
 
@@ -872,7 +870,6 @@
             updateDrag: function (year) {
                 if (this.isDragging) {
                     this.dragEnd = year;
-                    this.dispatchPreview();
                 }
             },
 
@@ -910,16 +907,6 @@
                 this.dragStart = null;
                 this.dragAnchorEnd = null;
                 this.dragEnd = null;
-                window.dispatchEvent(new CustomEvent("year-preview", { detail: { active: false } }));
-            },
-
-            dispatchPreview: function () {
-                if (this.isDragging) {
-                    var range = this.dragRange();
-                    window.dispatchEvent(
-                        new CustomEvent("year-preview", { detail: { active: true, start: range.start, end: range.end } })
-                    );
-                }
             },
 
             getDecadeCount: function (decade) {

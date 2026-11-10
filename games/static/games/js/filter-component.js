@@ -498,7 +498,8 @@ document.addEventListener('alpine:init', () => {
          * renders the filters asked for, which the URL lacks, and pushes
          * them. And not once the reader has changed something since the
          * request was sent: that change is queued or on its way, and is
-         * theirs to keep.
+         * theirs to keep. The address is the list's throughout, since only
+         * a control's request is recorded as failed (performUpdate).
          */
         _rollBackIfStranded() {
             const failed = this._failedFilterKey;
@@ -509,9 +510,19 @@ document.addEventListener('alpine:init', () => {
             const echo = document.getElementById('game-rendered-filters');
             if (!echo) return;
             const typed = this.filters.q;
+            // A search still being typed is the reader's: the box keeps its
+            // text, and the next keystroke sends it again. Music leaves it
+            // alone the same way.
+            const typing = document.activeElement &&
+                typeof document.activeElement.matches === 'function' &&
+                document.activeElement.matches('[data-filter-search]');
             this._syncFiltersFromUrl(echo.dataset.query || '');
-            // The q watcher would send the restored text as a new search
-            if (this.filters.q !== typed) this._restoredQuery = this.filters.q;
+            if (typing) {
+                this.filters.q = typed;
+            } else if (this.filters.q !== typed) {
+                // The q watcher would send the restored text as a new search
+                this._restoredQuery = this.filters.q;
+            }
         },
 
         async loadSavedFilters() {
@@ -980,8 +991,9 @@ document.addEventListener('alpine:init', () => {
 
         /**
          * Read the filters back from the URL, which they then match, or
-         * from `search`, the query a list was rendered from, on a page whose
-         * URL is that list's.
+         * from `search`, the query a list was rendered from. Reading a
+         * list's query says nothing of what the URL holds, so the record
+         * of that is left alone.
          */
         _syncFiltersFromUrl(search) {
             const url = getFiltersFromURL(search);
@@ -990,7 +1002,7 @@ document.addEventListener('alpine:init', () => {
                 end: url.end === null ? this.maxYear : url.end,
                 hltb_preset: this.calculateHltbPreset(url.hltb_min, url.hltb_max)
             });
-            this._setUrlFilterKey(this._filterKey());
+            if (search === undefined) this._setUrlFilterKey(this._filterKey());
         },
 
         /** Record the filters the URL now holds, and a new visit if they moved. */
@@ -1277,9 +1289,15 @@ document.addEventListener('alpine:init', () => {
             } catch (err) {
                 if (err.name !== 'AbortError') {
                     console.error('Error fetching results:', err);
-                    // The list is as it was, and the controls ahead of it
-                    this._failedFilterKey = filterKey;
-                    this._rollBackIfStranded();
+                    // The list is as it was, and the controls ahead of it.
+                    // Only for a change a control made, which writes
+                    // history once rendered: Back and Forward (no history
+                    // method) have moved the address already, and putting
+                    // the controls on the list would set them against it.
+                    if (historyMethod) {
+                        this._failedFilterKey = filterKey;
+                        this._rollBackIfStranded();
+                    }
                 }
             } finally {
                 // An aborted render finishes after what replaced it

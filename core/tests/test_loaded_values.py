@@ -62,3 +62,14 @@ class LoadedValuesTests(TestCase):
                 self.game, "year_of_release", update_fields=["year_of_release"]
             )
         )
+
+    def test_loading_a_row_passes_djangos_own_arguments_on(self):
+        """`from_db` without Django 6.1's `fetch_mode` keyword is a
+        deprecation warning on every row loaded, and drops the queryset's
+        fetch mode."""
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            game = Game.objects.get()
+        self.assertEqual(game._loaded_values, {"year_of_release": 1998})

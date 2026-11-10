@@ -12,6 +12,7 @@
            {% if id %}id="{{ id }}"{% endif %}
            {% if name %}name="{{ name }}"{% else %}name="q"{% endif %}
            x-model="filters.q"
+           data-filter-search
            @keyup.enter="updateUrlAndResults()"
            placeholder="{% if placeholder %}{{ placeholder }}{% else %}Search{% endif %}"
            aria-label="{% if placeholder %}{{ placeholder }}{% else %}Search{% endif %}"

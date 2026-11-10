@@ -280,9 +280,11 @@ COVER_ART_THUMBNAIL_SIZES = (250, 500, 1200)
 # remote sent and served with it from this origin, which shares its cookies
 # with the other sites: archive.org answering 200 with an error page, or an
 # upload that is a PDF (the archive takes them), would otherwise be served
-# from here as HTML or a document. And a ceiling on the bytes, which are
-# held in memory, then in a database row, then in every response: the
-# largest of the 2,028 stored on 2026-11-10 was 228 KB.
+# from here as HTML or a document. And a ceiling on the bytes kept, which
+# go into a database row and then into every response: the largest of the
+# 2,028 stored on 2026-11-10 was 228 KB. The body has been read into memory
+# by the time it is measured (`get_bytes` does not stream), so this bounds
+# what is stored, not what a download can cost.
 COVER_CONTENT_TYPES = frozenset({"image/jpeg", "image/png", "image/gif", "image/webp"})
 COVER_MAX_BYTES = 5 * 1024 * 1024
 

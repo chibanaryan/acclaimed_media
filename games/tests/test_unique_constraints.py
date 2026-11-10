@@ -5,13 +5,17 @@
 a `MultipleObjectsReturned`, a 500, from then on.
 """
 
+import json
 from io import StringIO
+from unittest import mock
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 
 from games import models, utils
 from games.services.import_handler import ImportFileError
+from games.tests.test_imports import InlineImportThreadMixin
 from music.models import Album
 
 
@@ -110,6 +114,85 @@ class SlugGivenByIgdbTests(TestCase):
         game = models.Game.objects.create(name="???", rank=2, igdb_id=2)
         self.assertEqual(self.fetched(game, None), "")
 
+    def test_a_slug_that_has_not_moved_costs_no_query(self):
+        """The weekly refresh is every game, and nearly none has moved."""
+        game = models.Game.objects.create(name="Solo", rank=1, igdb_id=1, slug="solo")
+        with self.assertNumQueries(0):
+            self.assertEqual(game._free_slug("solo"), "solo")
+
+    def test_a_game_with_no_igdb_id_is_told_apart_by_its_pk(self):
+        models.Game.objects.create(name="Holder", rank=1, igdb_id=1, slug="tetris")
+        game = models.Game.objects.create(name="Tetris", rank=2)
+        self.assertEqual(game._free_slug("tetris"), f"tetris-{game.pk}")
+
+
+class DeveloperSlugGivenByIgdbTests(TestCase):
+    """IGDB can move a slug from one company to another between refreshes."""
+
+    def developer(self, igdb_id, slug, name="Acme"):
+        return models.Game._get_or_create_developer_with_parents(
+            {"id": igdb_id, "name": name, "slug": slug}
+        )
+
+    def test_a_slug_another_developer_holds_takes_the_igdb_id(self):
+        """Refused outright, the game being refreshed failed with it, on
+        every refresh, and the admin's Save on that game was a 500."""
+        stale = self.developer(10, "acme", "Acme (old)")
+        newcomer = self.developer(30, "acme")
+        self.assertEqual((stale.slug, newcomer.slug), ("acme", "acme-30"))
+
+    def test_a_game_credited_to_it_still_refreshes(self):
+        self.developer(10, "acme", "Acme (old)")
+        game = models.Game.objects.create(name="Alpha", rank=1, igdb_id=7)
+        game.get_igdb_data(
+            data={
+                "slug": "alpha",
+                "cover": "",
+                "url": "",
+                "developers": [{"id": 30, "name": "Acme", "slug": "acme"}],
+                "series": [],
+            },
+            api_client=object(),
+        )
+        game.refresh_from_db()
+        self.assertEqual(game.slug, "alpha")
+        self.assertEqual([d.slug for d in game.developers.all()], ["acme-30"])
+
+    def test_it_takes_the_plain_slug_once_that_is_free(self):
+        self.developer(10, "acme", "Acme (old)")
+        self.developer(30, "acme")
+        self.developer(10, "acme-holdings", "Acme Holdings")
+        self.assertEqual(self.developer(30, "acme").slug, "acme")
+
+    def test_a_developer_refreshed_again_keeps_its_own_slug(self):
+        first = self.developer(10, "acme")
+        again = self.developer(10, "acme")
+        self.assertEqual((first.pk, again.slug), (again.pk, "acme"))
+
+    def test_a_subsidiary_has_no_slug_to_collide(self):
+        self.developer(10, "acme")
+        child = models.Game._get_or_create_developer_with_parents(
+            {
+                "id": 31,
+                "name": "Acme Studio",
+                "slug": "acme",
+                "parent": {"id": 10, "name": "Acme", "slug": "acme"},
+            }
+        )
+        self.assertFalse(child.slug)
+        self.assertEqual(child.parent.slug, "acme")
+
+    def test_a_refusal_that_is_not_about_the_slug_is_not_hidden(self):
+        """Only a slug has a second spelling to try."""
+        with mock.patch.object(
+            models.Developer.objects,
+            "update_or_create",
+            side_effect=IntegrityError("some other constraint"),
+        ) as write:
+            with self.assertRaises(IntegrityError):
+                self.developer(10, None)
+        self.assertEqual(write.call_count, 1)
+
 
 class ImportRefusesASharedIgdbIdTests(TestCase):
     ROWS = (
@@ -145,3 +228,54 @@ class ImportRefusesASharedIgdbIdTests(TestCase):
         success, _ = utils.import_games(StringIO(rows))
         self.assertTrue(success)
         self.assertEqual(models.Game.objects.count(), 2)
+
+
+class StreamedImportStopsBehindARefusedGamesFileTests(
+    InlineImportThreadMixin, TestCase
+):
+    """The staff page's import goes on to the next file after one fails.
+
+    Positions are attached to games by rank, so behind a games file that
+    was not imported they went onto the previous release's games, and were
+    committed there.
+    """
+
+    def setUp(self):
+        super().setUp()
+        models.Platform.objects.create(code="PC", name="PC")
+        publication = models.Publication.objects.create(name="Edge")
+        models.List.objects.create(publisher=publication, name="Top 100", year=2020)
+        models.Game.objects.create(name="Before", rank=1, igdb_id=9, slug="before")
+
+    def stream(self, games_rows):
+        data = {
+            "games_file": SimpleUploadedFile("Top1400.txt", games_rows.encode()),
+            "memberships_file": SimpleUploadedFile("GamePositions.txt", b"0:1\r\n"),
+        }
+        with mock.patch(
+            "games.services.import_handler.import_listmemberships",
+            return_value=(True, "positions"),
+        ) as positions:
+            events = [
+                json.loads(chunk.split("data: ", 1)[1].split("\n", 1)[0])
+                for chunk in utils.import_batch_with_progress(data)
+                if chunk.startswith("data: ")
+            ]
+        return events, positions
+
+    def test_positions_are_not_imported_behind_a_refused_games_file(self):
+        events, positions = self.stream(ImportRefusesASharedIgdbIdTests.ROWS)
+
+        positions.assert_not_called()
+        errors = {e.get("file"): e["message"] for e in events if e["event"] == "error"}
+        self.assertIn("rows 1 (Alpha) and 3 (Alpha Remastered)", errors["Games"])
+        self.assertIn("Not imported", errors["Game Positions"])
+        self.assertEqual(
+            list(models.Game.objects.values_list("name", flat=True)), ["Before"]
+        )
+
+    def test_positions_follow_a_games_file_that_imported(self):
+        rows = "1\tAlpha\t2000\tPC\t101\tQ1\r\n"
+        events, positions = self.stream(rows)
+        positions.assert_called_once()
+        self.assertFalse([e for e in events if e["event"] == "error"])

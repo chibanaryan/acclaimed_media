@@ -54,8 +54,11 @@ class RemembersLoaded:
     remembered_fields: tuple = ()
 
     @classmethod
-    def from_db(cls, db, field_names, values):
-        instance = super().from_db(db, field_names, values)
+    def from_db(cls, db, field_names, values, **kwargs):
+        # Whatever else Django passes (6.1's `fetch_mode`) goes on to it:
+        # without the keyword it takes a deprecated path and the queryset's
+        # fetch mode is dropped
+        instance = super().from_db(db, field_names, values, **kwargs)
         remember(instance)
         return instance
 
