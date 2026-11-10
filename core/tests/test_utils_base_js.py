@@ -61,3 +61,26 @@ class UtilsBaseTests(SimpleTestCase):
             self.output["scrolls"],
             {"reduced": "auto", "unreduced": "smooth", "unknown": "smooth"},
         )
+
+    def test_filters_are_read_from_a_query_handed_in(self):
+        """The games roll-back reads the list's own echo of its filters, on
+        a page whose address may say something else."""
+        echoed = self.output["echoed"]
+        given = echoed["given"]
+        self.assertEqual((given["start"], given["end"]), (1990, 1999))
+        self.assertEqual(given["platforms"], ["3", "4"])
+        self.assertEqual(given["sortDirection"], "desc")
+        # Nothing of the page's own address
+        self.assertEqual((given["q"], given["genres"], given["sort"]), ("", [], "rank"))
+
+        empty = echoed["empty"]
+        self.assertEqual((empty["q"], empty["start"], empty["end"]), ("", None, None))
+        self.assertEqual((empty["genres"], empty["sort"]), ([], "rank"))
+
+        old_year = echoed["oldYear"]
+        self.assertEqual((old_year["start"], old_year["end"]), (1995, 1995))
+
+        page = echoed["page"]
+        self.assertEqual(
+            (page["q"], page["genres"], page["sort"]), ("mario", ["9"], "name")
+        )

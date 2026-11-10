@@ -18,6 +18,13 @@
 <script type="application/json" id="rank-distribution-update">{{ rank_distribution|tojson }}</script>
 {% endif %}
 
+{# The filters this list was rendered with, as a query the filter component #}
+{# reads. A filter request that fails leaves this behind the controls, and #}
+{# with no engine to come they are put back on it (_rollBackIfStranded), as #}
+{# music's are on #album-rendered-filters. Nothing of one visitor's: the #}
+{# page is kept whole, and `highlight` is no filter. #}
+<div id="game-rendered-filters" hidden data-query="{{ rendered_filters_query }}"></div>
+
 {# Sort, direction, view toggle and jump-to-rank, from the shared #}
 {# partial the album rankings page uses too. filterComponent supplies #}
 {# the filters.sort / updateSort / viewMode contract it binds to. #}

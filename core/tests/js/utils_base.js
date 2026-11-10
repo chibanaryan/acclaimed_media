@@ -76,5 +76,16 @@ vm.runInThisContext(fs.readFileSync(path.join(root, file), 'utf8'), { filename: 
         globalThis.matchMedia = matchMedia;
         scrolls[name] = scrollBehavior();
     }
-    process.stdout.write(JSON.stringify({ refused, allowed, answers, scrolls }));
+    // The filters of a query string handed in, not the page's own: what the
+    // games filter component puts its controls back on after a failed
+    // request (the list's #game-rendered-filters). The page's address is
+    // one with other filters, which must not leak in.
+    globalThis.location = { search: '?q=mario&genres=9&sort=name', pathname: '/' };
+    const echoed = {
+        given: getFiltersFromURL('start=1990&end=1999&platforms=3,4&dir=desc'),
+        empty: getFiltersFromURL(''),
+        oldYear: getFiltersFromURL('year=1995'),
+        page: getFiltersFromURL(),
+    };
+    process.stdout.write(JSON.stringify({ refused, allowed, answers, scrolls, echoed }));
 })();

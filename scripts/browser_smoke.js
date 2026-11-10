@@ -1126,6 +1126,58 @@ async function checkFailedRequestWithoutTheEngine(page, engineFirst) {
 }
 
 /**
+ * The same on games, which had no roll-back at all: a filter request that
+ * failed with no engine to come left the year grid, the heading and the tab
+ * on the decade asked for, over a list that still showed every year.
+ * `engineFirst` fails the engine's data before the click's request fails,
+ * or after it. With the data still on its way nothing is rolled back: the
+ * engine, once it has it, renders the filters asked for. Answers as above.
+ */
+async function checkGamesFailedRequestWithoutTheEngine(page, engineFirst) {
+    await page.setViewport({ width: 1440, height: 900 });
+    let data = null;
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        if (url.startsWith(games + '/api/games/all/') && !engineFirst) {
+            data = request;
+        } else if (url.startsWith(games + '/api/games/all/') ||
+                (url.startsWith(games + '/?') &&
+                    ['xhr', 'fetch'].includes(request.resourceType()))) {
+            request.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(games + '/', { waitUntil: 'load' });
+    const title = () => page.$eval('#search-title', element => element.textContent.trim());
+    const pressed = () => page.$eval('.year-grid-decade[title^="1990s:"]',
+        tile => tile.getAttribute('aria-pressed'));
+    const heading = await title();
+    const tab = await page.title();
+    const rows = await page.$$eval('#game-list-container .game-row.desktop', all => all.length);
+    const decade = await page.waitForSelector('.year-grid-decade[title^="1990s:"]');
+    await sleep(1000);
+    await decade.click();
+    await sleep(1500);
+    if (!engineFirst) {
+        for (let tries = 0; !data && tries < 100; tries += 1) await sleep(50);
+        if (!data) return 'the engine never asked for its data';
+        // Still to come, so the click is not given up yet
+        if (await pressed() !== 'true') return 'the click was rolled back with the engine still to come';
+        await data.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        await sleep(500);
+    }
+    if (await pressed() !== 'false') return 'the year grid stayed on the 1990s';
+    const now = await title();
+    if (now !== heading) return `the heading read "${now}", not "${heading}"`;
+    if (await page.title() !== tab) return `the tab read "${await page.title()}", not "${tab}"`;
+    if (new URL(page.url()).search) return `the address became ${page.url()}`;
+    const left = await page.$$eval('#game-list-container .game-row.desktop', all => all.length);
+    return left === rows ? null : `the list went from ${rows} rows to ${left}`;
+}
+
+/**
  * A request sent before Alpine starts, which fails while the engine's data
  * fails too: a row's genre (`how` 'genre') or Enter in the search box. The
  * controls start from the list the server rendered, so they read the
@@ -2348,6 +2400,10 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     for (const engineFirst of [true, false]) {
         await report(`music failed request, engine failed ${engineFirst ? 'first' : 'after'}`,
             page => checkFailedRequestWithoutTheEngine(page, engineFirst));
+    }
+    for (const engineFirst of [true, false]) {
+        await report(`games failed request, engine failed ${engineFirst ? 'first' : 'after'}`,
+            page => checkGamesFailedRequestWithoutTheEngine(page, engineFirst));
     }
     for (const engineFirst of [true, false]) {
         await report(`music a row genre failing before Alpine, engine failed ${engineFirst ? 'first' : 'after'}`,

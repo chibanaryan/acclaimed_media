@@ -70,6 +70,11 @@ document.addEventListener('alpine:init', () => {
         _urlFilterVisit: 0,
         clientFilterReady: false,
         _clientFilteringInitRequested: false,
+        // The engine will not come: its bundle or its data failed
+        _clientFilterUnavailable: false,
+        // The filters a server request that failed was sent with, until a
+        // render succeeds or the controls go back to the list
+        _failedFilterKey: null,
         _csf: null,
         // Store listener references for cleanup (memory leak fix)
         _popstateListener: null,
@@ -400,7 +405,7 @@ document.addEventListener('alpine:init', () => {
             const doInit = async () => {
                 self._csf = getClientSideFiltering();
                 try {
-                    await self._csf.init({
+                    const started = await self._csf.init({
                         onLoadComplete: () => {
                             self.clientFilterReady = true;
                             self._csf.setViewMode(self.viewMode);
@@ -439,9 +444,13 @@ document.addEventListener('alpine:init', () => {
                             }
                         }
                     });
+                    // init() answers false, not an error, when the data
+                    // would not load
+                    if (!started) self._engineUnavailable();
                 } catch (e) {
                     console.error('[CSF] Failed to initialize:', e);
                     self.dispatchInitialCounts();
+                    self._engineUnavailable();
                 }
             };
 
@@ -453,6 +462,7 @@ document.addEventListener('alpine:init', () => {
                         return;
                     }
                     self.dispatchInitialCounts();
+                    self._engineUnavailable();
                     return;
                 }
 
@@ -464,6 +474,44 @@ document.addEventListener('alpine:init', () => {
             };
 
             tryInit();
+        },
+
+        /** The engine will not answer: its bundle or its data failed. */
+        _engineUnavailable() {
+            this._clientFilterUnavailable = true;
+            this._rollBackIfStranded();
+        },
+
+        /**
+         * Put the controls back on the filters the list was rendered with,
+         * when a server filter request has failed and no engine is coming
+         * to render the ones asked for. They were left as asked: the year
+         * grid on a decade over a list that still showed every year.
+         *
+         * The list's filters are its own echo of the request
+         * (#game-rendered-filters), read as the URL is on Back. The
+         * heading, the tab and the address were never moved, since only a
+         * render moves them, so the controls are all there is to undo. The
+         * click is lost, and nothing claims a filter the list does not show.
+         *
+         * Not while the engine may still come: once it has its data it
+         * renders the filters asked for, which the URL lacks, and pushes
+         * them. And not once the reader has changed something since the
+         * request was sent: that change is queued or on its way, and is
+         * theirs to keep.
+         */
+        _rollBackIfStranded() {
+            const failed = this._failedFilterKey;
+            if (failed === null || this.clientFilterReady) return;
+            if (this._clientFilteringInitRequested && !this._clientFilterUnavailable) return;
+            this._failedFilterKey = null;
+            if (this._filterKey() !== failed) return;
+            const echo = document.getElementById('game-rendered-filters');
+            if (!echo) return;
+            const typed = this.filters.q;
+            this._syncFiltersFromUrl(echo.dataset.query || '');
+            // The q watcher would send the restored text as a new search
+            if (this.filters.q !== typed) this._restoredQuery = this.filters.q;
         },
 
         async loadSavedFilters() {
@@ -930,9 +978,13 @@ document.addEventListener('alpine:init', () => {
                 (query ? '/games/?' + query : '/');
         },
 
-        /** Read the filters back from the URL, which they then match. */
-        _syncFiltersFromUrl() {
-            const url = getFiltersFromURL();
+        /**
+         * Read the filters back from the URL, which they then match, or
+         * from `search`, the query a list was rendered from, on a page whose
+         * URL is that list's.
+         */
+        _syncFiltersFromUrl(search) {
+            const url = getFiltersFromURL(search);
             Object.assign(this.filters, url, {
                 start: url.start === null ? this.minYear : url.start,
                 end: url.end === null ? this.maxYear : url.end,
@@ -1216,6 +1268,7 @@ document.addEventListener('alpine:init', () => {
                 if (historyMethod) {
                     this._writeHistory(historyMethod, pushUrl, filterKey);
                 }
+                this._failedFilterKey = null;
                 // The client render sets the tab with the heading; this path
                 // has to as well, or the tab lags until the engine loads.
                 if (window.documentTitleSuffix) {
@@ -1224,6 +1277,9 @@ document.addEventListener('alpine:init', () => {
             } catch (err) {
                 if (err.name !== 'AbortError') {
                     console.error('Error fetching results:', err);
+                    // The list is as it was, and the controls ahead of it
+                    this._failedFilterKey = filterKey;
+                    this._rollBackIfStranded();
                 }
             } finally {
                 // An aborted render finishes after what replaced it
@@ -1268,6 +1324,8 @@ document.addEventListener('alpine:init', () => {
                 highlightId,
                 showRank: this.hasActiveFilters() ? 'filtered' : 'alltime'
             });
+            // The list now shows the filters: nothing is left to roll back
+            this._failedFilterKey = null;
 
             // Also empties Load Previous: a new result set starts at the top
             this._csf.renderWindowChrome();

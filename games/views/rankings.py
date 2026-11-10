@@ -128,6 +128,37 @@ def page_query(query_string):
     return query
 
 
+def _rendered_filters_query(filters, min_year, max_year):
+    """The filters a list was rendered with, as a query the browser reads.
+
+    Written into the list (`#game-rendered-filters`), which a filter request
+    that fails leaves behind the controls: the filter component puts them
+    back on it (`_rollBackIfStranded`). In the spelling `getFiltersFromURL`
+    reads, with the defaults left out as the address leaves them out.
+    """
+    query = QueryDict(mutable=True)
+    if filters["q"]:
+        query["q"] = filters["q"]
+    if filters["start"] != min_year or filters["end"] != max_year:
+        query["start"] = filters["start"]
+        query["end"] = filters["end"]
+    for name in ("genres", "platforms", "series"):
+        if filters[name]:
+            query[name] = ",".join(filters[name])
+    if filters["played"]:
+        query["played"] = filters["played"]
+    if filters["sort"] != "rank":
+        query["sort"] = filters["sort"]
+    if filters["sortDirection"] != "asc":
+        query["dir"] = filters["sortDirection"]
+    if filters["hltb_mode"] != "main":
+        query["hltb_mode"] = filters["hltb_mode"]
+    for name in ("hltb_min", "hltb_max"):
+        if filters[name] is not None:
+            query[name] = filters[name]
+    return query.urlencode(safe=",")
+
+
 def _list_url(request):
     """Where Load More asks for more of the list: the path and `page_query`.
 
@@ -537,6 +568,9 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         # the address, and nothing of one visitor's may be rendered. Nor in
         # the address Load More asks for more of the list at
         context["list_url"] = _list_url(self.request)
+        context["rendered_filters_query"] = _rendered_filters_query(
+            filters, min_year, max_year
+        )
         context["is_filtered"] = True  # GameSearch is always filtered
         context["filter_title"] = _build_filter_title(
             filters, genres, platforms, min_year, max_year, series_list

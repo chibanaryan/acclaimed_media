@@ -1426,7 +1426,10 @@ class JumpToRankReadsLandingPagePathsTests(SimpleTestCase):
             with self.subTest(path=path):
                 source = self._source(path)
                 body = source[source.index("function getFiltersFromURL") :]
-                self.assertIn("currentFilterParams()", body[:400])
+                # Through the helper, which reads the page's address when
+                # it is handed no query of its own (the minified copy
+                # names the argument as it likes)
+                self.assertRegex(body[:400], r"currentFilterParams\(\w*\)")
 
     def test_client_rendered_ranks_read_the_path_too(self):
         for path in (

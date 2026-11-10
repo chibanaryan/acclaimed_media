@@ -714,10 +714,14 @@ function landingFilterParams(landingPath, landingSearch) {
  * against the whole ranking, and client-rendered rows showed all-time
  * ranks. Old ?year= and ?decade= links, which the server honours, are mapped
  * onto start/end the same way.
+ * @param {string} [search] - A query string to read in the page's place: the
+ *     one the server rendered a list from (#game-rendered-filters)
  * @returns {URLSearchParams}
  */
-function currentFilterParams() {
-    const params = mergedFilterParams(seoPathSearch(window.location.pathname));
+function currentFilterParams(search) {
+    const params = search === undefined
+        ? mergedFilterParams(seoPathSearch(window.location.pathname))
+        : new URLSearchParams(search);
     if (!params.get('start') && !params.get('end')) {
         const year = parseInt(params.get('year'));
         const decade = (params.get('decade') || '').match(/^(\d{3}0)-\d{2}$/);
@@ -737,10 +741,11 @@ function currentFilterParams() {
  * (currentFilterParams). Reading only the query string, a jump on
  * /games/2010s/ saw no filters: the total was the whole ranking, so rank
  * 500 passed validation and the jump re-rendered the list unfiltered.
+ * @param {string} [search] - A query string to read in the page's place
  * @returns {Object} The filters, with null for a year or playtime not given
  */
-function getFiltersFromURL() {
-    const params = currentFilterParams();
+function getFiltersFromURL(search) {
+    const params = currentFilterParams(search);
     // Not a number too: an open-ended playtime is hltb_max=unlimited
     const number = name => {
         const value = parseInt(params.get(name));
