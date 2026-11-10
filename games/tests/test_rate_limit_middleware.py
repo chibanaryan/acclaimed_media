@@ -171,9 +171,38 @@ class RateLimitMiddlewareTest(TestCase):
         broken = MagicMock()
         broken.get.side_effect = Exception("Cache unavailable")
         with patch("games.middleware.caches", new={"ratelimit": broken}):
-            response = self.client.get("/")
+            with self.assertLogs("games.middleware", "ERROR"):
+                response = self.client.get("/")
             # Should not be 429 - graceful degradation
             self.assertNotEqual(response.status_code, 429)
+
+    def test_cache_failure_is_reported_once_a_minute_not_once_a_request(self):
+        """Failing open said nothing, so the limiter could be off for days.
+        It says so now, but a dead cache fails on every request there is."""
+        broken = MagicMock()
+        broken.get.side_effect = Exception("Cache unavailable")
+        with patch("games.middleware.caches", new={"ratelimit": broken}):
+            with patch("games.middleware.time.monotonic", return_value=1000.0) as now:
+                with self.assertLogs("games.middleware", "ERROR") as logs:
+                    for _ in range(5):
+                        self.client.get("/")
+                    now.return_value += 61
+                    self.client.get("/")
+        self.assertEqual(len(logs.output), 2)
+        self.assertIn("Rate limiting is off", logs.output[0])
+        self.assertIn("Cache unavailable", logs.output[0])
+
+    def test_a_block_that_cannot_be_stored_is_reported_too(self):
+        self._seed_minute_count(count=RATE_LIMIT_PER_MINUTE)
+        with patch.object(
+            type(self.cache), "set", side_effect=Exception("Cache unavailable")
+        ):
+            with self.assertLogs("games.middleware", "ERROR") as logs:
+                response = self.client.get("/")
+        self.assertEqual(response.status_code, 429)
+        # Refused all the same, so not "off": the next request is let back in
+        self.assertIn("cannot keep a block", logs.output[0])
+        self.assertNotIn("Rate limiting is off", logs.output[0])
 
     def test_block_key_created_on_exceed(self):
         """Block cache key should be set when limit is exceeded."""

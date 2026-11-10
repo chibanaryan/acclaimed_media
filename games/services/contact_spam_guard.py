@@ -1,6 +1,7 @@
 """Contact form spam/rate-limit guard."""
 
 import hashlib
+import logging
 import time
 from dataclasses import dataclass
 
@@ -8,6 +9,8 @@ from django.core.cache import cache
 
 from core.services.client_ip import get_client_ip
 from games import config
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -38,7 +41,9 @@ def evaluate(request, cleaned_data):
         if _is_duplicate(client_ip, cleaned_data):
             return SpamDecision(False, "duplicate", client_ip)
     except Exception:
-        # Fail open if cache is unavailable to avoid breaking contact form usage.
+        # Fail open if cache is unavailable to avoid breaking contact form
+        # usage - and say so, since the guard is off until it is fixed.
+        logger.exception("Contact spam guard is off: its cache is failing")
         return SpamDecision(True, "cache_unavailable", client_ip)
 
     return SpamDecision(True, "allowed", client_ip)

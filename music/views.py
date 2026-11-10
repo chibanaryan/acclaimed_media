@@ -16,6 +16,7 @@ like one site.
 
 from collections import defaultdict
 import csv
+import logging
 import math
 import re
 from contextlib import ExitStack
@@ -59,6 +60,7 @@ from core.mixins import (
 from core.models import User
 from core import sites
 from core.services import genre_tree, render_budget, seo
+from core.services.facets import count_by
 from core.services.query_params import parse_direction, parse_id_list, parse_int
 from music import config, models
 from music.forms import MusicImportForm
@@ -77,6 +79,8 @@ from music.templatetags import music_filters
 from music.services.data_version import compute_album_data_version
 from music.services.listening_stats import total_album_count
 from music.services.user_tracking_service import rows_for, write_tracking_row
+
+logger = logging.getLogger(__name__)
 
 # The checked-in release files, offered as the import default so the page is
 # usable without hunting for them.
@@ -1633,7 +1637,12 @@ class MusicListListView(HTMXPartialMixin, ListView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["current_q"] = self.request.GET.get("q", "")
-        context["current_type"] = self.request.GET.get("type", "")
+        # As get_queryset reads it: a type that is none of ours filters
+        # nothing, so nothing on the page may act as if it had
+        list_type = self.request.GET.get("type", "")
+        context["current_type"] = (
+            list_type if list_type in dict(core_constants.LIST_TYPES) else ""
+        )
         sort = self.request.GET.get("sort", "importance")
         if sort not in {option["value"] for option in config.MUSIC_LIST_SORT_OPTIONS}:
             sort = "importance"
@@ -1668,11 +1677,12 @@ class MusicListListView(HTMXPartialMixin, ListView):
             year = parse_int(context["current_year"])
             if year is not None:
                 by_type = by_type.filter(year=year)
+        type_counts = count_by(by_type, "type")
         context["list_types"] = [
             {
                 "code": code,
                 "label": core_constants.get_list_type_label(code),
-                "count": by_type.filter(type=code).count(),
+                "count": type_counts.get(code, 0),
             }
             for code in core_constants.LIST_TYPE_IMPORTANCE_ORDER
         ]
@@ -1753,6 +1763,11 @@ class MusicImportView(StaffOnlyMixin, View):
             except Exception as exc:  # noqa: BLE001 - surfaced to the page
                 # The importer runs in one transaction, so a failure leaves
                 # the previous rankings in place; report it and carry on.
+                # A file it refuses (ValueError, or one that is not there) is
+                # the uploader's to read here. Anything else is logged too:
+                # the page shows one line of it, to one person.
+                if not isinstance(exc, (ValueError, OSError)):
+                    logger.exception("Music import failed")
                 error = str(exc)
             else:
                 # Outside the try: the release is live by now, so a failure

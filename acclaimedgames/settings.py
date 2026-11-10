@@ -11,6 +11,7 @@ from sentry_sdk.integrations.django import DjangoIntegration
 
 from core.cache_config import build_caches, release_cache_prefix
 from core.csp import handler_hash, sentry_enabled, sentry_report_uri
+from core.sentry import name_unrouted_transactions
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 env = environ.Env(DEBUG=(bool, False))
@@ -48,10 +49,12 @@ if SENTRY_ENABLED:
         # and burn the Sentry quota. Errors are still captured in full.
         traces_sample_rate=0.1,
         profiles_sample_rate=0.0,
+        # One name for every request that matched no route, not one each
+        before_send_transaction=name_unrouted_transactions,
     )
 
 # Core Django settings
-DEBUG = env("DEBUG", default=False)  # Default to True for development
+DEBUG = env("DEBUG", default=False)  # Off unless the environment turns it on
 
 # Feature flags - the Books links in the nav. The section itself is staff-only
 # whatever this says (core.mixins.StaffOnlyMixin)
@@ -389,13 +392,18 @@ WIKIDATA_ACCESS_TOKEN = env("WIKIDATA_ACCESS_TOKEN", default=None)
 # metadata client reads the limit off the response headers either way.
 DISCOGS_TOKEN = env("DISCOGS_TOKEN", default=None)
 
+# Optional Hardcover (hardcover.app) API token, for book metadata.
+# books.hardcover reads this setting; until 2026-11-09 nothing set it from
+# the environment, so the documented variable did nothing.
+HARDCOVER_API_TOKEN = env("HARDCOVER_API_TOKEN", default=None)
+
 # Tests run without outside credentials, as CI does. A developer's .env
 # holds real ones, and with them a test that did not patch its client got a
 # live IGDB token from Twitch: local and CI runs took different paths, and
 # conftest.py now refuses outside connections anyway.
 if TEST_MODE:
     IGDB_CLIENT_ID = IGDB_CLIENT_SECRET = "XXX"
-    WIKIDATA_ACCESS_TOKEN = DISCOGS_TOKEN = None
+    WIKIDATA_ACCESS_TOKEN = DISCOGS_TOKEN = HARDCOVER_API_TOKEN = None
 
 # An import fetches the metadata it leaves missing (core.services.post_import):
 # the staff pages on a background thread, the import commands in the

@@ -135,8 +135,27 @@ class RateLimitMiddleware:
     to stop it.
     """
 
+    # How often, in seconds, a failing cache is reported
+    REPORT_FAILURE_EVERY = 60
+
     def __init__(self, get_response):
         self.get_response = get_response
+        # When each kind of cache failure was last reported
+        self._failure_reported = {}
+
+    def _report_cache_failure(self, what):
+        """Say that the limiter's cache is failing, with the error, for Sentry.
+
+        It let every request through and said nothing, so a cache that had
+        stopped answering left the site unlimited until someone noticed some
+        other way. Each ``what`` at most once a minute: a dead cache fails
+        every request. Called from an ``except`` block.
+        """
+        now = time.monotonic()
+        last = self._failure_reported.get(what)
+        if last is None or now - last >= self.REPORT_FAILURE_EVERY:
+            self._failure_reported[what] = now
+            logger.exception("%s: its cache is failing", what)
 
     @property
     def cache(self):
@@ -179,6 +198,7 @@ class RateLimitMiddleware:
             hour_count = self._incr(hour_key, 3600)
         except Exception:
             # If cache is unavailable, allow the request through
+            self._report_cache_failure("Rate limiting is off")
             return self.get_response(request)
 
         # Check thresholds
@@ -186,7 +206,8 @@ class RateLimitMiddleware:
             try:
                 self.cache.set(block_key, True, timeout=RATE_LIMIT_BLOCK_DURATION)
             except Exception:
-                pass
+                # This request is still refused below; the next is not
+                self._report_cache_failure("Rate limiting cannot keep a block")
             exceeded = (
                 f"{minute_count}/min"
                 if minute_count > RATE_LIMIT_PER_MINUTE

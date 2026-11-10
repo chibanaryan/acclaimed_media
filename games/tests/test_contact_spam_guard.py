@@ -130,7 +130,9 @@ class ContactSpamGuardTests(TestCase):
             "games.services.contact_spam_guard.cache.incr",
             side_effect=Exception("cache unavailable"),
         ):
-            decision = contact_spam_guard.evaluate(request, self._cleaned_data())
+            # Said, not swallowed: the guard is off until someone fixes it
+            with self.assertLogs("games.services.contact_spam_guard", "ERROR"):
+                decision = contact_spam_guard.evaluate(request, self._cleaned_data())
         self.assertTrue(decision.allowed)
         self.assertEqual(decision.reason, "cache_unavailable")
 

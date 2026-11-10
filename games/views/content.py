@@ -255,7 +255,7 @@ class UnsubscribeView(TemplateView):
 
     template_name = "unsubscribe.html"
 
-    def get(self, request, token):  # pragma: no cover
+    def get(self, request, token):
         """Process unsubscribe token."""
         try:
             user = User.objects.get(unsubscribe_token=token)

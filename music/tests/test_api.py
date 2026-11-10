@@ -11,6 +11,8 @@ import json
 from unittest import mock
 
 from django.db.models.functions import Lower
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.test import TestCase
 from django.urls import reverse
 
@@ -169,6 +171,25 @@ class AlbumSearchAPITests(MusicAPITestMixin, TestCase):
     def test_no_query_returns_an_empty_list(self):
         data = self.payload(reverse("music-api:album-search"))
         self.assertEqual(data, [])
+
+    def test_more_results_cost_no_more_queries(self):
+        """Each result counted its lists with a query of its own: 23 queries
+        for a search that found twenty albums."""
+
+        def queries():
+            with CaptureQueriesContext(connection) as captured:
+                self.payload(reverse("music-api:album-search"), q="radiohead")
+            return len(captured)
+
+        before = queries()
+        for rank in range(10, 20):
+            models.Album.objects.create(
+                name=f"B-sides {rank}",
+                rank=rank,
+                artist_credit="Radiohead",
+                year_released=2001,
+            )
+        self.assertEqual(queries(), before)
 
 
 class ArtistAPITests(MusicAPITestMixin, TestCase):

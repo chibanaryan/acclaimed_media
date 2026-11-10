@@ -105,6 +105,54 @@ class SiteUrlTests(SimpleTestCase):
             sites.site_origin(sites.ROOT, request), "http://localhost:8000"
         )
 
+    def test_a_port_on_a_production_host_is_not_echoed(self):
+        """Heroku's router forwards whatever port a caller writes in `Host`,
+        and the links to the other sites carried it:
+        `https://music.acclaimedmedia.org:8443/` (2026-11-09). A port means
+        something only on the dev server."""
+        for host in (
+            "games.acclaimedmedia.org:8443",
+            "GAMES.acclaimedmedia.org:1",
+            "games.acclaimedmedia.org.:8443",
+        ):
+            with self.subTest(host=host):
+                request = self.factory.get("/", HTTP_HOST=host, secure=True)
+                self.assertEqual(
+                    sites.site_url(sites.MUSIC, "music:home", request=request),
+                    "https://music.acclaimedmedia.org/",
+                )
+
+    def test_a_cache_key_names_a_host_one_way(self):
+        """Or each spelling, and each port, is another copy of every page."""
+        for host, key in (
+            ("games.acclaimedmedia.org", "games.acclaimedmedia.org"),
+            ("games.acclaimedmedia.org:8443", "games.acclaimedmedia.org"),
+            ("Games.AcclaimedMedia.org.", "games.acclaimedmedia.org"),
+            ("testserver", "testserver"),
+        ):
+            with self.subTest(host=host):
+                request = self.factory.get("/", HTTP_HOST=host)
+                self.assertEqual(sites.host_key(request), key)
+
+    @override_settings(ALLOWED_HOSTS=[".localhost", "localhost"])
+    def test_a_cache_key_keeps_the_port_a_page_is_rendered_with(self):
+        """On localhost alone a link to another site carries the request's
+        port, so there the key does too: a key and its page agree."""
+        for host, key in (
+            ("music.localhost:8000", "music.localhost:8000"),
+            ("localhost:8001", "localhost:8001"),
+            ("Games.Localhost.", "games.localhost"),
+        ):
+            with self.subTest(host=host):
+                request = self.factory.get("/", HTTP_HOST=host)
+                self.assertEqual(sites.host_key(request), key)
+                site = sites.site_for_host(host)
+                self.assertEqual(sites.site_origin(site, request), f"http://{key}")
+
+    def test_a_disallowed_host_has_no_cache_key_to_speak_of(self):
+        request = self.factory.get("/", HTTP_HOST="evil.example.com")
+        self.assertEqual(sites.host_key(request), "")
+
     def test_a_link_from_an_unknown_or_disallowed_host_is_public(self):
         for host in ("testserver", "evil.example.com"):
             with self.subTest(host=host):

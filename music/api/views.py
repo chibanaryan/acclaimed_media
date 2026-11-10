@@ -25,6 +25,7 @@ from unidecode import unidecode
 
 from core import constants as core_constants
 from core.services import genre_tree
+from core.services.facets import count_by
 from core.services import search_ranking
 from core.services.query_params import parse_limit
 
@@ -360,7 +361,9 @@ class AlbumSearchAPIView(MusicReadAPIMixin, ListAPIView):
         q = self.request.query_params.get("q")
         if not q:
             return models.Album.objects.none()
-        qs = models.Album.objects.with_relations()
+        # with_list_count: without it the serializer counts each result's
+        # lists with a query of its own
+        qs = models.Album.objects.with_relations().with_list_count()
         return qs.filter(album_search_q(q)).distinct().order_by("rank")[:20]
 
 
@@ -447,6 +450,7 @@ class MusicMetaView(MusicReadAPIMixin, APIView):
 
     def get(self, request, *args, **kwargs):
         music_lists = models.MusicList.objects.all()
+        lists_by_type = count_by(music_lists, "type")
         bounds = models.Album.objects.aggregate(
             min_year=Min("year_released"), max_year=Max("year_released")
         )
@@ -476,12 +480,12 @@ class MusicMetaView(MusicReadAPIMixin, APIView):
                 },
                 "artists": {"total_count": len(album_ids_by_artist())},
                 "lists": {
-                    "total_count": music_lists.count(),
+                    "total_count": sum(lists_by_type.values()),
                     "by_type": [
                         {
                             "type": code,
                             "label": core_constants.get_list_type_label(code),
-                            "count": music_lists.filter(type=code).count(),
+                            "count": lists_by_type.get(code, 0),
                         }
                         for code in core_constants.LIST_TYPE_IMPORTANCE_ORDER
                     ],

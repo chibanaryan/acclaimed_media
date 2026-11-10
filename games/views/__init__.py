@@ -9,6 +9,7 @@ reads it (`games.views.rankings._get_year_bounds`), not here.
 from ._helpers import (
     _get_year_bounds,
     _get_hero_stats,
+    _get_year_counts,
     _facet_cache_key,
     _genre_ids_with_games_or_descendant_games,
     _get_played_game_ids,
@@ -83,6 +84,7 @@ from .auth import (
 __all__ = [
     "_get_year_bounds",
     "_get_hero_stats",
+    "_get_year_counts",
     "_facet_cache_key",
     "_genre_ids_with_games_or_descendant_games",
     "_get_played_game_ids",

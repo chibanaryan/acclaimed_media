@@ -146,12 +146,6 @@ class ListListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
             # Select related publisher for efficient access
             lists_qs = lists_qs.select_related("publisher")
 
-            total_list_count = lists_qs.count()
-            if total_list_count == 0:
-                continue
-
-            grand_total_lists += total_list_count
-
             # Apply sorting
             if sort == "alpha":
                 # Sort by publication name, then list name
@@ -173,8 +167,14 @@ class ListListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
                         "year", Lower("publisher__name"), Lower("name")
                     )
 
-            # Load all lists for this type
+            # Load all lists for this type: once, where they were counted
+            # first and then read
             lists = list(lists_qs)
+            total_list_count = len(lists)
+            if total_list_count == 0:
+                continue
+
+            grand_total_lists += total_list_count
 
             type_groups.append(
                 {

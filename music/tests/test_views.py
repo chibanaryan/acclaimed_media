@@ -1230,6 +1230,26 @@ class MusicListListViewTests(MusicDataMixin, TestCase):
         response = self.client.get(reverse("music:list-list"), {"type": "Z"})
         self.assertEqual(len(response.context["music_lists"]), 3)
 
+    def test_an_unknown_type_leaves_the_year_counts_alone_too(self):
+        """The list ignored it and the year facet did not, so every year
+        read as empty beside a full list."""
+        plain = self.client.get(reverse("music:list-list")).context["list_years"]
+        self.assertTrue(plain)
+        odd = self.client.get(reverse("music:list-list"), {"type": "Z"})
+        self.assertEqual(odd.context["list_years"], plain)
+        self.assertEqual(odd.context["current_type"], "")
+
+    def test_the_types_are_counted_in_one_query(self):
+        with CaptureQueriesContext(connection) as captured:
+            self.client.get(reverse("music:list-list"))
+        per_type = [
+            query["sql"]
+            for query in captured
+            if "COUNT(*)" in query["sql"]
+            and '"music_musiclist"."type" =' in query["sql"]
+        ]
+        self.assertEqual(per_type, [])
+
     def test_lists_are_grouped_under_their_publication(self):
         # The page renders one collapsible row per publication, as the games
         # source-lists page does, rather than a card per list.

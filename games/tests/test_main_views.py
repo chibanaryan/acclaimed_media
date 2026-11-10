@@ -20,7 +20,11 @@ from django.urls import reverse
 from django.utils.html import escape
 
 from core.models import User
-from core.tests.utils import DatabaseCacheTestCase, clear_all_caches
+from core.tests.utils import (
+    CommitHooksRunNowMixin,
+    DatabaseCacheTestCase,
+    clear_all_caches,
+)
 from games import config
 from games import constants
 from games.models import (
@@ -699,6 +703,59 @@ class GameListViewTest(TestCase):
         }
         self.assertGreaterEqual(year_counts.get(2018, 0), 1)
         self.assertEqual(year_counts.get(2019, 0), 0)
+
+
+class GameDetailRankContextTests(CommitHooksRunNowMixin, TestCase):
+    """ "#1 of 3", for the ranking, the game's decade and its year.
+
+    The three totals were cached for a day under keys nothing dropped, the
+    first without the cache version, so the page went on reading "of 1,400"
+    for a day after an import that made it 1,450.
+    """
+
+    def setUp(self):
+        clear_all_caches()
+        self.addCleanup(clear_all_caches)
+        self.game = Game.objects.create(
+            name="First", slug="first", rank=1, year_of_release=1998
+        )
+        Game.objects.create(name="Second", slug="second", rank=2, year_of_release=1991)
+        Game.objects.create(name="Third", slug="third", rank=3, year_of_release=2004)
+        Game.objects.create(name="Undated", slug="undated", rank=4)
+
+    def _counts(self):
+        context = self.client.get(reverse("game-detail", args=["first"])).context
+        return (
+            context["total_game_count"],
+            context["decade_game_count"],
+            context["year_game_count"],
+        )
+
+    def test_the_totals_are_the_rankings_the_decades_and_the_years(self):
+        self.assertEqual(self._counts(), (4, 2, 1))
+
+    def test_a_game_added_or_deleted_is_counted_at_once(self):
+        self._counts()
+        added = Game.objects.create(
+            name="Fourth", slug="fourth", rank=5, year_of_release=1998
+        )
+        self.assertEqual(self._counts(), (5, 3, 2))
+        added.delete()
+        self.assertEqual(self._counts(), (4, 2, 1))
+
+    def test_the_totals_cost_no_query_once_read(self):
+        self._counts()
+        with CaptureQueriesContext(connection) as captured:
+            self._counts()
+        self.assertEqual(
+            [q["sql"] for q in captured if "COUNT(" in q["sql"] and "year" in q["sql"]],
+            [],
+        )
+
+    def test_an_undated_game_has_no_decade_or_year_line(self):
+        context = self.client.get(reverse("game-detail", args=["undated"])).context
+        self.assertNotIn("decade_game_count", context)
+        self.assertNotIn("year_game_count", context)
 
 
 class GameDetailViewTest(TestCase):
@@ -2164,6 +2221,19 @@ class ListListViewTest(TestCase):
         self.list2 = List.objects.create(
             name="Best of 2021", publisher=self.pub2, year=2021, type="E"
         )
+
+    def test_a_types_lists_are_read_once_not_counted_first(self):
+        """Each type was a COUNT and then the same rows, by type view."""
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.get(reverse("list-list") + "?group_by=type")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["total_list_count"], 2)
+        counts = [
+            query["sql"]
+            for query in captured
+            if "COUNT(*)" in query["sql"] and '"games_list"."type" =' in query["sql"]
+        ]
+        self.assertEqual(counts, [])
 
     def test_load_more_fetches_from_its_lists_own_address(self):
         path = reverse("list-list") + "?sort=alpha&dir=desc"
@@ -5365,3 +5435,48 @@ class FilteredPagesAreCachedWhateverTheHighlightTests(TestCase):
         self.assertNotIn("highlight", response.context)
         self.assertContains(response, ".get('highlight')")
         self.assertNotContains(response, f"var gameId = {self.games[0].id};")
+
+
+class UnsubscribeViewTests(TestCase):
+    """The link at the foot of a notification email.
+
+    The view was left out of coverage whole (`# pragma: no cover`), so the
+    one public address that changes an account by a token had no test.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="subscriber", email="subscriber@example.com", password="pw"
+        )
+        self.user.email_subscribed = True
+        self.user.generate_unsubscribe_token()
+        self.user.save()
+
+    def test_the_link_unsubscribes_its_user_and_says_so(self):
+        response = self.client.get(
+            reverse("unsubscribe", args=[self.user.unsubscribe_token])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Been Unsubscribed</h1>")
+        self.assertContains(response, "subscriber@example.com")
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.email_subscribed)
+
+    def test_a_token_no_user_has_changes_nothing_and_names_no_one(self):
+        response = self.client.get(reverse("unsubscribe", args=["not-a-token"]))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Been Unsubscribed</h1>")
+        self.assertNotContains(response, "subscriber@example.com")
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.email_subscribed)
+
+    def test_another_users_subscription_is_left_alone(self):
+        other = User.objects.create_user(
+            username="other", email="other@example.com", password="pw"
+        )
+        other.email_subscribed = True
+        other.generate_unsubscribe_token()
+        other.save()
+        self.client.get(reverse("unsubscribe", args=[self.user.unsubscribe_token]))
+        other.refresh_from_db()
+        self.assertTrue(other.email_subscribed)

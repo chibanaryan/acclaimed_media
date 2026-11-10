@@ -200,6 +200,16 @@ class CachedPageCsrfTests(TestCase):
         self.assertNotIn(settings.CSRF_COOKIE_NAME, serialized)
         self.assertIn("harmless", serialized)
 
+    def test_the_session_cookie_is_never_serialized_either(self):
+        """`SessionMiddleware` sets it after this runs, as `CsrfViewMiddleware`
+        does its own; a reorder must not become one visitor's session handed
+        to the next."""
+        response = HttpResponse("ok")
+        response.set_cookie(settings.SESSION_COOKIE_NAME, "one-visitors-session")
+        response.set_cookie("theme", "forest")
+        serialized = AnonymousResponseCacheMixin._serialize_cookies(response)
+        self.assertEqual(list(serialized), ["theme"])
+
 
 # The key a page is stored under: the view's own, behind the host
 STORED_KEY = "testserver:example_page"
@@ -228,6 +238,16 @@ class AnonymousResponseCacheAliasTests(TestCase):
     def test_the_shared_cache_is_left_alone(self):
         self._get()
         self.assertIsNone(caches["default"].get(STORED_KEY))
+
+    def test_a_port_or_another_spelling_of_the_host_shares_the_entry(self):
+        """Heroku forwards a caller's port in `Host`: keyed on it, 65,535
+        requests were 65,535 renders, each pushing a real page out."""
+        self._get()
+        for host in ("testserver:8443", "TESTSERVER", "testserver."):
+            with self.subTest(host=host):
+                with mock.patch.object(caches["local"], "set") as stored:
+                    self.assertEqual(self._get(host).content, b"rendered")
+                stored.assert_not_called()
 
     def test_a_cached_page_is_served_back(self):
         self._get()

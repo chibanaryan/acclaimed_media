@@ -12,6 +12,8 @@ This module also contains the send_contact_email function which doesn't
 fit into the service layer pattern.
 """
 
+import logging
+
 from games import constants
 
 # =============================================================================
@@ -57,6 +59,8 @@ from games.services.query_filters import (  # noqa: F401
     safe_int_filter,
     Filter,
 )
+
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # Email Utilities
@@ -126,11 +130,9 @@ This message was sent via the contact form at {site_url}
             recipient_list=[recipient_email],
         )
         return True
-    except Exception as e:
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.error(f"Failed to send contact form email: {e}")
+    except Exception as error:
+        # No traceback: Sentry sends its frame locals, here the message
+        logger.error("Failed to send contact form email: %s", error)
         return False
 
 
@@ -234,11 +236,10 @@ Acclaimed Media
         email.attach_alternative(html_body, "text/html")
         email.send()
         return True
-    except Exception as e:
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.error(f"Failed to send post notification email: {e}")
+    except Exception as error:
+        # No traceback: Sentry sends its frame locals, here the subscriber's
+        # unsubscribe link
+        logger.error("Failed to send post notification email: %s", error)
         return False
 
 
@@ -266,11 +267,8 @@ def notify_subscribers_of_new_post(post) -> int:
         if send_post_notification_email(post, user):
             sent_count += 1
 
-    import logging
-
-    logger = logging.getLogger(__name__)
     logger.info(
-        f"Sent post notification to {sent_count}/{subscribers.count()} subscribers"
+        "Sent post notification to %d/%d subscribers", sent_count, subscribers.count()
     )
 
     return sent_count

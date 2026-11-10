@@ -1,7 +1,6 @@
 """A game's detail page and its played / want-to-play toggle."""
 
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Count, Prefetch
 from django.shortcuts import get_object_or_404, render
@@ -12,7 +11,9 @@ from django.views.generic import DetailView
 from core import sites
 from core.models import User
 from core.services import seo
-from games import config, constants, models
+from games import constants, models
+
+from ._helpers import _get_hero_stats, _get_year_counts
 
 
 class GameDetailView(DetailView):
@@ -96,37 +97,17 @@ class GameDetailView(DetailView):
             .order_by("name")
         )
 
-        # Total game count for rank context (e.g., "#47 of 3,240")
-        # Cached since it rarely changes
-        total_game_count = cache.get("total_game_count")
-        if total_game_count is None:
-            total_game_count = models.Game.objects.count()
-            cache.set(
-                "total_game_count", total_game_count, config.CACHE_TIMEOUT_24_HOURS
-            )
-        context["total_game_count"] = total_game_count
-
-        # Decade and year counts for rank context - cached by decade/year
+        # Rank context ("#47 of 3,240"), for the ranking, the decade and the
+        # year: counts of the same rows as the heading's, and dropped with them
+        context["total_game_count"] = _get_hero_stats()["game_count"]
+        year_counts = _get_year_counts()
         if game.decade:
-            cache_key = f"{config.CACHE_VERSION}:decade_count:{game.decade}"
-            decade_count = cache.get(cache_key)
-            if decade_count is None:
-                decade_count = models.Game.objects.filter(
-                    year_of_release__gte=game.decade,
-                    year_of_release__lte=game.decade + 9,
-                ).count()
-                cache.set(cache_key, decade_count, config.CACHE_TIMEOUT_24_HOURS)
-            context["decade_game_count"] = decade_count
-
+            context["decade_game_count"] = sum(
+                year_counts.get(year, 0)
+                for year in range(game.decade, game.decade + 10)
+            )
         if game.year_of_release:
-            cache_key = f"{config.CACHE_VERSION}:year_count:{game.year_of_release}"
-            year_count = cache.get(cache_key)
-            if year_count is None:
-                year_count = models.Game.objects.filter(
-                    year_of_release=game.year_of_release
-                ).count()
-                cache.set(cache_key, year_count, config.CACHE_TIMEOUT_24_HOURS)
-            context["year_game_count"] = year_count
+            context["year_game_count"] = year_counts.get(game.year_of_release, 0)
 
         context["structured_data_json"] = _game_json_ld(game)
         return context

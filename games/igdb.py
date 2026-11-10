@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 genre_themes = config.IGDB_GENRE_THEMES
 
 
+class GameNotFound(LookupError):
+    """IGDB has no one game under the id asked for: dropped, or merged away."""
+
+
 class IgbdApi:
     """
     Client for interacting with the IGDB (Internet Game Database) API.
@@ -793,6 +797,10 @@ class IgbdApi:
                 - url: IGDB URL for the game
                 - slug: IGDB slug for the game
             Returns None if the game cannot be fetched or authentication fails.
+
+        Raises:
+            GameNotFound: IGDB answered, and not with one game: the id has
+                been dropped or merged away.
         """
         # Check cache first (thread-safe)
         if cache_results:
@@ -825,7 +833,14 @@ class IgbdApi:
                 return None
 
         results = res.json()
-        assert len(results) == 1
+        if len(results) != 1:
+            # An id IGDB has dropped or merged answers with an empty list.
+            # Raised, as the `assert` this replaces was, and to the same
+            # callers: the importers count the game as failed, and the
+            # admin's Save still fails on it (ROADMAP, "IGDB lookups")
+            raise GameNotFound(
+                f"IGDB returned {len(results)} games for game ID {game_id}"
+            )
         data = results[0]
 
         # Get developer information (companies marked as developers in IGDB)

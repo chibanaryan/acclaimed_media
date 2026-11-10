@@ -40,13 +40,43 @@ The browser harnesses used for v905 are in the ashgabat worktree's
    middle sits under the sticky header still counts as on screen. Six review
    rounds went into this case, so weigh any fix against how rare it is.
 
+## Open bugs (found 2026-11-09)
+
+Older bugs a review of the IGDB client turned up while its `assert` was
+being replaced (`games.igdb.GameNotFound`). None is new, and none was fixed
+with it.
+
+3. **IGDB lookups.** `Game.get_igdb_data` and `IgbdApi.get_game_info_by_id`:
+   - **The admin's Save fails on a game IGDB has dropped or merged.**
+     `GameAdmin.save_model` calls `get_igdb_data` with no handler, so
+     `GameNotFound` (an `AssertionError` until now) is a 500 and the edit is
+     lost. Catch it there and say so in a message.
+   - **A transient failure is an `AttributeError`.** `get_igdb_data` skips a
+     `None` in its loop, fetches the first id a second time for the
+     developers, and reads `.get` off that. Keep the loop's first result
+     and hand it to `_update_relationships_from_data`, which the block
+     below it copies line for line; that also saves a request a game.
+   - **Adding a game with an IGDB id in the admin fails**, on
+     `IGDBGameData.objects.filter(game=self)` for an unsaved game.
+   - **An error body is read as games.** Every sibling fetch calls
+     `raise_for_status()` first; this one counts whatever JSON came back.
+   - **The 401 retry recurses without a bound** when IGDB goes on answering
+     401 to a fresh token.
+   - With `--batch-games 0` a dropped id is logged with a traceback and
+     shown as a generic failure; the batch path says "Not found in IGDB
+     response". Catch `GameNotFound` in `IGDBImporter._process_game`.
+4. **`send_post_notification_email` builds the unsubscribe link outside its
+   `try`**, so an error there (a malformed post) is an unhandled exception
+   on the notification thread, with the link in its frame locals for Sentry,
+   and ends the loop with the rest of the subscribers unsent.
+
 ## Music: after launch
 
 The section is public at `music.acclaimedmedia.org`, beside the games site and
 a landing page at the apex (2026-10-30; AGENTS.md, "Domain"). The pages keep a
 "Beta" badge while `music.config.MUSIC_BETA` is on.
 
-3. **New brand artwork.** The favicons still read "Acclaimed Video Games"
+5. **New brand artwork.** The favicons still read "Acclaimed Video Games"
    (`games/static/games/brand/`), and a page without artwork of its own has
    no `og:image` since the old one was removed; every page title already
    says Acclaimed Media. A new default goes in `base.html`'s `og_image` block,
@@ -59,7 +89,7 @@ The rankings page is 690 KB anonymous and 833 KB logged in, and the dyno
 runs gthread with three threads per worker (AGENTS.md, "Production memory
 budget").
 
-4. **Check `--threads 3` after a week.** The `Procfile` went from two
+6. **Check `--threads 3` after a week.** The `Procfile` went from two
    threads per worker to three on 2026-11-03, on a week of gthread at two
    (2026-10-27 to 11-02) that peaked at 342 MiB RSS of the 512 MiB quota,
    with swap never above 13 MiB. Around 2026-11-10, re-read

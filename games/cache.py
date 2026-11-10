@@ -17,6 +17,8 @@ from core import cache_helpers
 from games import config
 
 HERO_STATS_CACHE_KEY = "homepage_hero_stats"
+# How many games each release year has, for a game page's "#N of M" lines
+YEAR_COUNTS_CACHE_KEY = f"{config.CACHE_VERSION}:game_year_counts"
 
 GENERATION_HERO = "games_generation:hero"
 GENERATION_TRACKING = "games_generation:tracking"
@@ -39,8 +41,11 @@ def developer_detail_cache_key(developer_id):
 
 
 def invalidate_hero_stats():
-    """Invalidate the counts in the rankings heading."""
-    cache_helpers.drop_on_commit(HERO_STATS_CACHE_KEY, generation_key=GENERATION_HERO)
+    """Invalidate the counts in the rankings heading, and a game page's
+    "#N of M" totals, which are counts of the same rows."""
+    cache_helpers.drop_on_commit(
+        HERO_STATS_CACHE_KEY, YEAR_COUNTS_CACHE_KEY, generation_key=GENERATION_HERO
+    )
 
 
 def invalidate_played_games_cache(user_id):

@@ -1773,7 +1773,11 @@ URL whatever the request is uses `sites.site_reverse()` (music's
   (`{{ canonical_origin }}` follows the host; `sites.canonical_url()`).
   `CANONICAL_ORIGIN` is the apex's, for emails and the fetchers'
   User-Agent. A cross-site *link* (`site_origin()`) keeps the request's
-  scheme and port, so `games.localhost:8000` links to `music.localhost:8000`.
+  scheme, and its port on localhost alone, so `games.localhost:8000` links
+  to `music.localhost:8000`. Not a port on the public domain: the router
+  passes on whatever a caller writes, and every link to another site was
+  rendered with it (`https://music.acclaimedmedia.org:8443/`, until
+  2026-11-09).
 - **The shared routes** - sign-in, `accounts/`, the contact form,
   `/page/<slug>/` (About, Donate, Privacy, Legal), unsubscribe, admin,
   `healthz/`, `robots.txt`, `sitemap.xml` - are in every URLconf
@@ -2043,9 +2047,14 @@ and one rankings page requests up to a hundred of them against a 120/minute
 budget.
 
 **A whole-page cache key carries the host.** `AnonymousResponseCacheMixin`
-puts `request.get_host()` in front of the view's own key, because a page
+puts `sites.host_key(request)` in front of the view's own key, because a page
 links to the other sites by absolute URL built from the host it was
-rendered for. The landing page is cached the same way.
+rendered for. The landing page is cached the same way. `host_key` is the
+host spelt one way: no port, case or trailing dot. It was `get_host()` until
+2026-11-09, and Heroku's router forwards whatever port a caller writes in
+`Host`, so `Host: games.acclaimedmedia.org:8443` was a fresh render and a
+fresh entry for every page and every port, each pushing a real page out of
+the 500.
 
 ## Content Security Policy
 
@@ -2326,7 +2335,12 @@ Environment variables are managed via django-environ (`.env` file):
   `SENTRY_DSN` in the local `.env`; set any other value to opt a machine in.
   `manage.py shell` never reports, on a dyno either: whoever ran it reads the
   traceback, and each typo in a one-off query filed an issue and an alert.
-  That includes `heroku run:detached`, so unwatched work belongs in a command
+  That includes `heroku run:detached`, so unwatched work belongs in a command.
+  A path that matched no route and was answered 404 or with a redirect is
+  traced as `unrouted 404` or `redirect 301` (`core/sentry.py`), not under
+  its own name: each scanner probe and slash-less link was a transaction of
+  its own. Static files and flat pages, which middleware answers with no
+  route matched, keep theirs
 
 ### Configuration Files
 

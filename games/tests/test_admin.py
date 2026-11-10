@@ -1001,3 +1001,104 @@ class ArticleAdminPreviewStylesheetTests(TestCase):
         self.assertContains(
             response, f'data-site-stylesheet="{static("css/dist/styles.css")}"'
         )
+
+
+class ChangelistQueryGrowthTests(TestCase):
+    """A changelist costs the same queries however many rows it lists.
+
+    A column that reads a relation, or counts one, is a query a row: the
+    tracking lists named each row's game or album that way, and the genre
+    list counted each genre's games.
+    """
+
+    def setUp(self):
+        self.staff = User.objects.create_superuser(
+            username="staff", password="pw", email="staff@example.com"
+        )
+        self.client.force_login(self.staff)
+        self.readers = [
+            User.objects.create_user(username=f"reader{n}", password="pw")
+            for n in range(2)
+        ]
+
+    def _queries(self, url):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        return len(captured)
+
+    def assert_no_growth(self, url, add_rows):
+        add_rows(0)
+        before = self._queries(url)
+        for batch in (1, 2, 3):
+            add_rows(batch)
+        self.assertEqual(self._queries(url), before)
+
+    def test_the_games_tracking_lists(self):
+        for model in (models.PlayedGame, models.WantToPlayGame):
+
+            def add_rows(batch, model=model):
+                for n in range(3):
+                    igdb_id = 1000 + batch * 10 + n
+                    game = models.Game.objects.create(
+                        name=f"{model.__name__} {igdb_id}",
+                        rank=igdb_id,
+                        igdb_id=igdb_id,
+                    )
+                    model.objects.create(
+                        user=self.readers[n % 2], game=game, igdb_id=igdb_id
+                    )
+
+            with self.subTest(model=model.__name__):
+                models.Game.objects.all().delete()
+                self.assert_no_growth(
+                    f"/admin/games/{model._meta.model_name}/", add_rows
+                )
+
+    def test_the_music_tracking_lists(self):
+        for model in (music_models.ListenedAlbum, music_models.WantToListenAlbum):
+
+            def add_rows(batch, model=model):
+                for n in range(3):
+                    number = batch * 10 + n
+                    album = music_models.Album.objects.create(
+                        name=f"{model.__name__} {number}",
+                        rank=1000 + number,
+                        wikidata_id=f"Q{9000 + number}",
+                    )
+                    model.objects.create(
+                        user=self.readers[n % 2],
+                        album=album,
+                        wikidata_id=album.wikidata_id,
+                    )
+
+            with self.subTest(model=model.__name__):
+                music_models.Album.objects.all().delete()
+                self.assert_no_growth(
+                    f"/admin/music/{model._meta.model_name}/", add_rows
+                )
+
+    def test_the_genre_list(self):
+        def add_rows(batch):
+            for n in range(3):
+                genre = models.WikipediaGenre.objects.create(
+                    name=f"Growth {batch}-{n}", slug=f"growth-{batch}-{n}"
+                )
+                game = models.Game.objects.create(
+                    name=f"Genre game {batch}-{n}", rank=2000 + batch * 10 + n
+                )
+                game.wikipedia_genres.add(genre)
+
+        self.assert_no_growth("/admin/games/wikipediagenre/", add_rows)
+
+    def test_the_genre_list_shows_each_genres_count(self):
+        genre = models.WikipediaGenre.objects.create(name="Counted", slug="counted")
+        for rank in (1, 2):
+            models.Game.objects.create(
+                name=f"Counted {rank}", rank=rank
+            ).wikipedia_genres.add(genre)
+        response = self.client.get("/admin/games/wikipediagenre/?q=Counted")
+        self.assertContains(response, '<td class="field-game_count">2</td>')

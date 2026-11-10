@@ -355,15 +355,20 @@ class SendContactEmailTests(TestCase):
         with mock.patch(
             "django.core.mail.send_mail", side_effect=Exception("SMTP error")
         ):
-            result = utils.send_contact_email(
-                name="Test User",
-                email="test@example.com",
-                category="general",
-                message="Test message.",
-            )
+            with self.assertLogs("games.utils", "ERROR") as logs:
+                result = utils.send_contact_email(
+                    name="Test User",
+                    email="test@example.com",
+                    category="general",
+                    message="Test message.",
+                )
 
             # Should return False on exception
             self.assertFalse(result)
+        # The error, and no traceback: Sentry sends a traceback's frame
+        # locals, which here are the sender's name, address and message
+        self.assertIn("SMTP error", logs.output[0])
+        self.assertIsNone(logs.records[0].exc_info)
 
     def test_send_contact_email_without_at_symbol_in_base_email(self):
         """Test email when CONTACT_EMAIL doesn't contain @ symbol."""
@@ -629,8 +634,13 @@ class SendPostNotificationEmailTests(TestCase):
             "django.core.mail.EmailMultiAlternatives.send",
             side_effect=Exception("Error"),
         ):
-            result = utils.send_post_notification_email(post, subscriber)
+            with self.assertLogs("games.utils", "ERROR") as logs:
+                result = utils.send_post_notification_email(post, subscriber)
             self.assertFalse(result)
+        # No traceback: its frame locals would hand Sentry this subscriber's
+        # unsubscribe link, token and all
+        self.assertIsNone(logs.records[0].exc_info)
+        self.assertNotIn(subscriber.unsubscribe_token, logs.output[0])
 
     def _subscriber(self):
         from core.models import User

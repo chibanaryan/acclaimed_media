@@ -395,6 +395,8 @@ class ListenedAlbumAdmin(admin.ModelAdmin):
     list_filter = ["owned", "created"]
     search_fields = ["user__username", "user__email", "album__name", "wikidata_id"]
     raw_id_fields = ["user", "album"]
+    # `album_name` reads the album: joined here, not queried a row
+    list_select_related = ["user", "album"]
     readonly_fields = ["created"]
     ordering = ["-created"]
 
@@ -419,6 +421,8 @@ class WantToListenAlbumAdmin(admin.ModelAdmin):
     list_filter = ["created"]
     search_fields = ["user__username", "user__email", "album__name", "wikidata_id"]
     raw_id_fields = ["user", "album"]
+    # `album_name` reads the album: joined here, not queried a row
+    list_select_related = ["user", "album"]
     readonly_fields = ["created"]
     ordering = ["-created"]
 

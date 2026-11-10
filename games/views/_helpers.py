@@ -4,11 +4,13 @@ import hashlib
 import json
 
 from core.cache_helpers import cached, get_year_bounds
+from core.services.facets import count_by
 from games import config, models
 from games.cache import (
     GENERATION_HERO,
     GENERATION_TRACKING,
     HERO_STATS_CACHE_KEY,
+    YEAR_COUNTS_CACHE_KEY,
     played_ids_cache_key,
     want_ids_cache_key,
 )
@@ -35,6 +37,25 @@ def _get_hero_stats():
             "publication_count": models.Publication.objects.count(),
             "game_count": models.Game.objects.count(),
         },
+        config.CACHE_TIMEOUT_24_HOURS,
+        GENERATION_HERO,
+    )
+
+
+def _get_year_counts():
+    """How many games each release year has, cached with the hero stats.
+
+    For a game page's "#N of M" in its year and decade. One map, dropped
+    when a game is added or deleted (`games.cache.invalidate_hero_stats`):
+    a key per year and decade, as these were, is a set nothing can list to
+    drop, so they outlived an import by a day. A game whose year is edited
+    in the admin still waits out the day, as it always did.
+    """
+    return cached(
+        YEAR_COUNTS_CACHE_KEY,
+        lambda: count_by(
+            models.Game.objects.exclude(year_of_release=None), "year_of_release"
+        ),
         config.CACHE_TIMEOUT_24_HOURS,
         GENERATION_HERO,
     )

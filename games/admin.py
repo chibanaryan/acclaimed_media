@@ -48,9 +48,18 @@ class WikipediaGenreAdmin(admin.ModelAdmin):
     ordering = ["level", "display_order", "name"]
     readonly_fields = ["game_count"]
 
-    @admin.display(description="Games")
+    def get_queryset(self, request):
+        # Counted in the list's own query: a count a row was a query a row
+        return (
+            super()
+            .get_queryset(request)
+            .annotate(_game_count=Count("games_with_wikipedia_genre", distinct=True))
+        )
+
+    @admin.display(description="Games", ordering="_game_count")
     def game_count(self, obj):
-        return obj.games_with_wikipedia_genre.count()
+        count = getattr(obj, "_game_count", None)
+        return obj.games_with_wikipedia_genre.count() if count is None else count
 
 
 @admin.register(models.Series)
@@ -530,6 +539,9 @@ class PlayedGameAdmin(admin.ModelAdmin):
     list_filter = ["created"]
     search_fields = ["user__username", "user__email", "game__name", "igdb_id"]
     raw_id_fields = ["user", "game"]
+    # `game_name` reads the game, which Django joins for a column that is the
+    # relation itself (`user`) but not for one a method reads
+    list_select_related = ["user", "game"]
     readonly_fields = ["created"]
     ordering = ["-created"]
 
@@ -554,6 +566,9 @@ class WantToPlayGameAdmin(admin.ModelAdmin):
     list_filter = ["created"]
     search_fields = ["user__username", "user__email", "game__name", "igdb_id"]
     raw_id_fields = ["user", "game"]
+    # `game_name` reads the game, which Django joins for a column that is the
+    # relation itself (`user`) but not for one a method reads
+    list_select_related = ["user", "game"]
     readonly_fields = ["created"]
     ordering = ["-created"]
 

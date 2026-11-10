@@ -11,6 +11,7 @@ from django.http import Http404, HttpResponse
 from django.middleware.csp import get_nonce as get_csp_nonce
 from django.middleware.csrf import get_token
 
+from core import sites
 from core.services import render_budget
 
 
@@ -194,10 +195,11 @@ class AnonymousResponseCacheMixin:
     def _serialize_cookies(response):
         cookies = {}
         for name, morsel in response.cookies.items():
-            if name == settings.CSRF_COOKIE_NAME:
-                # Never replay one visitor's CSRF secret to another. Nothing
-                # puts it here today - `CsrfViewMiddleware` runs after this -
-                # but a middleware reorder should not become a shared secret.
+            if name in (settings.CSRF_COOKIE_NAME, settings.SESSION_COOKIE_NAME):
+                # Never replay one visitor's CSRF secret or session to
+                # another. Nothing puts them here today - `CsrfViewMiddleware`
+                # and `SessionMiddleware` set theirs after this - but a
+                # middleware reorder should not become a shared secret.
                 continue
             max_age = morsel["max-age"] or None
             if max_age is not None:
@@ -256,7 +258,7 @@ class AnonymousResponseCacheMixin:
         # Keyed on the host as well: a page names the other sites by absolute
         # URL (core.sites.site_origin), and those follow the host it was
         # rendered for, so no two hosts may share one copy.
-        cache_key = f"{request.get_host()}:{cache_key}"
+        cache_key = f"{sites.host_key(request)}:{cache_key}"
 
         cache = caches[self.page_cache_alias]
         version = self.get_page_cache_version()

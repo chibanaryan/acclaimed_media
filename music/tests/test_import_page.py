@@ -9,7 +9,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from core.models import User
-from music import models
+from music import models, views
 from music.views import BUNDLED_RELEASE_DIR
 from music.forms import MusicImportForm
 from music.tests.site import setUpModule, tearDownModule  # noqa: F401
@@ -250,7 +250,10 @@ class MusicImportViewTests(TestCase):
         files = _all_files()
         # More position rows than albums, so the join fails mid-import.
         files["positions_file"] = _upload("ListPositions.txt", b"0:1\n0:2\n")
-        response = self.client.post(self.url, files)
+        # A file the importer refuses is the uploader's to read, on the page:
+        # no log line, so no Sentry issue and alert for each attempt
+        with self.assertNoLogs("music.views", "ERROR"):
+            response = self.client.post(self.url, files)
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context["summary"])
         self.assertIn("no album at rank 2", response.context["error"])
@@ -258,6 +261,18 @@ class MusicImportViewTests(TestCase):
         # The transaction rolled back, so the previous album survives.
         self.assertEqual(models.Album.objects.count(), 1)
         self.assertEqual(models.Album.objects.first().name, "Pre-existing")
+
+    def test_a_failure_that_is_no_ones_file_is_logged_as_well_as_shown(self):
+        """A bug or a dead database: the page's one line of it was all there
+        was, shown to one person, and Sentry never heard."""
+        with mock.patch.object(
+            views.MusicImportView, "_run_import", side_effect=RuntimeError("boom")
+        ):
+            with self.assertLogs("music.views", "ERROR") as logs:
+                response = self.client.post(self.url, _all_files())
+        self.assertIn("Traceback", logs.output[0])
+        self.assertEqual(response.context["error"], "boom")
+        self.assertContains(response, "Import failed")
 
     def test_missing_bundled_files_are_reported_rather_than_crashing(self):
         with mock.patch("music.views.BUNDLED_RELEASE_DIR", Path("/nonexistent")):

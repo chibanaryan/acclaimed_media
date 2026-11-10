@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 
 from django.conf import settings
 from django.core.exceptions import DisallowedHost
+from django.http.request import split_domain_port
 from django.urls import reverse
 
 ROOT = "root"
@@ -39,13 +40,16 @@ def _base_domains():
 def _split_host(host):
     """``(site, base)`` for a ``host[:port]`` this app serves, else ``(None, None)``.
 
-    ``base`` keeps the port, so a link built from it stays on the dev server.
+    ``base`` keeps a dev server's port, so a link built from it stays there.
+    Not a port on the public domain: the router forwards whatever a caller
+    writes in ``Host``, and every link to another site carried it
+    (``https://music.acclaimedmedia.org:8443/``).
     """
     hostname, _, port = host.lower().partition(":")
     # Django's ALLOWED_HOSTS check accepts a fully qualified "example.org."
     hostname = hostname.rstrip(".")
-    suffix = f":{port}" if port else ""
     for base in _base_domains():
+        suffix = f":{port}" if port and base == LOCAL_BASE else ""
         if hostname == base:
             return ROOT, base + suffix
         label, _, rest = hostname.partition(".")
@@ -77,6 +81,22 @@ def _request_host(request):
         return request.get_host()
     except DisallowedHost:
         return ""
+
+
+def host_key(request):
+    """The request's host, spelt one way, for a cache key.
+
+    Without its case or trailing dot, and without its port, each of which
+    the router passes through as the caller wrote it: keyed on
+    ``get_host()``, a page had a copy for every port anyone cared to name.
+    A dev server's port is kept, as `site_origin` keeps it in the links it
+    writes into a page, so a key and its page always agree.
+    """
+    host = _request_host(request)
+    site, base = _split_host(host)
+    if site is None:
+        return split_domain_port(host)[0]
+    return base if site == ROOT else f"{site}.{base}"
 
 
 def canonical_origin(site):

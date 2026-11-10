@@ -254,6 +254,19 @@ class IgbdApiTests(SimpleTestCase):
         self.assertEqual(result["slug"], "sample")
         auth.assert_called_once()
 
+    def test_get_game_info_says_which_game_igdb_no_longer_has(self):
+        """IGDB answers an id it has dropped with an empty list. That was a
+        bare `assert`: nameless, and gone altogether under `python -O`,
+        leaving an IndexError. Raised still, so each caller goes on counting
+        the game as failed."""
+        from games.igdb import GameNotFound
+
+        with mock.patch(
+            "games.igdb.requests.post", return_value=DummyResponse(200, [])
+        ):
+            with self.assertRaisesMessage(GameNotFound, "0 games for game ID 1"):
+                self.api.get_game_info_by_id(1, cache_results=False)
+
     def test_get_game_info_returns_none_when_token_refresh_fails(self):
 
         def fake_post(url, headers=None, data=None):
