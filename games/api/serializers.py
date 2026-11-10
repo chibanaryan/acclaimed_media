@@ -168,7 +168,9 @@ class PageSerializer(serializers.ModelSerializer):
 class WikipediaGenreSerializer(serializers.ModelSerializer):
     """Basic Wikipedia genre serializer with hierarchy fields."""
 
-    parent_id = serializers.IntegerField(source="parent.id", allow_null=True)
+    # The column itself: `parent.id` loaded each child's parent to read
+    # the id the child already holds, a query a row
+    parent_id = serializers.IntegerField(allow_null=True)
 
     class Meta:
         model = models.WikipediaGenre

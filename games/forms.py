@@ -40,8 +40,11 @@ class ContactForm(forms.Form):
         ),
     )
 
+    # Capped: the form is open to anyone, and its message goes into an
+    # email whole
     message = forms.CharField(
         required=True,
+        max_length=10000,
         widget=forms.Textarea(
             attrs={
                 "class": "textarea textarea-bordered w-full",
@@ -62,6 +65,15 @@ class ContactForm(forms.Form):
             }
         ),
     )
+
+    def clean_name(self):
+        """The name on one line.
+
+        It goes into the email's subject, where a line break is a
+        ``BadHeaderError``: the sender was told the message could not be
+        sent, and each one was logged as an error.
+        """
+        return " ".join(self.cleaned_data["name"].split())
 
     def clean_website(self):
         """Honeypot validation - this field should always be empty."""

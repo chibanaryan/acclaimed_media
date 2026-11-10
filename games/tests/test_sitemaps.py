@@ -11,6 +11,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from core.tests.utils import clear_all_caches
+from games import models
 from games.models import Article, Developer, Game
 from core.sitemaps import root_sitemaps
 from games.sitemaps import (
@@ -207,3 +208,23 @@ class SitemapXmlTests(TestCase):
         content = self.client.get("/sitemap.xml").content.decode()
 
         self.assertIn("/game/doom/</loc><lastmod>", content)
+
+
+class SlugLessRowsStayOutOfTheSitemapTests(TestCase):
+    """`reverse` writes a missing slug as the text "None": a 404 in the sitemap."""
+
+    def test_a_game_awaiting_its_igdb_fetch_is_left_out(self):
+        models.Game.objects.create(name="Fetched", rank=1, igdb_id=1, slug="fetched")
+        models.Game.objects.create(name="Awaiting", rank=2, igdb_id=2)
+        models.Game.objects.create(name="Blank", rank=3, igdb_id=3, slug="")
+        sitemap = GameSitemap()
+        locations = [sitemap.location(game) for game in sitemap.items()]
+        self.assertEqual(locations, ["/game/fetched/"])
+
+    def test_a_developer_without_a_slug_is_left_out(self):
+        models.Developer.objects.create(name="Root", igdb_id=1, slug="root")
+        models.Developer.objects.create(name="Null slug", igdb_id=2, slug=None)
+        models.Developer.objects.create(name="Empty slug", igdb_id=3, slug="")
+        sitemap = DeveloperSitemap()
+        locations = [sitemap.location(dev) for dev in sitemap.items()]
+        self.assertEqual(locations, ["/developers/root/"])

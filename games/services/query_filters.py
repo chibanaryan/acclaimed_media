@@ -5,13 +5,14 @@ Provides reusable filtering functions for Django querysets,
 including genre, platform, and year filtering with caching support.
 """
 
+import re
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
 from django.db.models import Q, QuerySet
 
 from core.cache_helpers import cache_get, cache_set
-from core.services.query_params import MAX_INT
+from core.services.query_params import MAX_INT, parse_int
 from games import config
 
 
@@ -191,6 +192,36 @@ def get_or_set_cache(
     return result
 
 
+# A decade as the links spell it, "1990-99": the browser reads the same
+# shape (`currentFilterParams` in utils-base.js)
+DECADE = re.compile(r"(\d{3}0)-\d{2}")
+
+
+def resolve_year_range(decade=None, year=None, start=None, end=None):
+    """``(start, end)`` for the four year parameters; None is an open side.
+
+    A start or an end beats a year, which beats a decade: the rule the
+    browser reads a URL by, so the engine's list is the server's. Until
+    2026-11-10 three readers each had their own. The list took a decade
+    over a year and narrowed it by start and end, the heading took start
+    and end first, and the CSV's file name a decade first, so
+    ``?decade=1990-99&year=1995`` listed the 1990s under a heading that
+    said 1995. Only a hand-written URL carries two of them.
+
+    A value that is not a year is no value, though an unreadable start or
+    end still outranks a year, as it does in the browser.
+    """
+    if start or end:
+        return parse_int(start), parse_int(end)
+    year = parse_int(year)
+    if year is not None:
+        return year, year
+    match = DECADE.fullmatch(decade or "")
+    if match:
+        return int(match[1]), int(match[1]) + 9
+    return None, None
+
+
 def apply_year_filters(
     queryset: QuerySet,
     decade: Optional[str] = None,
@@ -204,46 +235,19 @@ def apply_year_filters(
     Args:
         queryset: The queryset to filter
         decade: Decade string like "1990-99" or "2000-09"
-        year: Single year as string (ignored if decade is set)
+        year: Single year as string
         start: Start year range as string
         end: End year range as string
 
     Returns:
-        Filtered queryset
+        The queryset, filtered to the one range ``resolve_year_range`` reads
+        the four as.
     """
-    import re
-
-    # Parse decade filter (format: "1990-99" -> start=1990, end=1999)
-    if decade:
-        decade_pattern = re.compile(r"(\d{2})(\d{2})-(\d{2})")
-        match = decade_pattern.match(decade)
-        if match:
-            start_str = match.group(1) + match.group(2)
-            end_str = match.group(1) + match.group(3)
-            start_year = int(start_str)
-            end_year = int(end_str)
-            queryset = queryset.filter(
-                year_of_release__gte=start_year, year_of_release__lte=end_year
-            )
-
-    # Year filter (single year) - only if decade not set
-    if year and not decade:
-        try:
-            queryset = queryset.filter(year_of_release=int(year))
-        except (ValueError, TypeError):
-            pass
-
-    # Start/end year range filters
-    if start:
-        try:
-            queryset = queryset.filter(year_of_release__gte=int(start))
-        except (ValueError, TypeError):
-            pass
-    if end:
-        try:
-            queryset = queryset.filter(year_of_release__lte=int(end))
-        except (ValueError, TypeError):
-            pass
+    first, last = resolve_year_range(decade, year, start, end)
+    if first is not None:
+        queryset = queryset.filter(year_of_release__gte=first)
+    if last is not None:
+        queryset = queryset.filter(year_of_release__lte=last)
 
     return queryset
 

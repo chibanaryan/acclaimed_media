@@ -199,7 +199,9 @@ class RateLimitedClient:
         Same contract as :meth:`get_json` - None means no usable data, and
         nothing raises - but follows redirects to a binary body. Used to
         download cover art, where the response is an image and the request
-        ends up at archive.org after a 307.
+        ends up at archive.org after a 307. A body that is not an image
+        (``config.COVER_CONTENT_TYPES``), or is larger than a cover is, is
+        no usable data either.
         """
         retry_delay = self.initial_retry_delay
 
@@ -243,4 +245,16 @@ class RateLimitedClient:
                 return None
 
             content_type = response.headers.get("Content-Type", "image/jpeg")
-            return response.content, content_type.split(";")[0].strip()
+            content_type = content_type.split(";")[0].strip().lower()
+            # Only an image, and of a size a cover is: see the config
+            if content_type not in config.COVER_CONTENT_TYPES:
+                logger.warning("%s is %s, not an image", url, content_type[:60])
+                return None
+            if len(response.content) > config.COVER_MAX_BYTES:
+                logger.warning(
+                    "%s is %d bytes, too large for a cover",
+                    url,
+                    len(response.content),
+                )
+                return None
+            return response.content, content_type

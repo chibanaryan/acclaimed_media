@@ -28,8 +28,6 @@ from games.services.import_handler import (  # noqa: F401
     import_batch_with_progress,
     import_batch,
     delete_existing_data,
-    clear_igdb_metadata,
-    clear_wikipedia_metadata,
     import_lists,
     import_listmemberships,
     import_games,
@@ -39,7 +37,6 @@ from games.services.import_handler import (  # noqa: F401
 )
 
 # Re-export dependencies that tests may patch
-from io import TextIOWrapper  # noqa: F401
 from django.db import transaction  # noqa: F401
 
 # Ranking service functions
@@ -136,9 +133,9 @@ This message was sent via the contact form at {site_url}
         return False
 
 
-def send_post_notification_email(post, user) -> bool:
+def _post_notification_email(post, user):
     """
-    Send a notification email about a new post to a subscriber.
+    The email that tells a subscriber about a new post, unsent.
 
     The email carries the whole post, so it links to nothing but the site
     and the unsubscribe page: posts have no page of their own to link to.
@@ -146,9 +143,6 @@ def send_post_notification_email(post, user) -> bool:
     Args:
         post: Post model instance
         user: User model instance with subscription fields
-
-    Returns:
-        True if the email was sent successfully, False otherwise
     """
     from django.conf import settings
     from django.core.mail import EmailMultiAlternatives
@@ -225,16 +219,36 @@ Acclaimed Media
 </body>
 </html>"""
 
+    # Both plain text and HTML versions
+    email = EmailMultiAlternatives(
+        subject=title,
+        body=text_body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[user.email],
+    )
+    email.attach_alternative(html_body, "text/html")
+    return email
+
+
+def send_post_notification_email(post, user) -> bool:
+    """
+    Send a notification email about a new post to a subscriber.
+
+    Building the email is inside the ``try`` with sending it. Outside, a
+    post it could not be built from (one with no date, say) was an unhandled
+    exception on the notification thread, with the subscriber's unsubscribe
+    link in its frame locals for Sentry, and it ended the loop with the rest
+    of the subscribers unsent.
+
+    Args:
+        post: Post model instance
+        user: User model instance with subscription fields
+
+    Returns:
+        True if the email was sent successfully, False otherwise
+    """
     try:
-        # Create email with both plain text and HTML versions
-        email = EmailMultiAlternatives(
-            subject=title,
-            body=text_body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            to=[user.email],
-        )
-        email.attach_alternative(html_body, "text/html")
-        email.send()
+        _post_notification_email(post, user).send()
         return True
     except Exception as error:
         # No traceback: Sentry sends its frame locals, here the subscriber's

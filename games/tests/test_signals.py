@@ -6,6 +6,7 @@ from django.test import TestCase
 from core.tests.utils import CommitHooksRunNowMixin, clear_all_caches
 from games import config
 from games.models import Developer, Game, WikipediaGenre
+from games.signals import invalidate_developer_cache_on_game_change
 
 
 class DeveloperCacheInvalidationSignalTests(CommitHooksRunNowMixin, TestCase):
@@ -349,3 +350,100 @@ class GenreHierarchyChangesApplyImmediatelyTests(TestCase):
         self.assertEqual(
             sports.get_descendant_ids(include_self=True), [sports.id, racing.id]
         )
+
+
+class GameDeveloperM2MSignalCostTests(CommitHooksRunNowMixin, TestCase):
+    """The `Game.developers` signal runs once a change, in a fixed few queries."""
+
+    def setUp(self):
+        clear_all_caches()
+        self.addCleanup(clear_all_caches)
+        self.root = Developer.objects.create(name="Root", igdb_id=1, slug="root")
+        self.game = Game.objects.create(name="Test Game", rank=1, igdb_id=100)
+
+    def studios(self, count, start=10):
+        return [
+            Developer.objects.create(name=f"Studio {n}", igdb_id=n, parent=self.root)
+            for n in range(start, start + count)
+        ]
+
+    def detail_key(self, developer):
+        return f"{config.CACHE_VERSION}:developer_detail:{developer.id}"
+
+    def test_a_set_costs_the_same_however_many_developers_it_names(self):
+        """It was a query a developer and more up its parents, four times."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        few, many = self.studios(2), self.studios(8, start=20)
+        with CaptureQueriesContext(connection) as small:
+            self.game.developers.set(few)
+        self.game.developers.clear()
+        with CaptureQueriesContext(connection) as large:
+            self.game.developers.set(many)
+        self.assertEqual(len(large), len(small))
+
+    def test_nothing_is_dropped_before_the_change(self):
+        from unittest import mock
+
+        (studio,) = self.studios(1)
+        with mock.patch("games.cache.invalidate_developer_detail") as drop:
+            for action in ("pre_add", "pre_remove"):
+                invalidate_developer_cache_on_game_change(
+                    sender=Game.developers.through,
+                    instance=self.game,
+                    action=action,
+                    pk_set={studio.pk},
+                )
+        drop.assert_not_called()
+
+    def test_a_clear_drops_the_pages_of_the_developers_it_removed(self):
+        """A clear names no pks, and dropped no developer's page."""
+        (studio,) = self.studios(1)
+        self.game.developers.add(studio)
+        keys = [self.detail_key(studio), self.detail_key(self.root)]
+        for key in keys:
+            cache.set(key, {"detail": "cached"})
+
+        self.game.developers.clear()
+
+        self.assertEqual([cache.get(key) for key in keys], [None, None])
+
+    def test_a_change_from_the_developers_side_drops_the_developers_page(self):
+        """The pks are games' there, and were read as developers'."""
+        from unittest import mock
+
+        (studio,) = self.studios(1)
+        with mock.patch("games.cache.invalidate_developer_detail") as drop:
+            studio.developed_games.add(self.game)
+
+        dropped = {call.args[0] for call in drop.call_args_list}
+        self.assertEqual(dropped, {studio.id, self.root.id})
+
+
+class GameYearSignalTests(CommitHooksRunNowMixin, TestCase):
+    """The year counts follow a game's year, edited in the admin."""
+
+    def setUp(self):
+        from games.cache import YEAR_COUNTS_CACHE_KEY
+
+        clear_all_caches()
+        self.addCleanup(clear_all_caches)
+        self.key = YEAR_COUNTS_CACHE_KEY
+        Game.objects.create(name="Dated", rank=1, igdb_id=1, year_of_release=1998)
+        self.game = Game.objects.get()  # as the admin reads it
+
+    def test_a_changed_year_drops_the_year_counts(self):
+        """They waited out a day."""
+        cache.set(self.key, {"stale": 1}, 60)
+        self.game.year_of_release = 2001
+        self.game.save()
+        self.assertIsNone(cache.get(self.key))
+
+    def test_a_save_that_leaves_the_year_alone_keeps_them(self):
+        """The weekly refresh saves every game."""
+        cache.set(self.key, {"stale": 1}, 60)
+        self.game.name = "Renamed"
+        self.game.save()
+        self.game.save(update_fields=["slug"])
+        self.assertEqual(cache.get(self.key), {"stale": 1})

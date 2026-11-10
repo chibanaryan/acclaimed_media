@@ -1,4 +1,4 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.db.models import (
     BooleanField,
@@ -20,7 +20,7 @@ from django.utils.html import format_html, format_html_join
 from core.models import User
 from music import models as music_models
 
-from . import models
+from . import igdb, models
 
 
 class SubsidiaryInlineAdmin(admin.TabularInline):
@@ -149,9 +149,26 @@ class GameAdmin(admin.ModelAdmin):
     def save_model(
         self, request: HttpRequest, obj: models.Game, form: ModelForm, change: bool
     ) -> None:
-        """Save the game model, fetching fresh IGDB data."""
-        obj.get_igdb_data(cache_results=False)
+        """Save the game, then refresh it from IGDB.
+
+        Saved first: the fetch files its IGDB record under the game, which
+        a game being added does not yet have a row for, and a fetch that
+        fails must not lose the edit. It saves the slug and the record it
+        sets itself.
+        """
         obj.save()
+        try:
+            obj.get_igdb_data(cache_results=False)
+        except igdb.GameNotFound:
+            # IGDB has dropped the id or merged it into another game. That
+            # was a 500, and the edit was lost with it.
+            self.message_user(
+                request,
+                f"Saved, but IGDB has no game under id {obj.igdb_id}: it may "
+                "have been removed or merged into another. The IGDB data was "
+                "left as it was.",
+                level=messages.WARNING,
+            )
 
     def _wikipedia_genres(self, obj: models.Game) -> str:
         """Display comma-separated list of Wikipedia genres for the game."""
@@ -205,6 +222,11 @@ class GameAdmin(admin.ModelAdmin):
 class IGDBGameDataAdmin(admin.ModelAdmin):
     """Admin interface for IGDB game data records."""
 
+    # `game` is nullable (a row outlives its game across an import), and
+    # the changelist's own select_related() follows only the foreign keys
+    # that are not: the Game column was a query a row.
+    list_select_related = ["game"]
+
     list_display = [
         "game",
         "igdb_id",
@@ -231,6 +253,11 @@ class IGDBGameDataAdmin(admin.ModelAdmin):
 @admin.register(models.WikipediaGameData)
 class WikipediaGameDataAdmin(admin.ModelAdmin):
     """Admin interface for Wikipedia game data records."""
+
+    # `game` is nullable (a row outlives its game across an import), and
+    # the changelist's own select_related() follows only the foreign keys
+    # that are not: the Game column was a query a row.
+    list_select_related = ["game"]
 
     list_display = [
         "game",
@@ -294,6 +321,9 @@ class HLTBGameDataAdmin(admin.ModelAdmin):
     call, its help text the rule; unset, HLTB's game type decides. The bulk
     actions set it on many rows at once.
     """
+
+    # As on the IGDB and Wikipedia records: `game` is nullable
+    list_select_related = ["game"]
 
     list_display = [
         "game",

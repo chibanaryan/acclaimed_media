@@ -8,6 +8,7 @@ from django.conf import settings
 from django.db import models
 from django.utils.text import Truncator, slugify
 
+from core.loaded_values import RemembersLoaded
 from core.models import (
     CreatorBase,
     ListBase,
@@ -1022,7 +1023,7 @@ class GameQuerySet(models.QuerySet):
         return self.annotate(list_count=Count("lists", distinct=True))
 
 
-class Game(MediaItemBase):
+class Game(RemembersLoaded, MediaItemBase):
     """
     A video game.
 
@@ -1034,6 +1035,10 @@ class Game(MediaItemBase):
     Adds game-specific fields for release year, IGDB integration,
     genres, platforms, developers, and series.
     """
+
+    # What `games.signals` compares a save against: the year counts follow
+    # a changed year (core.loaded_values)
+    remembered_fields = ("year_of_release",)
 
     # Game-specific fields
     year_of_release = models.PositiveSmallIntegerField(
@@ -1153,7 +1158,11 @@ class Game(MediaItemBase):
             logger.warning("IGDB API unavailable; skipping update for %s", self)
             return
 
-        # Fetch and create records for each ID
+        # Fetch and create records for each ID. The first id's answer is
+        # kept for the developers and series below: it was fetched a second
+        # time for them, and after a transient failure, which answers None
+        # and is skipped here, that second read was `None.get`.
+        first_data = None
         for idx, igdb_id_to_fetch in enumerate(ids_to_fetch):
             # Use pre-fetched data for legacy single-ID mode
             if data is not None and idx == 0:
@@ -1165,6 +1174,9 @@ class Game(MediaItemBase):
 
             if not game_data:
                 continue
+
+            if idx == 0:
+                first_data = game_data
 
             # Update slug from first record
             if idx == 0:
@@ -1226,35 +1238,10 @@ class Game(MediaItemBase):
             if idx == 0:
                 self.primary_igdb_game_data = igdb_game_data
 
-        # Update developers only from first record
-        if ids_to_fetch and (data is not None or api_client):
-            # Get first record data for developers
-            if data is not None:
-                first_data = data
-            else:
-                first_data = api_client.get_game_info_by_id(
-                    ids_to_fetch[0], cache_results
-                )
-
-            devs = []
-            for d in first_data.get("developers", []):
-                dev = self._get_or_create_developer_with_parents(d)
-                devs.append(dev)
-
-            self.developers.set(devs)
-
-            # Update series from IGDB collections
-            series_list = []
-            for s in first_data.get("series", []):
-                series_obj, _ = Series.objects.get_or_create(
-                    igdb_id=s["id"],
-                    defaults={
-                        "name": s["name"],
-                        "slug": s.get("slug") or slugify(s["name"]),
-                    },
-                )
-                series_list.append(series_obj)
-            self.series.set(series_list)
+        # Developers and series come from the first record alone, and only
+        # when IGDB answered for it: a failed fetch leaves them as they were
+        if first_data:
+            self._update_relationships_from_data(first_data)
 
         # Save only specific fields to avoid updating modified timestamp
         self.save(update_fields=["slug", "primary_igdb_game_data"])

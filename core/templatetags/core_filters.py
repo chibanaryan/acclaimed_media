@@ -107,10 +107,28 @@ def from_now(value):
         return ""
 
 
+# What would end a `<script>` body or a quoted attribute, written as the
+# JSON escapes that mean the same character. Only a string can hold one:
+# JSON's own syntax uses none of them.
+_JSON_MARKUP_ESCAPES = {
+    ord("<"): "\\u003c",
+    ord(">"): "\\u003e",
+    ord("&"): "\\u0026",
+    ord("'"): "\\u0027",
+}
+
+
 @register.filter
 def tojson(value):
-    """Convert a Python value to JSON string, safe for use in JavaScript."""
-    return mark_safe(json.dumps(value))
+    """``value`` as JSON, for a ``<script>`` body or a quoted attribute.
+
+    Marked safe, so it has to be: "<", ">", "&" and "'" are written as
+    their JSON escapes, as Django's ``json_script`` does. Bare
+    ``json.dumps`` was safe only because every caller passed numbers; the
+    first string with ``</script>`` in it would have ended the script, and
+    one with a quote the ``data-bins='...'`` attribute.
+    """
+    return mark_safe(json.dumps(value).translate(_JSON_MARKUP_ESCAPES))
 
 
 @register.filter

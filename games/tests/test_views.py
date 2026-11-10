@@ -109,13 +109,13 @@ class ImportViewIntegrationTests(TestCase):
             },
         )
         self.assertEqual(response.status_code, 302)
-        # Check session data instead of messages (line 161)
+        # Check session data instead of messages
         self.assertEqual(response.wsgi_request.session.get("import_errors"), ["Failed"])
         mock_import.assert_called_once()
 
     @mock.patch("games.utils.import_data", return_value=(False, "Error message"))
     def test_form_valid_error_path(self, mock_import):
-        """Test form_valid error path (line 161)."""
+        """Test form_valid error path."""
         self.client.login(username="tester", password="pass")
         response = self.client.post(
             reverse("import"),
@@ -204,47 +204,6 @@ class ImportViewIntegrationTests(TestCase):
             response.wsgi_request.session.get("import_success"),
         )
         mock_import.assert_called_once()
-
-    @mock.patch("games.utils.import_batch", return_value=(True, "Loaded"))
-    @mock.patch("builtins.open", new_callable=mock_open, read_data=b"test data")
-    @mock.patch("games.views.imports.Path")
-    def test_seed_test_data_falls_back_to_top1000_when_top1400_missing(
-        self, mock_path, mock_file, mock_import
-    ):
-        """Test seed_test_data falls back to Top1000 when Top1400 is absent."""
-        self.client.login(username="tester", password="pass")
-
-        class FakePath:
-            def __init__(self, *parts):
-                self.parts = tuple(str(part) for part in parts)
-
-            def __truediv__(self, other):
-                return FakePath(*self.parts, other)
-
-            def exists(self):
-                return self.parts[-1] != "Top1400.txt"
-
-        mock_path.side_effect = FakePath
-
-        response = self.client.post(
-            reverse("import"),
-            {
-                "seed_test_data": True,
-            },
-        )
-
-        self.assertEqual(response.status_code, 302)
-        self.assertIn(
-            "Loaded bundled test data",
-            response.wsgi_request.session.get("import_success"),
-        )
-        mock_import.assert_called_once()
-        self.assertTrue(
-            any(
-                call.args[0].parts[-1] == "Top1000.txt"
-                for call in mock_file.call_args_list
-            )
-        )
 
     @mock.patch("builtins.open", side_effect=FileNotFoundError)
     @mock.patch("games.views.imports.Path")

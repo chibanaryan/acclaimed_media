@@ -276,6 +276,29 @@ class GetBytesTests(ClientTestCase):
             client.get_bytes("https://example.test/x.jpg"), (b"\xff\xd8", "image/jpeg")
         )
 
+    def test_a_body_that_is_not_an_image_is_refused(self):
+        """archive.org answering 200 with a page, or an upload that is a PDF."""
+        client, session = self.build()
+        for content_type in (
+            "text/html; charset=utf-8",
+            "application/pdf",
+            "TEXT/HTML",
+        ):
+            with self.subTest(content_type=content_type):
+                session.get.return_value = fake_response(
+                    content=b"<html>", headers={"Content-Type": content_type}
+                )
+                with self.assertLogs("music.services.http_client", level="WARNING"):
+                    self.assertIsNone(client.get_bytes("https://example.test/x.jpg"))
+
+    def test_a_body_too_large_for_a_cover_is_refused(self):
+        client, session = self.build()
+        session.get.return_value = fake_response(
+            content=b"x" * (config.COVER_MAX_BYTES + 1)
+        )
+        with self.assertLogs("music.services.http_client", level="WARNING"):
+            self.assertIsNone(client.get_bytes("https://example.test/x.jpg"))
+
     def test_an_empty_body_is_not_an_image(self):
         client, session = self.build()
         session.get.return_value = fake_response(content=b"")

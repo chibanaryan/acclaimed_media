@@ -199,7 +199,7 @@ def _igdb_progress(update_relationships, force_refresh, start_thread):
             except queue.Full:
                 return
 
-    def progress_callback(event_type: str, data: dict) -> None:  # pragma: no cover
+    def progress_callback(event_type: str, data: dict) -> None:
         """Callback to stream service events to SSE client."""
         # Add event type if not already present
         if "event" not in data:
@@ -377,7 +377,7 @@ def _igdb_progress(update_relationships, force_refresh, start_thread):
                     error_data = json.dumps({"event": "error", "error": error_msg})
                     yield f"data: {error_data}\n\n"
                     break
-        except GeneratorExit:  # pragma: no cover
+        except GeneratorExit:
             # Client disconnected - signal the import thread to stop
             # Note: The import thread will continue in the background as
             # a daemon thread until it completes. This prevents wasted
@@ -442,7 +442,7 @@ def _wikipedia_progress(force_refresh, start_thread):
             except queue.Full:
                 return
 
-    def progress_callback(event_type: str, data: dict) -> None:  # pragma: no cover
+    def progress_callback(event_type: str, data: dict) -> None:
         """Callback to stream service events to SSE client."""
         # Add event type if not already present
         if "event" not in data:
@@ -733,7 +733,7 @@ def _wikipedia_progress(force_refresh, start_thread):
                     # Send keepalive comment to prevent connection timeout
                     # SSE comments (lines starting with :) are ignored by client
                     yield ": keepalive\n\n"
-        except GeneratorExit:  # pragma: no cover
+        except GeneratorExit:
             # Client disconnected - signal the lookup thread to stop
             stop_event.set()
             logger.info(
@@ -910,7 +910,7 @@ def import_batch_with_progress(data: Dict[str, Any]):
                     note = post_import.schedule()
                     if note:
                         _queue_event(json.dumps({"event": "metadata", "message": note}))
-            except Exception:  # pragma: no cover
+            except Exception:
                 # A disconnect raises to roll back; that is no error to report
                 if not stop_event.is_set():
                     logger.exception("Batch import failed")
@@ -958,7 +958,7 @@ def import_batch_with_progress(data: Dict[str, Any]):
                     # SSE comments are ignored by the client but keep the
                     # stream active for Gunicorn/Heroku.
                     yield ": keepalive\n\n"
-        except GeneratorExit:  # pragma: no cover
+        except GeneratorExit:
             stop_event.set()
             raise
 
@@ -1439,6 +1439,12 @@ def import_games(
         series_links = []
         models.PlayedGame.objects.all().update(game=None)
         models.WantToPlayGame.objects.all().update(game=None)
+        # The IGDB ids a reader's row names, read once. Reconnecting was
+        # two locking queries for every game, some 2,800 an import, and
+        # most games have no reader's row to reconnect.
+        tracked_igdb_ids = set(
+            models.PlayedGame.objects.values_list("igdb_id", flat=True)
+        ) | set(models.WantToPlayGame.objects.values_list("igdb_id", flat=True))
         models.WikipediaGameData.objects.all().update(game=None)
         models.HLTBGameData.objects.all().update(game=None)
         models.IGDBGameData.objects.all().update(game=None)
@@ -1489,7 +1495,7 @@ def import_games(
 
             # Reconnect orphaned PlayedGame and WantToPlayGame records
             # This also normalizes igdb_id to primary and handles duplicates
-            if all_igdb_ids:
+            if tracked_igdb_ids.intersection(all_igdb_ids):
                 from games.services.user_tracking_service import (
                     reconnect_tracking_records,
                 )

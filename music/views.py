@@ -1387,10 +1387,16 @@ class ArtistListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
             id__in=list(album_ids)
         )
 
+        # The credits, the ranks and the albums are three reads, and an
+        # import can commit between any two. An album one read has and the
+        # next has not is left out, and an artist with none left with it:
+        # indexing for it was a KeyError, and a 500 for that request.
         artists = []
         best_album_ids = {}
         for artist in qs:
-            ids = album_ids[artist.id]
+            ids = [i for i in album_ids.get(artist.id, ()) if i in album_ranks]
+            if not ids:
+                continue
             artist.albums_count = len(ids)
             artist.variant_names = variant_names.get(artist.id, [])
             best_album_ids[artist.id] = min(ids, key=album_ranks.__getitem__)
@@ -1403,6 +1409,7 @@ class ArtistListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
         top_albums = models.Album.objects.select_related(
             "primary_musicbrainz_album_data"
         ).in_bulk(set(best_album_ids.values()))
+        artists = [a for a in artists if best_album_ids[a.id] in top_albums]
         for artist in artists:
             artist.top_album = top_albums[best_album_ids[artist.id]]
 
@@ -1718,7 +1725,9 @@ class AlbumCoverView(View):
         cover = models.AlbumCover.objects.filter(
             release_mbid=release_mbid, image_id=image_id, size=size
         ).first()
-        if cover is None:
+        # Only as an image: the type was stored as the remote sent it, and
+        # a row from before the download checked it is not trusted here
+        if cover is None or cover.content_type not in config.COVER_CONTENT_TYPES:
             raise Http404("No such cover")
 
         # `bytes(cover.data)` here would hold a second full copy of the
@@ -1760,7 +1769,7 @@ class MusicImportView(StaffOnlyMixin, View):
         if form.is_valid():
             try:
                 message, warnings = self._run_import(form.cleaned_data)
-            except Exception as exc:  # noqa: BLE001 - surfaced to the page
+            except Exception as exc:  # surfaced to the page
                 # The importer runs in one transaction, so a failure leaves
                 # the previous rankings in place; report it and carry on.
                 # A file it refuses (ValueError, or one that is not there) is

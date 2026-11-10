@@ -131,6 +131,14 @@ class GamesParityTests(ParityTestCase):
             "dir=desc",
             "start=1990&end=1999",
             "start=2000",
+            # The older year parameters, and two at once: one range on
+            # both sides (`resolve_year_range`, `currentFilterParams`)
+            "year=1995",
+            "decade=1990-99",
+            "decade=1990-99&year=1995",
+            "decade=1990-99&start=2000",
+            "year=1995&end=2005",
+            "decade=1995-99",
             f"genres={self.root.id}",
             f"genres={self.child.id}",
             f"platforms={self.pc.id}",

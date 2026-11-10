@@ -14,6 +14,7 @@ from django.db.models.signals import (
 )
 from django.dispatch import receiver
 
+from core import loaded_values
 from core.services.background import start_background_thread
 from games.models import (
     DEVELOPER_PARENT_CHAIN,
@@ -173,25 +174,51 @@ def invalidate_developer_cache_on_change(sender, instance, **kwargs):
 
 
 @receiver(m2m_changed, sender=Game.developers.through)
-def invalidate_developer_cache_on_game_change(sender, instance, pk_set, **kwargs):
-    """Invalidate developer hierarchy cache when Game.developers M2M changes."""
+def invalidate_developer_cache_on_game_change(
+    sender, instance, action, pk_set=None, reverse=False, **kwargs
+):
+    """Invalidate developer hierarchy cache when Game.developers M2M changes.
+
+    Once a change, after it: `m2m_changed` is sent before and after an add
+    or a remove, and this ran for all four of a `developers.set()`, twice a
+    game in every IGDB refresh, with a query for each developer and more up
+    its parents. The developers are read in one, their parents joined.
+
+    From the developer's side (`developer.game_set.add(game)`) the instance
+    is the developer and the pks are games', which were read as developers.
+    A clear names no pks, so whose pages it empties is noted before it.
+    """
     from games.cache import invalidate_developer_detail
     from games.services.developer_service import invalidate_developer_cache
 
+    if action == "pre_clear":
+        instance._developers_being_cleared = (
+            {instance.pk}
+            if reverse
+            else set(instance.developers.values_list("pk", flat=True))
+        )
+        return
+    if action not in ("post_add", "post_remove", "post_clear"):
+        return
+
+    if action == "post_clear":
+        developer_ids = instance.__dict__.pop("_developers_being_cleared", set())
+    elif reverse:
+        developer_ids = {instance.pk}
+    else:
+        developer_ids = set(pk_set or ())
+
     invalidate_developer_cache()
 
-    # Invalidate detail page caches for affected developers
-    if pk_set:
-        for dev_id in pk_set:
-            invalidate_developer_detail(dev_id)
-            # Also invalidate root developer's cache
-            try:
-                dev = Developer.objects.get(id=dev_id)
-                if dev.parent_id:
-                    root = dev.root_developer
-                    invalidate_developer_detail(root.id)
-            except Developer.DoesNotExist:
-                pass
+    # Each developer's page, and its root's. A pk with no row (deleted
+    # meanwhile) still has its own page dropped.
+    for developer_id in developer_ids:
+        invalidate_developer_detail(developer_id)
+    subsidiaries = Developer.objects.filter(
+        id__in=developer_ids, parent__isnull=False
+    ).select_related(*DEVELOPER_PARENT_CHAIN)
+    for developer in subsidiaries:
+        invalidate_developer_detail(developer.root_developer.id)
 
     logger.debug("Developer hierarchy cache invalidated (Game.developers changed)")
 
@@ -216,6 +243,13 @@ def invalidate_hero_stats_on_count_change(sender, instance, **kwargs):
     if kwargs.get("created", True):
         invalidate_hero_stats()
         logger.debug("Homepage hero stats cache invalidated (count changed)")
+    elif sender is Game and loaded_values.changed(
+        instance, "year_of_release", kwargs.get("update_fields")
+    ):
+        # The year counts are in the same family: a year edited in the
+        # admin waited a day for them. Seen without a query, from what the
+        # row held when it was read (core.loaded_values).
+        invalidate_hero_stats()
 
 
 @receiver(pre_delete, sender=Game)

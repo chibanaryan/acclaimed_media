@@ -27,7 +27,8 @@ from core import constants as core_constants
 from core.services import genre_tree
 from core.services.facets import count_by
 from core.services import search_ranking
-from core.services.query_params import parse_limit
+from core.services.query_params import parse_id_list, parse_int, parse_limit
+from core.services.request_body import read_saved_filter
 
 from .. import config, models
 from ..services.credits import (
@@ -74,12 +75,20 @@ class MusicWriteAPIMixin(MusicReadAPIMixin):
     permission_classes = [IsAuthenticated]
 
 
+def _name_order():
+    """Each album's position in the database's own ``Lower(name)`` order."""
+    return {
+        album_id: position
+        for position, album_id in enumerate(
+            models.Album.objects.order_by(Lower("name")).values_list("id", flat=True)
+        )
+    }
+
+
 # Note on caching: these endpoints are uncached. `all/`, the heavy one, was
 # measured on 2026-11-09 and left so: 319 ms at the median, but two requests
 # an hour, so an hour's entry would save about a CPU-minute a week (AGENTS.md,
 # "API Architecture"). Games caches its equivalent, which is asked for far more.
-
-
 class AlbumAllDataView(MusicReadAPIMixin, APIView):
     """
     Every album in one payload, for client-side filtering.
@@ -116,14 +125,7 @@ class AlbumAllDataView(MusicReadAPIMixin, APIView):
         # differently again. Sending the server's own ordering makes the two
         # agree exactly, whatever the collation - and keeps local SQLite
         # behaving like production Postgres.
-        name_order = {
-            album_id: position
-            for position, album_id in enumerate(
-                models.Album.objects.order_by(Lower("name")).values_list(
-                    "id", flat=True
-                )
-            )
-        }
+        name_order = _name_order()
 
         albums_data = []
         artists = {}
@@ -161,7 +163,11 @@ class AlbumAllDataView(MusicReadAPIMixin, APIView):
                 "ar": artist_slugs,
                 "g": [genre.id for genre in album.genres.all()],
                 "lc": album.list_count,
-                "ni": name_order[album.id],  # alphabetical position
+                # Alphabetical position. An album an import commits
+                # between the two reads has none, and sorts last: the
+                # payload is labelled with no version then, and a
+                # KeyError here made that request a 500 instead.
+                "ni": name_order.get(album.id, len(name_order)),
             }
             if credited_names != [artists[slug]["n"] for slug in artist_slugs]:
                 entry["cv"] = credited_names  # credited as another name
@@ -328,16 +334,16 @@ class AlbumListView(MusicReadAPIMixin, ListAPIView):
             # Every album credited to them, under whichever of their names.
             qs = qs.filter(artists__slug=artist)
 
-        genres = params.get("genres")
-        if genres:
-            genre_ids = [x.strip() for x in genres.split(",") if x.strip().isdigit()]
-            if genre_ids:
-                qs = qs.filter(genres__id__in=genre_ids)
+        # Through the parsers that never raise: `str.isdigit()` takes "²",
+        # which `int()` then refuses, and `?start=²` was a 500.
+        genre_ids = parse_id_list(params.get("genres"))
+        if genre_ids:
+            qs = qs.filter(genres__id__in=genre_ids)
 
         for param, lookup in (("start", "gte"), ("end", "lte")):
-            value = params.get(param)
-            if value and value.isdigit():
-                qs = qs.filter(**{f"year_released__{lookup}": int(value)})
+            value = parse_int(params.get(param))
+            if value is not None and value >= 0:
+                qs = qs.filter(**{f"year_released__{lookup}": value})
 
         return qs.distinct().order_by("rank")
 
@@ -563,15 +569,17 @@ class SavedAlbumFilterSetListCreateView(MusicWriteAPIMixin, APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        name = str(request.data.get("name", "")).strip()
+        name, filters = read_saved_filter(request.data)
         error = _validate_saved_filter_name(name, request.user)
+        if error is None and filters is None:
+            error = "Filters must be an object."
         if error:
             return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
 
         filter_set = models.SavedAlbumFilterSet.objects.create(
             user=request.user,
             name=name,
-            filters=request.data.get("filters", {}),
+            filters=filters,
         )
         return Response(
             _saved_filter_payload(filter_set), status=status.HTTP_201_CREATED
@@ -590,7 +598,7 @@ class SavedAlbumFilterSetDetailView(MusicWriteAPIMixin, APIView):
 
     def patch(self, request, pk):
         filter_set = self.get_object(pk, request.user)
-        name = str(request.data.get("name", "")).strip()
+        name, _ = read_saved_filter(request.data)
         error = _validate_saved_filter_name(name, request.user, exclude_pk=pk)
         if error:
             return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)

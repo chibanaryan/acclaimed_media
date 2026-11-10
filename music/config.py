@@ -276,6 +276,16 @@ WIKIDATA_ARTIST_MUSICBRAINZ_PROPERTY = "P434"
 # 300px detail image.
 COVER_ART_THUMBNAIL_SIZES = (250, 500, 1200)
 
+# What a downloaded cover may be. It is stored with the content type the
+# remote sent and served with it from this origin, which shares its cookies
+# with the other sites: archive.org answering 200 with an error page, or an
+# upload that is a PDF (the archive takes them), would otherwise be served
+# from here as HTML or a document. And a ceiling on the bytes, which are
+# held in memory, then in a database row, then in every response: the
+# largest of the 2,028 stored on 2026-11-10 was 228 KB.
+COVER_CONTENT_TYPES = frozenset({"image/jpeg", "image/png", "image/gif", "image/webp"})
+COVER_MAX_BYTES = 5 * 1024 * 1024
+
 # How many bins the rank distribution chart draws, matching games so the
 # two charts read at the same resolution.
 RANK_DISTRIBUTION_BIN_COUNT = 10

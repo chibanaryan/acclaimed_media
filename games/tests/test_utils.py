@@ -439,11 +439,14 @@ class ApplyYearFiltersTests(TestCase):
         result = utils.apply_year_filters(qs, year="invalid")
         self.assertEqual(result.count(), 5)
 
-    def test_decade_takes_precedence_over_year(self):
-        """Test that decade filter ignores year filter."""
+    def test_year_takes_precedence_over_decade(self):
+        """A year beats a decade, as the heading and the browser read them.
+
+        The list alone had it the other way (`resolve_year_range`).
+        """
         qs = models.Game.objects.all()
         result = utils.apply_year_filters(qs, decade="1990-99", year="1980")
-        self.assertEqual(result.count(), 2)  # 1990 and 1995
+        self.assertEqual([game.year_of_release for game in result], [1980])
 
     def test_invalid_start_year_ignored(self):
         """Test that invalid start year value is ignored."""

@@ -20,7 +20,7 @@ from decimal import Decimal
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Case, IntegerField, Value, When
 
 from core.services.monitoring import weekly_job_monitor
@@ -111,6 +111,14 @@ class Command(BaseCommand):
         """Main command handler - orchestrates IGDB and Wikipedia refreshes."""
         self.start_time = time.time()
 
+        exclusive_flags = [
+            options.get("igdb_only"),
+            options.get("wikipedia_only"),
+            options.get("hltb_only"),
+        ]
+        if sum(bool(f) for f in exclusive_flags) > 1:
+            raise CommandError("Cannot use multiple --*-only flags together")
+
         # Check if weekly flag is set and today is not Sunday
         if options.get("weekly"):
             # 6 = Sunday in Python's weekday() (0=Monday, 6=Sunday)
@@ -130,20 +138,29 @@ class Command(BaseCommand):
             else:
                 self._run(options)
 
+            # A phase that failed outright fails the command, here: inside
+            # the cron check-in, which reports a run only if it raises, and
+            # after the lock is let go, so a fetch an import is owed still
+            # runs. Each phase catches its own error so the others go on,
+            # and until this the job exited 0 with all three FAILED, which
+            # Sentry's monitor read as a good Sunday.
+            failed = self._failed_phases()
+            if failed:
+                raise CommandError(
+                    f"Metadata refresh failed outright for: {', '.join(failed)}"
+                )
+
+    def _failed_phases(self):
+        """The phases that could not run at all, by name."""
+        flags = (
+            ("IGDB", self.igdb_errors),
+            ("Wikipedia", self.wikipedia_pages_failed),
+            ("HLTB", self.hltb_not_found),
+        )
+        return [name for name, flag in flags if flag == -1]
+
     def _run(self, options):
         """Everything after the weekly gate, inside the cron check-in."""
-        # Validate flags
-        exclusive_flags = [
-            options.get("igdb_only"),
-            options.get("wikipedia_only"),
-            options.get("hltb_only"),
-        ]
-        if sum(bool(f) for f in exclusive_flags) > 1:
-            self.stdout.write(
-                self.style.ERROR("Cannot use multiple --*-only flags together")
-            )
-            return
-
         # Print header
         self._print_header(options)
 
@@ -287,6 +304,9 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.ERROR(f"Failed to initialize IGDB service: {e}")
             )
+            # Flagged as a failed phase. Left at 0 errors, the summary had
+            # no IGDB line at all for a refresh that never started.
+            self.igdb_errors = -1
             return
 
         # Show tier and mode info

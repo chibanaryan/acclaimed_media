@@ -11,7 +11,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from django.db import connection
 
-from games.igdb import get_api
+from games.igdb import GameNotFound, get_api
 from games.models import Game
 
 logger = logging.getLogger(__name__)
@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 # goes to the log - at WARNING, so a run where many games fail does not file
 # a Sentry issue for each.
 GAME_FAILED = "IGDB data could not be applied; see the server logs."
+# IGDB answered, and not with this game: its id was dropped or merged away
+NOT_IN_IGDB = "Not found in IGDB response"
 BATCH_FAILED = "Batch fetch failed; see the server logs."
 
 
@@ -315,6 +317,12 @@ class IGDBImportService:
             with self.lock:
                 self.processed_count += 1
             return (True, game, None)
+        except GameNotFound:
+            # An id IGDB has dropped or merged: said as the batch path says
+            # it, not logged with a traceback as a failure of ours
+            with self.lock:
+                self.error_count += 1
+            return (False, game, NOT_IN_IGDB)
         except Exception:
             logger.warning("IGDB import failed for '%s'", game.name, exc_info=True)
             with self.lock:
@@ -387,7 +395,7 @@ class IGDBImportService:
                         results.append((False, game, GAME_FAILED))
                 else:
                     local_errors += 1
-                    results.append((False, game, "Not found in IGDB response"))
+                    results.append((False, game, NOT_IN_IGDB))
 
         except Exception:
             # Batch fetch failed, mark all as errors

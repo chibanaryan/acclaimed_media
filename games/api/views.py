@@ -5,7 +5,7 @@ from datetime import datetime
 from django.contrib.flatpages.models import FlatPage
 from django.core.cache import cache
 from django.db import connection
-from django.db.models import Count, F, Min, Prefetch, Q
+from django.db.models import Count, Q
 from django.db.models.functions import Lower
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
@@ -24,6 +24,7 @@ from rest_framework.views import APIView, Response
 from core.services import search_ranking
 from core.services.genre_tree import descendants_by_id
 from core.services.query_params import parse_id_list, parse_limit
+from core.services.request_body import read_saved_filter
 from games.services.data_version import compute_game_data_version
 
 from .. import config, models, utils
@@ -41,11 +42,21 @@ def cache_page(timeout):
     six small queries, beside the one a hit costs. A response rendered
     across an import's commit is stored under the version before it, which
     no request asks for again.
+
+    Only a bare path is kept. The keys are then as many as the paths, which
+    the data bounds; `Accept` still varies a key, which nothing bounds.
     """
 
     def decorator(view):
         @functools.wraps(view)
         def cached_view(request, *args, **kwargs):
+            if request.META.get("QUERY_STRING"):
+                # A query string is the caller's to write, and each one
+                # was two more rows in the shared cache: a few thousand
+                # `?q=` values culled the generation keys and the
+                # metadata fetch's lock. Rendered, and throttled as any
+                # uncached API request is.
+                return view(request, *args, **kwargs)
             prefix = f"{settings.RELEASE_CACHE_PREFIX}:{compute_game_data_version()}"
             cached = django_cache_page(timeout, key_prefix=prefix)(view)
             return cached(request, *args, **kwargs)
@@ -110,16 +121,11 @@ class GameListView(ListAPIView):
 class GameDetailView(RetrieveAPIView):
     lookup_field = "slug"
     serializer_class = serializers.GameDetailSerializer
+    # The serializer reads the list appearances itself, joined and
+    # ordered, so prefetching them here was a query nothing read.
     queryset = models.Game.objects.select_related(
         "primary_igdb_game_data",
         "primary_wikipedia_game_data",
-    ).prefetch_related(
-        Prefetch(
-            "lists",
-            queryset=models.ListMembership.objects.select_related(
-                "list__publisher",
-            ),
-        )
     )
 
 
@@ -255,44 +261,33 @@ class MetaView(APIView):
             "total_count": models.List.objects.count(),
         }
 
-        # Games
-        game_stats = models.Game.objects.aggregate(
-            min_year=Min("year_of_release"),
-        )
-        min_year = game_stats["min_year"] or 1970
-        max_year = datetime.today().year
-        all_years = range(min_year, max_year)
+        # Games. A game the release gives no year is in neither list: it
+        # was a decade of ``None``, and ``None + 9`` a 500.
         year_count_map = {
             entry["year_of_release"]: entry["count"]
-            for entry in models.Game.objects.values("year_of_release")
+            for entry in models.Game.objects.exclude(year_of_release__isnull=True)
+            .values("year_of_release")
             .annotate(count=Count("id"))
             .order_by("year_of_release")
         }
+        min_year = min(year_count_map, default=1970)
+        # Through this year: ``range`` stops one short of its end
+        all_years = range(min_year, datetime.today().year + 1)
 
         all_years_with_counts = [
             {"year": x, "count": year_count_map.get(x, 0)} for x in all_years
         ]
 
-        # Calculate counts for each decade using database aggregation
-        from django.db.models.functions import Floor
-
-        decades_data = (
-            models.Game.objects.annotate(
-                decade_start=Floor(F("year_of_release") / 10) * 10
-            )
-            .values("decade_start")
-            .annotate(count=Count("id"))
-            .order_by("decade_start")
-        )
+        # Summed here rather than in SQL, as music's is: ``Floor`` answers
+        # a float on SQLite, and the label read "1990.0-99".
+        decade_counts = {}
+        for year, count in year_count_map.items():
+            decade = (year // 10) * 10
+            decade_counts[decade] = decade_counts.get(decade, 0) + count
 
         decades_with_counts = [
-            {
-                "decade": (
-                    f"{item['decade_start']}-{str(item['decade_start'] + 9)[2:4]}"
-                ),
-                "count": item["count"],
-            }
-            for item in decades_data
+            {"decade": f"{decade}-{str(decade + 9)[-2:]}", "count": count}
+            for decade, count in sorted(decade_counts.items())
         ]
 
         # Get last_full_update from SiteMetadata
@@ -952,12 +947,17 @@ class SavedFilterSetListCreateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        name = request.data.get("name", "").strip()
-        filters = request.data.get("filters", {})
+        name, filters = read_saved_filter(request.data)
 
         if not name:
             return Response(
                 {"error": "Filter name is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if filters is None:
+            return Response(
+                {"error": "Filters must be an object."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1006,7 +1006,7 @@ class SavedFilterSetDetailView(APIView):
         """Rename saved filter set."""
         filter_set = self.get_object(pk, request.user)
 
-        name = request.data.get("name", "").strip()
+        name, _ = read_saved_filter(request.data)
         if not name:
             return Response(
                 {"error": "Name is required."},

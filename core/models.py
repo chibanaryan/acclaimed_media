@@ -16,6 +16,22 @@ from django.utils.text import slugify
 from unidecode import unidecode
 
 
+def folded(instance: models.Model, source: str, target: str) -> None:
+    """Set ``target`` to ``source`` through unidecode, or None if that changes nothing.
+
+    How a name is found without its accents: "bjork" finds Björk. Stored
+    only when it differs, and sent to the browser as it is, since unidecode
+    has no JavaScript twin. Cut to the column, since unidecode can lengthen
+    text ("坂本龍一" is "Ban Ben Long Yi ") and Postgres refuses a value
+    that does not fit. Set to None when folding changes nothing, so a copy
+    left by an older name does not go on matching it.
+    """
+    text = getattr(instance, source)
+    max_length = instance._meta.get_field(target).max_length
+    result = unidecode(text or "")[:max_length]
+    setattr(instance, target, result if result != text else None)
+
+
 class User(AbstractUser):
     """
     Custom user model consolidating UserProfile and Subscriber functionality.
@@ -179,11 +195,14 @@ class MediaItemBase(models.Model):
         return self.name
 
     def save(self, *args, **kwargs):
-        """Save the media item, calculating normalized name."""
-        # Save the normalized version of the name for search
-        normalized = unidecode(self.name)
-        if self.name != normalized:
-            self.name_normalized = normalized
+        """Save the media item, calculating normalized name.
+
+        Through ``folded``, which also clears and cuts it. Set only when
+        the name had accents, "Pokémon X" renamed "Pokemon Y" went on being
+        found as "Pokemon X", and a long title unidecode lengthens past the
+        column was a ``DataError`` on Postgres.
+        """
+        folded(self, "name", "name_normalized")
         super().save(*args, **kwargs)
 
     @cached_property

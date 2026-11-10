@@ -90,8 +90,61 @@ class IgbdApiTests(SimpleTestCase):
         self.assertNotIn("secret", url)
         self.assertEqual(kwargs["data"]["client_secret"], "secret")
 
+    def test_auth_token_without_credentials_asks_for_nothing(self):
+        for client_id, client_secret in (("XXX", "secret"), ("cid", "XXX")):
+            with self.subTest(client_id=client_id, client_secret=client_secret):
+                self.api.client_id = client_id
+                self.api.client_secret = client_secret
+                with mock.patch("games.igdb.requests.post") as post:
+                    with self.assertLogs("games.igdb", "WARNING") as logs:
+                        self.assertIs(self.api._get_auth_token(), False)
+                post.assert_not_called()
+                self.assertIn("IGDB credentials not configured", logs.output[0])
+                self.assertEqual(self.api.headers, {})
+
+    def test_auth_token_request_error_returns_false(self):
+        import requests
+
+        self.api.client_id = "cid"
+        self.api.client_secret = "secret"
+        refused = mock.Mock()
+        refused.raise_for_status.side_effect = requests.HTTPError("403 Forbidden")
+        for name, post in (
+            ("no connection", mock.Mock(side_effect=requests.ConnectionError("down"))),
+            ("timed out", mock.Mock(side_effect=requests.Timeout("30s"))),
+            ("refused", mock.Mock(return_value=refused)),
+        ):
+            with self.subTest(name):
+                with mock.patch("games.igdb.requests.post", post):
+                    with self.assertLogs("games.igdb", "WARNING") as logs:
+                        self.assertIs(self.api._get_auth_token(), False)
+                self.assertIn("Failed to authenticate with IGDB API", logs.output[0])
+                self.assertEqual(self.api.headers, {})
+
+    def test_auth_token_bad_json_returns_false(self):
+        self.api.client_id = "cid"
+        self.api.client_secret = "secret"
+        response = mock.Mock()
+        response.json.side_effect = ValueError("Expecting value")
+        with mock.patch("games.igdb.requests.post", return_value=response):
+            with self.assertLogs("games.igdb", "WARNING") as logs:
+                self.assertIs(self.api._get_auth_token(), False)
+        self.assertIn("Invalid JSON response from IGDB auth", logs.output[0])
+        self.assertEqual(self.api.headers, {})
+
+    def test_auth_token_failure_logs_no_secret(self):
+        import requests
+
+        self.api.client_id = "cid"
+        self.api.client_secret = "s3cret-value"
+        post = mock.Mock(side_effect=requests.ConnectionError("down"))
+        with mock.patch("games.igdb.requests.post", post):
+            with self.assertLogs("games.igdb", "WARNING") as logs:
+                self.api._get_auth_token()
+        self.assertNotIn("s3cret-value", "".join(logs.output))
+
     def test_get_game_info_fetches_related_data(self):
-        def fake_post(url, headers=None, data=None):
+        def fake_post(url, headers=None, data=None, timeout=None):
             if "games" in url:
                 return DummyResponse(
                     200,
@@ -175,7 +228,7 @@ class IgbdApiTests(SimpleTestCase):
     def test_get_game_info_handles_401_and_refreshes_token(self):
         call_state = {"attempts": 0}
 
-        def fake_post(url, headers=None, data=None):
+        def fake_post(url, headers=None, data=None, timeout=None):
             if "games" in url:
                 call_state["attempts"] += 1
                 if call_state["attempts"] == 1:
@@ -224,7 +277,7 @@ class IgbdApiTests(SimpleTestCase):
 
     def test_get_game_info_returns_none_when_token_refresh_fails(self):
 
-        def fake_post(url, headers=None, data=None):
+        def fake_post(url, headers=None, data=None, timeout=None):
             if "games" in url:
                 return DummyResponse(401, [])
             return DummyResponse(200, [])
@@ -630,15 +683,40 @@ class IgbdApiTests(SimpleTestCase):
         # Check that item 1 is now at the end (last item in OrderedDict)
         self.assertEqual(list(self.api.company_cache.keys())[-1], 1)
 
+    def test_setting_a_cached_entry_again_makes_it_the_newest(self):
+        """So the next eviction takes another entry, and none is added."""
+        from collections import OrderedDict
+
+        for cache, setter in (
+            ("company_cache", self.api._set_in_company_cache),
+            ("game_cache", self.api._set_in_game_cache),
+        ):
+            with self.subTest(cache):
+                setattr(self.api, cache, OrderedDict({1: {"v": "old"}, 2: {"v": "b"}}))
+                setattr(self.api, f"{cache}_max_size", 2)
+
+                with self.api.cache_lock:
+                    setter(1, {"v": "new"})
+
+                stored = getattr(self.api, cache)
+                self.assertEqual(
+                    list(stored.items()), [(2, {"v": "b"}), (1, {"v": "new"})]
+                )
+
+                with self.api.cache_lock:
+                    setter(3, {"v": "c"})
+
+                self.assertEqual(list(getattr(self.api, cache)), [1, 3])
+
     def test_get_themes_returns_none_from_request(self):
-        """Test _get_themes when request returns None (lines 301-302)."""
+        """Test _get_themes when request returns None."""
         self.api.headers = {"Authorization": "Bearer test"}
         with mock.patch.object(self.api, "_make_request_with_retry", return_value=None):
             self.api._get_themes()
         self.assertEqual(self.api.themes, {})
 
     def test_get_themes_exception_handling(self):
-        """Test _get_themes exception handling (lines 305-308)."""
+        """Test _get_themes exception handling."""
         self.api.headers = {"Authorization": "Bearer test"}
         response = DummyResponse(200, [])
         response.raise_for_status = mock.Mock(side_effect=Exception("Test error"))
@@ -649,14 +727,14 @@ class IgbdApiTests(SimpleTestCase):
         self.assertEqual(self.api.themes, {})
 
     def test_get_release_statuses_returns_none_from_request(self):
-        """Test _get_release_statuses when request returns None (lines 333-334)."""
+        """Test _get_release_statuses when request returns None."""
         self.api.headers = {"Authorization": "Bearer test"}
         with mock.patch.object(self.api, "_make_request_with_retry", return_value=None):
             self.api._get_release_statuses()
         self.assertEqual(self.api.release_date_statuses, {})
 
     def test_get_release_statuses_exception_handling(self):
-        """Test _get_release_statuses exception handling (lines 337-340)."""
+        """Test _get_release_statuses exception handling."""
         self.api.headers = {"Authorization": "Bearer test"}
         response = DummyResponse(200, [])
         response.raise_for_status = mock.Mock(side_effect=Exception("Test error"))
@@ -677,7 +755,7 @@ class IgbdApiTests(SimpleTestCase):
         self.assertEqual(result[1]["name"], "Cached Co")
 
     def test_get_companies_by_ids_exception_handling(self):
-        """Test get_companies_by_ids exception handling (lines 510-512)."""
+        """Test get_companies_by_ids exception handling."""
         response = DummyResponse(200, [])
         response.raise_for_status = mock.Mock(side_effect=Exception("Test error"))
         with mock.patch.object(
@@ -687,7 +765,7 @@ class IgbdApiTests(SimpleTestCase):
         self.assertEqual(result, {})
 
     def test_get_games_info_by_ids_empty_returns_empty_dict(self):
-        """Test get_games_info_by_ids with empty list returns {} (line 550)."""
+        """Test get_games_info_by_ids with empty list returns {}."""
         result = self.api.get_games_info_by_ids([], cache_results=False)
         self.assertEqual(result, {})
 
@@ -702,7 +780,7 @@ class IgbdApiTests(SimpleTestCase):
         self.assertEqual(result[1]["slug"], "cached-game")
 
     def test_get_games_info_by_ids_exception_handling(self):
-        """Test get_games_info_by_ids exception handling (lines 585-587)."""
+        """Test get_games_info_by_ids exception handling."""
         response = DummyResponse(200, [])
         response.raise_for_status = mock.Mock(side_effect=Exception("Test error"))
         with mock.patch.object(
@@ -712,7 +790,7 @@ class IgbdApiTests(SimpleTestCase):
         self.assertEqual(result, {})
 
     def test_get_games_info_by_ids_with_parent_company(self):
-        """Test get_games_info_by_ids handles parent company (line 598)."""
+        """Test get_games_info_by_ids handles parent company."""
         game_data = [
             {
                 "id": 1,
@@ -740,7 +818,7 @@ class IgbdApiTests(SimpleTestCase):
             {"id": 20, "name": "Parent Co", "slug": "parent-co", "parent": None},
         ]
 
-        def fake_post(url, headers=None, data=None):
+        def fake_post(url, headers=None, data=None, timeout=None):
             if "games" in url:
                 return DummyResponse(200, game_data)
             if "companies" in url:
@@ -754,7 +832,7 @@ class IgbdApiTests(SimpleTestCase):
         self.assertEqual(result[1]["developers"][0]["parent"]["name"], "Parent Co")
 
     def test_get_games_info_by_ids_missing_company_id(self):
-        """Test get_games_info_by_ids skips entries without company id (line 616)."""
+        """Test get_games_info_by_ids skips entries without company id."""
         game_data = [
             {
                 "id": 1,
@@ -785,7 +863,7 @@ class IgbdApiTests(SimpleTestCase):
         self.assertEqual(result[1]["developers"], [])
 
     def test_get_games_info_by_ids_supporters_fallback(self):
-        """Test get_games_info_by_ids uses supporters when no developers (line 621)."""
+        """Test get_games_info_by_ids uses supporters when no developers."""
         game_data = [
             {
                 "id": 1,
@@ -811,7 +889,7 @@ class IgbdApiTests(SimpleTestCase):
             {"id": 10, "name": "Support Co", "slug": "support", "parent": None}
         ]
 
-        def fake_post(url, headers=None, data=None):
+        def fake_post(url, headers=None, data=None, timeout=None):
             if "games" in url:
                 return DummyResponse(200, game_data)
             if "companies" in url:
@@ -824,7 +902,7 @@ class IgbdApiTests(SimpleTestCase):
         self.assertEqual(result[1]["developers"][0]["name"], "Support Co")
 
     def test_get_games_info_by_ids_porters_fallback(self):
-        """Test get_games_info_by_ids uses porters as last fallback (line 625)."""
+        """Test get_games_info_by_ids uses porters as last fallback."""
         game_data = [
             {
                 "id": 1,
@@ -848,7 +926,7 @@ class IgbdApiTests(SimpleTestCase):
         ]
         company_data = [{"id": 10, "name": "Port Co", "slug": "port", "parent": None}]
 
-        def fake_post(url, headers=None, data=None):
+        def fake_post(url, headers=None, data=None, timeout=None):
             if "games" in url:
                 return DummyResponse(200, game_data)
             if "companies" in url:
@@ -861,7 +939,7 @@ class IgbdApiTests(SimpleTestCase):
         self.assertEqual(result[1]["developers"][0]["name"], "Port Co")
 
     def test_get_games_info_by_ids_missing_company_obj(self):
-        """Test get_games_info_by_ids skips missing company object (line 642)."""
+        """Test get_games_info_by_ids skips missing company object."""
         game_data = [
             {
                 "id": 1,
@@ -884,7 +962,7 @@ class IgbdApiTests(SimpleTestCase):
             }
         ]
 
-        def fake_post(url, headers=None, data=None):
+        def fake_post(url, headers=None, data=None, timeout=None):
             if "games" in url:
                 return DummyResponse(200, game_data)
             if "companies" in url:
@@ -903,7 +981,7 @@ class IgbdApiTests(SimpleTestCase):
         self.assertIsNone(result)
 
     def test_get_game_info_by_id_caches_successful_result(self):
-        """Test get_game_info_by_id caches result on success (lines 838-839)."""
+        """Test get_game_info_by_id caches result on success."""
         game_payload = [
             {
                 "id": 99,
@@ -930,7 +1008,7 @@ class IgbdApiTests(SimpleTestCase):
 
     @override_settings(DEBUG=False)
     def test_get_api_network_error_handling(self):
-        """Test get_api handles network errors (lines 864-867)."""
+        """Test get_api handles network errors."""
         import requests
 
         with mock.patch(

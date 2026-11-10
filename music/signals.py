@@ -10,14 +10,17 @@ Every drop here waits for the commit and is folded into one
 command queues for itself, so an import, which saves and deletes rows by the
 thousand, pays one drop at its commit for being heard.
 
-Not covered, and still waiting out a TTL or `clear_music_caches`: an album
-whose year or genres are edited in the admin (the year counts and landing
-lists, a day), and a tracking row moved to another user or an album deleted
-there (the readers' id sets, five minutes).
+An album's year or genres changed there count too (the year counts and the
+landing lists), as do a tracking row given to another reader and an album
+deleted with rows on it (the readers' id sets). A changed year or reader is
+seen without a query, from what the row held when it was read
+(`core.loaded_values`).
 """
 
-from django.db.models.signals import post_delete, post_save
+from django.db.models.signals import m2m_changed, post_delete, post_save, pre_delete
 from django.dispatch import receiver
+
+from core import loaded_values
 
 from music.models import (
     Album,
@@ -37,9 +40,30 @@ def drop_listen_caches_on_tracking_change(sender, instance, **kwargs):
     """A reader's id sets and the listener counts follow their rows.
 
     A deleted user is covered too: the cascade deletes their rows one by
-    one, since these receivers rule out the fast path.
+    one, since these receivers rule out the fast path. A row given to
+    another reader in the admin drops the reader it left as well, whose
+    sets went on naming the album.
     """
-    caching.invalidate_listen_caches([instance.user_id])
+    readers = {instance.user_id}
+    left = loaded_values.previous(instance, "user_id", kwargs.get("update_fields"))
+    if left is not loaded_values.UNKNOWN:
+        readers.add(left)
+    caching.invalidate_listen_caches(readers)
+
+
+@receiver(pre_delete, sender=Album)
+def drop_listen_caches_on_album_delete(sender, instance, **kwargs):
+    """The readers of an album being deleted have it in their cached sets.
+
+    Their rows stay, orphaned by SET_NULL, which sends no signal of theirs;
+    before the delete, while the rows still name the album.
+    """
+    readers = set()
+    for model in (ListenedAlbum, WantToListenAlbum):
+        readers.update(
+            model.objects.filter(album=instance).values_list("user_id", flat=True)
+        )
+    caching.invalidate_listen_caches(readers)
 
 
 @receiver([post_save, post_delete], sender=Album)
@@ -59,4 +83,26 @@ def drop_counts_on_count_change(sender, instance, **kwargs):
     of the section's keys, go here.
     """
     if kwargs.get("created", True):
+        caching.invalidate_music_caches_on_commit()
+
+
+@receiver(post_save, sender=Album)
+def drop_counts_on_year_change(sender, instance, created, update_fields=None, **kwargs):
+    """The year counts and the landing lists follow an album's year.
+
+    Only a year that changed: a metadata pass saves every album, and the
+    entries would never survive that.
+    """
+    if not created and loaded_values.changed(instance, "year_released", update_fields):
+        caching.invalidate_music_caches_on_commit()
+
+
+@receiver(m2m_changed, sender=Album.genres.through)
+def drop_counts_on_genre_change(sender, action, **kwargs):
+    """The genre counts and the landing lists follow an album's genres.
+
+    After the change. The corpus-wide rebuild sets every album's genres
+    inside one transaction, so its drops fold into the one at its commit.
+    """
+    if action in ("post_add", "post_remove", "post_clear"):
         caching.invalidate_music_caches_on_commit()

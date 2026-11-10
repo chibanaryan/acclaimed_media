@@ -17,6 +17,11 @@ logger = logging.getLogger(__name__)
 genre_themes = config.IGDB_GENRE_THEMES
 
 
+# Seconds to wait on IGDB, to connect and again for each read. Its
+# answers take well under one; the token request has always used the same.
+REQUEST_TIMEOUT = 30
+
+
 class GameNotFound(LookupError):
     """IGDB has no one game under the id asked for: dropped, or merged away."""
 
@@ -93,10 +98,10 @@ class IgbdApi:
         """
         if company_id in self.company_cache:
             # Update existing: move to end
-            self.company_cache.pop(company_id)  # pragma: no cover
-        elif len(self.company_cache) >= self.company_cache_max_size:  # pragma: no cover
+            self.company_cache.pop(company_id)
+        elif len(self.company_cache) >= self.company_cache_max_size:
             # Evict oldest (first item)
-            self.company_cache.popitem(last=False)  # pragma: no cover
+            self.company_cache.popitem(last=False)
         self.company_cache[company_id] = value
 
     def _get_from_game_cache(self, game_id: int) -> Optional[Dict[str, Any]]:
@@ -118,10 +123,10 @@ class IgbdApi:
         """
         if game_id in self.game_cache:
             # Update existing: move to end
-            self.game_cache.pop(game_id)  # pragma: no cover
-        elif len(self.game_cache) >= self.game_cache_max_size:  # pragma: no cover
+            self.game_cache.pop(game_id)
+        elif len(self.game_cache) >= self.game_cache_max_size:
             # Evict oldest (first item)
-            self.game_cache.popitem(last=False)  # pragma: no cover
+            self.game_cache.popitem(last=False)
         self.game_cache[game_id] = value
 
     def _get_endpoint_url(self, endpoint: str) -> str:
@@ -172,7 +177,12 @@ class IgbdApi:
         while retry_count <= max_retries:
             self._wait_for_rate_limit()
             try:
-                response = requests.post(url, headers=self.headers, data=data)
+                # With a timeout, as every other fetcher has: a connection
+                # IGDB accepts and then never answers held its thread, and
+                # the metadata lock with it, for good.
+                response = requests.post(
+                    url, headers=self.headers, data=data, timeout=REQUEST_TIMEOUT
+                )
 
                 # Handle rate limiting (429 Too Many Requests)
                 if response.status_code == 429:
@@ -213,12 +223,12 @@ class IgbdApi:
             bool: True if authentication was successful, False otherwise
         """
         # Check if credentials are set (not default "XXX")
-        if self.client_id == "XXX" or self.client_secret == "XXX":  # pragma: no cover
-            logger.warning(  # pragma: no cover
+        if self.client_id == "XXX" or self.client_secret == "XXX":
+            logger.warning(
                 "IGDB credentials not configured. "
                 "Set IGDB_CLIENT_ID and IGDB_CLIENT_SECRET environment variables."
             )
-            return False  # pragma: no cover
+            return False
 
         # The credentials go in the form body, not the query string: a
         # failed raise_for_status() puts the URL in its message, and that
@@ -231,19 +241,17 @@ class IgbdApi:
         }
 
         try:
-            response = requests.post(token_url, data=credentials, timeout=30)
+            response = requests.post(
+                token_url, data=credentials, timeout=REQUEST_TIMEOUT
+            )
             response.raise_for_status()
             data = response.json()
-        except requests.RequestException as exc:  # pragma: no cover
-            logger.warning(
-                "Failed to authenticate with IGDB API: %s", exc
-            )  # pragma: no cover
-            return False  # pragma: no cover
-        except ValueError as exc:  # pragma: no cover
-            logger.warning(
-                "Invalid JSON response from IGDB auth: %s", exc
-            )  # pragma: no cover
-            return False  # pragma: no cover
+        except requests.RequestException as exc:
+            logger.warning("Failed to authenticate with IGDB API: %s", exc)
+            return False
+        except ValueError as exc:
+            logger.warning("Invalid JSON response from IGDB auth: %s", exc)
+            return False
 
         if data.get("access_token"):
             self.headers = {
@@ -596,7 +604,7 @@ class IgbdApi:
         return games_dict
 
     def get_game_info_by_id(
-        self, game_id: int, cache_results: bool = True
+        self, game_id: int, cache_results: bool = True, _reauthenticated: bool = False
     ) -> Optional[Dict[str, Any]]:
         """
         Fetch comprehensive game information from IGDB API by game ID.
@@ -650,17 +658,33 @@ class IgbdApi:
             return None
 
         if res.status_code == 401:
-            if self._get_auth_token():
-                return self.get_game_info_by_id(game_id, cache_results)
-            else:
+            # One new token, once. IGDB answering 401 to a token it has
+            # just issued recursed here until the stack ran out.
+            if _reauthenticated or not self._get_auth_token():
+                logger.warning("IGDB refused game ID %s: 401", game_id)
                 return None
+            return self.get_game_info_by_id(
+                game_id, cache_results, _reauthenticated=True
+            )
 
-        results = res.json()
+        # An error's body is not a list of games: read as one, a 500's
+        # `{"message": ...}` was "IGDB returned 1 games" and a 503's
+        # two-key body a game IGDB had dropped.
+        try:
+            res.raise_for_status()
+            results = res.json()
+        except (requests.RequestException, ValueError) as exc:
+            logger.warning("Unable to load IGDB game %s: %s", game_id, exc)
+            return None
+        if not isinstance(results, list):
+            logger.warning("IGDB answered game %s with no list of games", game_id)
+            return None
+
         if len(results) != 1:
             # An id IGDB has dropped or merged answers with an empty list.
             # Raised, as the `assert` this replaces was, and to the same
-            # callers: the importers count the game as failed, and the
-            # admin's Save still fails on it (ROADMAP, "IGDB lookups")
+            # callers: the importers count the game as failed and say why,
+            # and the admin's Save keeps the edit and says so.
             raise GameNotFound(
                 f"IGDB returned {len(results)} games for game ID {game_id}"
             )

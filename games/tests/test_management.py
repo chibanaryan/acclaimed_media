@@ -384,7 +384,7 @@ class GetIgdbCommandTests(TestCase):
         self.assertIn("All games already have IGDB data", output)
 
     def test_service_init_failure(self):
-        """Test error handling when IGDB service fails to initialize (lines 138-140)."""
+        """Test error handling when IGDB service fails to initialize."""
         from games.services.igdb_importer import IGDBImportService
 
         models.Game.objects.create(
@@ -406,7 +406,7 @@ class GetIgdbCommandTests(TestCase):
             self.assertIn("Failed to initialize IGDB service", output)
 
     def test_multiple_games_same_name_error(self):
-        """Test error when multiple games match name query (line 205)."""
+        """Test error when multiple games match name query."""
         # Create two games with same name (case-insensitive)
         models.Game.objects.create(
             name="duplicate game",
@@ -562,13 +562,15 @@ class RefreshAllMetadataCommandTests(NoHeartbeatMixin, TestCase):
         """Test error when both --igdb-only and --wikipedia-only are used"""
         from io import StringIO
 
-        out = StringIO()
-        call_command(
-            "refresh_all_metadata", igdb_only=True, wikipedia_only=True, stdout=out
-        )
-        output = out.getvalue()
-
-        self.assertIn("Cannot use multiple --*-only flags together", output)
+        with self.assertRaisesMessage(
+            CommandError, "Cannot use multiple --*-only flags together"
+        ):
+            call_command(
+                "refresh_all_metadata",
+                igdb_only=True,
+                wikipedia_only=True,
+                stdout=StringIO(),
+            )
 
     @mock.patch("games.management.commands.refresh_all_metadata.IGDBImportService")
     @mock.patch("games.management.commands.refresh_all_metadata.datetime")
@@ -648,12 +650,19 @@ class RefreshAllMetadataCommandTests(NoHeartbeatMixin, TestCase):
         mock_page_instance.lookup_page.return_value = page_result
 
         out = StringIO()
-        call_command("refresh_all_metadata", limit=1, stdout=out)
+        # The other phases still run, and then the command fails: it exited
+        # 0, which Sentry's cron monitor read as a good run
+        with self.assertRaisesMessage(
+            CommandError, "Metadata refresh failed outright for: IGDB"
+        ):
+            call_command("refresh_all_metadata", limit=1, stdout=out)
         output = out.getvalue()
 
         # Should show IGDB error (caught during service initialization)
         self.assertIn("Failed to initialize IGDB service", output)
         self.assertIn("IGDB API failed", output)
+        # The summary names it: with no flag it had no IGDB line at all
+        self.assertIn("IGDB:      FAILED", output)
 
         # Should still run Wikipedia and HLTB refresh
         self.assertIn("[2/3] Refreshing Wikipedia Data", output)
@@ -686,6 +695,10 @@ class RefreshAllMetadataCommandTests(NoHeartbeatMixin, TestCase):
         mock_igdb_instance = mock.MagicMock()
         mock_igdb_service.return_value = mock_igdb_instance
         mock_igdb_instance.api_client.use_pro_tier = False
+        # Numbers, as the service's are: left as mocks, the refresh raised
+        # comparing them, which the command caught and this test never saw
+        mock_igdb_instance.batch_size = 50
+        mock_igdb_instance.concurrency = 4
 
         out = StringIO()
         call_command(

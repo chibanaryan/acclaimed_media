@@ -10,6 +10,7 @@ from core.services import render_budget
 from core.services.query_params import parse_id_list
 from games import config, models, utils
 from games.services import playtime
+from games.services.query_filters import resolve_year_range
 from games.services.game_filters import (
     apply_game_filters,
     expand_platform_virtual_ids,
@@ -95,33 +96,11 @@ def download_games_csv(request):
         for s in series_list:
             s["id"] = str(s["id"])
 
-    def _safe_int(val, default):
-        try:
-            return int(val)
-        except (TypeError, ValueError):
-            return default
-
-    def _decade_bounds(decade_str):
-        import re
-
-        pattern = re.compile(r"(\d{2})(\d{2})-(\d{2})")
-        match = pattern.match(decade_str) if decade_str else None
-        if not match:
-            return None, None
-        start_str = match.group(1) + match.group(2)
-        end_str = match.group(1) + match.group(3)
-        return _safe_int(start_str, None), _safe_int(end_str, None)
-
-    start_for_title = _safe_int(start, None)
-    end_for_title = _safe_int(end, None)
-    if decade:
-        d_start, d_end = _decade_bounds(decade)
-        start_for_title = d_start
-        end_for_title = d_end
-    elif year:
-        y_val = _safe_int(year, None)
-        start_for_title = y_val
-        end_for_title = y_val
+    # The range the list above was filtered to, for the heading and the
+    # file name
+    start_for_title, end_for_title = resolve_year_range(
+        decade=decade, year=year, start=start, end=end
+    )
     if start_for_title is None:
         start_for_title = min_year
     if end_for_title is None:

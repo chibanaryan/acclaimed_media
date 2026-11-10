@@ -7,7 +7,7 @@ from pathlib import Path
 from django.conf import settings
 from django.db.models import Q
 from django.forms import Form
-from django.http import HttpResponse, StreamingHttpResponse
+from django.http import HttpResponse, HttpResponseForbidden, StreamingHttpResponse
 from django.urls import reverse_lazy
 from django.views import View
 from django.views.generic import FormView
@@ -212,13 +212,10 @@ class ImportView(StaffOnlyMixin, FormView):
         # Quick action: load bundled test data files from the repo
         if import_data.get("seed_test_data"):
             seed_dir = Path(settings.BASE_DIR) / "acclaimedgames" / "test_input_files"
-            sample_games_file = "Top1400.txt"
-            if not (seed_dir / sample_games_file).exists():
-                sample_games_file = "Top1000.txt"
             file_map = {
                 "platforms_file": "PlatformDB.txt",
                 "lists_file": "SourceLists.txt",
-                "games_file": sample_games_file,
+                "games_file": "Top1400.txt",
                 "memberships_file": "GamePositions.txt",
             }
 
@@ -293,7 +290,29 @@ class ImportView(StaffOnlyMixin, FormView):
         return super().form_valid(form)
 
 
-class IGDBProgressView(StaffOnlyMixin, View):
+class StreamFromThisSiteMixin:
+    """A GET that starts a job is answered only to this site's own page.
+
+    `EventSource` can only GET, so the two streams below start their work
+    on one. A browser sends the session cookie with a link followed from
+    another site (`SameSite=Lax` covers a top-level GET), so a staff member
+    clicking such a link started a refresh, a forced one if it said so.
+    Browsers name where a request came from in `Sec-Fetch-Site`, and the
+    import page's `EventSource` is "same-origin". A request without the
+    header is let through: every current browser sends it, and one that
+    does not (Safari before 16.4) would otherwise lose the page's buttons.
+    """
+
+    def dispatch(self, request, *args, **kwargs):
+        origin = request.headers.get("Sec-Fetch-Site")
+        if request.method == "GET" and origin not in (None, "same-origin"):
+            return HttpResponseForbidden(
+                "This stream is opened by the import page.", content_type="text/plain"
+            )
+        return super().dispatch(request, *args, **kwargs)
+
+
+class IGDBProgressView(StaffOnlyMixin, StreamFromThisSiteMixin, View):
     """
     Streams IGDB data fetching progress via Server-Sent Events (SSE).
     Allows real-time progress bar updates in the browser.
@@ -318,7 +337,7 @@ class IGDBProgressView(StaffOnlyMixin, View):
         )
 
 
-class WikipediaPageProgressView(StaffOnlyMixin, View):
+class WikipediaPageProgressView(StaffOnlyMixin, StreamFromThisSiteMixin, View):
     """
     Streams Wikipedia page lookup progress via Server-Sent Events (SSE).
     Allows real-time progress bar updates in the browser.

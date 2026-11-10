@@ -16,7 +16,6 @@ from core import sites
 from core.cache_helpers import batched_cache_reads, cache_get, cache_set
 from core.mixins import AnonymousResponseCacheMixin, RobustPaginationMixin
 from core.services import ranking, seo
-from core.services.query_params import parse_int
 from games import config, models, utils
 from games.cache import (
     GENERATION_HERO,
@@ -27,6 +26,7 @@ from games.cache import (
 )
 from games.services import landing_pages, playtime
 from games.services.data_version import compute_game_data_version
+from games.services.query_filters import resolve_year_range
 from games.services.game_filters import (
     PLATFORMS_CACHE_KEY,
     apply_game_filters,
@@ -428,28 +428,19 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
 
         min_year, max_year = _get_year_bounds()
 
-        # Parse year/decade params and convert to start/end
-        # Priority: start/end > year > decade
+        # The one range the four year parameters stand for, which the list
+        # is filtered to as well (`resolve_year_range`)
         start_param = self.request.GET.get("start")
         end_param = self.request.GET.get("end")
         year_param = self.request.GET.get("year")
         decade_param = self.request.GET.get("decade")
 
-        year_val = parse_int(year_param)
-        # The rule apply_year_filters uses for the list, or the heading and
-        # the year grid would name a range the list was not filtered to
-        decade = re.match(r"(\d{2})(\d{2})-(\d{2})", decade_param or "")
-        if start_param or end_param:
-            start_val = parse_int(start_param, min_year)
-            end_val = parse_int(end_param, max_year)
-        elif year_val is not None:
-            start_val = end_val = year_val
-        elif decade:
-            # Decade format like "1990-99"
-            start_val = int(decade[1] + decade[2])
-            end_val = int(decade[1] + decade[3])
-        else:
+        start_val, end_val = resolve_year_range(
+            decade=decade_param, year=year_param, start=start_param, end=end_param
+        )
+        if start_val is None:
             start_val = min_year
+        if end_val is None:
             end_val = max_year
 
         # Build filters dict from query params

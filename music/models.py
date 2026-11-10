@@ -14,8 +14,8 @@ from typing import Any, Iterable, List, Optional
 from django.db import models
 from django.db.models import Count, Exists, OuterRef
 from django.utils.text import slugify
-from unidecode import unidecode
 
+from core.loaded_values import RemembersLoaded
 from core.models import (
     ExternalDataBase,
     ListBase,
@@ -24,24 +24,10 @@ from core.models import (
     PublicationBase,
     SavedFilterSetBase,
     UserTrackingBase,
+    folded,
 )
 from core.sites import MUSIC, canonical_url, site_reverse
 from music import config
-
-
-def folded(instance: models.Model, source: str, target: str) -> None:
-    """Set ``target`` to ``source`` through unidecode, or None if that changes nothing.
-
-    How a name is found without its accents: "bjork" finds Björk. Stored
-    only when it differs, as ``name_normalized`` is, and sent to the
-    browser as it is, since unidecode has no JavaScript twin. Cut to the
-    column, since unidecode can lengthen text ("坂本龍一" is
-    "Ban Ben Long Yi ") and Postgres refuses a value that does not fit.
-    """
-    text = getattr(instance, source)
-    max_length = instance._meta.get_field(target).max_length
-    result = unidecode(text or "")[:max_length]
-    setattr(instance, target, result if result != text else None)
 
 
 class Artist(models.Model):
@@ -364,7 +350,7 @@ def _is_reserved_slug(slug: str) -> bool:
     )
 
 
-class Album(MediaItemBase):
+class Album(RemembersLoaded, MediaItemBase):
     """
     A studio album, ranked by aggregating published critics' lists.
 
@@ -374,6 +360,10 @@ class Album(MediaItemBase):
     """
 
     objects = AlbumQuerySet.as_manager()
+
+    # What `music.signals` compares a save against: the year counts and the
+    # landing lists follow a changed year (core.loaded_values)
+    remembered_fields = ("year_released",)
 
     year_released = models.PositiveSmallIntegerField(
         null=True, blank=True, db_index=True
@@ -778,7 +768,7 @@ class AlbumListMembership(ListMembershipBase):
         return f"{self.list} - {self.album} - {self.rank}"
 
 
-class ListenedAlbum(UserTrackingBase):
+class ListenedAlbum(RemembersLoaded, UserTrackingBase):
     """Tracks albums a user has marked as listened to.
 
     Hybrid FK + external id, as ``books.models.ReadBook`` is: the FK is what
@@ -796,6 +786,10 @@ class ListenedAlbum(UserTrackingBase):
     the bulk command and the toggle's atomic write unchanged. The page's
     "Heard" state is therefore a row with ``owned=False``.
     """
+
+    # For `music.signals`: a row given to another reader drops both
+    # readers' sets (core.loaded_values)
+    remembered_fields = ("user_id",)
 
     album = models.ForeignKey(
         "Album",
@@ -830,7 +824,7 @@ class ListenedAlbum(UserTrackingBase):
         return f"{self.user.username} {verb} {label}"
 
 
-class WantToListenAlbum(UserTrackingBase):
+class WantToListenAlbum(RemembersLoaded, UserTrackingBase):
     """Tracks albums a user wants to listen to.
 
     Mutually exclusive with :class:`ListenedAlbum`. The exclusivity is
@@ -838,6 +832,10 @@ class WantToListenAlbum(UserTrackingBase):
     books also do - the two are separate tables, so no single constraint
     spans them.
     """
+
+    # For `music.signals`: a row given to another reader drops both
+    # readers' sets (core.loaded_values)
+    remembered_fields = ("user_id",)
 
     album = models.ForeignKey(
         "Album",

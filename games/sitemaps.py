@@ -77,7 +77,10 @@ class GameSitemap(Sitemap):
     priority = 0.8
 
     def items(self):
-        return models.Game.objects.all()
+        # A game has no slug between an import and its IGDB fetch, and
+        # `reverse` writes None as the text: the sitemap listed
+        # /game/None/, a 404, once for each of them
+        return models.Game.objects.exclude(slug__isnull=True).exclude(slug="")
 
     def location(self, obj):
         return reverse("game-detail", kwargs={"slug": obj.slug})
@@ -96,8 +99,10 @@ class DeveloperSitemap(Sitemap):
     priority = 0.6
 
     def items(self):
-        # Subsidiary developers don't have slugs or detail pages
-        return models.Developer.objects.exclude(slug="")
+        # Subsidiary developers don't have slugs or detail pages. Nor does
+        # a root developer IGDB gave no slug, whose slug is NULL rather
+        # than empty and was listed as /developers/None/
+        return models.Developer.objects.exclude(slug__isnull=True).exclude(slug="")
 
     def location(self, obj):
         return reverse("developer-detail", kwargs={"slug": obj.slug})
