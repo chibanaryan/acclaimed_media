@@ -69,6 +69,11 @@ gh api "/advisories?ecosystem=npm&affects=alpinejs@3.14.3" --jq '.[].summary'
 
 The README says how to update one.
 
+**Two versions pinned inline**, which Dependabot does not read: terser in
+`scripts/minify_js.sh` (the output is committed, so a bump re-minifies every
+file: do it on its own) and `puppeteer-core` in CI's `browser` job
+(`.github/workflows/ci.yml`). Compare each with `npm view <name> version`.
+
 ## 3. Audit
 
 ```bash

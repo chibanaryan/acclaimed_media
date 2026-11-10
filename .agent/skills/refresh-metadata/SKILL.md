@@ -74,5 +74,5 @@ Configure in Heroku Dashboard (https://dashboard.heroku.com):
 |----------|-------------|
 | `IGDB_CLIENT_ID` | IGDB API client ID |
 | `IGDB_CLIENT_SECRET` | IGDB API secret |
-| `WIKIDATA_ACCESS_TOKEN` | Highly recommended (2.5x faster Wikipedia processing) |
+| `WIKIDATA_ACCESS_TOKEN` | Highly recommended (about 4x faster Wikipedia processing in this job) |
 | `IGDB_USE_PRO_TIER` | Optional (enables Pro tier, 750x faster IGDB) |

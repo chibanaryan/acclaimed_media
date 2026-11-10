@@ -45,9 +45,9 @@ stale file. CI's `js` job runs it, as the `css` job rebuilds the CSS.
 - **The bundle filename in the template must match the one the script writes.**
   Under production's manifest static storage a `{% static %}` name that is not
   in the manifest raises while rendering rather than 404ing.
-  `core/tests/test_static_assets.py` now asserts both of these.
-- A bundle is skipped loudly if any member is missing, rather than written
-  incomplete.
+  `core/tests/test_static_bundles.py` asserts both of these.
+- A bundle with a member missing is not written, and the run exits 1, so
+  `--check` and CI's `js` job fail on it.
 
 ## File Locations
 

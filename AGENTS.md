@@ -112,7 +112,9 @@ deleted: played/want-to-play, heard/have/want-to-listen, saved filters. Auth
 users are excluded too, so local accounts survive; on a fresh database,
 create a superuser with `python3 manage.py createsuperuser`. Clearing and
 loading run in one transaction, so a failed load leaves the local data as it
-was.
+was. It refuses any database but SQLite, and a dyno: it deletes every game and
+album from whatever database is configured, and `.env.development.local`
+beats the shell.
 
 **Collect static files (before deployment):**
 ```bash
@@ -249,13 +251,21 @@ heroku run -- python manage.py shell
 
 Core Django models include:
 
-- **Game** - Video games with ranking, IGDB integration, genres, platforms, and developers
+- **Game** - Video games with ranking, IGDB integration, genres, platforms, and developers.
+  `igdb_id` and `slug` are unique where set (`unique_game_igdb_id`,
+  `unique_game_slug`, since 2026-11-10): the played toggle finds a game by
+  the one and the detail page by the other, and a second row was a 500. A
+  slug IGDB gives that another game holds takes the IGDB id as a suffix
+  (`Game._free_slug`), and a games file whose rows share a first IGDB id is
+  refused with both rows named (`ImportFileError`)
 - **Developer** - Game development entities with hierarchical parent-child relationships
   - Uses self-referential `parent` FK for ownership hierarchy
   - Root developers (parent=None) have slugs for URL routing (e.g., Nintendo, Valve)
   - Subsidiary developers (parent=Developer) are child entities (e.g., Nintendo EAD, Respawn)
   - Games link to developers via `Game.developers` M2M field
   - In IGDB's data model, all are "company" records - we add hierarchy on import
+  - `igdb_id` and `slug` are unique where set; a subsidiary's slug is NULL or
+    `""` (294 rows), so the slug's constraint leaves both out
 - **Platform** - Gaming platforms (PC, PS5, etc.)
 - **WikipediaGenre** - Game genres, hierarchical (`parent`, `level`, `path`)
 - **Series** - Game series, from IGDB's collections
@@ -285,7 +295,7 @@ Books-specific models (behind `BOOKS_ENABLED` feature flag):
 
 Music-specific models:
 
-- **Album** - Albums with ranking, a derived credit line, credited artists, genres, and Wikidata/MusicBrainz ids
+- **Album** - Albums with ranking, a derived credit line, credited artists, genres, and Wikidata/MusicBrainz ids. Its slug is unique (`unique_album_slug`)
 - **Artist** - Every act in `ArtistInfo.txt`, keyed on the provider's permanent
   `source_id`, with `name_variants` (every name it is credited under, the first
   its own) and `all_wikidata_ids`. Every artist has a slug and a page; there is
@@ -764,10 +774,14 @@ artist, credit, list or publication added or deleted drops the section's
 a day for the heading's. Each drop waits for the commit and is folded into
 one, the toggle's and the bulk command's own with it (they queue theirs
 inside their transaction for that), so a click is one drop and an import pays
-one more at its commit. Still waiting out a TTL: an album's year or genres
-edited in the admin (a day, or `clear_music_caches`), and a tracking row
-given to another user or an album deleted there (the readers' sets, five
-minutes).
+one more at its commit. An album's year or genres changed in the admin, a tracking
+row given to another reader and an album deleted with rows on it are covered
+too (2026-11-10). A changed year or reader is seen without a query:
+`core.loaded_values.RemembersLoaded` keeps a row's `remembered_fields` as
+the database last had them, so `post_save` can ask what changed. Reading the
+old row in `pre_save` would be a query on every save, and the metadata
+passes save every album. Games' year counts follow a game's year the same
+way.
 
 **Marking a collection in bulk**, for importing listens matched elsewhere
 (a RateYourMusic export, say) without several hundred web requests:
@@ -823,6 +837,13 @@ The partials bind to a **method contract**, not to a page:
 expose exactly those names, which is what makes the migration a template
 change. The whole feature is inert unless the page passes a
 `savedFiltersUrl`, so a section that has not opted in renders no button.
+
+Both sites' write views read the body through
+`core.services.request_body.read_saved_filter`, which never raises: a name
+of `null` or a body that is an array was a 500 on games, and music saved
+`null` as a filter called "None". A number is taken as its digits; anything
+else is the "name is required" 400, and filters that are not an object are
+a 400 too.
 
 Four things worth knowing before changing any of it:
 
@@ -899,6 +920,7 @@ The application uses Django templates with HTMX for dynamic interactions and Alp
 - Light theme (lofi) as default with forest dark theme available via theme switcher
 - Responsive design using Tailwind's mobile-first breakpoints (md:, lg:, etc.)
 - Custom components defined in `theme/static_src/src/styles.css` using Tailwind's `@layer components`
+- Text a reader needs is at least `text-base-content/65`: `/50` was 3.2:1 on the light theme's `base-300`, and `/65` is 4.99:1 there, the worst case of both themes
 
 **Template Filters:**
 - `from_now` - Converts datetime to relative time (e.g., "2 hours ago")
@@ -919,7 +941,11 @@ The application uses Django templates with HTMX for dynamic interactions and Alp
 - `/developer-alias/<id>/` - 301s a developer's pk to its root developer's page
 - `/lists/` - The published source lists
 - `/blog/` and `/blog/<slug>/` - Articles. `/news/` answers 410
-- `/import/` - Staff import, and its three progress streams
+- `/import/` - Staff import, and its three progress streams. The two that
+  `EventSource` opens start their work on a GET, so they answer only a
+  request whose `Sec-Fetch-Site` is `same-origin` (or absent, for a browser
+  too old to send it): a link followed from another site carries the
+  session cookie
 - `/page/<slug>/` and the other shared routes - see "Domain"
 
 Book routes, on the games host (staff-only; `BOOKS_ENABLED` shows the links):
@@ -1111,6 +1137,12 @@ rendered with no album**, which is how a `<template>` is rendered. A slot
 placed inside `{% if item.something %}` disappears from the clone and the
 renderer silently has nowhere to write.
 
+The grid card's `srcset` is the one attribute the renderer derives rather
+than reads: the payload carries only the 250px cover's URL, both shapes a
+cover URL takes name the size the same way, and
+`AlbumListRenderer.coverSrcset` writes the 500px one for 2x. The parity
+test compares it with the server's for each shape.
+
 **When Modifying Game Rows:**
 1. Update the Django template for server-rendered output
 2. Update the JavaScript renderer's DOM-cloning logic (uses `data-slot` attributes)
@@ -1140,6 +1172,14 @@ The `games/igdb.py` module handles IGDB API integration with multiple optimizati
 **Thread-Safe**: All caching and rate limiting is thread-safe for concurrent processing.
 
 IGDB provides cover art, descriptions, developer information, and genres.
+
+A single game's lookup (`IgbdApi.get_game_info_by_id`, `Game.get_igdb_data`)
+answers `None` for a failure of ours or IGDB's (a timeout, an error status,
+a 401 after one new token) and raises `GameNotFound` for an id IGDB has
+dropped or merged. The admin's Save keeps the edit and says so; the importer
+names it "Not found in IGDB response". Every request carries
+`igdb.REQUEST_TIMEOUT`: without one, a connection IGDB accepted and never
+answered held its thread and the metadata lock for good.
 
 For detailed command usage, run `/igdb`.
 
@@ -1183,7 +1223,11 @@ Never `.update()` the override or `game_type` without re-saving, which
 re-derives the flag.
 
 The weekly `refresh_all_metadata` refetches every game and so fills in the
-flags. HLTB answers a burst with 429s; a failed lookup leaves the row as it
+flags. It fails (`CommandError`) when a phase could not run at all, after its
+summary and after the metadata lock is let go: each phase catches its own
+error so the others go on, and until 2026-11-10 it exited 0 with all three
+FAILED, which Sentry's cron monitor read as a good Sunday. Errors on some
+games do not fail it. HLTB answers a burst with 429s; a failed lookup leaves the row as it
 was. The `/api/games/all/` version hash fingerprints the playtimes it serves
 (summed hours, and the ids of open-ended games). An HLTB save leaves
 `Game.modified` alone, and the weekly refresh saves every row whether or not
@@ -1589,7 +1633,11 @@ Decisions worth knowing before changing any of it:
   live in `AlbumCover` and `music.views.AlbumCoverView` serves them. Downloading
   doubles as verification, and there are three fallbacks: the release group's own
   art, then any release in the group (earliest first), then a MusicBrainz search
-  by title and artist for albums whose Wikidata entity has no P436.
+  by title and artist for albums whose Wikidata entity has no P436. A download
+  is kept only as an image under 5 MB (`COVER_CONTENT_TYPES`,
+  `COVER_MAX_BYTES`), and `AlbumCoverView` serves only those types: the
+  bytes are served from this origin with the type the remote sent, so an
+  error page answered with a 200 would otherwise be our HTML.
 - **A `front` flag is not a sleeve.** The archive tags each image with types,
   and a front can also be `Obi`, `Sticker` or `Spine` (a Japanese pressing,
   shrink-wrap, a cassette J-card) or `Back`/`Medium` (a photo of the whole
@@ -1720,6 +1768,12 @@ it replaced had drifted:
 - The counts ignored series and playtime, which the client engine's counts
   always applied, so the server's first render and the client disagreed.
 - The CSV ignored the sort.
+- The list, the heading and the CSV's file name each had their own
+  precedence for `decade`, `year`, `start` and `end`, so
+  `?decade=1990-99&year=1995` listed the 1990s under a heading that said
+  1995. `query_filters.resolve_year_range` is the one rule, the browser's
+  (`currentFilterParams`): a start or an end beats a year, which beats a
+  decade. Only a hand-written URL carries two (2026-11-10).
 
 Facet cache keys hash every filter parameter except the skipped dimension's
 (`facet_params`).
@@ -1814,6 +1868,12 @@ URL whatever the request is uses `sites.site_reverse()` (music's
   (`urls_common.py`), so a visitor uses them without leaving their site.
   The shared pages are one copy: their canonical link and sitemap entry are
   the apex's. At the apex they render without a sidebar.
+- **The unsubscribe link asks; a POST unsubscribes** (2026-11-10). It
+  unsubscribed on a GET, and a mail scanner that follows every link in a
+  message (Outlook's Safe Links) did it for the reader. The page's button
+  POSTs, and so does a mail client's own control, through the email's
+  `List-Unsubscribe-Post` header (RFC 8058). That request has no cookie, so
+  the view is `csrf_exempt`: the token in the address is the credential.
 - **The old apex paths redirect.** Everything the apex served before is in
   links and search indexes, so `urls_root`'s catch-all
   (`core.views.redirect_to_site`) sends `/music/<rest>` to
@@ -1848,6 +1908,10 @@ has three custom domains, each with Heroku's ACM certificate:
   `get_client_ip` takes the last `X-Forwarded-For` entry, Heroku's router's,
   and behind Cloudflare that would be a Cloudflare address, so every visitor
   would share a rate-limit bucket.
+- **HTTPS is read from `X-Forwarded-Proto`** (`SECURE_PROXY_SSL_HEADER`),
+  which Heroku's router sets on every request. It used to work only because
+  the buildpack tells gunicorn to trust forwarded headers; CI's
+  `production-install` job checks the redirect both ways.
 - **Every other host is a 301 at Cloudflare's edge**: `www.acclaimedmedia.org`
   to the apex, and `acclaimedvideogames.com` and `www.acclaimedvideogames.com`
   to `games.acclaimedmedia.org`, path and query string kept. They are
@@ -1877,7 +1941,11 @@ Three aliases, defined by `core/cache_config.py` (which `settings.py` calls):
   new code was served old code's output, such as the payload version for up
   to an hour after a `SCHEMA_VERSION` bump. Both are keyed on the games
   data version too, so an import is not answered with the rows from before
-  it, the `cache_page` ones at six queries a hit. The rest of the alias is not
+  it, the `cache_page` ones at six queries a hit. Only a bare path is kept: a query string
+  is the caller's to write, each one was two rows in this table, and a few
+  thousand `?q=` values culled the generation keys and the metadata lock
+  with them. A request with one is rendered, under DRF's throttle. `Accept`
+  still varies a key. The rest of the alias is not
   prefixed. A whole-alias prefix reset allauth's and the contact form's
   rate-limit counters on every release, and aimed a long job's
   invalidation at the release it started under. The hand-built caches carry
@@ -2065,7 +2133,8 @@ inside an import's transaction, and a page load before the commit used to put
 the old counts back for a day with nothing left to drop them. Keys collect per
 thread and flush together at the commit, so an import costs one drop per family
 rather than thousands. Hero stats drop when a game, list or publication is created or
-deleted, not on every save, which is what the weekly refresh does. Games' facet,
+deleted, not on every save, which is what the weekly refresh does. And when a game's year
+changes, since the year counts are in the family (`core.loaded_values`). Games' facet,
 landing and count caches are not converted: nothing invalidates them by event,
 so they have no race. Books' are not either, being staff-only in production. A
 test of what a signal invalidates takes
@@ -2099,7 +2168,8 @@ It reports and blocks nothing; enforcing it means moving the dict to
 - There are no inline event handlers, which a nonce forbids. Mobile row
   cards navigate through `[data-href]`, dialogs close through
   `[data-close-dialog]`, and the import page's confirms through
-  `[data-confirm]`, each with one delegated listener. The one exception is
+  `[data-confirm]`, each with delegated listeners. A card answers as a link
+  would: Ctrl, Cmd, Shift or the middle button (`auxclick`) opens a new tab. The one exception is
   `onclick="event.stopPropagation()"` on the tracking buttons, on rows that
   carry no Alpine on purpose; `'unsafe-hashes'` with its hash
   (`core.csp.handler_hash`) allows exactly that text.
@@ -2135,6 +2205,12 @@ to a quote before Alpine evaluates it, so a request value there is script
 injection. Validate it in the view against the values the page knows, and
 write it with `|escapejs`. Until 2026-11-03 `?dir=` and `?sort=` reached four
 pages' expressions unchecked (`SortParametersStayDataTests`).
+
+**`tojson` is marked safe, so it escapes.** It writes `<`, `>`, `&` and `'`
+as their JSON escapes, as Django's `json_script` does: its output goes into
+`<script type="application/json">` bodies and one single-quoted attribute
+(`data-bins`). Bare `json.dumps` was safe only while every caller passed
+numbers.
 
 ## Production memory budget
 
@@ -2319,6 +2395,20 @@ every click's INP under 200 ms even at 4x. Four things mattered:
   `rank-distribution.js`), so a busy main thread pauses the morph rather
   than skipping to its end.
 
+**A failed server filter request rolls the games controls back** (2026-11-10),
+as music's do. Before the engine loads, a request that failed left the year
+grid and the sidebar on the filters asked for over a list still showing the
+old ones. The list carries `#game-rendered-filters`, the server's echo of
+its filters as a query `getFiltersFromURL` reads (no `highlight`: the page
+is kept whole), and `filterComponent._rollBackIfStranded` reads it back
+into `filters`. Not while the engine may still come, since its takeover
+renders the filters asked for and pushes them; `init()` answering false is
+now reported (`_engineUnavailable`), which is what rolls back then. And not
+once the reader has changed something since the request was sent. The
+heading, the tab and the address are moved only by a render, so the
+controls are all there is to undo. smoke: "games failed request, engine
+failed first / after".
+
 Measure with real clicks, at 1x and 4x, through the Event Timing API
 (`interactionId` entries) plus a MutationObserver on
 `#game-list-container`. Puppeteer's `mouse.click` hits nothing off-screen,
@@ -2359,15 +2449,18 @@ manage.py ...`. `.env.example` lists them all.
 - `IGDB_CLIENT_ID` - IGDB API client ID
 - `IGDB_CLIENT_SECRET` - IGDB API client secret
 - `IGDB_USE_PRO_TIER` - Enable IGDB Pro tier (default: False)
-- `WIKIDATA_ACCESS_TOKEN` - For faster Wikipedia processing (2.5x speedup)
+- `WIKIDATA_ACCESS_TOKEN` - A Wikimedia BotPassword, `user:password`, sent as
+  basic auth: about 2.5x faster for `fetch_wikipedia_metadata`, 4x for the
+  weekly refresh
 - `BOOKS_ENABLED` - Show the Books links in the nav (default: False). The
   section is staff-only whatever it says
 - `HARDCOVER_API_TOKEN` - Optional Hardcover API token for additional book metadata
 - `DISCOGS_TOKEN` - Optional Discogs personal access token; raises the music
   metadata rate limit above the 25 requests/minute anonymous tier
-- `CACHE_URL` - Cache backend URL. Production uses `dbcache://cache_table`;
-  local dev falls back to LocMem whatever this says, and tests set
-  `locmemcache://`. See the Caching section
+- `CACHE_URL` - Cache backend URL. Production uses `dbcache://cache_table`.
+  Local dev (`DEBUG`) ignores an unset or `dbcache` URL and uses LocMem; any
+  other URL is used as given. Tests set `locmemcache://`, and get LocMem
+  without one. See the Caching section
 - `METADATA_AFTER_IMPORT` - Whether an import fetches the metadata it left
   missing (default: on, off under test). See "Imports start their metadata
   fetch"
@@ -2426,6 +2519,11 @@ none. When the guard was added on 2026-10-26 it caught four tests calling
 IGDB and HowLongToBeat for real. Locally they were also fetching a live
 Twitch token with the `.env` credentials. Patch the client where the code
 under test reads it. The Django runner has no conftest and so no guard.
+
+**Test mode is the `test` subcommand or pytest** (`core.csp.running_tests`),
+not "test" anywhere in the arguments: `get_igdb --game test` ran against an
+empty in-memory database with blank credentials, on a dyno too, until
+2026-11-10.
 
 **Tests pick a site the way a request does.** The test client's
 `testserver` host gets `ROOT_URLCONF`, the games site, so games tests need
@@ -2561,11 +2659,11 @@ Four layers, from automatic to manual:
   | `lint` | black, flake8 over every file |
   | `pytest` | the suites with the 100% coverage gate |
   | `django-tests` | `scripts/run_tests.sh`, the runner without conftest, on Postgres 18 (production's version) |
-  | `production-install` | `requirements.txt` alone, as Heroku installs it: `check --deploy`, importing every non-test module, `collectstatic`, and pages rendered under manifest storage |
+  | `production-install` | `requirements.txt` alone, as Heroku installs it: `check --deploy`, importing every non-test module, `collectstatic`, pages rendered under manifest storage, and the https redirect read from `X-Forwarded-Proto` |
   | `audit` | `pip-audit` on both locks, `npm audit` (any severity). The one job a Monday's scheduled run does |
   | `css` | rebuilds the CSS and fails if it differs from the committed file |
   | `js` | `scripts/minify_js.sh --check`: the same for the minified JS and bundles |
-  | `browser` | `scripts/browser_smoke.js`: Chrome over the main pages, failing on a JS, Alpine or CSP error, plus Back and Load More across the engine load, music's takeover leaving a row's POST alone, a year range outside the corpus and leaving it, a games highlight landing, a mobile row opened by keyboard, and the CSV button |
+  | `browser` | `scripts/browser_smoke.js`: Chrome over the main pages, failing on a JS, Alpine or CSP error, plus Back and Load More across the engine load, music's takeover leaving a row's POST alone, a year range outside the corpus and leaving it, a games highlight landing, a mobile row opened by keyboard, the CSV button, and a failed filter request rolled back on both sites |
 
   `css` exists because Heroku runs only the Python buildpack, so the
   committed `theme/static/css/dist/styles.css` is what ships. An npm bump
@@ -2573,6 +2671,16 @@ Four layers, from automatic to manual:
   Tailwind 4.1 -> 4.3 was such a bump: it grew the file from 208 KB to
   253 KB (32 KB to 36 KB gzipped), and moved nothing on screen but the music
   Filters header's buttons, by ~3px.
+
+  A run's concurrency group is its commit on `main` and its ref on a pull
+  request. Keyed on the ref alone, GitHub cancelled the run *waiting* in the
+  group whenever a newer one queued, whatever `cancel-in-progress` said, so
+  the middle of three quick pushes never got a result.
+
+  To run the smoke test locally, start `runserver` without the debug
+  toolbar: its handle sits over the sidebar's CSV button, and the CSV check
+  fails with "asked for nothing". CI installs `requirements.txt` alone and
+  has none.
 - **`/upgrade-deps`**, monthly: merge the Dependabot queue, take the majors,
   audit, check page weight, memory and slow transactions, and check the
   runtime end-of-life calendar (Python 3.14 ends October 2030; Django 6.1,
@@ -2697,6 +2805,12 @@ pip install -r requirements.txt -r requirements-dev.txt
 
 The script scans icon codepoints from `games/templates/base.html` and `games/static/games/css/mdi-subset.css`, then rewrites `games/static/games/fonts/materialdesignicons-webfont.woff2` in place.
 
+`core/tests/test_icons_defined.py` fails on an `mdi-` class a template or
+script uses that no mapping defines. Until 2026-11-10 fourteen rendered as
+nothing (the signup button's, the email-status screens'), and nine more were
+mapped to another icon's codepoint: the Platforms heading showed a calendar.
+Take codepoints from the official CSS, as the `/icons` skill says.
+
 ### JavaScript Workflow
 
 JavaScript files in each app's `static/<app>/js/` (`games`, `core`, `music`,
@@ -2756,6 +2870,15 @@ Alpine and the bundles), each because the bare form failed for someone
   a script that names `smooth` overrides a stylesheet.
 - **`fetchHtml` throws on an error status.** It returned the body whatever
   the status, and the filter component set the results to a 500's page.
+- **A result count the server swaps in is said through `announce()`**, which
+  writes to the one persistent live region (`#live-announcer` in
+  `base.html`). A count that arrives inside a swapped list is a live region
+  inserted with its text, which is usually not read out. Do not call it for
+  a count the client renderer rewrites in place: that region stayed put and
+  announces itself.
+- **A search box aborts the request it overtakes** (`FetchManager`), in
+  `createUnifiedSearchData` and `core/js/media-search.js`: a slow answer
+  for "be" replaced the results for "beatles".
 
 **`_escapeHtml` (`base-renderer.js`) escapes as Django's `escape` does**,
 quotes included, since the renderers write names into attributes as well as

@@ -1,5 +1,39 @@
 # Developer Log
 
+## 2026-11-10
+
+- **Icons that were blank or wrong are right.** Fourteen icons were used and
+  defined nowhere (the signup button's, the email-status screens', the
+  source lists' Collapse All), and nine were mapped to another icon's glyph:
+  the Platforms heading showed a calendar, Load More a square outline. A
+  test now fails on an icon nothing defines
+- **The unsubscribe link asks first.** It unsubscribed on a GET, so a mail
+  scanner that follows every link did it for the reader. The page's button,
+  or a mail client's own one-click control (`List-Unsubscribe-Post`), does
+- **A failed filter request no longer strands the games sidebar.** Before
+  the engine loads, a request that failed left the year grid on the filters
+  asked for over the old list; the controls go back to the list, as music's
+  do. Both search boxes drop a slower, older answer instead of showing it
+- **Requests that were a 500 are not**: `/api/meta/` with an undated game,
+  music's album API on `?start=²`, the saved-filter APIs on a `null` name,
+  and the admin's Save on a game IGDB has dropped. IGDB requests have a
+  timeout, where a stalled one held the metadata lock for good
+- **One rule for `decade`, `year`, `start` and `end`.** The list, the
+  heading and the CSV's file name each had their own, so a hand-written
+  `?decade=1990-99&year=1995` listed the 1990s under "1995"
+- **Edits in the admin reach the caches**: an album's year or genres, a
+  tracking row given to another reader, a game's year. The weekly games
+  job fails when a phase could not run, where it exited 0 for Sentry
+- **Slugs and IGDB ids are unique in the database** (games `0124`, music
+  `0015`), a games file with a shared first IGDB id is refused by name, the
+  games API caches only bare paths, and covers are kept only as images
+- Accessibility: chosen filters say so (`aria-pressed`), dialogs and search
+  inputs have names, result counts are announced, grid card details show on
+  focus, and 50%-opacity text is 65%. Album grid cards rendered in the
+  browser name the 2x cover. CI no longer cancels a waiting run on `main`,
+  `sync_from_prod` refuses anything but local SQLite, and test mode is the
+  `test` subcommand, not the word
+
 ## 2026-11-09
 
 - **The pages a scraper asks for are kept whole.** Twice a day a scraper on
