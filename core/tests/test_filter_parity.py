@@ -324,3 +324,50 @@ class MusicParityTests(ParityTestCase):
         for album in music.Album.objects.with_relations():
             with self.subTest(album=album.name):
                 self.assertEqual(client[str(album.id)], str(artist_links(album)))
+
+    def test_the_renderer_writes_the_servers_grid_cover(self):
+        """A card rendered in the browser names the same two files as the
+        page's own: it set no `srcset`, so after a filter change or a Load
+        More a 2x screen showed the 250px cover stretched.
+
+        One album for each shape a cover URL takes: our stored copy, the
+        Cover Art Archive's, and a fallback URL with no sizes to choose.
+        """
+        albums = list(music.Album.objects.order_by("rank")[:4])
+        shapes = {
+            "stored": {"cover_art_stored": True},
+            "remote": {"cover_art_stored": False},
+        }
+        for album, (shape, fields) in zip(albums, shapes.items()):
+            record = music.MusicBrainzAlbumData.objects.create(
+                album=album,
+                release_group_mbid=f"group-{shape}",
+                cover_art_release_mbid=f"release-{shape}",
+                cover_art_image_id=f"1234{album.rank}",
+                is_primary=True,
+                **fields,
+            )
+            album.primary_musicbrainz_album_data = record
+            album.save()
+        fallback, bare = albums[2], albums[3]
+        fallback.cover_image_url = "https://example.org/covers/fallback-500.jpg"
+        fallback.save()
+
+        payload = self.client.get("/api/all/").json()
+        payload = payload.get("data", payload)
+        client = run_engines(
+            {"music": {"payload": payload, "queries": [], "credits": True}}
+        )["musicCovers"]
+
+        html = self.client.get("/?view=grid").content.decode()
+        for album in music.Album.objects.filter(pk__in=[a.pk for a in albums[:3]]):
+            with self.subTest(album=album.name):
+                expected = f"{album.thumbnail} 1x, {album.image} 2x"
+                self.assertEqual(client[str(album.id)], expected)
+        # The stored and the remote shapes do name a larger file
+        stored = music.Album.objects.get(pk=albums[0].pk)
+        self.assertNotEqual(stored.thumbnail, stored.image)
+        self.assertIn("-500.jpg 2x", client[str(stored.id)])
+        # An album with no cover has no srcset on either side
+        self.assertNotIn(str(bare.id), client)
+        self.assertNotIn("None 1x", html)

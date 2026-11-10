@@ -215,7 +215,7 @@ class AlbumListRenderer extends BaseMediaListRenderer {
             globalRank.classList.toggle('hidden', showRank !== 'filtered');
         }
 
-        this._fillCover(card, album, 'cover', 'cover-placeholder');
+        this._fillCover(card, album, 'cover', 'cover-placeholder', { retina: true });
         const coverLink = card.querySelector('[data-slot="cover-link"]');
         if (coverLink) coverLink.href = url;
 
@@ -251,6 +251,23 @@ class AlbumListRenderer extends BaseMediaListRenderer {
     }
 
     /**
+     * The grid card's `srcset`, as `_album_card_grid.html` writes it:
+     * the row-sized cover at 1x and the detail-sized one at 2x.
+     *
+     * The payload carries only the row-sized URL (`t`). Both shapes a cover
+     * URL takes, our own `/cover/<release>/<image>-250.jpg` and the Cover
+     * Art Archive's, name the size the same way, so the larger file is the
+     * same address at 500. An album with only a stored fallback URL has
+     * one file for both, on the server too.
+     * `core/tests/test_filter_parity.py` compares the two for every shape.
+     * @param {string} thumbnail - The album's row-sized cover URL
+     * @returns {string}
+     */
+    static coverSrcset(thumbnail) {
+        return `${thumbnail} 1x, ${thumbnail.replace(/-250\.jpg$/, '-500.jpg')} 2x`;
+    }
+
+    /**
      * Point the cover <img> at an album's art, or show the placeholder.
      *
      * Both elements are always in the row - see the comment in
@@ -258,16 +275,22 @@ class AlbumListRenderer extends BaseMediaListRenderer {
      * other, in whichever direction the album needs.
      * @private
      */
-    _fillCover(row, album, imgSlot, placeholderSlot) {
+    _fillCover(row, album, imgSlot, placeholderSlot, { retina = false } = {}) {
         const img = row.querySelector(`[data-slot="${imgSlot}"]`);
         const placeholder = row.querySelector(`[data-slot="${placeholderSlot}"]`);
 
         if (img && album.thumbnail) {
             img.src = album.thumbnail;
+            // The grid card is drawn larger than a row's thumbnail, so the
+            // server's names the 500px file for a 2x screen. Without it
+            // every card rendered here (a filter change, Load More) showed
+            // the 250px file stretched, where the page's own cards did not.
+            if (retina) img.srcset = AlbumListRenderer.coverSrcset(album.thumbnail);
             img.alt = album.name;
             img.classList.remove('hidden');
         } else if (img) {
             img.removeAttribute('src');
+            img.removeAttribute('srcset');
             img.classList.add('hidden');
         }
 

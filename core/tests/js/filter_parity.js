@@ -73,10 +73,15 @@ if (input.music) {
         };
         const creditHtml = AlbumListRenderer.prototype._artistCreditHtml;
         output.musicCredits = {};
+        output.musicCovers = {};
         for (const album of input.music.payload.albums) {
             output.musicCredits[album.id] = creditHtml.call(
                 escaper, engine.expandAlbum(album)
             );
+            // The grid card's srcset, for the albums that have a cover
+            if (album.t) {
+                output.musicCovers[album.id] = AlbumListRenderer.coverSrcset(album.t);
+            }
         }
     }
 }
