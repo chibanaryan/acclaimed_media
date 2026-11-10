@@ -6,7 +6,7 @@ description: Run Django tests with coverage reporting. Use when asked to test, r
 # Django Tests with Coverage
 
 The suites live in `games/tests/`, `music/tests/`, `core/tests/` and
-`books/tests/` (about 3,500 tests). Use the venv's interpreter
+`books/tests/` (about 4,200 tests). Use the venv's interpreter
 (`venv/bin/...`), not a bare `python3` or `pytest`.
 
 ## IMPORTANT: No Parallel Coverage Runs
@@ -46,6 +46,17 @@ TEST_DATABASE_URL=postgres://... venv/bin/pytest --no-cov
 
 Settings also blank the IGDB, Wikidata and Discogs credentials under test,
 as CI has none, so a local run takes the same paths as CI.
+
+## What needs Node
+
+The tests that run the client code (`core/tests/js/`: filter parity, the
+renderers' escaping, `utils-base.js`) need `node` on `PATH`. Without it
+they skip locally and fail in CI (`core/tests/node.py:require_node`).
+
+## Warnings that fail
+
+`pytest.ini` turns Django's `RemovedInNextVersionWarning` into an error, so
+a test that reaches an API the next release removes fails here first.
 
 ## Coverage
 

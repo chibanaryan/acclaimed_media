@@ -16,7 +16,7 @@ Use these skills for common workflows:
 - `/minify` - Minify JavaScript files and regenerate bundles
 - `/igdb` - Import IGDB game data
 - `/wikipedia` - Fetch Wikipedia metadata and genres
-- `/refresh-metadata` - Weekly metadata refresh (IGDB + Wikipedia)
+- `/refresh-metadata` - Weekly metadata refresh (IGDB, Wikipedia and HLTB)
 - `/test` - Run tests with coverage
 - `/icons` - Add Material Design Icons to the site (including subset font rebuilds)
 - `/openlibrary` - Fetch book metadata from Open Library API
@@ -188,29 +188,37 @@ heroku run -- python manage.py shell
   - **management/commands/import_music_data.py** - Loads the ranking release files
   - **templates/music/** - Music templates; album rows extend `core/includes/_base_media_row.html`
 
-**Installed Apps:**
-- `django.contrib.admin` - Admin interface
-- `django.contrib.auth` - Authentication
-- `django.contrib.contenttypes` - Content type framework
-- `django.contrib.sessions` - Session management
-- `django.contrib.messages` - Messaging framework
+**Installed Apps** (in `INSTALLED_APPS` order):
+- `django.contrib.admin`, `auth`, `contenttypes`, `sessions`, `messages` - Django's own
+- `whitenoise.runserver_nostatic` - WhiteNoise serves static files under `runserver` too
 - `django.contrib.staticfiles` - Static file management
 - `django.contrib.flatpages` - Flat pages framework for CMS content
-- `django.contrib.sites` - Sites framework (used for multi-site support)
+- `django.contrib.sites` - Sites framework (the `Site` row; routing by host is `core/sites.py`)
 - `django.contrib.postgres` - PostgreSQL-specific features
-- `rest_framework` - Django REST Framework
+- `django.contrib.humanize` - `intcomma` and friends in templates
+- `django.contrib.sitemaps` - The per-site `sitemap.xml`
+- `django.forms` - Django's form widget templates, as an app. No
+  `FORM_RENDERER` is set and no template overrides one, so it changes
+  nothing today
 - `corsheaders` - CORS support
+- `rest_framework` - Django REST Framework
 - `tailwind` - django-tailwind integration
 - `theme` - Tailwind CSS theme app with DaisyUI
 - `core` - Shared infrastructure (User model, abstract bases, mixins)
 - `games` - Main game aggregation app with HTMX and Alpine.js
-- `books` - Book rankings app (behind `BOOKS_ENABLED` feature flag)
+- `books` - Book rankings app (staff-only; `BOOKS_ENABLED` shows its nav links)
 - `music` - Album rankings app
+- `allauth`, `allauth.account`, `allauth.socialaccount` and its `google` and
+  `facebook` providers - Sign-in
+- `django_extensions` - `shell_plus`, `runserver_plus`
+- `debug_toolbar` - Appended under `DEBUG` when it is installed, with its middleware
 
 **Middleware:**
 - `django.middleware.security.SecurityMiddleware` - Security headers
 - `core.middleware.SiteHostMiddleware` - Picks the site (landing, games,
   music) and its URLconf from the host; see "Domain"
+- `django.middleware.csp.ContentSecurityPolicyMiddleware` - The report-only
+  policy and the nonce; see "Content Security Policy"
 - `whitenoise.middleware.WhiteNoiseMiddleware` - Static file serving in production
 - `games.middleware.UncompressedUptimeCheckMiddleware` - Answers a `GET`/`HEAD`
   of `/` from `SentryUptimeBot` that refuses gzip with a 2-byte 200, before
@@ -249,10 +257,20 @@ Core Django models include:
   - Games link to developers via `Game.developers` M2M field
   - In IGDB's data model, all are "company" records - we add hierarchy on import
 - **Platform** - Gaming platforms (PC, PS5, etc.)
-- **Genre** - Game genres
+- **WikipediaGenre** - Game genres, hierarchical (`parent`, `level`, `path`)
+- **Series** - Game series, from IGDB's collections
+- **IGDBGameData / WikipediaGameData / HLTBGameData** - Fetched metadata, each
+  with a `primary_...` pointer on `Game`. They outlive an import, which
+  recreates every `Game` and reattaches them
 - **Publication** - Magazines/websites that publish game lists
 - **List/ListMembership** - Published rankings and game positions within them
-- **Post** - Blog-style news posts with markdown support
+- **PlayedGame / WantToPlayGame** - Per-user tracking, keyed on the IGDB id so
+  it survives an import
+- **SavedFilterSet** - A reader's saved filter combinations
+- **Article** - Blog posts, at `/blog/`
+- **Post** - The older news posts. `/news/` answers 410; subscribers are still
+  notified of a new one
+- **SiteMetadata** - Per-section "Updated" dates
 - **Snippet** - Reusable text snippets
 
 Books-specific models (behind `BOOKS_ENABLED` feature flag):
@@ -310,14 +328,23 @@ Django REST Framework powers the API at `/api/` with endpoints:
 - `/api/games/` - List and search games
 - `/api/games/search/` - Game search for navbar
 - `/api/games/<slug>/` - Game details with lists appearances
+- `/api/games/all/` - Every game in one payload, for client-side filtering
+  (cached under the data version; see "Caching")
 - `/api/developers/` - List of all developers with games
 - `/api/developers/<slug>/` - Developer details by slug
 - `/api/developers/by-id/<igdb_id>/` - Developer details by IGDB ID
+- `/api/developer-aliases/` and `/api/developer-aliases/<igdb_id>/` - The
+  same two views, under their older names
 - `/api/lists/` - Source lists
+- `/api/publications/` and `/api/publications/<pk>/` - Publications
 - `/api/platforms/` - Gaming platforms
-- `/api/genres/` - Game genres (also available at `/api/wikipedia-genres/` for backwards compatibility)
+- `/api/genres/` and `/api/genres/tree/` - Game genres, flat and as a tree
+  (also at `/api/wikipedia-genres/...` for backwards compatibility)
+- `/api/snippets/<slug>/` and `/api/pages/<url>/` - A text snippet, a flat page
 - `/api/meta/` - Metadata about the database
 - `/api/unified-search/` - Unified search for games, developers, and series
+- `/api/saved-filters/` and `/api/saved-filters/<pk>/` - A reader's saved
+  filter combinations: the games API's only writes, behind a session and CSRF
 
 Books API endpoints (behind `BOOKS_ENABLED` feature flag):
 - `/api/books/` - List and search books
@@ -353,8 +380,15 @@ apex until 2026-10-30, which now redirects):
   reader's saved filter combinations. The only endpoints in `music/api/`
   that **write**, so the only ones CSRF applies to
 
-**Note:** these endpoints carry no `cache_page` decorator, and nothing has
-measured whether they should. `/api/all/` is the one to look at first.
+**Note:** these endpoints carry no `cache_page` decorator, and `/api/all/`,
+the heavy one, was measured on 2026-11-09 and left that way. It takes 319 ms
+at the median in production (games' cached payload: 54 ms), but is asked for
+about 330 times a week, two an hour. An entry kept an hour under its data
+version would hit two times in three and save about a CPU-minute a week, for
+a generation-guarded cache entry (it would have to be written through
+`caching.set_if_current`, hold its version inside one key so a cover pass
+does not leave a dead 270 KB row per cover, and drop with `CACHE_KEYS`). Look
+again if the traffic grows tenfold.
 
 **Note:** every view in `music/api/` names `SessionAuthentication` (through
 `MusicReadAPIMixin` or `MusicWriteAPIMixin`), as books' `StaffReadAPIMixin` does.
@@ -852,8 +886,9 @@ The application uses Django templates with HTMX for dynamic interactions and Alp
     - **games/** - Game list, detail, and search templates
     - **developers/** - Developer list and detail templates
     - **lists/** - Lists and results templates
-    - **posts/** - Post/news templates
-    - **pages/** - Static page templates
+    - **articles/** - Blog templates
+    - **pages/**, **flatpages/** - Static page templates
+    - **auth/**, **account/** - The sign-in modal's partials, allauth's emails
   - **templatetags/** - Custom template filters (game_filters.py)
   - **middleware.py** - HTMXPushURLMiddleware for HTMX history support
 
@@ -869,22 +904,30 @@ The application uses Django templates with HTMX for dynamic interactions and Alp
 - `from_now` - Converts datetime to relative time (e.g., "2 hours ago")
 - Custom utilities for formatting and string manipulation
 
-**Routes:**
-- `/` - Home page (games)
-- `/games/` - Game list with filtering and search
-- `/games/<slug>/` - Game detail view
-- `/games/search/` - Game search endpoint (HTMX)
+**Routes**, on `games.acclaimedmedia.org` (`acclaimedgames/urls_games.py`):
+- `/` - The game rankings, with filtering and search
+- `/game/<slug>/` - Game detail view
+- `/game/<igdb_id>/toggle-played/` - POST, the played / want-to-play toggle
+- `/games/browse/` - Index of the landing pages
+- `/games/<decade>s/`, `/games/<year>/`, `/games/<slug>/` - A decade's, a
+  year's, a genre's or a platform's rankings (SEO landing pages)
+- `/games/`, `/games/search/`, `/rankings/` - Redirects to `/`, query kept.
+  The filter component still writes its address as `/games/?...`
+- `/download/` - The rankings as filtered, as CSV
 - `/developers/` - Developer list with game counts and hierarchy
 - `/developers/<slug>/` - Developer detail view with subsidiary hierarchy and games
-- `/lists/` - Published rankings list (with media_type filter)
-- `/posts/` - News and blog posts
-- `/page/<slug>/` - Static pages
+- `/developer-alias/<id>/` - 301s a developer's pk to its root developer's page
+- `/lists/` - The published source lists
+- `/blog/` and `/blog/<slug>/` - Articles. `/news/` answers 410
+- `/import/` - Staff import, and its three progress streams
+- `/page/<slug>/` and the other shared routes - see "Domain"
 
-Book routes (behind `BOOKS_ENABLED` feature flag):
+Book routes, on the games host (staff-only; `BOOKS_ENABLED` shows the links):
 - `/books/` - Book list with filtering and search
-- `/book/<slug>/` - Book detail view
-- `/authors/` - Author list with book counts
-- `/authors/<slug>/` - Author detail view with books
+- `/books/<slug>/` - Book detail view
+- `/books/authors/` - Author list with book counts
+- `/books/authors/<slug>/` - Author detail view with books
+- `/books/import/`, `/books/toggle-read/<goodreads_id>/`, `/books/search/`
 
 Music routes, on `music.acclaimedmedia.org` (they were under `/music/` at
 the apex until 2026-10-30):
@@ -893,7 +936,7 @@ the apex until 2026-10-30):
 - `/artists/` - Artist list with album counts
 - `/artists/<slug>/` - Artist detail with ranked albums
 - `/lists/` - The published source lists behind the rankings
-- `/import/` - Staff import for the three release files. Linked from nowhere,
+- `/import/` - Staff import for the four release files. Linked from nowhere,
   staff included: staff type the URL
 - `/<album_id>/toggle-listened/` - POST, `?status=none|want|listened|own`,
   answering with the re-rendered button for HTMX to swap
@@ -1011,37 +1054,20 @@ is dropped; and the button moves on before anything else can throw. Until
 
 ### Google Analytics Integration
 
-The site uses Google Analytics 4 (GA4) with custom HTMX tracking for comprehensive page view analytics:
+Google Analytics 4, property `G-0591405Q89`, in `games/templates/base.html`.
 
-**Implementation Location:** `games/templates/base.html`
-
-**Standard Page Views:**
-- gtag.js loads on every page via base template
-- Tracks initial page loads and full navigation
-- Property ID: `G-0591405Q89`
-
-**HTMX Navigation Tracking:**
-- Custom event listener on `htmx:afterSwap` tracks partial page updates as page views
-- Includes full URL path with query parameters for granular tracking
-- Captures filter changes, pagination, and search navigation
-- Provides more detailed tracking than typical SPAs (tracks query parameter changes as distinct page views)
-
-**Code Example:**
-```javascript
-document.body.addEventListener('htmx:afterSwap', function(event) {
-    // Track HTMX navigation as page views
-    if (window.gtag) {
-        gtag('config', 'G-0591405Q89', {
-            page_path: window.location.pathname + window.location.search
-        });
-    }
-});
-```
-
-**Advantages over SPA Tracking:**
-- Automatically tracks all filter state changes (e.g., `/games/search/?q=zelda` vs `/games/search/?q=mario`)
-- No custom router configuration required
-- Simpler implementation with more granular insights
+- **gtag.js loads on the first interaction, not with the page**: the first
+  `pointerdown`, `touchstart` or `keydown`, then in an idle moment
+  (`initGA`, `loadGoogleAnalytics`). It keeps the script out of the first
+  paint, and it means a visitor who never touches the page is not counted.
+- **The page view is sent as it loads**, and remembered as
+  `window.lastTrackedPagePath`.
+- **An HTMX swap is a page view only if the address changed.** The
+  `htmx:afterSwap` listener compares `pathname + search` with
+  `lastTrackedPagePath`. Every swap used to count, so opening the sign-in
+  modal or toggling a played button was a view of the page already open.
+- A filter change the client engine answers sends no request and no swap,
+  so it is not a page view; one the server answers is.
 
 ### Development Notes
 
@@ -1619,16 +1645,19 @@ content is ever shown as-is.
 
 ## Music and games query budgets
 
-`/music/` cost 443 queries and `/music/artists/` 305, measured against the
-1000-album corpus. Both were one-shape N+1s, and both are now pinned by
-`music/tests/test_views.py::MusicQueryBudgetTests`:
+The album rankings cost 443 queries and the artists page 305, measured
+against the 1000-album corpus. Both were one-shape N+1s, and both are now
+pinned by `music/tests/test_views.py::MusicQueryBudgetTests`. Paths are the
+music host's (they were under `/music/` when these were measured), and the
+search row is pinned by growth, in `music/tests/test_api.py`:
 
 | page | before | after |
 |---|---|---|
-| `/music/` | 443 | 26 |
-| `/music/?genres=<root>` | 439 | 16 |
-| `/music/artists/` | 305 | 6 |
-| `/api/music/all/` | 1218 | 13: 10, and its version read twice since 2026-11-03 |
+| `/` | 443 | 26 |
+| `/?genres=<root>` | 439 | 16 |
+| `/artists/` | 305 | 6 |
+| `/api/all/` | 1218 | 13: 10, and its version read twice since 2026-11-03 |
+| `/api/search/?q=` | 3, and one more a result (23 for twenty) | 3 (2026-11-09) |
 
 - **`core/services/genre_tree.py` answers the hierarchy in one query.**
   `descendants_by_id(pairs)` maps every genre id to the ids below it from a
@@ -1654,7 +1683,7 @@ content is ever shown as-is.
   card block runs it a second time, which is why it was 200 album selects
   for 100 rows. `{% with best=artist.albums.first %}` does resolve off the
   prefetch cache (measured), so no template change was needed.
-- **`/api/music/all/` had the worst N+1 on the site and nothing recorded
+- **`/api/all/` had the worst N+1 on the site and nothing recorded
   it**: the album loop reads `album.thumbnail` while the queryset prefetched
   only `artists` and `genres`, so 1000 albums each lazy-loaded their
   MusicBrainz row.
@@ -1676,7 +1705,7 @@ content is ever shown as-is.
   of what it lists, and requires the same query count, so an N+1 fails it
   while an unrelated added query does not. It covers game detail,
   `/developers/` in every sort, `/api/unified-search/`, `/api/games/all/`,
-  a decade landing page and `/music/lists/`. Game detail was the one that
+  a decade landing page and music's `/lists/`. Game detail was the one that
   grew: it prefetched one level of each developer's parents, and
   `display_root_developer` queried the rest a level at a time. It now uses
   `with_relations()`, which joins four.
@@ -2220,7 +2249,7 @@ block - without exempting it there.
   `mediaListControls.refreshFacetCounts()` answers `mobile-filter-opened`
   through the engine's `republishFacets()` once it is ready. Its form keeps
   working while ignored, because `commit()` writes the fields itself. At 4x,
-  `/music/` went from ~360 ms of Alpine init to ~75 ms on a phone.
+  the album rankings went from ~360 ms of Alpine init to ~75 ms on a phone.
 
 **Filter-change speed** (2026-10-26). A decade click took ~290 ms to
 reach the list on a fast machine and ~710 ms at a 4x CPU slowdown, and
@@ -2309,9 +2338,24 @@ metrics API (`api.metrics.heroku.com/apps/<id>/formation/web/metrics/memory
 
 ### Environment Variables
 
-Environment variables are managed via django-environ (`.env` file):
+Environment variables are managed via django-environ. Settings reads `.env`,
+which the shell's own variables beat, then `.env.development.local` if that
+file exists, which beats both: with a `DATABASE_URL` there, point a command
+at another database through a settings module, not `DATABASE_URL=... python
+manage.py ...`. `.env.example` lists them all.
 - `DEBUG` - Enable Django debug mode
 - `SECRET_KEY` - Django secret key
+- `DATABASE_URL` - The database. Unset, it is SQLite at `db.sqlite3`; Heroku
+  sets it to Postgres
+- `TEST_DATABASE_URL` - Run the test suites on Postgres rather than in-memory
+  SQLite (see "Dependencies")
+- `CORS_ALLOWED_ORIGINS` - Comma-separated origins allowed to call the API
+  from a browser
+- `SENTRY_DSN` - Where errors, traces and CSP reports go. See
+  `SENTRY_ENVIRONMENT` below for when anything is sent
+- `BREVO_SMTP_USER`, `BREVO_SMTP_KEY` - The SMTP login for outgoing mail
+- `SITE_URL` - The origin emailed links are built on, where no request is at
+  hand
 - `IGDB_CLIENT_ID` - IGDB API client ID
 - `IGDB_CLIENT_SECRET` - IGDB API client secret
 - `IGDB_USE_PRO_TIER` - Enable IGDB Pro tier (default: False)
@@ -2348,7 +2392,7 @@ Environment variables are managed via django-environ (`.env` file):
 - **`.python-version`** - Specifies Python 3.14 for Heroku deployment; the local venv tracks production's patch release (see "Dependencies")
 - **`.pre-commit-config.yaml`** - Pre-commit hook configuration for code quality enforcement (Black, Flake8, tests)
 - **`.coveragerc`** - Coverage configuration. It omits migrations, the tests, every management command and both `import_handler.py` modules, so the 100% gate does not cover the scheduled jobs or the import pipelines
-- **`.flake8`** - Flake8 linter configuration (max line length 88, excludes venv)
+- **`.flake8`** - Flake8 linter configuration (max line length 88; excludes nothing of ours but migrations and `.context/`)
 - **`scripts/run_tests.sh`** - The same suites under Django's own test runner; see below
 
 **Two test runners, on purpose.** `pytest` is the gate: the pre-commit hook
@@ -2517,10 +2561,11 @@ Four layers, from automatic to manual:
   | `lint` | black, flake8 over every file |
   | `pytest` | the suites with the 100% coverage gate |
   | `django-tests` | `scripts/run_tests.sh`, the runner without conftest, on Postgres 18 (production's version) |
-  | `audit` | `pip-audit` on both locks, `npm audit --audit-level=high` |
+  | `production-install` | `requirements.txt` alone, as Heroku installs it: `check --deploy`, importing every non-test module, `collectstatic`, and pages rendered under manifest storage |
+  | `audit` | `pip-audit` on both locks, `npm audit` (any severity). The one job a Monday's scheduled run does |
   | `css` | rebuilds the CSS and fails if it differs from the committed file |
   | `js` | `scripts/minify_js.sh --check`: the same for the minified JS and bundles |
-  | `browser` | `scripts/browser_smoke.js`: Chrome over the main pages, failing on a JS, Alpine or CSP error, plus Back and Load More across the engine load, music's takeover leaving a row's POST alone, and a year range outside the corpus and leaving it |
+  | `browser` | `scripts/browser_smoke.js`: Chrome over the main pages, failing on a JS, Alpine or CSP error, plus Back and Load More across the engine load, music's takeover leaving a row's POST alone, a year range outside the corpus and leaving it, a games highlight landing, a mobile row opened by keyboard, and the CSV button |
 
   `css` exists because Heroku runs only the Python buildpack, so the
   committed `theme/static/css/dist/styles.css` is what ships. An npm bump
@@ -2578,9 +2623,9 @@ not one that re-exports it.
 - Django collectstatic copies static files from apps to `staticfiles/`
 - WhiteNoise serves static files in production
 - Static files are located in:
-  - `games/static/` - Game app static files (icons, fonts, images)
+  - `games/static/` - Game app static files (icons, fonts, images, JS)
+  - `core/static/`, `music/static/`, `books/static/` - Each app's own JS, and music's images
   - `theme/static/` - Tailwind CSS compiled output
-  - `games/templates/` - Template files
 
 ### CSS Workflow (Tailwind CSS)
 
@@ -2654,7 +2699,8 @@ The script scans icon codepoints from `games/templates/base.html` and `games/sta
 
 ### JavaScript Workflow
 
-JavaScript files in `games/static/games/js/` follow a specific workflow:
+JavaScript files in each app's `static/<app>/js/` (`games`, `core`, `music`,
+`books`) follow a specific workflow:
 
 **Source and Minified Files:**
 - Source files (e.g., `game-list-renderer.js`) contain the readable code

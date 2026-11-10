@@ -1,46 +1,7 @@
-# Theme System Documentation
+# Theme system
 
-## Overview
-
-The site uses a unified DaisyUI theme system with two themes:
-- **lofi** (light theme)
-- **forest** (dark theme)
-
-The theme is stored in `localStorage` under the key `'theme'` and automatically syncs across all pages including the Django admin.
-
-## Architecture
-
-### 1. Centralized Theme Script
-
-All pages include the same theme initialization script from [`games/templates/includes/_theme_script.html`](games/templates/includes/_theme_script.html):
-
-- **Validates** theme on page load - only allows `'lofi'` or `'forest'`
-- **Cleans up** invalid theme values from previous configurations
-- **Auto-detects** system preference if no valid theme is stored
-- **Removes** Django admin theme conflicts (`'admin-theme'` key)
-
-### 2. Page Integration
-
-**Main Site** (base.html)
-- Includes `_theme_script.html` at the top of `<head>`
-- Provides theme toggle in navigation
-- Persists theme choice in localStorage
-
-**Import Page** (import.html)
-- Uses the same `_theme_script.html`
-- Inherits theme from localStorage
-- No separate theme system
-
-**Django Admin**
-- Uses Django's own admin styling and theme toggle. A custom
-  `admin/base_site.html` meant to apply the DaisyUI themes was never
-  active - `django.contrib.admin` comes before `games` in `INSTALLED_APPS`,
-  so its template won - and switched on it broke the header; it was
-  deleted on 2026-10-26
-
-### 3. Theme Configuration
-
-Themes are defined in [`theme/static_src/src/styles.css`](theme/static_src/src/styles.css):
+The site has two DaisyUI themes: **lofi** (light) and **forest** (dark).
+They are declared in `theme/static_src/src/styles.css`:
 
 ```css
 @plugin "daisyui" {
@@ -48,119 +9,70 @@ Themes are defined in [`theme/static_src/src/styles.css`](theme/static_src/src/s
 }
 ```
 
-## Troubleshooting
+## Where the choice is kept
 
-### Problem: Theme keeps changing or reverting
+In two places, because the site is three origins (`acclaimedmedia.org`,
+`games.` and `music.`):
 
-**Cause:** Stale theme values in localStorage from previous configurations
+- `localStorage` under `theme`, which is per origin.
+- A `theme` cookie on the whole domain (`.acclaimedmedia.org`, one year), so
+  a choice made on the games site follows the reader to music and the
+  landing page. The cookie wins when the two disagree, since it is the
+  latest choice made on any site.
 
-**Solution:**
-1. Open browser DevTools Console (F12)
-2. Run: `localStorage.clear()` or `localStorage.removeItem('theme')`
-3. Reload page - theme will auto-detect based on system preference
+On localhost there is no shared parent domain a cookie may name, so each of
+`localhost`, `games.localhost` and `music.localhost` keeps its own choice.
 
-### Problem: Admin pages have different theme
+## Page load
 
-**Cause:** Django admin was using its own theme system
+`games/templates/includes/_theme_script.html` is the first thing in
+`base.html`'s `<head>`, which every page extends, the two import pages and
+the landing page included. Before any CSS loads, it:
 
-**Status:** left as Django's own theme. The custom `admin/base_site.html`
-this section described never took effect and was deleted on 2026-10-26.
+1. reads the cookie, else `localStorage` (inside `try`: with storage blocked
+   the property itself throws);
+2. accepts only `lofi` or `forest`, and otherwise takes the system
+   preference (`prefers-color-scheme: light` is lofi, anything else forest);
+3. writes the result back to both stores and sets `data-theme` on `<html>`.
 
-### Problem: Import page styling looks wrong
+So there is no flash of the wrong theme, and a value left over from an older
+theme list is replaced on the next load.
 
-**Cause:** Theme script not running or localStorage has invalid value
+## The toggle
 
-**Solution:**
-1. Check browser console for theme errors
-2. Run `resetTheme()` in console (if theme-reset.js is loaded)
-3. Clear localStorage and reload
+The sidebar and mobile toggles are checkboxes with the `theme-controller`
+class. One delegated `change` listener in `base.html` calls
+`setTheme('forest' | 'lofi')`, which writes both stores, sets `data-theme`
+and ticks both toggles. No reload.
 
-## Development Tools
+## Django admin
 
-### Theme Reset Utility
+The admin keeps Django's own styling and its own light/dark toggle. A custom
+`admin/base_site.html` meant to apply the DaisyUI themes never took effect
+(`django.contrib.admin` comes before `games` in `INSTALLED_APPS`, so its
+template won), broke the header when switched on, and was deleted on
+2026-10-26.
 
-The file [`games/static/games/js/theme-reset.js`](games/static/games/js/theme-reset.js) provides console utilities:
+## Trying a theme by hand
 
-**Check theme status:**
+In the browser console, on a page of the site:
+
 ```javascript
-checkTheme()
+setTheme('lofi')    // or 'forest'
 ```
 
-**Reset theme to system default:**
+To go back to the system preference, clear both stores and reload:
+
 ```javascript
-resetTheme()
-```
-
-### Manual Theme Testing
-
-Set theme directly in console:
-```javascript
-// Set to light theme
-localStorage.setItem('theme', 'lofi')
-location.reload()
-
-// Set to dark theme
-localStorage.setItem('theme', 'forest')
-location.reload()
-
-// Clear theme (will auto-detect system preference)
 localStorage.removeItem('theme')
+document.cookie = 'theme=;path=/;max-age=0'   // on production add ;domain=.acclaimedmedia.org
 location.reload()
 ```
 
-## How It Works
+## Checklist after changing any of it
 
-### Page Load Sequence
-
-1. **Theme script runs FIRST** (in `<head>`, before any content)
-   - Reads `localStorage.getItem('theme')`
-   - Validates: must be `'lofi'` or `'forest'`
-   - Invalid? Detects system preference and sets accordingly
-   - Applies: `document.documentElement.setAttribute('data-theme', t)`
-
-2. **CSS loads** with theme applied
-   - DaisyUI reads `data-theme` attribute
-   - Applies correct color variables
-   - No flash of unstyled content (FOUC)
-
-3. **Page renders** with correct theme
-
-### Theme Toggle
-
-User clicks theme toggle → JavaScript function `setTheme(newTheme)`:
-1. Saves to localStorage: `localStorage.setItem('theme', newTheme)`
-2. Updates DOM: `document.documentElement.setAttribute('data-theme', newTheme)`
-3. Updates toggle UI state
-4. No page reload needed
-
-## Files Changed
-
-### Created
-- `games/templates/includes/_theme_script.html` - Centralized theme initialization
-- `games/static/games/js/theme-reset.js` - Debug utilities
-
-### Modified
-- `games/templates/base.html` - Now includes `_theme_script.html`
-- `games/templates/import.html` - Now includes `_theme_script.html`
-
-## Testing Checklist
-
-- [ ] Main site pages (games, developers, lists, posts) use correct theme
-- [ ] Theme toggle switches between lofi and forest
-- [ ] Theme persists across page navigation
-- [ ] Import page (`/admin/import/`) uses same theme as main site
-- [ ] Django admin (`/admin/`) uses same theme as main site
-- [ ] Theme survives browser refresh
-- [ ] Invalid theme values get automatically corrected
-- [ ] System dark/light mode preference works for first-time visitors
-
-## Migration Notes
-
-**Existing Users:**
-- Old theme values (night, business, black, auto) will be automatically cleared
-- Users will get theme based on their system preference (dark → forest, light → lofi)
-- Theme choice will be remembered going forward
-
-**New Users:**
-- Theme auto-detects from system preference
-- Choice is saved and persists across all pages
+- [ ] The toggle switches between lofi and forest, on desktop and mobile
+- [ ] The choice survives a reload and a move to another page
+- [ ] In production, a choice made on one site holds on the other two
+- [ ] A first visit follows the system's light or dark preference
+- [ ] With cookies and storage blocked, the page still renders with a theme

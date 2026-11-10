@@ -19,8 +19,8 @@ python3 manage.py get_igdb
 
 | Option | Description |
 |--------|-------------|
-| `--concurrency N` | Number of concurrent requests (1-8, default: 4) |
-| `--batch-games N` | Batch size for multi-query (0-500, default: 10) |
+| `--concurrency N` | Number of concurrent requests (1-8, default: 8) |
+| `--batch-games N` | Games per API request (0-500; default: 50 on the free tier, 500 on Pro; 0 turns batching off) |
 | `--delay SECONDS` | Additional delay between games (default: 0.0) |
 | `--batch-size N` | Progress checkpoint interval (default: 50) |
 | `--pro` | Use IGDB Pro tier (or set IGDB_USE_PRO_TIER=True in .env) |
@@ -51,9 +51,8 @@ python3 manage.py get_igdb --game "The Legend of Zelda" --force
 |------|-------|
 | Free tier defaults (batch=50, concurrency=8) | ~100 games/sec |
 | Pro tier defaults (batch=500, concurrency=8) | ~1000+ games/sec |
-| Default settings (concurrency=4, batch-games=10) | ~8-10 games/sec |
 | Sequential mode (--concurrency 1 --batch-games 0) | ~2 games/sec |
-| Aggressive settings (concurrency=6, batch-games=20) | ~15-20 games/sec |
+| Conservative settings (concurrency=4, batch-games=20) | ~15-20 games/sec |
 | With Pro tier (--pro) | ~100-500 games/sec |
 
 **Benchmark:** 1000 games: ~10 seconds (free) vs ~1 second (pro)
@@ -72,6 +71,10 @@ python3 manage.py get_igdb --game "The Legend of Zelda" --force
 - Game descriptions
 - Developer information
 - Genre classifications
+
+An import runs this fetch itself, for the games missing IGDB data (see
+"Imports start their metadata fetch" in AGENTS.md), so a manual run is for a
+forced refresh or a fetch that failed.
 
 ## Programmatic Usage
 

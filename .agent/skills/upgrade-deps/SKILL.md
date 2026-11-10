@@ -26,8 +26,9 @@ gh pr checks <number>
 - **Majors:** read the package's changelog for breaking changes first, and
   check out the branch and run the app if it is a runtime dependency.
 - **A red `css` job** means an npm bump changes the compiled CSS. Check out
-  the branch, run `venv/bin/python manage.py tailwind build`, look at `/`, `/music/`
-  and a detail page in both themes (lofi and forest) against `main`, then
+  the branch, run `venv/bin/python manage.py tailwind build`, look at
+  `games.localhost:8000/`, `music.localhost:8000/` and a detail page in
+  both themes (lofi and forest) against `main`, then
   commit the rebuilt `theme/static/css/dist/styles.css` to the branch and
   merge it the same day: Dependabot stops rebasing a PR that carries
   someone else's commit, so a later bump in its group would need a fresh
@@ -75,9 +76,12 @@ venv/bin/pip-audit -r requirements.txt -r requirements-dev.txt
 (cd theme/static_src && npm audit)
 ```
 
-Fix anything high or critical. A moderate one may be waived only with a
-reason recorded beside the CI audit step, as the
-`@tailwindcss/typography` one is.
+CI's `audit` job fails on any severity, in either ecosystem, and nothing is
+waived. A transitive pin no Dependabot PR bumps is fixed here:
+`venv/bin/pip-compile --upgrade-package <name> requirements.in`, then
+recompile the dev lock (oauthlib 4.0.1, 2026-11-09), or an `overrides` entry
+in `theme/static_src/package.json` (`postcss-selector-parser`). Until it is,
+every open PR's `audit` job is red too.
 
 ## 4. Test
 
@@ -87,8 +91,9 @@ venv/bin/pre-commit run django-tests --hook-stage manual
 venv/bin/python manage.py tailwind build && git diff --stat theme/static/css/dist/styles.css
 ```
 
-Once a quarter, list Django's deprecation warnings, which are what a later
-release removes:
+`pytest.ini` already fails a test that raises the next Django release's
+removal warning. Once a quarter, list the ones for the release after, which
+it lets through:
 
 ```bash
 venv/bin/python -Wd manage.py test games.tests 2>&1 | grep -i "RemovedInDjango" | sort | uniq -c

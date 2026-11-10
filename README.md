@@ -1,6 +1,10 @@
 ## Project Overview
 
-Acclaimed Games is a video game ranking and aggregation website built with:
+Acclaimed Media ranks the most critically acclaimed video games and albums by
+aggregating critics' lists. One Django app serves three hosts:
+[acclaimedmedia.org](https://acclaimedmedia.org) (a landing page),
+[games.acclaimedmedia.org](https://games.acclaimedmedia.org) and
+[music.acclaimedmedia.org](https://music.acclaimedmedia.org). It is built with:
 - **Django** - Backend framework with server-side rendering
 - **HTMX** - Dynamic interactions without full page reloads
 - **Alpine.js** - Client-side reactivity for UI components
@@ -13,8 +17,9 @@ For detailed documentation, see [AGENTS.md](AGENTS.md).
 
 ### Prerequisites
 
-- Python 3
-- Node.js (for Tailwind CSS)
+- Python, at the release in `.python-version` (3.14)
+- Node.js (for Tailwind CSS, minifying JavaScript and the tests that run the
+  client code)
 - Git
 - Heroku CLI
 
@@ -66,26 +71,37 @@ python3 manage.py migrate
 python3 manage.py createsuperuser
 ```
 
-Then import data via `/import/` (see [Import New Data](#import-new-data) below).
+Then load the checked-in ranking releases, which also fetch the metadata they
+need if the credentials in `.env` allow it (`--no-metadata` skips that):
+
+```bash
+python3 manage.py import_games_data
+python3 manage.py import_music_data
+```
 
 ### Run Development Server
 
 ```bash
-python3 manage.py runserver
+DEBUG=True python3 manage.py runserver
 ```
+
+The host picks the site, as in production:
+
+- `http://games.localhost:8000/` - the game rankings
+- `http://music.localhost:8000/` - the album rankings
+- `http://localhost:8000/` - the landing page
 
 **Note:** The Tailwind CSS watcher (`python3 manage.py tailwind start`) is only needed if you're actively editing styles. The compiled CSS is committed to git, so for most dev work you just need the Django server.
 
 ## Deploy to Production
 
-```bash
-python3 manage.py tailwind build
-python3 manage.py collectstatic --noinput
-git add -A
-git commit -m "Your commit message"
-git push origin main
-git push heroku main
-```
+Deploys go through the `/deploy` skill (`.agent/skills/deploy/SKILL.md`),
+which is also the list of steps to follow by hand: build the CSS, minify the
+JavaScript, review the change, commit (the hooks run the tests), push to
+`main`, wait for CI,
+back up the database if migrations ship, push to Heroku and check
+`/healthz/`. Heroku runs only the Python buildpack, so the built CSS and the
+minified JavaScript are committed.
 
 ## CSS Workflow (Tailwind CSS)
 
@@ -105,9 +121,12 @@ The site uses django-tailwind with Tailwind CSS v4 and DaisyUI v5.
 Themes are configured in `styles.css`:
 ```css
 @plugin "daisyui" {
-  themes: forest --default, night, sunset, nord, lofi;
+  themes: ["lofi", "forest"];
 }
 ```
+
+lofi is the light theme and forest the dark one; see
+[docs/THEME_SYSTEM.md](docs/THEME_SYSTEM.md).
 
 ## Pre-commit Hooks
 
@@ -115,23 +134,26 @@ This repo uses [pre-commit](https://pre-commit.com/) to enforce code quality:
 
 - **Black** - Auto-formats Python code
 - **Flake8** - Lints for style violations
-- **Tests** - Runs full test suite
+- **Tests** - Runs the full suite under `pytest`
 - **Coverage** - Enforces 100% coverage
 
 Commits are blocked if any check fails. Run tests manually:
 
 ```bash
-python3 manage.py test games.tests
+pytest                       # everything, with the coverage gate
+pytest games/tests/test_api.py -o addopts=""   # one file, no coverage
 ```
 
 ## Import New Data
 
-The `/import/` page is for adding **new source lists** to the database (not for initial setup - use `sync_from_prod` for that).
+The staff `/import/` page on the games site is for loading a **new ranking
+release** (not for initial setup - use `sync_from_prod` for that). Music has
+its own at `/import/` on the music host, for its four release files.
 
 ### Quick Actions
 
 - **Load Test Data** - Load bundled test files (development only)
-- **Delete All Data** - Destructive maintenance reset for ranking data
+- **Delete Game Data** - Destructive maintenance reset for ranking data
 - **Fetch IGDB Data** - Pull cover art, descriptions, and genres
 
 ### Batch Import
@@ -146,8 +168,11 @@ Regular batch import replaces the existing ranking dataset in place. You do not 
 
 ### IGDB Import on Heroku
 
+An import fetches the metadata it left missing by itself. To run a pass by
+hand (`--` separates Heroku's flags from the command's):
+
 ```bash
-heroku run python3 manage.py get_igdb
+heroku run -- python manage.py get_igdb
 ```
 
 ## Contributing

@@ -7,7 +7,7 @@ body:
     attributes:
       label: Page
       description: The URL where it happens, filters included.
-      placeholder: https://acclaimedmedia.org/...
+      placeholder: https://games.acclaimedmedia.org/...
     validations:
       required: true
   - type: textarea

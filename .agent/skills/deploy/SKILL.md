@@ -87,9 +87,13 @@ the production-only install, the manifest-storage renders and the browser
 smoke test, none of which the pre-commit hook runs. Deploy a green commit:
 
 ```bash
-gh run list --workflow ci.yml --branch main --limit 1
+gh run list --workflow ci.yml --commit "$(git rev-parse HEAD)"
 gh run watch <run id> --exit-status
 ```
+
+Ask for the commit's own run: the newest run on `main` can be an earlier
+push's, or Monday's scheduled audit, and green for a commit that is not
+the one about to ship.
 
 If it fails, fix it and go round again; do not deploy.
 

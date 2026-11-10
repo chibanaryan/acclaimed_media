@@ -16,7 +16,8 @@ reproduce it. A short proof of concept helps more than a scanner report.
 
 In scope:
 
-- The live site, https://acclaimedmedia.org
+- The live site: https://acclaimedmedia.org, https://games.acclaimedmedia.org
+  and https://music.acclaimedmedia.org
 - The code in this repository
 
 Out of scope:

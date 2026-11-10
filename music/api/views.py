@@ -74,9 +74,10 @@ class MusicWriteAPIMixin(MusicReadAPIMixin):
     permission_classes = [IsAuthenticated]
 
 
-# Note on caching: these endpoints are uncached, and nothing has measured
-# whether they should be. `all/` is the one to look at first: games caches its
-# equivalent for an hour.
+# Note on caching: these endpoints are uncached. `all/`, the heavy one, was
+# measured on 2026-11-09 and left so: 319 ms at the median, but two requests
+# an hour, so an hour's entry would save about a CPU-minute a week (AGENTS.md,
+# "API Architecture"). Games caches its equivalent, which is asked for far more.
 
 
 class AlbumAllDataView(MusicReadAPIMixin, APIView):

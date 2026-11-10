@@ -20,8 +20,8 @@ Replies are best effort.
 ## Pull requests
 
 Open an issue before you write a pull request, and wait until we have agreed
-on the change. Pushing to `main` deploys the site, so I review every change
-myself, and a PR that arrives without that conversation may be closed.
+on the change. What is on `main` is what gets deployed, so I review every
+change myself, and a PR that arrives without that conversation may be closed.
 
 For an agreed change:
 

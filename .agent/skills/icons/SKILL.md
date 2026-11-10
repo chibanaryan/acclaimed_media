@@ -31,17 +31,17 @@ Example output: `.mdi-sort::before { content: "\F04BA"; }`
 
 ### Step 2: Add CSS rule to `base.html` inline styles
 
-Edit `games/templates/base.html` and find the `<style>` block around line 79-87. Add the icon to the appropriate line (83-86) in minified format:
+Edit `games/templates/base.html` and find the first `<style>` block in `<head>`, which starts with the `@font-face` rule for "Material Design Icons". Its last four lines hold the icons. Add yours to the appropriate one, in minified format:
 
 ```css
 .mdi-sort::before{content:"\F04BA"}.mdi-arrow-down::before{content:"\F0045"}
 ```
 
 **Icon categories in base.html:**
-- Line 83: UI icons (magnify, close, download, chevrons, etc.)
-- Line 84: Platform icons (playstation, xbox, nintendo, etc.)
-- Line 85: Navigation/misc icons (menu, home, trophy, etc.)
-- Line 86: Genre category icons (crosshairs, puzzle, etc.)
+- The line starting `.mdi-magnify`: UI icons (close, download, chevrons, etc.)
+- The line starting `.mdi-sony-playstation`: platform icons (xbox, nintendo, etc.)
+- The line starting `.mdi-star`: tracking, navigation and misc icons
+- The line starting `.mdi-bullseye-arrow`: genre category icons
 
 ### Step 3: Add the same mapping to `mdi-subset.css`
 
@@ -61,10 +61,11 @@ Run:
 ./scripts/build_mdi_subset.sh
 ```
 
-If dependencies are missing:
+It needs `pyftsubset` (`fonttools`, in the dev lock) and `brotli` (in the
+production lock). If either is missing:
 
 ```bash
-pip install fonttools brotli zopfli
+venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 ### Step 5: Use the icon in templates

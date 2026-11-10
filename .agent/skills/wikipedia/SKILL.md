@@ -41,8 +41,11 @@ python3 manage.py fetch_wikipedia_metadata --game "The Legend of Zelda" --save
 
 ### Results Storage
 
-- `WikipediaGameData` records - stores page titles
-- `WikipediaGenre` objects - stores genres
+- `WikipediaGameData` records - the page title, `wikidata_id`,
+  `primary_genre` and `all_genres` (text), with
+  `Game.primary_wikipedia_game_data` pointing at the game's primary one
+- `WikipediaGenre` objects - the genres themselves, linked from
+  `Game.wikipedia_genres`
 
 ---
 
@@ -77,7 +80,9 @@ Uses a cascade approach:
 
 ### Results Storage
 
-- `Game.wikipedia_primary_genre` - primary genre field
-- `Game.wikidata_id` - Wikidata entity ID
+- `WikipediaGameData.primary_genre` and `all_genres`, on the game's primary
+  record. It does not set `Game.wikipedia_genres`; `fetch_wikipedia_metadata`
+  does. `Game` has no `wikipedia_primary_genre` field, whatever the
+  command's help says
 
 **Note:** Use `fetch_wikipedia_metadata` instead if you also need Wikipedia page titles.

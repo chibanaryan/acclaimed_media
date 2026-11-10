@@ -70,33 +70,65 @@ with it.
    on the notification thread, with the link in its frame locals for Sentry,
    and ends the loop with the rest of the subscribers unsent.
 
+5. **The games filters have no roll-back when a server-side request
+   fails.** Before the engine has loaded, a filter request that fails leaves
+   the sidebar and heading naming filters the list does not show. Music puts
+   its controls back on the list's echo (`rollBackToTheList`); games would
+   need the same echo rendered by `_game_list_results.html`.
+6. **Music's remaining stale spells**, which `music/signals.py` does not
+   reach: an album's year or genres edited in the admin (the filter options,
+   a day, or `clear_music_caches`), and a tracking row given to another user
+   or an album deleted there (the readers' id sets, five minutes). Games'
+   year-count map likewise waits a day after a year is edited in the admin.
+7. **Books' client code**, if the section is ever picked up: `book_detail.html`
+   nests its head blocks in `content` as album detail did, and its scripts
+   read storage unguarded (see "Explicitly not doing").
+
 ## Music: after launch
 
 The section is public at `music.acclaimedmedia.org`, beside the games site and
 a landing page at the apex (2026-10-30; AGENTS.md, "Domain"). The pages keep a
 "Beta" badge while `music.config.MUSIC_BETA` is on.
 
-5. **New brand artwork.** The favicons still read "Acclaimed Video Games"
+8. **New brand artwork.** The favicons still read "Acclaimed Video Games"
    (`games/static/games/brand/`), and a page without artwork of its own has
    no `og:image` since the old one was removed; every page title already
    says Acclaimed Media. A new default goes in `base.html`'s `og_image` block,
    and the five templates overriding that block need a `{{ block.super }}`
    branch for items with no art.
 
-## Production memory
+## Production: after the 2026-11-09 pass ships
 
 The rankings page is 690 KB anonymous and 833 KB logged in, and the dyno
 runs gthread with three threads per worker (AGENTS.md, "Production memory
-budget").
+budget"). `--threads 3` was checked on 2026-11-09: over 72 hours the two
+workers peaked at 333 MiB RSS of the 512 MiB quota and swap was 0 but for
+one 6.9 MiB reading, so it stays.
 
-6. **Check `--threads 3` after a week.** The `Procfile` went from two
-   threads per worker to three on 2026-11-03, on a week of gthread at two
-   (2026-10-27 to 11-02) that peaked at 342 MiB RSS of the 512 MiB quota,
-   with swap never above 13 MiB. Around 2026-11-10, re-read
-   `memory.rss.bytes.max` and `memory.swap.bytes.max` from the metrics API
-   (AGENTS.md, "Production memory budget"); back to two if the peak nears
-   the quota or swap climbs. Since v914 an import's metadata fetch spends
-   ~85 MB in one worker while it runs, so read a week that held one.
+9. **Watch the two burst windows after the deploy.** A scraper asks for
+   3,500-4,800 filtered pages in five minutes at about 04:00 and 21:00 UTC,
+   and Sentry's uptime check timed out 11 times in the week to 2026-11-09
+   (AGENTS.md, "Caching"). After the deploy, read the uptime monitor across
+   the next two windows, `/`'s p50 inside them, and `heroku logs` for
+   "Autorestarting worker" during one.
+10. **Read a week of render-budget reports, then decide on
+    `ANON_RENDER_BUDGET_ENFORCE`.** The budget only logs: "Anonymous renders
+    over budget", at 10 in a burst (WARNING, the logs) and 100 and 1,000
+    (ERROR, Sentry). If the only bursts are the scraper's windows, turn it
+    on; if ordinary traffic reaches 100, raise
+    `ANON_RENDER_BUDGET_PER_SECOND` or `_BURST` first. HTMX partials are not
+    counted, so a scraper that learnt to send `HX-Request` would pass it.
+11. **Check memory under `--max-requests 2000`.** It was 500 until
+    2026-11-09, and memory was measured flat only to 1,000 renders. The page
+    cache also holds ~200 more pages, ~12 MB a worker. After a few days read
+    `memory.rss.bytes.max` and `memory.swap.bytes.max` from the metrics API;
+    back to 1,000 if the peak climbs towards the quota. An import's metadata
+    fetch spends ~85 MB in one worker while it runs, so read a week that
+    held one.
+12. **Merge the Dependabot queue.** #32 is Django 6.1.3, a security release;
+    #31 and #30 wait with it. Their `audit` jobs were red on oauthlib 4.0.0
+    (CVE-2026-49272), which the pass's first commit bumps, so they go green
+    once that is on `main` and they rebase (`/upgrade-deps`).
 
 ## Music: not worth doing as parity
 

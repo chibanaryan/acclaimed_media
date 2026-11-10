@@ -1,5 +1,38 @@
 # Developer Log
 
+## 2026-11-09
+
+- **The pages a scraper asks for are kept whole.** Twice a day a scraper on
+  a residential-proxy network asked for 3,500-4,800 filtered rankings pages
+  in five minutes, one address each, and Sentry's uptime check timed out 11
+  times in a week. A games page for one year, decade, platform or genre is
+  now cached for anonymous visitors whatever its `highlight` or tracking
+  tags say, the highlight is applied in the browser, and the CSV link is a
+  button. A per-process render budget counts the renders that are left and
+  reports a burst; refusing them waits on `ANON_RENDER_BUDGET_ENFORCE`.
+  Workers recycle after 2,000 requests, not 500
+- **Music's counts follow an edit made anywhere.** A tracking row, album,
+  artist, list or publication changed in the admin, or a deleted user, left
+  the listener counts stale for an hour and the heading's for a day
+- **An album search is 3 queries, not one more per result**; a game page's
+  "#N of M" follows an import instead of waiting a day; a cross-site link no
+  longer carries a port a caller wrote in `Host`, which also made a fresh
+  copy of every cached page per port
+- **Names with quotes render whole** ('Bonnie "Prince" Billy' ended its
+  `title` early in client-rendered rows), a filter request answered with an
+  error no longer puts the error page in the list, and the games filters
+  start with cookies blocked, where an unguarded storage read stopped them
+- **A mobile row's title is a link**, so the keyboard can open it; icon-only
+  buttons are named, the saved-filter menus say when a load or delete
+  failed, and scripted scrolls respect reduced motion
+- **Album pages load their tracking script once**, not twice, and year links
+  and the server-side filter fetch skip a redirect hop through `/games/`
+- **oauthlib 4.0.1** for CVE-2026-49272, which had CI's audit red. Unrouted
+  404s and slash redirects are one Sentry transaction each, not one per path
+- Removed nine unused templates, 52 unused CSS rules (251 KB to 238 KB) and
+  the code and skipped tests only they used. CI now fails where it skipped:
+  a missing bundle member, a missing Node, a Django removal warning
+
 ## 2026-11-05
 
 - **The rank distribution chart counts albums on the music site.** Its
