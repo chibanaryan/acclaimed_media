@@ -177,7 +177,7 @@ def _igdb_progress(update_relationships, force_refresh, start_thread):
     from games import igdb
     from games.services.igdb_importer import IGDBImportService
 
-    # Use a bounded queue to prevent unbounded memory growth if the client is slow/disconnects
+    # A bounded queue, so a slow or disconnected client cannot grow it without limit
     event_queue = queue.Queue(maxsize=1000)
 
     # Event to signal when client disconnects
@@ -420,7 +420,7 @@ def _wikipedia_progress(force_refresh, start_thread):
     from games.services.wiki_page_lookup_service import WikiPageLookupService
     from games.services.wiki_genre_service import WikiGenreService
 
-    # Use a bounded queue to prevent unbounded memory growth if the client is slow/disconnects
+    # A bounded queue, so a slow or disconnected client cannot grow it without limit
     event_queue = queue.Queue(maxsize=1000)
 
     # Event to signal when client disconnects
@@ -705,7 +705,7 @@ def _wikipedia_progress(force_refresh, start_thread):
             while True:
                 try:
                     # Wait for event with 15-second timeout for keepalive
-                    # Send keepalive pings to prevent Heroku from closing idle connections
+                    # Keepalive pings stop Heroku closing an idle connection
                     event_json = event_queue.get(timeout=15)
 
                     # None signals the end of the lookup
@@ -807,7 +807,7 @@ def import_batch_with_progress(data: Dict[str, Any]):
     import queue
     import threading
 
-    # Use a bounded queue to prevent unbounded memory growth if the client is slow/disconnects
+    # A bounded queue, so a slow or disconnected client cannot grow it without limit
     event_queue = queue.Queue(maxsize=1000)
 
     # Event to signal when client disconnects
@@ -1155,7 +1155,7 @@ def clear_igdb_metadata() -> Tuple[bool, str]:
 
 def clear_wikipedia_metadata() -> Tuple[bool, str]:
     """
-    Delete all Wikipedia metadata records and derived data (both connected and orphaned).
+    Delete all Wikipedia metadata records and derived data, connected and orphaned.
 
     Returns:
         Tuple of (success, message)
@@ -1641,7 +1641,7 @@ def import_platforms(
     """
     Import platform code/name pairs from a TSV file.
 
-    Updates existing platforms, creates new ones, and deletes platforms not in the import.
+    Updates existing platforms, creates new ones, and deletes those not in the import.
     Preserves year_start and year_end fields for existing platforms.
 
     Args:
@@ -1737,7 +1737,8 @@ def import_platforms(
 
         return (
             True,
-            f"Platforms: {created_count} created, {updated_count} updated (deleted {deleted_count} old)",
+            f"Platforms: {created_count} created, {updated_count} updated "
+            f"(deleted {deleted_count} old)",
         )
 
     except Exception:

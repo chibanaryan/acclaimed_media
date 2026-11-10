@@ -8,13 +8,11 @@ now renders the corpus's counts as `year-baseline-counts-data` for the grid
 to scale by, and the grid caps the opacity.
 """
 
-import unittest
-
 from django.core.cache import cache
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
-from core.tests.node import node_available, run_node
+from core.tests.node import require_node, run_node
 from music import config, models
 from music.services.caching import invalidate_music_caches
 from music.tests.site import music_site
@@ -27,8 +25,7 @@ class YearGridScaleTests(SimpleTestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        if not node_available():
-            raise unittest.SkipTest("Node is not installed")
+        require_node()
         cls.output = run_node("year_grid_baseline.js")
 
     def test_the_page_baseline_sets_the_scale(self):

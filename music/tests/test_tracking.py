@@ -10,6 +10,8 @@ from pathlib import Path
 from django.conf import settings
 from django.contrib.staticfiles import finders
 from django.core.cache import cache
+
+from core.tests.utils import clear_all_caches
 from django.template.loader import render_to_string
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
@@ -29,7 +31,7 @@ class ToggleListenedAlbumViewTests(TestCase):
     """Setting a status, and the markup that comes back."""
 
     def setUp(self):
-        cache.clear()
+        clear_all_caches()
         self.user = User.objects.create_user(username="reader", password="pw")
         self.client.login(username="reader", password="pw")
         self.album = models.Album.objects.create(

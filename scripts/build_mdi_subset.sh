@@ -17,7 +17,7 @@ MDI_VERSION="7.4.47"
 MDI_FONT_URL="https://cdn.jsdelivr.net/npm/@mdi/font@${MDI_VERSION}/fonts/materialdesignicons-webfont.woff2"
 
 if ! command -v pyftsubset >/dev/null 2>&1; then
-  echo "pyftsubset is required (pip install fonttools brotli zopfli)"
+  echo "pyftsubset is required (pip install -r requirements.txt -r requirements-dev.txt)"
   exit 1
 fi
 

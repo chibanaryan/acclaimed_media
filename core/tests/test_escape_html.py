@@ -8,12 +8,10 @@ title was ``title="Bonnie "``. One site worked around it by hand.
 """
 
 import json
-import unittest
-
 from django.test import SimpleTestCase
 from django.utils.html import escape
 
-from core.tests.node import node_available, run_node
+from core.tests.node import require_node, run_node
 
 CASES = [
     'Bonnie "Prince" Billy',
@@ -29,8 +27,7 @@ class EscapeHtmlParityTests(SimpleTestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        if not node_available():
-            raise unittest.SkipTest("Node is not installed")
+        require_node()
         cls.output = run_node("escape_html.js", json.dumps(CASES + [None, 0, 1999]))
 
     def test_it_escapes_what_django_escapes_as_django_does(self):

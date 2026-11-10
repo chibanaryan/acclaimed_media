@@ -18,6 +18,10 @@ whitenoise
 # WhiteNoise's compressed static files at collectstatic.
 Brotli
 
+# Imported directly by refresh_all_metadata's Wikipedia pass, so named here:
+# it was pinned only as howlongtobeatpy's dependency, and would have gone
+# with it.
+aiohttp
 beautifulsoup4
 howlongtobeatpy
 markdown

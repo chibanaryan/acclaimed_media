@@ -560,6 +560,15 @@ class FetchWikipediaMetadataCommandTests(TestCase):
                 stdout=out,
             )
 
+        # Only the real genre is linked. (This test asserted nothing, so the
+        # command could have linked all three.)
+        self.game1.refresh_from_db()
+        self.assertEqual(
+            [genre.name for genre in self.game1.wikipedia_genres.all()], ["Action"]
+        )
+        for junk in ("(minigame)", "Various"):
+            self.assertFalse(WikipediaGenre.objects.filter(name=junk).exists())
+
     def test_command_maps_orphan_root_labels_to_canonical_genres(self):
         """Test future Wikipedia fetches do not recreate orphan root genres."""
         out = StringIO()

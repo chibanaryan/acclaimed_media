@@ -20,6 +20,10 @@ pre-commit
 pip-audit
 pip-tools
 
+# scripts/build_mdi_subset.sh: pyftsubset. The Brotli its WOFF2 output needs
+# is production's.
+fonttools
+
 # Loaded only when DEBUG is on (settings.py, urls.py).
 django-debug-toolbar
 # shell_plus, and runserver_plus over HTTPS.

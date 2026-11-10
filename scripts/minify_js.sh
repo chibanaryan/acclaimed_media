@@ -17,6 +17,9 @@
 
 set -e
 
+# The paths below are relative to the repository root, wherever it is run from
+cd "$(dirname "$0")/.."
+
 TERSER="terser@5.51.2"
 CHECK=0
 if [ "${1:-}" = "--check" ]; then
@@ -26,7 +29,7 @@ fi
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-# Resolved once: npx costs about a second a call, and there are 25 sources.
+# Resolved once: npx costs about a second a call, and there are 26 sources.
 TERSER_BIN="$(npx --yes -p "$TERSER" -c 'command -v terser')"
 
 GAMES_JS_DIR="games/static/games/js"
@@ -35,6 +38,8 @@ MUSIC_JS_DIR="music/static/music/js"
 CORE_JS_DIR="core/static/core/js"
 
 CHANGED=0
+# A bundle that could not be built: one of its members is missing
+INCOMPLETE=0
 
 # Put $2 in place at $1 if it differs, or in --check mode report that it does.
 update_if_changed() {
@@ -91,7 +96,9 @@ minify_dir() {
 # extends BaseMediaListRenderer, or the bundle throws a ReferenceError as it
 # loads and nothing declared after that point registers. A bundle missing one
 # of its members is worse than no bundle at all - the failure is invisible
-# until the browser runs it - so an incomplete set is skipped loudly.
+# until the browser runs it - so an incomplete set is skipped loudly, and
+# fails the run. It only printed until 2026-11-09, so `--check` exited 0 and
+# CI's `js` job passed with a bundle that no longer matched its sources.
 build_bundle() {
     local bundle="$1"
     shift
@@ -99,8 +106,11 @@ build_bundle() {
     local src
 
     for src in "${sources[@]}"; do
-        if [ ! -f "$src" ]; then
-            echo "Skipping $(basename "$bundle"): missing $src"
+        # In --check mode a member whose .min.js is not committed yet was
+        # minified to $TMP_DIR above and is only stale, which is reported
+        if [ ! -f "$src" ] && ! { [ $CHECK -eq 1 ] && [ -f "$TMP_DIR/$src" ]; }; then
+            echo "Skipping $(basename "$bundle"): missing $src" >&2
+            INCOMPLETE=1
             return
         fi
     done
@@ -146,6 +156,11 @@ build_bundle "$MUSIC_JS_DIR/music-client-side-filtering.bundle.min.js" \
     "$MUSIC_JS_DIR/album-filter.min.js" \
     "$MUSIC_JS_DIR/album-list-renderer.min.js" \
     "$MUSIC_JS_DIR/album-client-filtering.min.js"
+
+if [ $INCOMPLETE -eq 1 ]; then
+    echo "A bundle is missing a member and was not built." >&2
+    exit 1
+fi
 
 if [ $CHANGED -eq 0 ]; then
     echo "All minified JS files are up to date."

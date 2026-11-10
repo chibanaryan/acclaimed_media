@@ -3,7 +3,6 @@
 import datetime
 import re
 from functools import cached_property
-from urllib.parse import urlencode
 
 from django.db.models import Count, Max, Q
 from django.db.models.functions import Lower
@@ -540,30 +539,6 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
             "years": landing_pages.get_landing_years(),
             "decades": landing_pages.get_landing_decades(),
         }
-        context["download_query"] = urlencode(
-            {
-                **({"q": filters["q"]} if filters["q"] else {}),
-                **({"start": filters["start"]} if has_year_filter else {}),
-                **({"end": filters["end"]} if has_year_filter else {}),
-                **(
-                    {"genres": ",".join(filters["genres"])} if filters["genres"] else {}
-                ),
-                **(
-                    {"platforms": ",".join(filters["platforms"])}
-                    if filters["platforms"]
-                    else {}
-                ),
-                **(
-                    {"series": ",".join(filters["series"])} if filters["series"] else {}
-                ),
-                **(
-                    {"sort": filters["sort"]}
-                    if self.request.GET.get("sort")
-                    and self.request.GET.get("sort") != "rank"
-                    else {}
-                ),
-            }
-        )
         context["min_year"] = min_year
         context["max_year"] = max_year
         # No `highlight` here: the page is kept whole for anonymous visitors

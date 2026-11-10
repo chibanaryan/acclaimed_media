@@ -193,6 +193,10 @@ DEBUG_TOOLBAR = DEBUG and importlib.util.find_spec("debug_toolbar") is not None
 if DEBUG_TOOLBAR:
     INSTALLED_APPS.append("debug_toolbar")
     MIDDLEWARE.append("debug_toolbar.middleware.DebugToolbarMiddleware")
+    # The toolbar asks for Django's own app-directories loader by name and
+    # does not see through core.template_loaders, which wraps it. Its
+    # templates load all the same, and every `manage.py` run said this.
+    SILENCED_SYSTEM_CHECKS = ["debug_toolbar.W006"]
 
 TEMPLATES = [
     {

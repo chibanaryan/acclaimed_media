@@ -1,6 +1,9 @@
 """Tests for SavedFilterSet model and API."""
 
-from django.test import TestCase
+import json
+
+from django.conf import settings
+from django.test import Client, TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
 
@@ -84,7 +87,12 @@ class SavedFilterSetModelTests(TestCase):
 
 
 class SavedFilterSetAPITests(TestCase):
-    """Test cases for SavedFilterSet API endpoints."""
+    """Test cases for SavedFilterSet API endpoints.
+
+    Signed in with a real session (`force_login`), not `force_authenticate`,
+    which skips authentication altogether: with it these passed whatever
+    authenticator the views named, or none (AGENTS.md, "API Architecture").
+    """
 
     def setUp(self):
         """Set up test client and data."""
@@ -115,7 +123,7 @@ class SavedFilterSetAPITests(TestCase):
             user=self.other_user, name="Other User Filter", filters={}
         )
 
-        self.client.force_authenticate(user=self.user)
+        self.client.force_login(self.user)
         url = reverse("games-api:saved-filter-list")
         response = self.client.get(url)
 
@@ -136,7 +144,7 @@ class SavedFilterSetAPITests(TestCase):
 
     def test_create_saved_filter(self):
         """Test creating a new saved filter."""
-        self.client.force_authenticate(user=self.user)
+        self.client.force_login(self.user)
         url = reverse("games-api:saved-filter-list")
 
         filters = {"q": "mario", "genres": [1, 2], "platforms": []}
@@ -158,7 +166,7 @@ class SavedFilterSetAPITests(TestCase):
 
     def test_create_requires_name(self):
         """Test that create requires a name."""
-        self.client.force_authenticate(user=self.user)
+        self.client.force_login(self.user)
         url = reverse("games-api:saved-filter-list")
 
         response = self.client.post(
@@ -172,7 +180,7 @@ class SavedFilterSetAPITests(TestCase):
 
     def test_create_name_max_length(self):
         """Test that create enforces name max length."""
-        self.client.force_authenticate(user=self.user)
+        self.client.force_login(self.user)
         url = reverse("games-api:saved-filter-list")
 
         long_name = "x" * 256  # Exceeds 255 char limit
@@ -187,7 +195,7 @@ class SavedFilterSetAPITests(TestCase):
 
     def test_create_enforces_10_filter_limit(self):
         """Test that create enforces maximum of 10 saved filters."""
-        self.client.force_authenticate(user=self.user)
+        self.client.force_login(self.user)
         url = reverse("games-api:saved-filter-list")
 
         # Create 10 filters
@@ -212,7 +220,7 @@ class SavedFilterSetAPITests(TestCase):
             user=self.user, name="Old Name", filters={}
         )
 
-        self.client.force_authenticate(user=self.user)
+        self.client.force_login(self.user)
         url = reverse("games-api:saved-filter-detail", kwargs={"pk": saved.id})
 
         response = self.client.patch(
@@ -231,7 +239,7 @@ class SavedFilterSetAPITests(TestCase):
         """Test that rename requires a name."""
         saved = SavedFilterSet.objects.create(user=self.user, name="Test", filters={})
 
-        self.client.force_authenticate(user=self.user)
+        self.client.force_login(self.user)
         url = reverse("games-api:saved-filter-detail", kwargs={"pk": saved.id})
 
         response = self.client.patch(
@@ -246,7 +254,7 @@ class SavedFilterSetAPITests(TestCase):
         """Test that rename enforces name max length."""
         saved = SavedFilterSet.objects.create(user=self.user, name="Test", filters={})
 
-        self.client.force_authenticate(user=self.user)
+        self.client.force_login(self.user)
         url = reverse("games-api:saved-filter-detail", kwargs={"pk": saved.id})
 
         response = self.client.patch(
@@ -265,7 +273,7 @@ class SavedFilterSetAPITests(TestCase):
         )
         saved_id = saved.id
 
-        self.client.force_authenticate(user=self.user)
+        self.client.force_login(self.user)
         url = reverse("games-api:saved-filter-detail", kwargs={"pk": saved.id})
 
         response = self.client.delete(url)
@@ -279,7 +287,7 @@ class SavedFilterSetAPITests(TestCase):
             user=self.other_user, name="Other User Filter", filters={}
         )
 
-        self.client.force_authenticate(user=self.user)
+        self.client.force_login(self.user)
         url = reverse("games-api:saved-filter-detail", kwargs={"pk": other_saved.id})
 
         # Try to rename
@@ -300,7 +308,7 @@ class SavedFilterSetAPITests(TestCase):
 
     def test_delete_nonexistent_filter(self):
         """Test deleting a nonexistent filter returns 404."""
-        self.client.force_authenticate(user=self.user)
+        self.client.force_login(self.user)
         url = reverse("games-api:saved-filter-detail", kwargs={"pk": 99999})
 
         response = self.client.delete(url)
@@ -310,7 +318,7 @@ class SavedFilterSetAPITests(TestCase):
         """Test that creating a filter with duplicate name is rejected."""
         SavedFilterSet.objects.create(user=self.user, name="My Filter", filters={})
 
-        self.client.force_authenticate(user=self.user)
+        self.client.force_login(self.user)
         url = reverse("games-api:saved-filter-list")
 
         response = self.client.post(
@@ -329,7 +337,7 @@ class SavedFilterSetAPITests(TestCase):
             user=self.user, name="Second Filter", filters={}
         )
 
-        self.client.force_authenticate(user=self.user)
+        self.client.force_login(self.user)
         url = reverse("games-api:saved-filter-detail", kwargs={"pk": second.id})
 
         response = self.client.patch(
@@ -347,7 +355,7 @@ class SavedFilterSetAPITests(TestCase):
             user=self.user, name="My Filter", filters={}
         )
 
-        self.client.force_authenticate(user=self.user)
+        self.client.force_login(self.user)
         url = reverse("games-api:saved-filter-detail", kwargs={"pk": saved.id})
 
         response = self.client.patch(
@@ -357,3 +365,46 @@ class SavedFilterSetAPITests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+
+
+class SavedFilterCsrfTests(TestCase):
+    """The saved-filter endpoints write, so a session alone is not enough.
+
+    The test client does not enforce CSRF unless asked, and every test above
+    posts without a token, so nothing showed that one is required.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="csrfreader", password="pw")
+        self.list_url = reverse("games-api:saved-filter-list")
+        self.client = Client(enforce_csrf_checks=True)
+        self.client.login(username="csrfreader", password="pw")
+
+    def test_a_post_without_a_token_is_rejected(self):
+        response = self.client.post(
+            self.list_url,
+            json.dumps({"name": "No token", "filters": {}}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(SavedFilterSet.objects.count(), 0)
+
+    def test_a_post_carrying_the_token_succeeds(self):
+        # The token the browser would have, got as the browser gets it: by
+        # loading a page
+        self.client.get(reverse("home"))
+        token = self.client.cookies[settings.CSRF_COOKIE_NAME].value
+        response = self.client.post(
+            self.list_url,
+            json.dumps({"name": "With token", "filters": {}}),
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=token,
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(SavedFilterSet.objects.count(), 1)
+
+    def test_a_delete_without_a_token_is_rejected(self):
+        saved = SavedFilterSet.objects.create(user=self.user, name="Kept", filters={})
+        url = reverse("games-api:saved-filter-detail", args=[saved.pk])
+        self.assertEqual(self.client.delete(url).status_code, 403)
+        self.assertTrue(SavedFilterSet.objects.filter(pk=saved.pk).exists())

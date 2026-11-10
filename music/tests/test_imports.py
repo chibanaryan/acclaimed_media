@@ -22,6 +22,8 @@ from core.models import User
 from music import config, models
 from music.services import caching, import_handler
 from django.core.cache import cache
+
+from core.tests.utils import clear_all_caches
 from django.urls import reverse
 from games.models import SiteMetadata
 from music.tests.test_views import ClearsCachesMixin
@@ -1450,7 +1452,7 @@ class ImportReconnectsTrackingTests(TestCase):
     """
 
     def setUp(self):
-        cache.clear()
+        clear_all_caches()
         self.user = User.objects.create_user(username="listener", password="pw")
         import_artists()
         import_handler.import_albums(StringIO(ALBUMS_TSV))

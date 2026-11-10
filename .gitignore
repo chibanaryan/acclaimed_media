@@ -15,7 +15,6 @@ coverage.xml
 .pytest_cache
 .vscode
 __pycache__
-familyfiles
 htmlcov/*
 static/*
 staticfiles/*
@@ -23,8 +22,10 @@ staticfiles/*
 .playwright-mcp/
 django_cache/
 media/
-games/fixtures/prod_dump.json
 core/fixtures/
+
+# Scratch space the agent workspaces (Conductor, Claude Code) keep per checkout
+.context/
 
 # Per-person Claude Code settings (permissions, local paths)
 .claude/settings.local.json

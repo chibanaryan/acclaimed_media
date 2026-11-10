@@ -9,6 +9,8 @@ album and the unique constraint would reject the second.
 from datetime import datetime
 
 from django.core.cache import cache
+
+from core.tests.utils import clear_all_caches
 from django.test import TestCase
 
 from core.models import User
@@ -18,7 +20,7 @@ from music.services import user_tracking_service
 
 class ReconnectTrackingRecordsTests(TestCase):
     def setUp(self):
-        cache.clear()
+        clear_all_caches()
         self.user = User.objects.create_user(username="listener", password="pw")
         self.album = models.Album.objects.create(
             name="Doolittle",

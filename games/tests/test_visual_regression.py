@@ -18,7 +18,6 @@ Reference files that must stay in sync:
 
 import json
 import re
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -28,6 +27,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client, SimpleTestCase, TestCase
 from django.urls import reverse
 
+from core.tests.node import require_node
 from core.tests.utils import clear_all_caches
 from games import models
 from games.platform_years import PLATFORM_YEAR_RANGES
@@ -838,8 +838,7 @@ class ClientPlatformHierarchyParityTests(SimpleTestCase):
     """
 
     def setUp(self):
-        if shutil.which("node") is None:
-            self.skipTest("Node is not installed")
+        require_node()
 
     @staticmethod
     def _virtual_ids(hierarchy):

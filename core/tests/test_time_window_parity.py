@@ -7,12 +7,10 @@ branches in the wrong order.
 """
 
 import json
-import unittest
-
 from django.test import SimpleTestCase
 
 from core.services import titles
-from core.tests.node import node_available, run_node
+from core.tests.node import require_node, run_node
 
 CASES = [
     (1970, 2026, 1970, 2026),  # all of it
@@ -36,8 +34,7 @@ class TimeWindowParityTests(SimpleTestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        if not node_available():
-            raise unittest.SkipTest("Node is not installed")
+        require_node()
         cls.output = run_node("time_window.js", json.dumps(CASES))
         cls.expected = [titles.build_time_window(*case) for case in CASES]
 

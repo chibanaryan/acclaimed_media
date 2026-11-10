@@ -598,8 +598,9 @@ tests cannot catch a divergence here, because both sides can be
 self-consistently wrong. On its first run it found games' name sort comparing
 with `localeCompare` against the database's collation. Games now send `ni` as
 music does, and the server sorts by `Lower(name)`. The test skips where Node
-is missing; CI's runners have it. Add a query there when adding a filter or
-a sort.
+is missing, but not in CI, where the test jobs install Node and a missing one
+fails (`core/tests/node.py:require_node`): a skip there was a pass nobody
+saw. Add a query there when adding a filter or a sort.
 
 ### Album tracking
 
@@ -2641,13 +2642,12 @@ Material Design Icons are shipped as a local WOFF2 subset to reduce transfer siz
 ```
 
 **Dependencies:**
-- `pyftsubset` (from `fonttools`)
-- `brotli`
-- `zopfli`
+- `pyftsubset` (from `fonttools`, in the dev lock since 2026-11-09)
+- `brotli` (in the production lock)
 
-Install once if missing:
+Both come with the usual install:
 ```bash
-pip install fonttools brotli zopfli
+pip install -r requirements.txt -r requirements-dev.txt
 ```
 
 The script scans icon codepoints from `games/templates/base.html` and `games/static/games/css/mdi-subset.css`, then rewrites `games/static/games/fonts/materialdesignicons-webfont.woff2` in place.

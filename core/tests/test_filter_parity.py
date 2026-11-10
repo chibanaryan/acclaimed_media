@@ -4,7 +4,7 @@ AGENTS.md asks for this check after any filter change, and it was run by
 hand: unit tests on either side cannot catch a divergence, because both can
 be self-consistently wrong. Here the server renders each query, Node runs the
 real engine files on the same data (`core/tests/js/filter_parity.js`), and
-the two orders must match. Skipped where Node is not installed.
+the two orders must match. Skipped where Node is not installed, except in CI.
 """
 
 import datetime
@@ -15,7 +15,7 @@ from pathlib import Path
 
 from django.test import TestCase
 
-from core.tests.node import node_available, run_node
+from core.tests.node import require_node, run_node
 from core.tests.utils import clear_all_caches
 from games.models import Game, HLTBGameData, Platform, Series, WikipediaGenre
 from music import models as music
@@ -35,8 +35,7 @@ def run_engines(payloads):
 
 class ParityTestCase(TestCase):
     def setUp(self):
-        if not node_available():
-            self.skipTest("Node is not installed")
+        require_node()
         clear_all_caches()
 
     def _server_order(self, url, id_pattern):

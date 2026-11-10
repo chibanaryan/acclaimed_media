@@ -58,6 +58,11 @@ jobs:
           python-version-file: .python-version
           cache: pip
           cache-dependency-path: requirements-dev.txt
+      # The parity tests run the real JavaScript under Node, and fail here
+      # rather than skip if it is missing (core/tests/node.py)
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
       # Both locks at once: pip refuses two different pins for one package,
       # so a production lock recompiled without the dev lock fails here.
       - run: pip install -r requirements.txt -r requirements-dev.txt
@@ -92,6 +97,11 @@ jobs:
           python-version-file: .python-version
           cache: pip
           cache-dependency-path: requirements-dev.txt
+      # The parity tests run the real JavaScript under Node, and fail here
+      # rather than skip if it is missing (core/tests/node.py)
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
       # Both locks at once: pip refuses two different pins for one package,
       # so a production lock recompiled without the dev lock fails here.
       - run: pip install -r requirements.txt -r requirements-dev.txt

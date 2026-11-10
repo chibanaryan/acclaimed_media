@@ -4,19 +4,16 @@ Run under Node on the real file: what is tested is that nothing throws, which
 a source-text test cannot see.
 """
 
-import unittest
-
 from django.test import SimpleTestCase
 
-from core.tests.node import node_available, run_node
+from core.tests.node import require_node, run_node
 
 
 class UtilsBaseTests(SimpleTestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        if not node_available():
-            raise unittest.SkipTest("Node is not installed")
+        require_node()
         cls.output = run_node("utils_base.js")
 
     def test_refused_storage_reads_as_nothing_stored(self):

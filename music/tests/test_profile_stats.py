@@ -14,7 +14,7 @@ from django.urls import reverse
 from core import sites
 from core.models import User
 from core.services import percentile
-from core.tests.utils import get_on_site
+from core.tests.utils import clear_all_caches, get_on_site
 from games.models import Game, PlayedGame
 from music import config, models
 from music.services.listening_stats import (
@@ -43,7 +43,7 @@ def mark(user, album, **fields):
 
 class ListeningStatsTests(TestCase):
     def setUp(self):
-        cache.clear()
+        clear_all_caches()
         self.user = User.objects.create_user(username="reader", password="pw")
 
     def test_each_state_is_counted_apart(self):
@@ -85,7 +85,7 @@ class ListeningStatsTests(TestCase):
 
 class RankMessageTests(TestCase):
     def setUp(self):
-        cache.clear()
+        clear_all_caches()
         self.user = User.objects.create_user(username="reader", password="pw")
         self.albums = [make_album(n) for n in range(1, 13)]
 
@@ -206,7 +206,7 @@ class RankMessageTests(TestCase):
 
 class ListenerDistributionCacheTests(TestCase):
     def setUp(self):
-        cache.clear()
+        clear_all_caches()
         self.user = User.objects.create_user(username="reader", password="pw")
         self.album = make_album(1)
         mark(self.user, self.album)
@@ -244,7 +244,7 @@ class ListenerDistributionCacheTests(TestCase):
 
 class ProfileModalTests(TestCase):
     def setUp(self):
-        cache.clear()
+        clear_all_caches()
         self.reader = User.objects.create_user(
             username="reader", email="r@example.com", password="pw"
         )

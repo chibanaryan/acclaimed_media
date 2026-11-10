@@ -25,7 +25,11 @@ class ClientSideFiltering {
         this.minYear = 1970;
         this.maxYear = new Date().getFullYear();
         this._hasRenderedUI = false;  // Track if CSF has taken over the UI
-        this._viewMode = readStoredPreference('gameViewMode') || 'list';
+        // utils-base.js's helper, which guards a browser that refuses
+        // storage. Asked for by `typeof`: this bundle is fetched on its own,
+        // and must still construct if that script has not run
+        this._viewMode = (typeof readStoredPreference === 'function' &&
+            readStoredPreference('gameViewMode')) || 'list';
     }
 
     /**
@@ -34,7 +38,7 @@ class ClientSideFiltering {
      */
     setViewMode(mode) {
         this._viewMode = mode;
-        storePreference('gameViewMode', mode);
+        if (typeof storePreference === 'function') storePreference('gameViewMode', mode);
     }
 
     /**
