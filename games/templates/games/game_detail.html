@@ -3,10 +3,10 @@
 
 {% block title %}{{ game.name }} | Acclaimed Media{% endblock %}
 
-{% block meta_description %}{{ game.name }} ({{ game.year_of_release }}) - Ranked #{{ game.rank }} among the most critically acclaimed video games of all time. View critic list appearances and rankings.{% endblock %}
+{% block meta_description %}{{ game.name }}{% if game.year_of_release %} ({{ game.year_of_release }}){% endif %} - Ranked #{{ game.rank }} among the most critically acclaimed video games of all time. View critic list appearances and rankings.{% endblock %}
 
 {% block og_title %}{{ game.name }} | Acclaimed Media{% endblock %}
-{% block og_description %}{{ game.name }} ({{ game.year_of_release }}) is ranked #{{ game.rank }} among the most critically acclaimed games of all time.{% endblock %}
+{% block og_description %}{{ game.name }}{% if game.year_of_release %} ({{ game.year_of_release }}){% endif %} is ranked #{{ game.rank }} among the most critically acclaimed games of all time.{% endblock %}
 {% block og_image %}{% if game.image_og %}<meta property="og:image" content="{{ game.image_og }}">{% endif %}{% endblock %}
 {% block twitter_card %}{% if game.image_og %}summary_large_image{% else %}summary{% endif %}{% endblock %}
 
@@ -28,7 +28,7 @@
 {% block content %}
 {% if game %}
     <h1 class="text-3xl font-bold mb-4 flex items-center gap-3">
-        <span>{{ game.name }} ({{ game.year_of_release }})</span>
+        <span>{{ game.name }}{% if game.year_of_release %} ({{ game.year_of_release }}){% endif %}</span>
         {% if user.is_authenticated and game.igdb_id %}
             {% include 'games/includes/_played_button.html' with size='large' %}
         {% endif %}

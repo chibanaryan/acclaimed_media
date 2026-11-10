@@ -224,17 +224,27 @@ class AlbumListRenderer extends BaseMediaListRenderer {
         if (titleLink) titleLink.href = url;
         this._fillSlot(card, 'year-grid', album.year === null ? '' : album.year);
 
-        this._fillSlot(card, 'creator', album.artistCredit || '');
+        // An overlay line with nothing to say is left out, as
+        // _album_card_grid.html leaves it out and the games card does: left
+        // in empty, each still took its gap in the overlay's column.
+        const creator = card.querySelector('[data-slot="creator"]');
+        if (creator && album.artistCredit) {
+            creator.textContent = album.artistCredit;
+        } else if (creator) {
+            creator.remove();
+        }
         const genres = card.querySelector('[data-slot="genres-grid"]');
-        if (genres) {
+        if (genres && album.genres.length) {
             genres.textContent = album.genres.map(genre => genre.n).join(' / ');
+        } else if (genres) {
+            genres.remove();
         }
         const listCount = card.querySelector('[data-slot="list-count-grid"]');
-        if (listCount) {
+        if (listCount && album.listCount) {
             const label = album.listCount === 1 ? 'list' : 'lists';
-            listCount.textContent = album.listCount
-                ? `${album.listCount} ${label}`
-                : '';
+            listCount.textContent = `${album.listCount} ${label}`;
+        } else if (listCount) {
+            listCount.remove();
         }
 
         return card;

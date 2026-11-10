@@ -106,14 +106,14 @@
                             </button>
                             <div class="flex shrink-0">
                                 <button type="button"
-                                        class="btn btn-ghost btn-sm btn-square text-base-content/50 active:text-info"
+                                        class="btn btn-ghost btn-sm btn-square text-base-content/65 active:text-info"
                                         @click.stop="renameSavedFilter(filter)"
                                         title="Rename"
                                         :aria-label="'Rename ' + filter.name">
                                     <span class="mdi mdi-pencil text-lg" aria-hidden="true"></span>
                                 </button>
                                 <button type="button"
-                                        class="btn btn-ghost btn-sm btn-square text-base-content/50 active:text-error"
+                                        class="btn btn-ghost btn-sm btn-square text-base-content/65 active:text-error"
                                         @click.stop="deleteSavedFilter(filter)"
                                         title="Delete"
                                         :aria-label="'Delete ' + filter.name">
@@ -164,6 +164,7 @@
                 <input type="text"
                        x-model="filters.q"
                        @input.debounce.500ms="debouncedFilterUpdate()"
+                       aria-label="Filter results by name"
                        placeholder="Filter results"
                        class="grow">
                 <button type="button"

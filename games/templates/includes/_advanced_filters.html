@@ -171,14 +171,14 @@
                                         </button>
                                         <div class="flex gap-0.5 shrink-0 ml-auto">
                                             <button type="button"
-                                                    class="btn btn-ghost btn-xs text-base-content/50 hover:text-info hover:bg-transparent"
+                                                    class="btn btn-ghost btn-xs text-base-content/65 hover:text-info hover:bg-transparent"
                                                     @click.stop="renameSavedFilter(filter)"
                                                     title="Rename"
                                                     :aria-label="'Rename ' + filter.name">
                                                 <span class="mdi mdi-pencil text-sm" aria-hidden="true"></span>
                                             </button>
                                             <button type="button"
-                                                    class="btn btn-ghost btn-xs text-base-content/50 hover:text-error hover:bg-transparent"
+                                                    class="btn btn-ghost btn-xs text-base-content/65 hover:text-error hover:bg-transparent"
                                                     @click.stop="deleteSavedFilter(filter)"
                                                     title="Delete"
                                                     :aria-label="'Delete ' + filter.name">
@@ -382,10 +382,11 @@
 
     {# Save Filter Modal #}
     <dialog class="modal"
+            aria-labelledby="saveFilterModalTitle"
             x-effect="saveFilterModalOpen ? ($el.open || $el.showModal()) : ($el.open && $el.close())"
             @close="saveFilterModalOpen = false">
         <div class="modal-box max-w-sm">
-            <h3 class="font-bold text-lg mb-4">
+            <h3 id="saveFilterModalTitle" class="font-bold text-lg mb-4">
                 <span class="mdi mdi-bookmark-plus text-info" aria-hidden="true"></span>
                 Save Filter
             </h3>
@@ -429,10 +430,11 @@
 
     {# Rename Filter Modal #}
     <dialog class="modal"
+            aria-labelledby="renameFilterModalTitle"
             x-effect="renameFilterModalOpen ? ($el.open || $el.showModal()) : ($el.open && $el.close())"
             @close="renameFilterModalOpen = false">
         <div class="modal-box max-w-sm">
-            <h3 class="font-bold text-lg mb-4">
+            <h3 id="renameFilterModalTitle" class="font-bold text-lg mb-4">
                 <span class="mdi mdi-pencil text-info" aria-hidden="true"></span>
                 Rename Filter
             </h3>
@@ -475,10 +477,11 @@
 
     {# Delete Filter Modal #}
     <dialog class="modal"
+            aria-labelledby="deleteFilterModalTitle"
             x-effect="deleteFilterModalOpen ? ($el.open || $el.showModal()) : ($el.open && $el.close())"
             @close="deleteFilterModalOpen = false">
         <div class="modal-box max-w-sm">
-            <h3 class="font-bold text-lg mb-4">
+            <h3 id="deleteFilterModalTitle" class="font-bold text-lg mb-4">
                 <span class="mdi mdi-delete text-error" aria-hidden="true"></span>
                 Delete Filter
             </h3>

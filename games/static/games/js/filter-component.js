@@ -75,6 +75,7 @@ document.addEventListener('alpine:init', () => {
         _popstateListener: null,
         _gameStatusListener: null,
         _mobileFilterListener: null,
+        _needCsfListener: null,
 
         // Saved filters state
         savedFiltersOpen: false,
@@ -123,6 +124,9 @@ document.addEventListener('alpine:init', () => {
             }
             if (this._mobileFilterListener) {
                 window.removeEventListener('mobile-filter-opened', this._mobileFilterListener);
+            }
+            if (this._needCsfListener) {
+                window.removeEventListener('acclaimed:need-csf', this._needCsfListener);
             }
             if (this._debouncedFilter) this._debouncedFilter.cancel();
             if (this._debouncedUpdate) this._debouncedUpdate.cancel();
@@ -283,7 +287,6 @@ document.addEventListener('alpine:init', () => {
                 });
 
                 setTimeout(() => { if (typeof initLoadMore === 'function') initLoadMore(); }, 150);
-                if (typeof initYearPreview === 'function') initYearPreview();
 
                 this._gameStatusListener = (event) => {
                     if (this.filters.played && this.filters.played.length > 0 && this.clientFilterReady) {
@@ -305,9 +308,10 @@ document.addEventListener('alpine:init', () => {
                 // focus. Loading it is not enough: until this component inits
                 // the engine, every jump fell back to fetching each page
                 // down to the target from the server.
-                window.addEventListener('acclaimed:need-csf', () => {
+                this._needCsfListener = () => {
                     this.requestClientFilteringInit('jump-to-rank');
-                });
+                };
+                window.addEventListener('acclaimed:need-csf', this._needCsfListener);
 
                 this.initialized = true;
                 this.dispatchInitialCounts();

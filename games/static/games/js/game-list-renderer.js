@@ -1215,8 +1215,8 @@ class GameListRenderer extends BaseMediaListRenderer {
         if (maxLoaded || !hasMore) {
             const totalDisplay = total ? total.toLocaleString() : '';
             return `
-                <div class="text-base-content/50 text-sm">
-                    <span class="mdi mdi-check-circle-outline"></span>
+                <div class="text-base-content/65 text-sm">
+                    <span class="mdi mdi-check-circle-outline" aria-hidden="true"></span>
                     <span>All ${totalDisplay} results loaded</span>
                 </div>
             `;

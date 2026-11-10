@@ -77,6 +77,7 @@
                         {# Manufacturer Icon and Name - click to toggle selection #}
                         <button type="button"
                                 class="flex items-center gap-2 flex-1 text-left"
+                                :aria-pressed="isManufacturerSelected(mfrKey) ? 'true' : 'false'"
                                 @click="toggleManufacturerSelection(mfrKey); debouncedFilterUpdate();">
                             <template x-if="platformHierarchy[mfrKey].svgFile">
                                 <img :src="platformHierarchy[mfrKey].svgFile" class="w-4 h-4" aria-hidden="true">

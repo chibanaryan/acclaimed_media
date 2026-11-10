@@ -902,7 +902,11 @@
                                         const errorMsg = data.file
                                             ? `${data.file}: ${data.message}`
                                             : data.message
-                                        errorList.innerHTML += `<div>${errorMsg}</div>`
+                                        // As text: the message carries the uploaded
+                                        // file's name, which was read as markup
+                                        const errorRow = document.createElement('div')
+                                        errorRow.textContent = errorMsg
+                                        errorList.appendChild(errorRow)
                                     }
                                 } catch (parseError) {
                                     console.error('Error parsing SSE data:', parseError, line)
@@ -938,7 +942,9 @@
                 } catch (error) {
                     console.error('Import error:', error)
                     errorsContainer.style.display = 'block'
-                    errorList.innerHTML = `<div>Connection error: ${error.message}</div>`
+                    const errorRow = document.createElement('div')
+                    errorRow.textContent = `Connection error: ${error.message}`
+                    errorList.replaceChildren(errorRow)
                     submitBtn.disabled = false
                     submitBtn.innerHTML = '<span class="mdi mdi-upload" aria-hidden="true"></span>Import Files'
                 }
@@ -1017,8 +1023,9 @@
                             alert.className = 'alert alert-success shadow-lg fixed top-4 right-4 w-96 z-50'
                             alert.innerHTML = `
                                 <span class="mdi mdi-check-circle" aria-hidden="true"></span>
-                                <span>IGDB data fetch completed! Fetched data for ${data.total} games.</span>
+                                <span></span>
                             `
+                            alert.lastElementChild.textContent = `IGDB data fetch completed! Fetched data for ${data.total} games.`
                             document.body.appendChild(alert)
                             setTimeout(() => {
                                 window.location.reload()
@@ -1031,8 +1038,9 @@
                         alert.className = 'alert alert-error shadow-lg fixed top-4 right-4 w-96 z-50'
                         alert.innerHTML = `
                             <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
-                            <span>Error: ${data.error}</span>
+                            <span></span>
                         `
+                        alert.lastElementChild.textContent = `Error: ${data.error}`
                         document.body.appendChild(alert)
                         progressContainer.style.display = 'none'
                     }
@@ -1134,8 +1142,9 @@
                                 : `Found pages for ${data.total} games`
                             alert.innerHTML = `
                                 <span class="mdi mdi-check-circle" aria-hidden="true"></span>
-                                <span>Wikipedia page lookup completed! ${summaryText}.</span>
+                                <span></span>
                             `
+                            alert.lastElementChild.textContent = `Wikipedia page lookup completed! ${summaryText}.`
                             document.body.appendChild(alert)
                             setTimeout(() => {
                                 window.location.reload()
@@ -1148,8 +1157,9 @@
                         alert.className = 'alert alert-error shadow-lg fixed top-4 right-4 w-96 z-50'
                         alert.innerHTML = `
                             <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
-                            <span>Error: ${data.error}</span>
+                            <span></span>
                         `
+                        alert.lastElementChild.textContent = `Error: ${data.error}`
                         document.body.appendChild(alert)
                         progressContainer.style.display = 'none'
                     }
@@ -1228,8 +1238,9 @@
                                     : `Refreshed pages for ${data.total} games`
                                 alert.innerHTML = `
                                     <span class="mdi mdi-check-circle" aria-hidden="true"></span>
-                                    <span>Wikipedia force refresh completed! ${summaryText}.</span>
+                                    <span></span>
                                 `
+                                alert.lastElementChild.textContent = `Wikipedia force refresh completed! ${summaryText}.`
                                 document.body.appendChild(alert)
                                 setTimeout(() => {
                                     window.location.reload()
@@ -1242,8 +1253,9 @@
                             alert.className = 'alert alert-error shadow-lg fixed top-4 right-4 w-96 z-50'
                             alert.innerHTML = `
                                 <span class="mdi mdi-alert-circle" aria-hidden="true"></span>
-                                <span>Error: ${data.error}</span>
+                                <span></span>
                             `
+                            alert.lastElementChild.textContent = `Error: ${data.error}`
                             document.body.appendChild(alert)
                             progressContainer.style.display = 'none'
                         }

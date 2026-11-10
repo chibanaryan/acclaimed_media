@@ -11,7 +11,7 @@
 </h2>
 
 <div class="flex flex-wrap items-center gap-2 mb-6 min-h-[2.5rem]">
-    {% include 'core/includes/_search_box.html' with input_id='artist-search' placeholder='Search by name' value=current_q hx_get=request.path hx_target='#artist-results-wrapper' hx_include="[name='sort'], [name='dir']" %}
+    {% include 'core/includes/_search_box.html' with input_id='artist-search' label='Search artists by name' placeholder='Search by name' value=current_q hx_get=request.path hx_target='#artist-results-wrapper' hx_include="[name='sort'], [name='dir']" %}
 
     {# Only beside the search box: on a phone the sort wraps below it, and the divider was left hanging at the end of the first line. #}
     <div class="hidden desktop:block w-px h-6 bg-base-content/20"></div>

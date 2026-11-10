@@ -167,9 +167,72 @@ function updateDomElements(contentMap) {
         const element = document.getElementById(elementId);
         if (element) {
             element.innerHTML = innerHTML;
+            // The games rankings' server-rendered filter change lands here
+            announceResultCount(element);
         }
     });
 }
+
+// ============================================================
+// LIVE ANNOUNCEMENTS
+// ============================================================
+
+var _announceTimer = null;
+
+/**
+ * Says `text` to a screen reader, through the one live region base.html
+ * keeps outside every container that is swapped (#live-announcer).
+ *
+ * A result count sits inside the list a server render replaces, and a live
+ * region that arrives with its text already in it is usually not read out;
+ * the entity lists' counts (#results-count) were in no live region at all.
+ * A count the client renderer rewrites in place is in a region that stayed
+ * put, and announces itself: do not call this for those.
+ *
+ * @param {string} text - What to say; whitespace is collapsed
+ */
+function announce(text) {
+    const region = document.getElementById('live-announcer');
+    if (!region) return;
+    const message = String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
+    clearTimeout(_announceTimer);
+    // Emptied first, so the same words twice running are still a change,
+    // and filled a moment later, so a burst says only its last
+    region.textContent = '';
+    if (!message) return;
+    _announceTimer = setTimeout(() => {
+        region.textContent = message;
+    }, 100);
+}
+
+/**
+ * Announces the result count inside `root`, if it holds one: a rankings
+ * page's (the desktop wording, "Showing 100 of 432", whichever is on
+ * screen) or an entity list's heading.
+ * @param {Element} root - A container the server has just rendered into
+ */
+function announceResultCount(root) {
+    if (!root || typeof root.querySelector !== 'function') return;
+    const count = root.querySelector('[data-result-count="desktop"]') ||
+        root.querySelector('[data-result-count]') ||
+        root.querySelector('#results-count');
+    if (count) announce(count.textContent);
+}
+
+// An htmx swap that brings a count with it: music's server-side filter
+// changes, and the artists and source-lists pages. The engine cancels the
+// rankings' requests once it answers them itself, so its renders never get
+// here. A Load More that moves an entity list's count sends the new number
+// out of band, into a heading that is no live region.
+document.addEventListener('htmx:afterSettle', (event) => {
+    announceResultCount(event.detail && event.detail.target);
+});
+document.addEventListener('htmx:oobAfterSwap', (event) => {
+    const moved = event.target;
+    if (!moved || moved.id !== 'loaded-count' || typeof moved.closest !== 'function') return;
+    const heading = moved.closest('#results-count');
+    if (heading) announce(heading.textContent);
+});
 
 // ============================================================
 // TIMING UTILITIES
@@ -740,14 +803,15 @@ function clearLoading(elementId) {
  * @param {string} apiUrl - API endpoint URL
  * @returns {Promise<Object>} Search results with developers, games, and series arrays
  */
-async function searchUnified(query, developerLimit, gameLimit, seriesLimit, apiUrl) {
+async function searchUnified(query, developerLimit, gameLimit, seriesLimit, apiUrl, signal) {
     const trimmedQuery = query.trim();
     if (trimmedQuery.length < 2) {
         return { developers: [], games: [], series: [], order: null };
     }
 
     const response = await fetch(
-        `${apiUrl}?q=${encodeURIComponent(trimmedQuery)}&developer_limit=${developerLimit}&game_limit=${gameLimit}&series_limit=${seriesLimit}`
+        `${apiUrl}?q=${encodeURIComponent(trimmedQuery)}&developer_limit=${developerLimit}&game_limit=${gameLimit}&series_limit=${seriesLimit}`,
+        signal ? { signal } : undefined
     );
 
     if (!response.ok) {
@@ -793,6 +857,13 @@ var SEARCH_GROUPS_GAMES = ['games', 'series', 'developers'];
  * @returns {Object} Alpine component data
  */
 function createUnifiedSearchData(apiUrl, developerLimit = 3, gameLimit = 5, seriesLimit = 3) {
+    // Only the newest request may write: each one aborts the one before, and
+    // an aborted one writes nothing, `loading` included. A slow answer for
+    // "ma" used to replace the results for "mario", and emptying the box
+    // while a request was out brought its results back. Outside the returned
+    // object, so Alpine does not wrap it.
+    const requests = new FetchManager();
+
     return {
         showMenu: false,
         q: '',
@@ -821,34 +892,41 @@ function createUnifiedSearchData(apiUrl, developerLimit = 3, gameLimit = 5, seri
         async loadResults() {
             const trimmedQ = this.q.trim();
             if (trimmedQ.length < 2) {
+                requests.abort();
                 this.developers = [];
                 this.games = [];
                 this.series = [];
                 this.loading = false;
                 return;
             }
+            const signal = requests.newRequest();
             this.loading = true;
             this.developers = [];
             this.games = [];
             this.series = [];
             try {
-                const results = await searchUnified(trimmedQ, developerLimit, gameLimit, seriesLimit, apiUrl);
+                const results = await searchUnified(trimmedQ, developerLimit, gameLimit, seriesLimit, apiUrl, signal);
+                // Overtaken while it was read: a newer request owns the box
+                if (signal.aborted) return;
                 this.developers = results.developers;
                 this.games = results.games;
                 this.series = results.series;
                 this.order = searchGroupOrder(results.order, SEARCH_GROUPS_GAMES);
             } catch (e) {
+                if (signal.aborted) return;
                 console.error('Search error:', e);
                 this.developers = [];
                 this.games = [];
                 this.series = [];
                 this.order = SEARCH_GROUPS_GAMES.slice();
             } finally {
-                this.loading = false;
+                // An aborted request leaves `loading` to whatever replaced it
+                if (!signal.aborted) this.loading = false;
             }
         },
 
         reset() {
+            requests.abort();
             this.showMenu = false;
             this.q = '';
             this.developers = [];
@@ -858,45 +936,6 @@ function createUnifiedSearchData(apiUrl, developerLimit = 3, gameLimit = 5, seri
             this.loading = false;
         }
     };
-}
-
-// ============================================================
-// YEAR PREVIEW UTILITIES
-// ============================================================
-
-// Guard to prevent duplicate listener registration (memory leak fix)
-var _yearPreviewInitialized = false;
-
-/**
- * Initializes year preview highlighting during year grid drag selection
- */
-function initYearPreview() {
-    if (_yearPreviewInitialized) return;
-    _yearPreviewInitialized = true;
-    window.addEventListener('year-preview', handleYearPreview);
-}
-
-/**
- * Handles year preview event from year grid drag selection
- * @param {CustomEvent} event - Event with detail: { active, start, end }
- */
-function handleYearPreview(event) {
-    const { active, start, end } = event.detail;
-    const gameYears = document.querySelectorAll('.game-year[data-year]');
-
-    if (!active) {
-        gameYears.forEach(el => el.classList.remove('year-preview'));
-        return;
-    }
-
-    gameYears.forEach(el => {
-        const year = parseInt(el.dataset.year, 10);
-        if (year >= start && year <= end) {
-            el.classList.add('year-preview');
-        } else {
-            el.classList.remove('year-preview');
-        }
-    });
 }
 
 // ============================================================

@@ -69,6 +69,7 @@
                    class="grow"
                    name="q"
                    id="developer-search"
+                   aria-label="Search developers by name"
                    placeholder="Search by name"
                    x-model="q"
                    hx-get="{% url 'developers-list' %}"
@@ -119,6 +120,8 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
             if (resultsCount) {
                 const plural = totalCount == 1 ? '' : 's';
                 resultsCount.innerHTML = `Showing <span id="loaded-count">${parseInt(loadedCount).toLocaleString()}</span> of ${parseInt(totalCount).toLocaleString()} developer${plural}`;
+                // The heading is no live region: say the new count (utils-base.js)
+                if (typeof announce === 'function') announce(resultsCount.textContent);
             }
         }
     }

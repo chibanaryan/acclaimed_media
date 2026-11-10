@@ -129,10 +129,6 @@
 
 /* Custom theme extensions */
 @theme {
-  /* Gold accent colors */
-  --color-gold: #FFC107;
-  --color-gold-hover: #FFD54F;
-
   /* Container max widths */
   --container-max-w-reading: 800px;
   --container-max-w-container: 1440px;
@@ -295,15 +291,6 @@
 @layer components {
   .rank-indicator {
     @apply inline-flex items-center gap-2;
-  }
-
-  .rank-indicator-bar {
-    @apply w-24 h-2 bg-base-content/20 rounded-full overflow-hidden;
-  }
-
-  .rank-indicator-fill {
-    @apply h-full bg-primary rounded-full;
-    /* Width set via inline style: (1 - rank/total) * 100 */
   }
 }
 
@@ -1322,7 +1309,9 @@ html.quick-mark-game .played-button-wrapper:hover .played-button {
     display: none;
   }
 
-  /* Hover overlay - slides up from bottom */
+  /* Overlay - slides up from the bottom on hover, and when a link in the
+     card takes keyboard focus: on hover alone, the developer, platforms and
+     genres were there for the mouse only */
   .game-card-overlay,
   .media-card-overlay {
     @apply absolute inset-x-0 bottom-0 z-10;
@@ -1336,7 +1325,9 @@ html.quick-mark-game .played-button-wrapper:hover .played-button {
   }
 
   .game-card-grid:hover .game-card-overlay,
-  .media-card-grid:hover .media-card-overlay {
+  .media-card-grid:hover .media-card-overlay,
+  .game-card-grid:focus-within .game-card-overlay,
+  .media-card-grid:focus-within .media-card-overlay {
     opacity: 1;
     transform: translateY(0);
     pointer-events: auto;

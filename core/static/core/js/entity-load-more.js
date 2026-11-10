@@ -91,6 +91,9 @@
         if (lists && meta.totalListCount !== undefined) {
             lists.textContent = meta.totalListCount.toLocaleString();
         }
+        // The heading is no live region: say the new count (utils-base.js)
+        const heading = document.getElementById('results-count');
+        if (heading && typeof announce === 'function') announce(heading.textContent);
     }
 
     async function loadMore(button) {

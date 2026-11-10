@@ -47,7 +47,7 @@ Year published: ">
 
     {# Search input #}
     <div class="mb-6">
-        {% include 'core/includes/_search_box.html' with input_id='music-list-search' placeholder='Search publications' value=current_q hx_get=request.path hx_target='#filter-results-wrapper' hx_include="[name='type'], [name='year'], [name='sort'], [name='dir']" %}
+        {% include 'core/includes/_search_box.html' with input_id='music-list-search' label='Search publications' placeholder='Search publications' value=current_q hx_get=request.path hx_target='#filter-results-wrapper' hx_include="[name='type'], [name='year'], [name='sort'], [name='dir']" %}
     </div>
 
     <div id="filter-results-wrapper">

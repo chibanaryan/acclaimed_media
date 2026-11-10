@@ -1,5 +1,7 @@
 {# Auth Modal - modal-based authentication flow #}
-<dialog id="authModal" class="modal">
+{# Named by the heading of whichever partial is loaded, each of which carries #}
+{# id="authModalTitle"; aria-label names it until the first one arrives. #}
+<dialog id="authModal" class="modal" aria-labelledby="authModalTitle" aria-label="Account">
     <div class="modal-box bg-base-200 max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <button type="button"
                 class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"

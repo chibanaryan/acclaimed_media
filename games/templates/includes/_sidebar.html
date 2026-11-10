@@ -14,7 +14,7 @@
         {# sidebar uses. The section had none until it had an endpoint. #}
         <div class="relative"
              x-data="createMediaSearchData('{% url 'music-api:unified-search' %}', { artists: 3, albums: 5 })"
-             x-init="window.addEventListener('reset-search-state', () => reset())"
+             @reset-search-state.window="reset()"
              @click.away="showMenu = false">
             <label for="sidebar-search" class="sr-only">Search albums and artists</label>
             <label class="input input-bordered input-sm w-full bg-base-100 border-base-content/20">
@@ -27,6 +27,7 @@
                 <input type="text"
                        id="sidebar-search"
                        name="q"
+                       aria-label="Search albums and artists"
                        placeholder="Search all..."
                        class="grow"
                        x-model="q"
@@ -113,7 +114,7 @@
         {# Search bar #}
         <div class="relative"
              x-data="createUnifiedSearchData('{% url 'games-api:unified-search' %}', 3, 5)"
-             x-init="window.addEventListener('reset-search-state', () => reset())"
+             @reset-search-state.window="reset()"
              @click.away="showMenu = false">
             <label for="sidebar-search" class="sr-only">Search games, developers, and series</label>
             <label class="input input-bordered input-sm w-full bg-base-100 border-base-content/20">
@@ -126,15 +127,16 @@
                 <input type="text"
                        id="sidebar-search"
                        name="q"
+                       aria-label="Search games, developers, and series"
                        placeholder="Search all..."
                        class="grow"
                        x-model="q"
                        @focus="showMenu = true"
-                       @input.debounce.300ms="if(q.trim().length >= 2) { loadResults(); } else { developers = []; games = []; series = []; loading = false; }"
+                       @input.debounce.300ms="loadResults()"
                        @keydown.enter="if(q.trim().length >= 2) window.location.href = '{% url 'home' %}?q=' + encodeURIComponent(q.trim())"
                        autocomplete="off">
                 <button type="button"
-                        @click="q = ''; developers = []; games = []; series = []; showMenu = false"
+                        @click="reset()"
                         class="btn btn-ghost btn-xs btn-circle"
                         style="display: none"
                         :style="{ display: q.length > 0 ? 'flex' : 'none' }"

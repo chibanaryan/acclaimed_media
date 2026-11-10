@@ -24,12 +24,13 @@
                      showSearchDropdown: false,
                      ...createMediaSearchData('{% url 'music-api:unified-search' %}', { artists: 3, albums: 5 })
                  }"
-                 x-init="window.addEventListener('reset-search-state', () => { reset(); showSearchDropdown = false; })"
+                 @reset-search-state.window="reset(); showSearchDropdown = false"
                  @click.away="showSearchDropdown = false; reset()">
 
                 <button @click="showSearchDropdown = !showSearchDropdown; $nextTick(() => { if(showSearchDropdown) $refs.searchInputMobile.focus(); })"
                         class="btn btn-ghost btn-sm"
-                        aria-label="Search">
+                        aria-label="Search"
+                        :aria-expanded="showSearchDropdown ? 'true' : 'false'">
                     <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
                         <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2.5" fill="none" stroke="currentColor">
                             <circle cx="11" cy="11" r="8"></circle>
@@ -52,6 +53,7 @@
                             <input type="text"
                                    id="nav-search-mobile"
                                    name="q"
+                                   aria-label="Search albums and artists"
                                    x-ref="searchInputMobile"
                                    x-model="q"
                                    @focus="showMenu = true"
@@ -160,13 +162,14 @@
                      showSearchDropdown: false,
                      ...createUnifiedSearchData('{% url 'games-api:unified-search' %}', 3, 5)
                  }"
-                 x-init="window.addEventListener('reset-search-state', () => { reset(); showSearchDropdown = false; })"
-                 @click.away="showSearchDropdown = false; q = ''; developers = []; games = []; series = []; showMenu = false">
+                 @reset-search-state.window="reset(); showSearchDropdown = false"
+                 @click.away="showSearchDropdown = false; reset()">
 
                 {# Search button #}
                 <button @click="showSearchDropdown = !showSearchDropdown; $nextTick(() => { if(showSearchDropdown) $refs.searchInputMobile.focus(); })"
                         class="btn btn-ghost btn-sm"
-                        aria-label="Search">
+                        aria-label="Search"
+                        :aria-expanded="showSearchDropdown ? 'true' : 'false'">
                     <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
                         <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2.5" fill="none" stroke="currentColor">
                             <circle cx="11" cy="11" r="8"></circle>
@@ -190,16 +193,17 @@
                             <input type="text"
                                    id="nav-search-mobile"
                                    name="q"
+                                   aria-label="Search games, developers, and series"
                                    x-ref="searchInputMobile"
                                    x-model="q"
                                    @focus="showMenu = true"
-                                   @input.debounce.300ms="if(q.trim().length >= 2) { loadResults(); } else { developers = []; games = []; series = []; loading = false; }"
+                                   @input.debounce.300ms="loadResults()"
                                    @keydown.enter="if(q.trim().length >= 2) window.location.href = '{% url 'home' %}?q=' + encodeURIComponent(q.trim())"
                                    placeholder="Games, developers, series..."
                                    class="grow"
                                    autocomplete="off">
                             <button type="button"
-                                    @click="q = ''; developers = []; games = []; series = []; showMenu = false"
+                                    @click="reset()"
                                     class="btn btn-ghost btn-xs btn-circle"
                                     style="display: none"
                                     :style="{ display: q.length > 0 ? 'flex' : 'none' }"

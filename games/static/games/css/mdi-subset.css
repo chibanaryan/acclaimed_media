@@ -1,6 +1,6 @@
 /* Material Design Icons - subset mappings used by this project */
 /* Source glyph set is generated with scripts/build_mdi_subset.sh */
-/* Current WOFF2 payload is approximately 7 KiB */
+/* Current WOFF2 payload is approximately 10 KiB */
 
 /* Font face declaration - self-hosted with font-display: swap for fast FCP */
 @font-face {
@@ -59,7 +59,7 @@
 .mdi-nintendo-switch::before { content: "\F07E1"; }
 .mdi-nintendo-game-boy::before { content: "\F1393"; }
 .mdi-nintendo-wii::before { content: "\F05AB"; }
-.mdi-nintendo-wiiu::before { content: "\F072C"; }
+.mdi-nintendo-wiiu::before { content: "\F072D"; }
 /* Apple */
 .mdi-apple::before { content: "\F0035"; }
 .mdi-apple-ios::before { content: "\F0037"; }
@@ -70,25 +70,25 @@
 .mdi-gamepad::before { content: "\F0296"; }
 .mdi-gamepad-variant::before { content: "\F0297"; }
 .mdi-gamepad-square::before { content: "\F0EB5"; }
-.mdi-controller::before { content: "\F0B66"; }
-.mdi-controller-classic::before { content: "\F0B67"; }
+.mdi-controller::before { content: "\F02B4"; }
+.mdi-controller-classic::before { content: "\F0B82"; }
 /* Sega icons */
 .mdi-pinwheel::before { content: "\F0AD5"; }
 .mdi-fan::before { content: "\F0210"; }
-.mdi-alpha-s-circle::before { content: "\F0C34"; }
+.mdi-alpha-s-circle::before { content: "\F0C22"; }
 .mdi-run-fast::before { content: "\F046E"; }
 /* Computer/Retro */
-.mdi-floppy::before { content: "\F0218"; }
+.mdi-floppy::before { content: "\F0249"; }
 .mdi-desktop-classic::before { content: "\F07C0"; }
 .mdi-cellphone::before { content: "\F011C"; }
 /* Other */
 .mdi-pac-man::before { content: "\F0BAF"; }
 .mdi-space-invaders::before { content: "\F0BC9"; }
 .mdi-web::before { content: "\F059F"; }
-.mdi-virtual-reality::before { content: "\F0895"; }
+.mdi-virtual-reality::before { content: "\F0894"; }
 
 /* Load More button */
-.mdi-plus-circle-outline::before { content: "\F0763"; }
+.mdi-plus-circle-outline::before { content: "\F0419"; }
 .mdi-information-outline::before { content: "\F02FD"; }
 
 /* Navigation */
@@ -101,7 +101,7 @@
 .mdi-arrow-down::before { content: "\F0045"; }
 
 /* Sidebar navigation icons */
-.mdi-trophy::before { content: "\F0548"; }
+.mdi-trophy::before { content: "\F0538"; }
 .mdi-medal::before { content: "\F0987"; }
 .mdi-podium::before { content: "\F0D25"; }
 .mdi-account-group::before { content: "\F0849"; }
@@ -147,3 +147,17 @@
 .mdi-music-clef-bass::before { content: "\F0F6F"; }
 .mdi-boombox::before { content: "\F05DC"; }
 .mdi-skull::before { content: "\F068C"; }
+.mdi-account-plus::before { content: "\F0014"; }
+.mdi-email-alert::before { content: "\F06CF"; }
+.mdi-email-fast::before { content: "\F186F"; }
+.mdi-email-sync::before { content: "\F12C7"; }
+.mdi-unfold-less-horizontal::before { content: "\F054E"; }
+.mdi-upload::before { content: "\F0552"; }
+.mdi-refresh::before { content: "\F0450"; }
+.mdi-reload::before { content: "\F0453"; }
+.mdi-wikipedia::before { content: "\F05AC"; }
+.mdi-database::before { content: "\F01BC"; }
+.mdi-database-remove::before { content: "\F0D00"; }
+.mdi-file-document::before { content: "\F0219"; }
+.mdi-tools::before { content: "\F1064"; }
+.mdi-package::before { content: "\F03D3"; }

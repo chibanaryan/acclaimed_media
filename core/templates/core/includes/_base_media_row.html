@@ -122,7 +122,8 @@
                 {# click anywhere else, and skips one on a link inside. #}
                 <a {% if item %}href="{{ detail_url }}"{% endif %} class="link link-hover" data-slot="title-link-mobile">{% if item %}{{ item.name }}{% endif %}</a>
                 <span class="font-normal text-sm text-base-content/70" data-slot="year-mobile">
-                    {% if item %}({% firstof year_text item.year %}){% endif %}
+                    {# Nothing, not "()", for an undated item: the renderer writes none #}
+                    {% if item %}{% firstof year_text item.year as year_shown %}{% if year_shown %}({{ year_shown }}){% endif %}{% endif %}
                 </span>
             </div>
             <div class="text-xs text-base-content/65" data-slot="meta-mobile">

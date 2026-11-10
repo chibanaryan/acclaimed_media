@@ -44,12 +44,14 @@
             <button type="button"
                     class="join-item btn {% if mobile %}btn-sm h-10 px-2 gap-1{% else %}btn-xs h-8 px-2 gap-1{% endif %}"
                     :class="{ 'btn-primary': !(filters.{{ status_param }} || []).length }"
+                    :aria-pressed="!(filters.{{ status_param }} || []).length ? 'true' : 'false'"
                     @click="filters.{{ status_param }} = []; debouncedFilterUpdate()">All</button>
             {% for option in status_options %}
             {% if user.is_authenticated %}
             <button type="button"
                     class="join-item btn {% if mobile %}btn-sm h-10 px-2 gap-1{% else %}btn-xs h-8 px-2 gap-1{% endif %}"
                     :class="{ 'btn-primary': (filters.{{ status_param }} || []).includes('{{ option.value }}') }"
+                    :aria-pressed="(filters.{{ status_param }} || []).includes('{{ option.value }}') ? 'true' : 'false'"
                     @click="toggleStatusValue('{{ status_param }}', '{{ option.value }}')"
                     title="{{ option.title }}"
                     aria-label="Filter by {{ option.title|lower }}">

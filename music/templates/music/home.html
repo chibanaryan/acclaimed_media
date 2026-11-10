@@ -275,7 +275,7 @@ var listenStatusOptions = JSON.parse(
                 <label class="input input-bordered input-sm w-full bg-base-100">
                     <input type="search" name="q" value="{{ current_q }}" x-model="filters.q" data-filter-search
                            @input.debounce.350ms="debouncedFilterUpdate()"
-                           class="grow" placeholder="Album or artist" autocomplete="off">
+                           class="grow" aria-label="Search by album or artist" placeholder="Album or artist" autocomplete="off">
                 </label>
             </div>
 

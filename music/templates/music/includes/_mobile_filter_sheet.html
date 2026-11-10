@@ -92,6 +92,7 @@
                        x-model="filters.q"
                        data-filter-search
                        @input.debounce.500ms="debouncedFilterUpdate()"
+                       aria-label="Search by album or artist"
                        placeholder="Album or artist"
                        class="grow">
                 <button type="button"

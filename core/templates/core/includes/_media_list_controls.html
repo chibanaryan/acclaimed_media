@@ -67,6 +67,7 @@
                 <button type="button"
                         class="btn btn-xs btn-ghost px-1.5"
                         :class="viewMode === 'list' ? 'btn-active' : ''"
+                        :aria-pressed="viewMode === 'list' ? 'true' : 'false'"
                         @click="setViewMode('list')"
                         aria-label="List view">
                     <span class="mdi mdi-format-list-bulleted text-base" aria-hidden="true"></span>
@@ -76,6 +77,7 @@
                 <button type="button"
                         class="btn btn-xs btn-ghost px-1.5"
                         :class="viewMode === 'grid' ? 'btn-active' : ''"
+                        :aria-pressed="viewMode === 'grid' ? 'true' : 'false'"
                         @click="setViewMode('grid')"
                         aria-label="Grid view">
                     <span class="mdi mdi-view-grid text-base" aria-hidden="true"></span>
@@ -145,6 +147,7 @@
                 <button type="button"
                         class="btn btn-sm btn-ghost px-2 min-h-10"
                         :class="viewMode === 'list' ? 'btn-active' : ''"
+                        :aria-pressed="viewMode === 'list' ? 'true' : 'false'"
                         @click="setViewMode('list')"
                         aria-label="List view">
                     <span class="mdi mdi-format-list-bulleted text-base" aria-hidden="true"></span>
@@ -154,6 +157,7 @@
                 <button type="button"
                         class="btn btn-sm btn-ghost px-2 min-h-10"
                         :class="viewMode === 'grid' ? 'btn-active' : ''"
+                        :aria-pressed="viewMode === 'grid' ? 'true' : 'false'"
                         @click="setViewMode('grid')"
                         aria-label="Grid view">
                     <span class="mdi mdi-view-grid text-base" aria-hidden="true"></span>

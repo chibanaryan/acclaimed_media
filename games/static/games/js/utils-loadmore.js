@@ -800,8 +800,8 @@ function updateLoadMoreButton(button, meta) {
     if (!meta.hasMore || meta.maxLoaded) {
         const container = button.parentElement;
         container.innerHTML = `
-            <div class="text-base-content/50 text-sm">
-                <span class="mdi mdi-check-circle-outline"></span>
+            <div class="text-base-content/65 text-sm">
+                <span class="mdi mdi-check-circle-outline" aria-hidden="true"></span>
                 <span>All ${meta.totalCount.toLocaleString()} results loaded</span>
             </div>
         `;

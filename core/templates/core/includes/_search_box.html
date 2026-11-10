@@ -1,5 +1,6 @@
 {# Search input in the site's standard style. #}
-{# Props: name, input_id, placeholder, value, hx_get, hx_target, hx_include #}
+{# Props: name, input_id, placeholder, value, hx_get, hx_target, hx_include, #}
+{# and label, the input's accessible name (the placeholder's text without one). #}
 {# Matches the games source-lists search box so search looks the same #}
 {# everywhere. Keep every template comment on a single line. #}
 <label class="input input-bordered w-64 bg-base-200"
@@ -14,6 +15,7 @@
            class="grow"
            name="{{ name|default:'q' }}"
            id="{{ input_id }}"
+           aria-label="{% firstof label placeholder 'Search' %}"
            placeholder="{{ placeholder|default:'Search' }}"
            value="{{ value|default:'' }}"
            x-model="q"
