@@ -258,24 +258,3 @@ class PlatformSerializer(serializers.ModelSerializer):
             "code",
             "name",
         ]
-
-
-class DeveloperSearchSerializer(serializers.ModelSerializer):
-    """Lightweight serializer for developer search results in nav dropdown."""
-
-    # For navigation, use the root developer's slug (for URL routing)
-    root_slug = serializers.SerializerMethodField()
-    games_count = serializers.IntegerField()
-
-    class Meta:
-        model = models.Developer
-        fields = [
-            "id",
-            "name",
-            "root_slug",
-            "games_count",
-        ]
-
-    def get_root_slug(self, obj):
-        """Get the root developer's slug for URL routing."""
-        return obj.root_developer.slug if obj.root_developer else obj.slug

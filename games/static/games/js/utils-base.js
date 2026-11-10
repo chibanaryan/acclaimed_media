@@ -701,23 +701,6 @@ function getFiltersFromURL() {
     };
 }
 
-/**
- * Updates URL with filter parameter and navigates
- * @param {string} paramName - Parameter name
- * @param {string} value - Parameter value
- * @param {string} baseUrl - Base URL to navigate to
- */
-function updateFilterAndNavigate(paramName, value, baseUrl) {
-    const params = new URLSearchParams(window.location.search);
-    params.delete('page');
-    if (value) {
-        params.set(paramName, value);
-    } else {
-        params.delete(paramName);
-    }
-    window.location.href = baseUrl + '?' + params.toString();
-}
-
 // ============================================================
 // LOADING STATE UTILITIES
 // ============================================================
@@ -747,72 +730,6 @@ function clearLoading(elementId) {
 // ============================================================
 // SEARCH UTILITIES
 // ============================================================
-
-/**
- * Performs game search API call
- * @param {string} query - Search query
- * @param {number} limit - Max results
- * @param {string} apiUrl - API endpoint URL
- * @returns {Promise<Array>} Search results
- */
-async function searchGames(query, limit, apiUrl) {
-    const trimmedQuery = query.trim();
-    if (trimmedQuery.length < 2) {
-        return [];
-    }
-
-    const response = await fetch(
-        `${apiUrl}?q=${encodeURIComponent(trimmedQuery)}&limit=${limit}`
-    );
-
-    if (!response.ok) {
-        throw new Error('API request failed');
-    }
-
-    const data = await response.json();
-    return data.results || [];
-}
-
-/**
- * Creates Alpine.js search component data
- * @param {string} apiUrl - API endpoint for search
- * @param {number} limit - Max results to return
- * @returns {Object} Alpine component data
- */
-function createSearchData(apiUrl, limit = 5) {
-    return {
-        showMenu: false,
-        q: '',
-        results: [],
-        loading: false,
-
-        async loadResults() {
-            const trimmedQ = this.q.trim();
-            if (trimmedQ.length < 2) {
-                this.results = [];
-                this.loading = false;
-                return;
-            }
-            this.loading = true;
-            this.results = [];
-            try {
-                this.results = await searchGames(trimmedQ, limit, apiUrl);
-            } catch (e) {
-                console.error('Search error:', e);
-                this.results = [];
-            } finally {
-                this.loading = false;
-            }
-        },
-
-        reset() {
-            this.showMenu = false;
-            this.q = '';
-            this.results = [];
-            this.loading = false;
-        }
-    };
-}
 
 /**
  * Performs unified search API call for developers, games, and series

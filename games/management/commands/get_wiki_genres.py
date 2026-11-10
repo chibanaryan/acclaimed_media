@@ -220,8 +220,7 @@ class Command(BaseCommand):
 
                 # Update database if requested
                 if save_to_db and result.source != GenreSource.FAILED:
-                    # Use the new get_wikipedia_data method to create
-                    # WikipediaGameData records
+                    # Create the game's WikipediaGameData record
                     from games.models import WikipediaGameData
 
                     # First, unset is_primary on any existing records for this game

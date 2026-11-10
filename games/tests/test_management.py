@@ -1,4 +1,3 @@
-import unittest
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -725,11 +724,6 @@ class RefreshAllMetadataCommandTests(NoHeartbeatMixin, TestCase):
         # Verify output shows Pro tier
         self.assertIn("Using IGDB Pro tier", output)
 
-    @unittest.skip("Needs async mocking - async version uses aiohttp directly")
-    def test_wikipedia_genre_creation(self):
-        """Test that Wikipedia genres are created and linked"""
-        pass
-
     def test_no_games_message(self):
         """Test message when no games exist"""
         from io import StringIO
@@ -742,11 +736,6 @@ class RefreshAllMetadataCommandTests(NoHeartbeatMixin, TestCase):
         output = out.getvalue()
 
         self.assertIn("No games with IGDB IDs found", output)
-
-    @unittest.skip("Needs async mocking - async version uses aiohttp directly")
-    def test_wikipedia_genre_scraping_failure(self):
-        """Test genre scraping failure doesn't crash command"""
-        pass
 
     @mock.patch("games.management.commands.refresh_all_metadata.IGDBImportService")
     def test_igdb_progress_checkpoint(self, mock_igdb_service):
@@ -933,11 +922,6 @@ class RefreshAllMetadataCommandTests(NoHeartbeatMixin, TestCase):
         self.assertIn("Overall Status", output)
         # Should show COMPLETED WITH ERRORS due to failures
         self.assertTrue("SUCCESS" in output or "COMPLETED WITH ERRORS" in output)
-
-    @unittest.skip("Needs async mocking - async version uses aiohttp directly")
-    def test_wikipedia_genre_normalization(self):
-        """Test that Wikipedia genres are normalized to canonical forms."""
-        pass
 
 
 class ImportGamesDataCommandTests(TestCase):

@@ -541,26 +541,3 @@ def canonicalize_genre_payload(
         primary_name, all_names
     )
     return normalized_primary, normalized_all, ", ".join(normalized_all)
-
-
-# Statistics about the mapping
-def get_mapping_stats() -> dict:
-    """
-    Get statistics about the genre mapping.
-
-    Returns:
-        Dictionary with mapping statistics
-    """
-    valid_mappings = {k: v for k, v in GENRE_MAPPING.items() if v is not None}
-    invalid_mappings = {k: v for k, v in GENRE_MAPPING.items() if v is None}
-
-    # Count unique canonical genres
-    canonical_genres = set(valid_mappings.values())
-
-    return {
-        "total_variants": len(GENRE_MAPPING),
-        "valid_mappings": len(valid_mappings),
-        "invalid_mappings": len(invalid_mappings),
-        "canonical_genres": len(canonical_genres),
-        "canonical_list": sorted(canonical_genres),
-    }

@@ -47,12 +47,8 @@ class IgbdApi:
         # LRU caches with size limits to prevent memory leaks
         self.company_cache: OrderedDict[int, Dict[str, Any]] = OrderedDict()
         self.game_cache: OrderedDict[int, Dict[str, Any]] = OrderedDict()
-        self.genre_cache: OrderedDict[int, str] = OrderedDict()
-        self.series_cache: OrderedDict[int, Dict[str, Any]] = OrderedDict()
         self.company_cache_max_size: int = config.IGDB_COMPANY_CACHE_MAX_SIZE
         self.game_cache_max_size: int = config.IGDB_GAME_CACHE_MAX_SIZE
-        self.genre_cache_max_size: int = config.IGDB_GENRE_CACHE_MAX_SIZE
-        self.series_cache_max_size: int = config.IGDB_SERIES_CACHE_MAX_SIZE
         # Bounded dictionaries (populated once from IGDB API, finite size)
         self.release_date_statuses: Dict[str, int] = {}
         self.themes: Dict[int, str] = {}
@@ -127,56 +123,6 @@ class IgbdApi:
             # Evict oldest (first item)
             self.game_cache.popitem(last=False)  # pragma: no cover
         self.game_cache[game_id] = value
-
-    def _get_from_genre_cache(self, genre_id: int) -> Optional[str]:
-        """
-        Get genre from cache with LRU update (moves to end).
-        Thread-safe.
-        """
-        if genre_id in self.genre_cache:
-            # Move to end (most recently used)
-            value = self.genre_cache.pop(genre_id)
-            self.genre_cache[genre_id] = value
-            return value
-        return None
-
-    def _set_in_genre_cache(self, genre_id: int, value: str) -> None:
-        """
-        Set genre in cache with LRU eviction if at max size.
-        Thread-safe.
-        """
-        if genre_id in self.genre_cache:
-            # Update existing: move to end
-            self.genre_cache.pop(genre_id)  # pragma: no cover
-        elif len(self.genre_cache) >= self.genre_cache_max_size:  # pragma: no cover
-            # Evict oldest (first item)
-            self.genre_cache.popitem(last=False)  # pragma: no cover
-        self.genre_cache[genre_id] = value
-
-    def _get_from_series_cache(self, series_id: int) -> Optional[Dict[str, Any]]:
-        """
-        Get series from cache with LRU update (moves to end).
-        Thread-safe.
-        """
-        if series_id in self.series_cache:
-            # Move to end (most recently used)
-            value = self.series_cache.pop(series_id)
-            self.series_cache[series_id] = value
-            return value
-        return None
-
-    def _set_in_series_cache(self, series_id: int, value: Dict[str, Any]) -> None:
-        """
-        Set series in cache with LRU eviction if at max size.
-        Thread-safe.
-        """
-        if series_id in self.series_cache:
-            # Update existing: move to end
-            self.series_cache.pop(series_id)  # pragma: no cover
-        elif len(self.series_cache) >= self.series_cache_max_size:  # pragma: no cover
-            # Evict oldest (first item)
-            self.series_cache.popitem(last=False)  # pragma: no cover
-        self.series_cache[series_id] = value
 
     def _get_endpoint_url(self, endpoint: str) -> str:
         """
@@ -369,125 +315,6 @@ class IgbdApi:
             return
 
         self.release_date_statuses = {x["name"]: x["id"] for x in results}
-
-    def _get_cover_by_id(self, cover_id: int) -> Optional[str]:
-        """
-        Fetch cover art filename from IGDB API by cover ID.
-
-        Args:
-            cover_id: IGDB cover ID to fetch
-
-        Returns:
-            Cover filename if successful, None otherwise
-        """
-        try:
-            res = self._make_request_with_retry(
-                self._get_endpoint_url("covers"),
-                data=f"where id={cover_id}; fields url;",
-            )
-            if res is None:
-                return None
-            res.raise_for_status()
-            results = res.json()
-        except Exception as exc:
-            logger.warning("Unable to load IGDB cover %s: %s", cover_id, exc)
-            return None
-
-        if len(results) != 1:
-            logger.warning("Unexpected cover response for %s: %s", cover_id, results)
-            return None
-
-        return results[0]["url"].split("/")[-1]
-
-    def _get_company_by_id(
-        self, company_id: int, cache_results: bool = True
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Fetch developer (from IGDB companies endpoint) data by ID.
-
-        Thread-safe implementation with cache locking.
-
-        Args:
-            company_id: IGDB company ID to fetch
-            cache_results: Whether to use/store results in cache (default: True)
-
-        Returns:
-            Company data dict with id, name, slug, parent fields if successful,
-            None otherwise
-        """
-        if cache_results:
-            with self.cache_lock:
-                cached = self._get_from_company_cache(company_id)
-                if cached is not None:
-                    return cached
-
-        try:
-            res = self._make_request_with_retry(
-                self._get_endpoint_url("companies"),
-                data=f"where id={company_id}; fields id,name,slug,parent;",
-            )
-            if res is None:
-                return None
-            res.raise_for_status()
-            results = res.json()
-        except Exception as exc:
-            logger.warning("Unable to load IGDB company %s: %s", company_id, exc)
-            return None
-
-        if len(results) != 1:
-            logger.warning(
-                "Unexpected company response for %s: %s", company_id, results
-            )
-            return None
-
-        if cache_results:
-            with self.cache_lock:
-                self._set_in_company_cache(company_id, results[0])
-        return results[0]
-
-    def _get_genre_by_id(
-        self, genre_id: int, cache_results: bool = True
-    ) -> Optional[str]:
-        """
-        Fetch genre name from IGDB API by genre ID.
-
-        Thread-safe implementation with cache locking.
-
-        Args:
-            genre_id: IGDB genre ID to fetch
-            cache_results: Whether to use/store results in cache (default: True)
-
-        Returns:
-            Genre name if successful, None otherwise
-        """
-        if cache_results:
-            with self.cache_lock:
-                cached = self._get_from_genre_cache(genre_id)
-                if cached is not None:
-                    return cached
-
-        try:
-            res = self._make_request_with_retry(
-                self._get_endpoint_url("genres"),
-                data=f"where id={genre_id}; fields name;",
-            )
-            if res is None:
-                return None
-            res.raise_for_status()
-            results = res.json()
-        except Exception as exc:
-            logger.warning("Unable to load IGDB genre %s: %s", genre_id, exc)
-            return None
-
-        if len(results) != 1:
-            logger.warning("Unexpected genre response for %s: %s", genre_id, results)
-            return None
-
-        genre_name = results[0]["name"]
-        if cache_results:
-            with self.cache_lock:
-                self._set_in_genre_cache(genre_id, genre_name)
-        return genre_name
 
     def get_companies_by_ids(
         self, company_ids: list, cache_results: bool = True
@@ -742,10 +569,6 @@ class IgbdApi:
                         "slug": collection_obj.get("slug", ""),
                     }
                     series_data.append(series_info)
-                    # Cache the series data
-                    if cache_results:
-                        with self.cache_lock:
-                            self._set_in_series_cache(collection_obj["id"], series_info)
 
             # Extract first video's YouTube ID
             videos = data.get("videos", [])
@@ -958,10 +781,6 @@ class IgbdApi:
                     "slug": collection_obj.get("slug", ""),
                 }
                 series_data.append(series_info)
-                # Cache the series data
-                if cache_results:
-                    with self.cache_lock:
-                        self._set_in_series_cache(collection_obj["id"], series_info)
 
         # Extract first video's YouTube ID
         videos = data.get("videos", [])

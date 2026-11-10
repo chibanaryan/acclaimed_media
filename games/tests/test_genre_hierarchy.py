@@ -15,7 +15,6 @@ from games.services.genre_normalizer import (
     canonicalize_genre_payload,
     GENRE_MAPPING,
     get_genre_parent_name,
-    get_mapping_stats,
     get_or_create_genre,
     normalize_genre,
     normalize_genres,
@@ -23,9 +22,7 @@ from games.services.genre_normalizer import (
 from games.services.query_filters import (
     apply_genre_filter,
     apply_series_filter,
-    apply_wikipedia_genre_filter,
     _expand_single_genre_with_descendants,
-    _expand_genre_ids_with_descendants,
     genre_descendant_map,
 )
 
@@ -251,15 +248,6 @@ class GenreNormalizerTest(TestCase):
         # Unknown bases are left unchanged (and so still fall under Other)
         self.assertEqual(normalize_genre("Snorkel game"), "Snorkel game")
         self.assertEqual(normalize_genre("Game"), "Game")
-
-    def test_get_mapping_stats(self):
-        """Test the mapping statistics function."""
-        stats = get_mapping_stats()
-        self.assertIn("total_variants", stats)
-        self.assertIn("canonical_genres", stats)
-        self.assertIn("invalid_mappings", stats)
-        self.assertGreater(stats["total_variants"], 0)
-        self.assertGreater(stats["canonical_genres"], 0)
 
     def test_genre_mapping_has_expected_entries(self):
         """Test that GENRE_MAPPING has expected entries."""
@@ -752,89 +740,6 @@ class HierarchicalGenreFilterTest(TestCase):
             )
             ids = _expand_single_genre_with_descendants(self.action.id, descendants)
         self.assertEqual(ids, [self.action.id, *descendants[self.action.id]])
-
-
-class GameWikipediaGenreNormalizationTest(TestCase):
-    """Tests for genre normalization in Game.get_wikipedia_data()."""
-
-    def test_game_wikipedia_genres_uses_normalization(self):
-        """Test that saving wikipedia genres uses normalization."""
-        # Use existing Platform genre from migration or create unique one
-        platform, _ = WikipediaGenre.objects.get_or_create(
-            name="Platform Test Norm",
-            defaults={"slug": "platform-test-norm", "level": 1},
-        )
-
-        game = Game.objects.create(name="Test Platformer", rank=1)
-        game.wikipedia_genres.add(platform)
-
-        # The genre should be the canonical name
-        self.assertEqual(game.wikipedia_genres.count(), 1)
-        self.assertEqual(game.wikipedia_genres.first().name, "Platform Test Norm")
-
-
-class ExpandGenreIdsWithDescendantsTest(TestCase):
-    """Tests for the _expand_genre_ids_with_descendants helper."""
-
-    def setUp(self):
-        """Create test hierarchy."""
-        self.root = WikipediaGenre.objects.create(
-            name="Root Expand Test",
-            slug="root-expand-test",
-            level=0,
-        )
-        self.child1 = WikipediaGenre.objects.create(
-            name="Child1 Expand Test",
-            slug="child1-expand-test",
-            parent=self.root,
-            level=1,
-        )
-        self.child2 = WikipediaGenre.objects.create(
-            name="Child2 Expand Test",
-            slug="child2-expand-test",
-            parent=self.root,
-            level=1,
-        )
-
-    def test_expand_includes_descendants(self):
-        """Test expanding includes all descendants."""
-        expanded = _expand_genre_ids_with_descendants([self.root.id])
-        self.assertIn(self.root.id, expanded)
-        self.assertIn(self.child1.id, expanded)
-        self.assertIn(self.child2.id, expanded)
-
-    def test_expand_with_nonexistent_id(self):
-        """Test expanding handles nonexistent IDs gracefully."""
-        expanded = _expand_genre_ids_with_descendants([self.root.id, 99999])
-        # Should include root and children, plus the nonexistent ID
-        self.assertIn(self.root.id, expanded)
-        self.assertIn(99999, expanded)
-
-
-class ApplyWikipediaGenreFilterTest(TestCase):
-    """Tests for the apply_wikipedia_genre_filter convenience wrapper."""
-
-    def setUp(self):
-        """Create test data."""
-        self.genre = WikipediaGenre.objects.create(
-            name="Wrapper Test Genre",
-            slug="wrapper-test-genre",
-            level=1,
-        )
-        self.game = Game.objects.create(name="Wrapper Test Game", rank=1)
-        self.game.wikipedia_genres.add(self.genre)
-
-    def test_wrapper_filters_correctly(self):
-        """Test that the wrapper function filters correctly."""
-        qs = Game.objects.all()
-        filtered = apply_wikipedia_genre_filter(qs, [self.genre.id])
-        self.assertIn(self.game, filtered)
-
-    def test_wrapper_with_match_any(self):
-        """Test wrapper with match_any option."""
-        qs = Game.objects.filter(pk=self.game.pk)
-        filtered = apply_wikipedia_genre_filter(qs, [self.genre.id], match_all=False)
-        self.assertEqual(filtered.count(), 1)
 
 
 class ApplySeriesFilterTest(TestCase):

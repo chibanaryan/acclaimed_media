@@ -98,8 +98,6 @@ IGDB_PRO_TIER_BATCH_SIZE = 500
 # LRU cache sizes for IGDB API client
 IGDB_COMPANY_CACHE_MAX_SIZE = 1000
 IGDB_GAME_CACHE_MAX_SIZE = 1000
-IGDB_GENRE_CACHE_MAX_SIZE = 500
-IGDB_SERIES_CACHE_MAX_SIZE = 500
 
 # =============================================================================
 # Import Settings

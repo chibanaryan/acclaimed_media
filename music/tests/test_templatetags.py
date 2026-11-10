@@ -20,21 +20,15 @@ class SharedFilterReExportTests(TestCase):
             "tojson",
             "format_duration",
             "markdown",
-            "format_decade",
         ]:
             with self.subTest(name=name):
                 self.assertIn(name, music_filters.register.filters)
 
-    def test_shared_tags_are_registered_on_this_library(self):
-        for name in ["pagination_pages", "pagination_url"]:
-            with self.subTest(name=name):
-                self.assertIn(name, music_filters.register.tags)
-
     def test_a_shared_filter_renders_through_the_music_library(self):
-        rendered = Template("{% load music_filters %}{{ value|format_decade }}").render(
-            Context({"value": "1960-69"})
-        )
-        self.assertEqual(rendered.strip(), "1960s")
+        rendered = Template(
+            "{% load music_filters %}{{ value|format_duration }}"
+        ).render(Context({"value": 150}))
+        self.assertEqual(rendered.strip(), "2m 30s")
 
 
 class ListTypeFilterTests(TestCase):

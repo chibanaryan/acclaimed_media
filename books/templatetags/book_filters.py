@@ -1,7 +1,7 @@
 """
 Book-specific template filters and tags.
 
-For shared filters (pagination_pages, from_now, tojson, etc.), use:
+For shared filters (from_now, tojson, etc.), use:
     {% load core_filters %}
 
 This module provides book-specific utilities like genre icons,
@@ -16,12 +16,9 @@ from games import constants
 # Re-export shared filters for backward compatibility
 # Templates using {% load book_filters %} can continue to use these
 from core.templatetags.core_filters import (
-    format_decade,
     format_duration,
     from_now,
     markdown,
-    pagination_pages,
-    pagination_url,
     tojson,
 )
 
@@ -32,9 +29,6 @@ register.filter("from_now", from_now)
 register.filter("tojson", tojson)
 register.filter("format_duration", format_duration)
 register.filter("markdown", markdown)
-register.filter("format_decade", format_decade)
-register.simple_tag(pagination_pages, name="pagination_pages")
-register.simple_tag(takes_context=True, name="pagination_url")(pagination_url)
 
 
 # Book genre category icons - maps root genre categories to MDI icons

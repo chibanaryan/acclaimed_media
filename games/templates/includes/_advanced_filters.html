@@ -47,23 +47,7 @@
     window.listFilterActive = true;
 })();
 </script>
-<div x-data="filterComponent({ minYear: {{ min_year }}, maxYear: {{ max_year }} })"
-     @update:modelValue.window="
-         if ($event.detail && typeof $event.detail === 'object' && !Array.isArray($event.detail)) {
-             this.filters = $event.detail;
-         } else if (Array.isArray($event.detail)) {
-             // Handle multi-select updates (genres/platforms)
-         } else if (typeof $event.detail === 'string' || $event.detail === null) {
-             this.filters.q = $event.detail || '';
-         }
-    "
-     @change.window="
-         if (Array.isArray($event.detail)) {
-             // Handle multi-select changes (genres/platforms)
-         } else if (typeof $event.detail === 'string' || $event.detail === null) {
-             this.filters.q = $event.detail || '';
-         }
-     ">
+<div x-data="filterComponent({ minYear: {{ min_year }}, maxYear: {{ max_year }} })">
 
     {# Page heading row - title on left, rank distribution aligned with sidebar on right #}
     {# Fixed height prevents layout shift when chart loads #}

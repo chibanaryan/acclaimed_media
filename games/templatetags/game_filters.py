@@ -6,7 +6,7 @@ list type badges, and other game-related template helpers.
 
 NOTE: This taglib also includes common filters from core_filters for convenience.
 Templates only need to load game_filters to access both game-specific filters
-and common filters like from_now, tojson, pagination_pages, etc.
+and common filters like from_now, tojson, etc.
 Alternatively, use {% load core_filters %} for just the common filters.
 """
 
@@ -17,12 +17,9 @@ from games.services import playtime
 
 # Import shared filters to make them available via {% load game_filters %}
 from core.templatetags.core_filters import (
-    format_decade,
     format_duration,
     from_now,
     markdown,
-    pagination_pages,
-    pagination_url,
     tojson,
 )
 
@@ -34,9 +31,6 @@ register.filter("from_now", from_now)
 register.filter("tojson", tojson)
 register.filter("format_duration", format_duration)
 register.filter("markdown", markdown)
-register.filter("format_decade", format_decade)
-register.simple_tag(pagination_pages, name="pagination_pages")
-register.simple_tag(takes_context=True, name="pagination_url")(pagination_url)
 
 
 @register.filter
@@ -192,43 +186,6 @@ FAMILY_INFO = {
     "computers": ("mdi-desktop-classic", "Microcomputers", 7, None),
     "arcade": ("mdi-space-invaders", "Arcade+", 8, None),
 }
-
-
-@register.filter
-def platform_families(platforms):
-    """
-    Convert a list of platforms to unique families with icons.
-    Returns list of dicts with 'icon', 'svg_icon', 'name', 'key', 'platform_id',
-    'platform_name'. The platform_id and platform_name are from the first platform
-    in each family. Order is preserved based on encounter order in the platforms list.
-    """
-    seen_families = set()
-    families = []
-
-    for platform in platforms:
-        code = platform.code if hasattr(platform, "code") else str(platform)
-        family_key = PLATFORM_FAMILIES.get(code, "other")
-
-        if family_key not in seen_families and family_key in FAMILY_INFO:
-            seen_families.add(family_key)
-            icon, name, order, svg_icon = FAMILY_INFO[family_key]
-            # Get platform ID and name for linking and tooltip
-            platform_id = platform.id if hasattr(platform, "id") else None
-            platform_name = platform.name if hasattr(platform, "name") else code
-            families.append(
-                {
-                    "icon": icon,
-                    "svg_icon": svg_icon,
-                    "name": name,
-                    "key": family_key,
-                    "order": order,
-                    "platform_id": platform_id,
-                    "platform_name": platform_name,
-                }
-            )
-
-    # Preserve encounter order (no sorting)
-    return families
 
 
 def _platform_sort_key(platform):

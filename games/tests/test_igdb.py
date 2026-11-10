@@ -29,12 +29,8 @@ class IgbdApiTests(SimpleTestCase):
         self.api.headers = {}
         self.api.company_cache = OrderedDict()
         self.api.game_cache = OrderedDict()
-        self.api.genre_cache = OrderedDict()
-        self.api.series_cache = OrderedDict()
         self.api.company_cache_max_size = 1000
         self.api.game_cache_max_size = 1000
-        self.api.genre_cache_max_size = 500
-        self.api.series_cache_max_size = 500
         self.api.release_date_statuses = {}
         self.api.release_dates = {}
         self.api.themes = {1: "Action"}
@@ -141,47 +137,6 @@ class IgbdApiTests(SimpleTestCase):
         self.assertEqual(result["developers"][0]["name"], "Foo")
         self.assertIn("Action", result["genres"])
         self.assertIn("Adventure", result["genres"])
-
-    def test_company_lookup_caches_result(self):
-        response = DummyResponse(
-            200, [{"id": 5, "name": "Foo", "slug": "foo", "parent": None}]
-        )
-        with mock.patch("games.igdb.requests.post", return_value=response) as post:
-            company = self.api._get_company_by_id(5, cache_results=True)
-            self.assertEqual(company["name"], "Foo")
-            self.api._get_company_by_id(5, cache_results=True)
-        self.assertEqual(post.call_count, 1)
-
-    def test_cover_helper_returns_filename(self):
-        response = DummyResponse(200, [{"url": "//images/cover.jpg"}])
-        with mock.patch("games.igdb.requests.post", return_value=response):
-            name = self.api._get_cover_by_id(1)
-        self.assertEqual(name, "cover.jpg")
-
-    def test_cover_helper_handles_error(self):
-        with mock.patch("games.igdb.requests.post", side_effect=ValueError("boom")):
-            self.assertIsNone(self.api._get_cover_by_id(1))
-
-    def test_cover_helper_handles_unexpected_length(self):
-        response = DummyResponse(200, [])
-        with mock.patch("games.igdb.requests.post", return_value=response):
-            self.assertIsNone(self.api._get_cover_by_id(1))
-
-    def test_genre_lookup_handles_errors(self):
-        with mock.patch(
-            "games.igdb.requests.post", return_value=DummyResponse(500, [])
-        ):
-            result = self.api._get_genre_by_id(1, cache_results=False)
-        self.assertIsNone(result)
-
-    def test_genre_lookup_uses_cache(self):
-        self.api.genre_cache = {2: "Indie"}
-        self.assertEqual(self.api._get_genre_by_id(2, cache_results=True), "Indie")
-
-    def test_genre_lookup_handles_unexpected_response(self):
-        response = DummyResponse(200, [])
-        with mock.patch("games.igdb.requests.post", return_value=response):
-            self.assertIsNone(self.api._get_genre_by_id(5, cache_results=False))
 
     def test_release_status_fetch_handles_errors(self):
         with mock.patch(
@@ -426,15 +381,6 @@ class IgbdApiTests(SimpleTestCase):
         self.assertIs(result, cached)
         post.assert_not_called()
 
-    def test_company_lookup_handles_errors(self):
-        with mock.patch("games.igdb.requests.post", side_effect=ValueError("boom")):
-            self.assertIsNone(self.api._get_company_by_id(1, cache_results=False))
-
-    def test_company_lookup_handles_unexpected_length(self):
-        response = DummyResponse(200, [])
-        with mock.patch("games.igdb.requests.post", return_value=response):
-            self.assertIsNone(self.api._get_company_by_id(1, cache_results=False))
-
     def test_wait_for_rate_limit_enforces_delay(self):
         """Test that _wait_for_rate_limit() enforces minimum delay."""
         self.api.last_request_time = 0
@@ -667,21 +613,6 @@ class IgbdApiTests(SimpleTestCase):
         self.assertNotIn(0, self.api.game_cache)
         self.assertIn(1000, self.api.game_cache)
 
-    def test_genre_cache_lru_eviction(self):
-        """Test that genre cache evicts oldest entries when max size reached."""
-        from collections import OrderedDict
-
-        # Fill cache to max size
-        self.api.genre_cache = OrderedDict({i: f"Genre {i}" for i in range(500)})
-
-        # Add one more - should evict the oldest (0)
-        with self.api.cache_lock:
-            self.api._set_in_genre_cache(500, "Genre 500")
-
-        self.assertEqual(len(self.api.genre_cache), 500)
-        self.assertNotIn(0, self.api.genre_cache)
-        self.assertIn(500, self.api.genre_cache)
-
     def test_cache_lru_access_moves_to_end(self):
         """Test that accessing cached items moves them to end (most recently used)."""
         from collections import OrderedDict
@@ -698,12 +629,6 @@ class IgbdApiTests(SimpleTestCase):
         self.assertIsNotNone(result)
         # Check that item 1 is now at the end (last item in OrderedDict)
         self.assertEqual(list(self.api.company_cache.keys())[-1], 1)
-
-    def test_genre_cache_miss_returns_none(self):
-        """Test that genre cache miss returns None (line 140)."""
-        self.api.genre_cache = {}
-        result = self.api._get_from_genre_cache(999)
-        self.assertIsNone(result)
 
     def test_get_themes_returns_none_from_request(self):
         """Test _get_themes when request returns None (lines 301-302)."""
@@ -740,32 +665,6 @@ class IgbdApiTests(SimpleTestCase):
         ):
             self.api._get_release_statuses()
         self.assertEqual(self.api.release_date_statuses, {})
-
-    def test_get_cover_by_id_returns_none_when_request_returns_none(self):
-        """Test _get_cover_by_id returns None when request returns None (line 360)."""
-        with mock.patch.object(self.api, "_make_request_with_retry", return_value=None):
-            result = self.api._get_cover_by_id(123)
-        self.assertIsNone(result)
-
-    def test_get_company_by_id_returns_none_when_request_returns_none(self):
-        """Test _get_company_by_id returns None when request returns None (line 401)."""
-        with mock.patch.object(self.api, "_make_request_with_retry", return_value=None):
-            result = self.api._get_company_by_id(123, cache_results=False)
-        self.assertIsNone(result)
-
-    def test_get_genre_by_id_returns_none_when_request_returns_none(self):
-        """Test _get_genre_by_id returns None when request returns None (line 446)."""
-        with mock.patch.object(self.api, "_make_request_with_retry", return_value=None):
-            result = self.api._get_genre_by_id(123, cache_results=False)
-        self.assertIsNone(result)
-
-    def test_get_genre_by_id_caches_successful_result(self):
-        """Test _get_genre_by_id caches result on success (lines 457-461)."""
-        response = DummyResponse(200, [{"id": 5, "name": "RPG"}])
-        with mock.patch("games.igdb.requests.post", return_value=response):
-            result = self.api._get_genre_by_id(5, cache_results=True)
-        self.assertEqual(result, "RPG")
-        self.assertEqual(self.api.genre_cache[5], "RPG")
 
     def test_get_companies_by_ids_returns_when_request_returns_none(self):
         """Test get_companies_by_ids when request returns None."""
@@ -1042,27 +941,6 @@ class IgbdApiTests(SimpleTestCase):
         self.assertIsNone(result)
         self.assertIn("Network error", cm.output[0])
 
-    def test_series_cache_get_and_set(self):
-        """Test series cache get and set behavior."""
-        self.api.series_cache[1] = {"id": 1, "name": "Series One"}
-
-        result = self.api._get_from_series_cache(1)
-        self.assertEqual(result, {"id": 1, "name": "Series One"})
-
-        # Update existing entry
-        self.api._set_in_series_cache(1, {"id": 1, "name": "Series One Updated"})
-        self.assertEqual(self.api.series_cache[1]["name"], "Series One Updated")
-
-        # Evict oldest when full
-        self.api.series_cache_max_size = 1
-        self.api._set_in_series_cache(2, {"id": 2, "name": "Series Two"})
-        self.assertIn(2, self.api.series_cache)
-        self.assertNotIn(1, self.api.series_cache)
-
-    def test_series_cache_miss_returns_none(self):
-        """Test series cache miss returns None."""
-        self.assertIsNone(self.api._get_from_series_cache(999))
-
     def test_get_companies_by_ids_caches_results(self):
         """Test company batch fetch stores results in cache."""
         response = DummyResponse(
@@ -1127,7 +1005,6 @@ class IgbdApiTests(SimpleTestCase):
         self.assertEqual(game_data["youtube_video_id"], "vid123")
         self.assertEqual(game_data["series"][0]["id"], 55)
         self.assertIn(1, self.api.game_cache)
-        self.assertIn(55, self.api.series_cache)
 
     def test_get_game_info_by_id_handles_series_and_cycles(self):
         """Test single game info handles series data and parent cycles."""
@@ -1175,4 +1052,3 @@ class IgbdApiTests(SimpleTestCase):
 
         self.assertEqual(result["youtube_video_id"], "vid999")
         self.assertEqual(result["series"][0]["id"], 77)
-        self.assertIn(77, self.api.series_cache)

@@ -1247,45 +1247,6 @@ class WikipediaGenreTreeSerializerTests(TestCase):
         self.assertEqual(serializer.data["game_count"], 1)
 
 
-class DeveloperSearchSerializerTests(TestCase):
-    """Tests for DeveloperSearchSerializer get_root_slug method."""
-
-    def test_get_root_slug_with_root_developer(self):
-        """Test that root_slug is returned for developer with root_developer."""
-        from django.db.models import Count
-
-        root = models.Developer.objects.create(
-            name="Nintendo SS", slug="nintendo-ss", igdb_id=500
-        )
-        subsidiary = models.Developer.objects.create(
-            parent=root, name="Nintendo EAD SS", igdb_id=501
-        )
-
-        # Annotate with games_count for the serializer
-        subsidiary_annotated = models.Developer.objects.annotate(
-            games_count=Count("developed_games")
-        ).get(pk=subsidiary.pk)
-
-        serializer = serializers.DeveloperSearchSerializer(subsidiary_annotated)
-        self.assertEqual(serializer.data["root_slug"], "nintendo-ss")
-
-    def test_get_root_slug_fallback_to_own_slug(self):
-        """Test that own slug is used when no root_developer."""
-        from django.db.models import Count
-
-        # Root developer (parent=None, so root_developer is self)
-        root = models.Developer.objects.create(
-            name="Valve SS", slug="valve-ss", igdb_id=600
-        )
-
-        root_annotated = models.Developer.objects.annotate(
-            games_count=Count("developed_games")
-        ).get(pk=root.pk)
-
-        serializer = serializers.DeveloperSearchSerializer(root_annotated)
-        self.assertEqual(serializer.data["root_slug"], "valve-ss")
-
-
 class WikipediaGenreTreeViewTests(TestCase):
     """Tests for WikipediaGenreTreeView endpoint."""
 

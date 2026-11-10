@@ -13,12 +13,9 @@ from django.utils.safestring import mark_safe
 
 from core import constants as core_constants
 from core.templatetags.core_filters import (
-    format_decade,
     format_duration,
     from_now,
     markdown,
-    pagination_pages,
-    pagination_url,
     tojson,
 )
 from music import config
@@ -31,9 +28,6 @@ register.filter("from_now", from_now)
 register.filter("tojson", tojson)
 register.filter("format_duration", format_duration)
 register.filter("markdown", markdown)
-register.filter("format_decade", format_decade)
-register.simple_tag(pagination_pages, name="pagination_pages")
-register.simple_tag(pagination_url, name="pagination_url", takes_context=True)
 
 # DaisyUI badge class per list type. These match the games source-lists page
 # exactly, so a type badge means the same colour across the whole site.

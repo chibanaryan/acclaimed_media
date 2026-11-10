@@ -9,7 +9,6 @@ Tests must use staff users to access these endpoints.
 """
 
 import importlib
-import unittest
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -505,47 +504,6 @@ class BookAllDataAPIViewTests(StaffAPITestMixin, TestCase):
         genres = {g["id"]: g for g in response.json()["data"]["genres"]}
         for genre in models.BookGenre.objects.all():
             self.assertEqual(genres[genre.id]["d"], genre.get_descendant_ids())
-
-
-@unittest.skip("GoodreadsBookData model removed")
-class BookAllDataAPITests(StaffAPITestMixin, TestCase):
-    """Tests for the BookAllDataView."""
-
-    def setUp(self):
-        super().setUp()
-        self.author = models.Author.objects.create(name="Test Author", slug="test")
-        self.genre = models.BookGenre.objects.create(name="Fiction")
-        self.book = models.Book.objects.create(
-            name="Test Book", rank=1, goodreads_id="123"
-        )
-        self.book.authors.add(self.author)
-        self.book.genres.add(self.genre)
-        self.goodreads_data = models.GoodreadsBookData.objects.create(
-            book=self.book,
-            goodreads_id="123",
-            cover_image_url="https://example.com/cover.jpg",
-            is_primary=True,
-        )
-        self.book.primary_goodreads_book_data = self.goodreads_data
-        self.book.save()
-
-    def test_get_all_data(self):
-        """Test GET /api/books/all/ returns complete data."""
-        response = self.client.get("/api/books/all/")
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-
-        self.assertIn("version", data)
-        self.assertIn("data", data)
-        self.assertIn("books", data["data"])
-        self.assertIn("authors", data["data"])
-        self.assertIn("genres", data["data"])
-
-        # Check book structure
-        books = data["data"]["books"]
-        self.assertEqual(len(books), 1)
-        self.assertEqual(books[0]["n"], "Test Book")
-        self.assertEqual(books[0]["c"], "https://example.com/cover.jpg")
 
 
 class PostgresSearchFieldsTests(TestCase):

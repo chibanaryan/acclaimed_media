@@ -1,6 +1,6 @@
 {# Desktop Game Row Template - Visually pleasing with visible metadata #}
 {# Single source of truth: Used for both server-side rendering and JS template cloning #}
-{# Props: game (optional), show_rank ('alltime'|'filtered'|'none'), index (filtered rank), show_rank_in_details (bool) #}
+{# Props: game (optional), show_rank ('alltime'|'filtered'|'none'), index (filtered rank) #}
 {# When game is not provided, renders empty template structure for JS cloning with all elements present #}
 {% load game_filters static humanize %}
 <div class="game-row-wrapper hidden desktop:flex items-center"
@@ -25,7 +25,7 @@
             <span class="game-rank text-xl font-bold text-accent tabular-nums" data-slot="rank">
                 {% if game %}{{ index|default:game.rank }}{% endif %}
             </span>
-            <span class="game-row-global-rank text-xs text-base-content/80 tabular-nums {% if show_rank != 'filtered' and not show_rank_in_details and game %}hidden{% endif %}" data-slot="global-rank">{% if game %}(#{{ game.rank }}){% endif %}</span>
+            <span class="game-row-global-rank text-xs text-base-content/80 tabular-nums {% if show_rank != 'filtered' and game %}hidden{% endif %}" data-slot="global-rank">{% if game %}(#{{ game.rank }}){% endif %}</span>
         </div>
         {% endif %}
         <a {% if game %}href="{% url 'game-detail' slug=game.slug %}"{% endif %} class="game-thumb-link" data-slot="thumb-link">

@@ -145,7 +145,7 @@ heroku run -- python manage.py shell
   - **models.py** - User model, abstract base classes (MediaItemBase, CreatorBase, ExternalDataBase, UserTrackingBase)
   - **mixins.py** - Shared view mixins (RobustPaginationMixin, HTMXPartialMixin)
   - **templatetags/core_filters.py** - Shared template filters
-  - **templates/core/** - Shared templates (_pagination.html, _base_media_row.html)
+  - **templates/core/includes/** - Shared templates (`_base_media_row.html`, the ranking-page controls)
   - **static/core/js/** - Base JavaScript renderer classes
 - **games/** - Main Django app containing:
   - **models.py** - Core data models (Game, Developer, Platform, List, etc.)

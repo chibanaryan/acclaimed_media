@@ -123,62 +123,6 @@ def _expand_single_genre_with_descendants(
     return [genre_id, *descendants.get(genre_id, ())]
 
 
-def _expand_genre_ids_with_descendants(
-    genre_ids: List[int], descendants: Optional[Dict[int, List[int]]] = None
-) -> List[int]:
-    """
-    Expand a list of genre IDs to include all descendant IDs.
-
-    This enables hierarchical filtering: selecting a parent genre
-    automatically includes games tagged with any child genre.
-
-    Args:
-        genre_ids: List of genre IDs to expand
-        descendants: A ``genre_descendant_map()``; built here if not given
-
-    Returns:
-        List of genre IDs including all descendants
-    """
-    if descendants is None:
-        descendants = genre_descendant_map()
-    expanded_ids = set(genre_ids)
-    for genre_id in genre_ids:
-        expanded_ids.update(descendants.get(genre_id, ()))
-    return list(expanded_ids)
-
-
-def apply_wikipedia_genre_filter(
-    queryset: QuerySet,
-    genre_ids: List[int],
-    match_all: bool = True,
-    expand_hierarchy: bool = True,
-    descendants: Optional[Dict[int, List[int]]] = None,
-) -> QuerySet:
-    """
-    Filter queryset by Wikipedia genres with hierarchical support.
-
-    This is a convenience wrapper around apply_genre_filter for Wikipedia genres.
-
-    Args:
-        queryset: The queryset to filter
-        genre_ids: List of Wikipedia genre IDs to filter by
-        match_all: If True, games must have ALL genres. If False, ANY genre matches.
-        expand_hierarchy: If True, expand parent genres to include all descendants.
-        descendants: A ``genre_descendant_map()`` to reuse.
-
-    Returns:
-        Filtered queryset
-    """
-    return apply_genre_filter(
-        queryset,
-        genre_ids,
-        match_all=match_all,
-        use_wikipedia=True,
-        expand_hierarchy=expand_hierarchy,
-        descendants=descendants,
-    )
-
-
 def apply_platform_filter(queryset: QuerySet, platform_ids: List[int]) -> QuerySet:
     """
     Filter queryset by platforms (any match).

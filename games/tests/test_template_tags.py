@@ -1,109 +1,21 @@
 from datetime import timedelta
 from unittest.mock import Mock
 
-from django.core.paginator import Paginator
-from django.test import RequestFactory, TestCase
+from django.test import TestCase
 from django.utils import timezone
 
 from games.templatetags.game_filters import (
-    format_decade,
     format_duration,
     from_now,
     game_rank_url,
     genre_icon,
     get_list_type_label,
     markdown,
-    pagination_pages,
-    pagination_url,
-    platform_families,
     platform_families_grouped,
     platform_icon,
     platform_svg_icon,
     tojson,
 )
-
-
-class PaginationPagesTest(TestCase):
-    """Test the pagination_pages template tag."""
-
-    def _create_page_obj(self, page_num, total_pages):
-        """Helper to create a page object for testing."""
-        items = list(range(1, total_pages * 10 + 1))
-        paginator = Paginator(items, 10)
-        return paginator.page(page_num)
-
-    def test_no_pagination_for_single_page(self):
-        """Test that empty list is returned for single page."""
-        page_obj = self._create_page_obj(1, 1)
-        result = pagination_pages(page_obj)
-        self.assertEqual(result, [])
-
-    def test_show_all_pages_when_flag_is_true(self):
-        """Test that all pages are shown when show_all_pages=True."""
-        page_obj = self._create_page_obj(1, 10)
-        result = pagination_pages(page_obj, show_all_pages=True)
-        # Should have all page numbers
-        pages = [p for p in result if p is not None]
-        self.assertEqual(pages, list(range(1, 11)))
-
-    def test_show_all_pages_with_string_true(self):
-        """Test that show_all_pages works with string 'true'."""
-        page_obj = self._create_page_obj(1, 10)
-        result = pagination_pages(page_obj, show_all_pages="true")
-        pages = [p for p in result if p is not None]
-        self.assertEqual(pages, list(range(1, 11)))
-
-    def test_ellipsis_for_large_page_count(self):
-        """Test that ellipsis (None) is added for large page counts."""
-        page_obj = self._create_page_obj(1, 50)
-        result = pagination_pages(page_obj)
-        # Should have ellipsis somewhere
-        self.assertIn(None, result)
-        # First page should be included
-        self.assertIn(1, result)
-        # Last page should be included
-        self.assertIn(50, result)
-
-    def test_current_page_in_middle(self):
-        """Test pagination when current page is in the middle."""
-        page_obj = self._create_page_obj(25, 50)
-        result = pagination_pages(page_obj)
-        # Current page and neighbors should be included
-        self.assertIn(25, result)
-        # First and last should be included
-        self.assertIn(1, result)
-        self.assertIn(50, result)
-
-    def test_handles_empty_page_obj(self):
-        """Test that empty page_obj returns empty list."""
-        result = pagination_pages(None)
-        self.assertEqual(result, [])
-
-    def test_handles_page_obj_without_paginator(self):
-        """Test that page_obj without paginator attribute returns empty list."""
-        page_obj = Mock(spec=[])
-        result = pagination_pages(page_obj)
-        self.assertEqual(result, [])
-
-    def test_second_page_uses_min_distance_3(self):
-        """Test that second page (page 2) uses min_distance=3."""
-        page_obj = self._create_page_obj(2, 20)
-        result = pagination_pages(page_obj)
-        # At page 2 with min_distance=3, pages 1-4 should be included
-        self.assertIn(1, result)
-        self.assertIn(2, result)
-        self.assertIn(3, result)
-        self.assertIn(4, result)
-
-    def test_second_last_page_uses_min_distance_3(self):
-        """Test that second-to-last page uses min_distance=3."""
-        page_obj = self._create_page_obj(19, 20)
-        result = pagination_pages(page_obj)
-        # At page 19 with min_distance=3, pages 17-20 should be included
-        self.assertIn(17, result)
-        self.assertIn(18, result)
-        self.assertIn(19, result)
-        self.assertIn(20, result)
 
 
 class FromNowFilterTest(TestCase):
@@ -371,55 +283,6 @@ class ToJsonFilterTest(TestCase):
         self.assertIn("30", result)
 
 
-class PaginationUrlTest(TestCase):
-    """Test the pagination_url template tag."""
-
-    def setUp(self):
-        self.factory = RequestFactory()
-
-    def test_basic_pagination_url(self):
-        """Test basic pagination URL generation."""
-        request = self.factory.get("/games/")
-        context = {"request": request}
-        url = pagination_url(context, 2)
-        self.assertEqual(url, "/games/?page=2")
-
-    def test_preserves_existing_query_params(self):
-        """Test that existing query parameters are preserved."""
-        request = self.factory.get("/games/?decade=1990-99&year=1995")
-        context = {"request": request}
-        url = pagination_url(context, 3)
-        self.assertIn("page=3", url)
-        self.assertIn("decade=1990-99", url)
-        self.assertIn("year=1995", url)
-
-    def test_replaces_existing_page_param(self):
-        """Test that existing page parameter is replaced."""
-        request = self.factory.get("/games/?page=1&decade=2000-09")
-        context = {"request": request}
-        url = pagination_url(context, 5)
-        self.assertIn("page=5", url)
-        self.assertNotIn("page=1", url)
-        self.assertIn("decade=2000-09", url)
-
-    def test_preserves_search_query(self):
-        """Test that search queries are preserved."""
-        request = self.factory.get("/games/search/?q=zelda&start=1990&end=2000")
-        context = {"request": request}
-        url = pagination_url(context, 2)
-        self.assertIn("page=2", url)
-        self.assertIn("q=zelda", url)
-        self.assertIn("start=1990", url)
-        self.assertIn("end=2000", url)
-
-    def test_handles_empty_query_string(self):
-        """Test URL generation with no existing query parameters."""
-        request = self.factory.get("/developers/")
-        context = {"request": request}
-        url = pagination_url(context, 1)
-        self.assertEqual(url, "/developers/?page=1")
-
-
 class GetListTypeLabelTest(TestCase):
     """Test the get_list_type_label template filter."""
 
@@ -442,31 +305,6 @@ class GetListTypeLabelTest(TestCase):
     def test_unknown_type_returns_code(self):
         """Test that unknown type code returns the code itself."""
         self.assertEqual(get_list_type_label("X"), "X")
-
-
-class FormatDecadeFilterTest(TestCase):
-    """Test the format_decade template filter."""
-
-    def test_format_1990s(self):
-        """Test formatting 1990s decade."""
-        self.assertEqual(format_decade("1990-99"), "1990s")
-
-    def test_format_2000s(self):
-        """Test formatting 2000s decade."""
-        self.assertEqual(format_decade("2000-09"), "2000s")
-
-    def test_format_2010s(self):
-        """Test formatting 2010s decade."""
-        self.assertEqual(format_decade("2010-19"), "2010s")
-
-    def test_empty_value_returns_empty_string(self):
-        """Test that empty/None value returns empty string."""
-        self.assertEqual(format_decade(None), "")
-        self.assertEqual(format_decade(""), "")
-
-    def test_value_without_dash(self):
-        """Test that value without dash uses the whole value."""
-        self.assertEqual(format_decade("1990"), "1990s")
 
 
 class FormatDurationFilterTest(TestCase):
@@ -503,56 +341,6 @@ class FormatDurationFilterTest(TestCase):
     def test_negative_returns_zero_seconds(self):
         """Test that negative returns '0s'."""
         self.assertEqual(format_duration(-10), "0s")
-
-
-class PlatformFamiliesFilterTest(TestCase):
-    """Test the platform_families template filter."""
-
-    def _make_platform(self, code, id, name):
-        """Create a mock platform with proper attributes."""
-        p = Mock()
-        p.code = code
-        p.id = id
-        p.name = name
-        return p
-
-    def test_returns_unique_families(self):
-        """Test that duplicate platform families are deduplicated."""
-        # Create mock platforms in same family (PS4 and PS5)
-        ps4 = self._make_platform("PS4", 1, "PlayStation 4")
-        ps5 = self._make_platform("PS5", 2, "PlayStation 5")
-        result = platform_families([ps4, ps5])
-        # Should only have one PlayStation family
-        family_keys = [f["key"] for f in result]
-        self.assertEqual(family_keys.count("playstation"), 1)
-
-    def test_preserves_encounter_order(self):
-        """Test that families are returned in encounter order."""
-        # Use correct platform codes: XBXS for Xbox Series, PS5 for PlayStation 5
-        xbox = self._make_platform("XBXS", 1, "Xbox Series X")
-        ps5 = self._make_platform("PS5", 2, "PlayStation 5")
-        result = platform_families([xbox, ps5])
-        # Xbox encountered first
-        self.assertEqual(result[0]["key"], "xbox")
-        self.assertEqual(result[1]["key"], "playstation")
-
-    def test_includes_platform_info(self):
-        """Test that result includes platform ID and name."""
-        ps5 = self._make_platform("PS5", 42, "PlayStation 5")
-        result = platform_families([ps5])
-        self.assertEqual(result[0]["platform_id"], 42)
-        self.assertEqual(result[0]["platform_name"], "PlayStation 5")
-
-    def test_game_and_watch_maps_to_nintendo_family(self):
-        """Test Game & Watch is categorized with Nintendo platforms."""
-        gw = self._make_platform("GW", 7, "Game & Watch")
-        result = platform_families([gw])
-        self.assertEqual(result[0]["key"], "nintendo")
-
-    def test_empty_list_returns_empty(self):
-        """Test that empty list returns empty list."""
-        result = platform_families([])
-        self.assertEqual(result, [])
 
 
 class MarkdownFilterTest(TestCase):

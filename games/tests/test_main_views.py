@@ -2364,15 +2364,6 @@ class ListListViewTest(TestCase):
         self.assertEqual(len(groups), 1)
         self.assertEqual(groups[0]["publication"].name, "IGN")
 
-    def test_filtered_list_queryset_applies_filters(self):
-        """Test _get_filtered_list_queryset applies year and type filters."""
-        from games.views import ListListView
-
-        view = ListListView()
-        qs = view._get_filtered_list_queryset(2020, constants.LIST_ALLTIME)
-        self.assertEqual(qs.count(), 1)
-        self.assertEqual(qs.first().publisher.name, "IGN")
-
     def test_filter_by_invalid_year_is_ignored(self):
         """Test that invalid (non-numeric) year is ignored."""
         response = self.client.get(reverse("list-list") + "?year=invalid")

@@ -101,15 +101,6 @@ class ListListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
 
         return year_value, type_slug, type_code, search_query, group_by
 
-    def _get_filtered_list_queryset(self, year_value, type_code):
-        """Build base list queryset with filters applied."""
-        qs = models.List.objects.all()
-        if year_value:
-            qs = qs.filter(year=year_value)
-        if type_code:
-            qs = qs.filter(type=type_code)
-        return qs
-
     def _build_type_group_context(
         self,
         context,
