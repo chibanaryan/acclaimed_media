@@ -85,3 +85,23 @@ class PostNotificationTests(TestCase):
             ]
         self.assertEqual(results, [False, True])
         self.assertEqual(mail.outbox[0].to, [second.email])
+
+    def test_the_email_carries_a_one_click_unsubscribe(self):
+        """A mail client's own control, which POSTs: the link itself only
+        asks, since a scanner follows every link in a message."""
+        post = Post.objects.create(title="News", text="Body")
+        subscriber = self.subscriber()
+        self.assertTrue(utils.send_post_notification_email(post, subscriber))
+
+        headers = mail.outbox[0].extra_headers
+        link = headers["List-Unsubscribe"]
+        self.assertTrue(link.startswith("<") and link.endswith(">"))
+        self.assertTrue(
+            link[1:-1].endswith(f"/unsubscribe/{subscriber.unsubscribe_token}/")
+        )
+        self.assertEqual(headers["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click")
+        # The address the header names is one the view answers a POST at
+        path = "/unsubscribe/" + link[1:-1].split("/unsubscribe/", 1)[1]
+        self.assertEqual(self.client.post(path).status_code, 200)
+        subscriber.refresh_from_db()
+        self.assertFalse(subscriber.email_subscribed)

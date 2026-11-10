@@ -219,12 +219,19 @@ Acclaimed Media
 </body>
 </html>"""
 
-    # Both plain text and HTML versions
+    # Both plain text and HTML versions. The two headers are a mail
+    # client's own "Unsubscribe" control (RFC 8058): it POSTs to the link
+    # with no page shown, which the view takes, since following the link
+    # only asks (a scanner follows every link in a message).
     email = EmailMultiAlternatives(
         subject=title,
         body=text_body,
         from_email=settings.DEFAULT_FROM_EMAIL,
         to=[user.email],
+        headers={
+            "List-Unsubscribe": f"<{unsubscribe_url}>",
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
     )
     email.attach_alternative(html_body, "text/html")
     return email

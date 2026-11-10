@@ -9,6 +9,8 @@ from django.shortcuts import redirect, get_object_or_404
 from django.utils.html import strip_tags
 from django.utils.text import Truncator
 from django.urls import reverse_lazy
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import ListView, DetailView, TemplateView, FormView
 
 from core import sites
@@ -250,17 +252,45 @@ def robots_txt(request):
     return HttpResponse(content, content_type="text/plain")
 
 
+@method_decorator(csrf_exempt, name="dispatch")
 class UnsubscribeView(TemplateView):
-    """Handle unsubscribe requests."""
+    """The unsubscribe link at the foot of a notification email.
+
+    Following the link asks; a POST unsubscribes. A GET did it until
+    2026-11-10, and a mail scanner that follows every link in a message
+    (Outlook's Safe Links, a corporate gateway) unsubscribed the reader
+    before they had opened it. The POST comes from the page's button, or
+    from the mail client's own unsubscribe control, which the email's
+    ``List-Unsubscribe-Post`` header (RFC 8058) points here. That one
+    carries no cookie, so no CSRF token: the view is exempt, and the token
+    in the address, which only the email holds, is the credential.
+    """
 
     template_name = "unsubscribe.html"
 
+    def _subscriber(self, token):
+        return User.objects.filter(unsubscribe_token=token).first()
+
+    def _render(self, state, user=None, token=None):
+        return self.render_to_response(
+            {"state": state, "email": user.email if user else None, "token": token}
+        )
+
     def get(self, request, token):
-        """Process unsubscribe token."""
-        try:
-            user = User.objects.get(unsubscribe_token=token)
+        """Ask before unsubscribing; say so if it is already done."""
+        user = self._subscriber(token)
+        if user is None:
+            return self._render("invalid")
+        if not user.email_subscribed:
+            return self._render("done", user)
+        return self._render("confirm", user, token)
+
+    def post(self, request, token):
+        """Unsubscribe the token's user."""
+        user = self._subscriber(token)
+        if user is None:
+            return self._render("invalid")
+        if user.email_subscribed:
             user.email_subscribed = False
-            user.save()
-            return self.render_to_response({"success": True, "email": user.email})
-        except User.DoesNotExist:
-            return self.render_to_response({"success": False})
+            user.save(update_fields=["email_subscribed"])
+        return self._render("done", user)

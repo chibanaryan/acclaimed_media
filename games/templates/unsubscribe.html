@@ -1,12 +1,35 @@
 {% extends 'base.html' %}
 
-{% block title %}{% if success %}Unsubscribed{% else %}Invalid Link{% endif %} | Acclaimed Media{% endblock %}
+{# Three states: `confirm` asks (the link in the email lands here), `done` #}
+{# says it happened, `invalid` names nobody. Only the form's POST, or a mail #}
+{# client's own one-click request, unsubscribes: see UnsubscribeView. #}
+{% block title %}{% if state == 'confirm' %}Unsubscribe{% elif state == 'done' %}Unsubscribed{% else %}Invalid Link{% endif %} | Acclaimed Media{% endblock %}
 
 {% block content %}
 <div class="flex items-center justify-center min-h-[60vh]">
     <div class="card bg-base-300 shadow-xl max-w-md w-full">
         <div class="card-body items-center text-center">
-            {% if success %}
+            {% if state == 'confirm' %}
+            <div class="text-6xl text-warning mb-4">
+                <span class="mdi mdi-email-remove" aria-hidden="true"></span>
+            </div>
+
+            <h1 class="card-title text-2xl mb-4">Unsubscribe {{ email }}?</h1>
+
+            <p class="text-base-content/85 mb-4">
+                You'll stop receiving email notifications about new posts from Acclaimed Media.
+            </p>
+
+            <div class="card-actions mt-4">
+                <form method="post" action="{% url 'unsubscribe' token %}">
+                    <button type="submit" class="btn btn-primary">
+                        <span class="mdi mdi-email-remove mr-2" aria-hidden="true"></span>
+                        Unsubscribe
+                    </button>
+                </form>
+                <a href="{{ site_home_url }}" class="btn btn-ghost">Keep me subscribed</a>
+            </div>
+            {% elif state == 'done' %}
             {# Success Icon #}
             <div class="text-6xl text-warning mb-4">
                 <span class="mdi mdi-email-remove" aria-hidden="true"></span>
@@ -37,7 +60,7 @@
             <h1 class="card-title text-2xl mb-4">Invalid Unsubscribe Link</h1>
 
             <p class="text-base-content/85 mb-4">
-                This unsubscribe link is invalid or has already been used.
+                This unsubscribe link is invalid.
             </p>
 
             <div class="card-actions mt-4">

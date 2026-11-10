@@ -5499,8 +5499,10 @@ class FilteredPagesAreCachedWhateverTheHighlightTests(TestCase):
 class UnsubscribeViewTests(TestCase):
     """The link at the foot of a notification email.
 
-    The view was left out of coverage whole (`# pragma: no cover`), so the
-    one public address that changes an account by a token had no test.
+    Following it asks; only the button, or a mail client's own one-click
+    request, unsubscribes. A GET did it until 2026-11-10, and a mail
+    scanner that follows every link in a message (Outlook's Safe Links)
+    unsubscribed the reader before they had seen it.
     """
 
     def setUp(self):
@@ -5510,24 +5512,57 @@ class UnsubscribeViewTests(TestCase):
         self.user.email_subscribed = True
         self.user.generate_unsubscribe_token()
         self.user.save()
+        self.url = reverse("unsubscribe", args=[self.user.unsubscribe_token])
 
-    def test_the_link_unsubscribes_its_user_and_says_so(self):
-        response = self.client.get(
-            reverse("unsubscribe", args=[self.user.unsubscribe_token])
-        )
+    def subscribed(self, user=None):
+        user = user or self.user
+        user.refresh_from_db()
+        return user.email_subscribed
+
+    def test_following_the_link_changes_nothing_and_offers_the_button(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(self.subscribed())
+        self.assertContains(response, "Unsubscribe subscriber@example.com?")
+        self.assertContains(response, f'<form method="post" action="{self.url}"')
+        self.assertNotContains(response, "Been Unsubscribed</h1>")
+
+    def test_the_button_unsubscribes_its_user_and_says_so(self):
+        response = self.client.post(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Been Unsubscribed</h1>")
         self.assertContains(response, "subscriber@example.com")
+        self.assertFalse(self.subscribed())
+
+    def test_a_mail_clients_one_click_request_unsubscribes(self):
+        """RFC 8058: a POST with no cookie and so no CSRF token; the token
+        in the address is the credential."""
+        client = Client(enforce_csrf_checks=True)
+        response = client.post(self.url, {"List-Unsubscribe": "One-Click"})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(self.subscribed())
+
+    def test_the_link_of_someone_already_unsubscribed_says_so(self):
+        self.client.post(self.url)
+        response = self.client.get(self.url)
+        self.assertContains(response, "Been Unsubscribed</h1>")
+        self.assertNotContains(response, 'action="/unsubscribe/')
+
+    def test_unsubscribing_keeps_the_token_and_the_rest_of_the_account(self):
+        token = self.user.unsubscribe_token
+        self.client.post(self.url)
         self.user.refresh_from_db()
-        self.assertFalse(self.user.email_subscribed)
+        self.assertEqual(self.user.unsubscribe_token, token)
+        self.assertEqual(self.user.email, "subscriber@example.com")
 
     def test_a_token_no_user_has_changes_nothing_and_names_no_one(self):
-        response = self.client.get(reverse("unsubscribe", args=["not-a-token"]))
-        self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, "Been Unsubscribed</h1>")
-        self.assertNotContains(response, "subscriber@example.com")
-        self.user.refresh_from_db()
-        self.assertTrue(self.user.email_subscribed)
+        url = reverse("unsubscribe", args=["not-a-token"])
+        for response in (self.client.get(url), self.client.post(url)):
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "Invalid Unsubscribe Link")
+            self.assertNotContains(response, "subscriber@example.com")
+            self.assertNotContains(response, 'action="/unsubscribe/')
+        self.assertTrue(self.subscribed())
 
     def test_another_users_subscription_is_left_alone(self):
         other = User.objects.create_user(
@@ -5536,6 +5571,5 @@ class UnsubscribeViewTests(TestCase):
         other.email_subscribed = True
         other.generate_unsubscribe_token()
         other.save()
-        self.client.get(reverse("unsubscribe", args=[self.user.unsubscribe_token]))
-        other.refresh_from_db()
-        self.assertTrue(other.email_subscribed)
+        self.client.post(self.url)
+        self.assertTrue(self.subscribed(other))
