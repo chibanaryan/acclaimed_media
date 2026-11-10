@@ -14,7 +14,11 @@ from django.db import IntegrityError, transaction
 from django.test import TestCase
 
 from games import models, utils
-from games.services.import_handler import ImportFileError
+from games.services.import_handler import (
+    BATCH_ROLLED_BACK,
+    IMPORT_FAILED,
+    ImportFileError,
+)
 from games.tests.test_imports import InlineImportThreadMixin
 from music.models import Album
 
@@ -134,12 +138,17 @@ class DeveloperSlugGivenByIgdbTests(TestCase):
             {"id": igdb_id, "name": name, "slug": slug}
         )
 
-    def test_a_slug_another_developer_holds_takes_the_igdb_id(self):
-        """Refused outright, the game being refreshed failed with it, on
-        every refresh, and the admin's Save on that game was a 500."""
-        stale = self.developer(10, "acme", "Acme (old)")
-        newcomer = self.developer(30, "acme")
-        self.assertEqual((stale.slug, newcomer.slug), ("acme", "acme-30"))
+    def slugs(self):
+        return dict(models.Developer.objects.values_list("igdb_id", "slug"))
+
+    def test_the_developer_igdb_gives_the_slug_to_takes_it(self):
+        """The row that held it may never be refreshed again: developers
+        are, only through a game that credits them. Refused outright, the
+        game being refreshed failed with it on every refresh, and the
+        admin's Save on that game was a 500."""
+        self.developer(10, "acme", "Acme (old)")
+        self.developer(30, "acme")
+        self.assertEqual(self.slugs(), {10: "acme-10", 30: "acme"})
 
     def test_a_game_credited_to_it_still_refreshes(self):
         self.developer(10, "acme", "Acme (old)")
@@ -156,20 +165,27 @@ class DeveloperSlugGivenByIgdbTests(TestCase):
         )
         game.refresh_from_db()
         self.assertEqual(game.slug, "alpha")
-        self.assertEqual([d.slug for d in game.developers.all()], ["acme-30"])
+        self.assertEqual([d.slug for d in game.developers.all()], ["acme"])
 
-    def test_it_takes_the_plain_slug_once_that_is_free(self):
+    def test_the_row_that_gave_it_up_takes_its_own_new_slug_when_refreshed(self):
         self.developer(10, "acme", "Acme (old)")
         self.developer(30, "acme")
         self.developer(10, "acme-holdings", "Acme Holdings")
-        self.assertEqual(self.developer(30, "acme").slug, "acme")
+        self.assertEqual(self.slugs(), {10: "acme-holdings", 30: "acme"})
 
     def test_a_developer_refreshed_again_keeps_its_own_slug(self):
         first = self.developer(10, "acme")
         again = self.developer(10, "acme")
         self.assertEqual((first.pk, again.slug), (again.pk, "acme"))
+        self.assertEqual(self.slugs(), {10: "acme"})
 
-    def test_a_subsidiary_has_no_slug_to_collide(self):
+    def test_a_holder_with_no_igdb_id_is_told_apart_by_its_pk(self):
+        holder = models.Developer.objects.create(name="By hand", slug="acme")
+        self.developer(30, "acme")
+        holder.refresh_from_db()
+        self.assertEqual(holder.slug, f"acme-{holder.pk}")
+
+    def test_a_subsidiary_has_no_slug_to_take(self):
         self.developer(10, "acme")
         child = models.Game._get_or_create_developer_with_parents(
             {
@@ -180,18 +196,7 @@ class DeveloperSlugGivenByIgdbTests(TestCase):
             }
         )
         self.assertFalse(child.slug)
-        self.assertEqual(child.parent.slug, "acme")
-
-    def test_a_refusal_that_is_not_about_the_slug_is_not_hidden(self):
-        """Only a slug has a second spelling to try."""
-        with mock.patch.object(
-            models.Developer.objects,
-            "update_or_create",
-            side_effect=IntegrityError("some other constraint"),
-        ) as write:
-            with self.assertRaises(IntegrityError):
-                self.developer(10, None)
-        self.assertEqual(write.call_count, 1)
+        self.assertEqual(self.slugs()[10], "acme")
 
 
 class ImportRefusesASharedIgdbIdTests(TestCase):
@@ -211,8 +216,9 @@ class ImportRefusesASharedIgdbIdTests(TestCase):
         message = str(raised.exception)
         self.assertIn("rows 1 (Alpha) and 3 (Alpha Remastered)", message)
         self.assertIn("IGDB id 101", message)
-        # The staff page is told in the same words, not "see the server logs"
-        self.assertEqual(events[-1], ("error", {"message": message}))
+        # Said by the caller, with the file's name: not here as well, and
+        # not as "see the server logs"
+        self.assertNotIn("error", [event for event, _ in events])
 
     def test_a_refused_file_leaves_the_games_that_were_there(self):
         models.Game.objects.create(name="Before", rank=1, igdb_id=9, slug="before")
@@ -230,52 +236,122 @@ class ImportRefusesASharedIgdbIdTests(TestCase):
         self.assertEqual(models.Game.objects.count(), 2)
 
 
-class StreamedImportStopsBehindARefusedGamesFileTests(
-    InlineImportThreadMixin, TestCase
-):
-    """The staff page's import goes on to the next file after one fails.
+class StreamedImportIsAllOrNothingTests(InlineImportThreadMixin, TestCase):
+    """The staff page's import went on to the next file after one failed,
+    and committed the rest.
 
-    Positions are attached to games by rank, so behind a games file that
-    was not imported they went onto the previous release's games, and were
-    committed there.
+    Behind a refused games file the lists were replaced, which deletes
+    every list appearance, and positions were attached by rank to the
+    previous release's games. `import_batch` has always rolled the whole
+    batch back.
     """
+
+    LISTS = "Edge\t2021\tAll Time\tThe New Top 100\thttps://example.org/new\r\n"
 
     def setUp(self):
         super().setUp()
         models.Platform.objects.create(code="PC", name="PC")
         publication = models.Publication.objects.create(name="Edge")
-        models.List.objects.create(publisher=publication, name="Top 100", year=2020)
-        models.Game.objects.create(name="Before", rank=1, igdb_id=9, slug="before")
+        self.old_list = models.List.objects.create(
+            publisher=publication, name="Top 100", year=2020
+        )
+        self.before = models.Game.objects.create(
+            name="Before", rank=1, igdb_id=9, slug="before"
+        )
+        models.ListMembership.objects.create(
+            list=self.old_list, game=self.before, rank=1
+        )
 
-    def stream(self, games_rows):
+    def stream(self, games_rows, lists_rows=None, positions=(True, "positions")):
         data = {
             "games_file": SimpleUploadedFile("Top1400.txt", games_rows.encode()),
             "memberships_file": SimpleUploadedFile("GamePositions.txt", b"0:1\r\n"),
         }
+        if lists_rows is not None:
+            data["lists_file"] = SimpleUploadedFile(
+                "SourceLists.txt", lists_rows.encode()
+            )
         with mock.patch(
             "games.services.import_handler.import_listmemberships",
-            return_value=(True, "positions"),
-        ) as positions:
+            side_effect=[positions] if isinstance(positions, tuple) else positions,
+        ) as positions_import:
             events = [
                 json.loads(chunk.split("data: ", 1)[1].split("\n", 1)[0])
                 for chunk in utils.import_batch_with_progress(data)
                 if chunk.startswith("data: ")
             ]
-        return events, positions
+        return events, positions_import
 
-    def test_positions_are_not_imported_behind_a_refused_games_file(self):
-        events, positions = self.stream(ImportRefusesASharedIgdbIdTests.ROWS)
+    def errors(self, events):
+        return [(e.get("file"), e["message"]) for e in events if e["event"] == "error"]
 
-        positions.assert_not_called()
-        errors = {e.get("file"): e["message"] for e in events if e["event"] == "error"}
-        self.assertIn("rows 1 (Alpha) and 3 (Alpha Remastered)", errors["Games"])
-        self.assertIn("Not imported", errors["Game Positions"])
+    def assert_nothing_changed(self):
         self.assertEqual(
             list(models.Game.objects.values_list("name", flat=True)), ["Before"]
         )
+        self.assertEqual(
+            list(models.List.objects.values_list("name", flat=True)), ["Top 100"]
+        )
+        self.assertEqual(models.ListMembership.objects.count(), 1)
 
-    def test_positions_follow_a_games_file_that_imported(self):
-        rows = "1\tAlpha\t2000\tPC\t101\tQ1\r\n"
-        events, positions = self.stream(rows)
+    def test_a_refused_games_file_rolls_back_the_lists_imported_before_it(self):
+        """They were committed: every list replaced, every appearance gone."""
+        events, positions = self.stream(
+            ImportRefusesASharedIgdbIdTests.ROWS, lists_rows=self.LISTS
+        )
+
+        positions.assert_not_called()
+        (file, message), rolled_back = self.errors(events)
+        self.assertEqual(file, "Games")
+        self.assertIn("rows 1 (Alpha) and 3 (Alpha Remastered)", message)
+        self.assertEqual(rolled_back, (None, BATCH_ROLLED_BACK))
+        self.assert_nothing_changed()
+
+    def test_a_lists_file_that_fails_keeps_the_games_file_out_too(self):
+        """Committed alone, the new games had no list appearances at all."""
+        with mock.patch(
+            "games.services.import_handler.import_lists",
+            side_effect=RuntimeError("bad lists file"),
+        ):
+            events, positions = self.stream(
+                "1\tAlpha\t2000\tPC\t101\tQ1\r\n", lists_rows=self.LISTS
+            )
+
+        positions.assert_not_called()
+        self.assertEqual(
+            self.errors(events),
+            [("Source Lists", IMPORT_FAILED), (None, BATCH_ROLLED_BACK)],
+        )
+        self.assert_nothing_changed()
+
+    def test_a_failure_in_the_last_file_rolls_back_the_games_before_it(self):
+        events, _ = self.stream(
+            "1\tAlpha\t2000\tPC\t101\tQ1\r\n",
+            positions=RuntimeError("bad positions"),
+        )
+        self.assertEqual(
+            self.errors(events),
+            [("Game Positions", IMPORT_FAILED), (None, BATCH_ROLLED_BACK)],
+        )
+        self.assert_nothing_changed()
+
+    def test_a_rolled_back_batch_starts_no_metadata_fetch(self):
+        with mock.patch(
+            "games.services.import_handler.post_import.schedule"
+        ) as schedule:
+            self.stream(
+                "1\tAlpha\t2000\tPC\t101\tQ1\r\n",
+                positions=RuntimeError("bad positions"),
+            )
+        schedule.assert_not_called()
+
+    def test_a_batch_whose_files_all_import_is_committed(self):
+        with mock.patch(
+            "games.services.import_handler.post_import.schedule", return_value=None
+        ):
+            events, positions = self.stream("1\tAlpha\t2000\tPC\t101\tQ1\r\n")
         positions.assert_called_once()
-        self.assertFalse([e for e in events if e["event"] == "error"])
+        self.assertEqual(self.errors(events), [])
+        self.assertEqual(
+            list(models.Game.objects.values_list("name", flat=True)), ["Alpha"]
+        )

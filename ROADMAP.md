@@ -89,7 +89,15 @@ and either changes what a job matches or needs measuring first.
    longer makes a key (`games.api.views.cache_page`), but Django's
    `cache_page` keys on the `Vary` headers too, and a caller writes those.
    Closing it means keying on the path alone and storing the JSON ourselves.
-9. **Accessibility, the rest** (beside bug 1's real-device pass):
+9. **A failed Back, then the engine.** A Back whose own render fails,
+   before the engine has loaded, leaves the old list under the new address and controls, as it always has (the
+   roll-back is for a control's change, and leaves it alone). If the
+   engine's data then arrives, its takeover finds the filters equal to the
+   address's and adopts the rows as that address's list, so Load More
+   appends the wrong continuation. Music's takeover compares the form with
+   `#album-rendered-filters` (`formAhead`); games' could compare the
+   filters with `#game-rendered-filters` the same way and render.
+10. **Accessibility, the rest** (beside bug 1's real-device pass):
    - The search boxes have labels but no combobox semantics (`role`,
      `aria-expanded`, `aria-controls`, arrow keys).
    - `text-base-content/50` remains on the auth partials' fine print,
@@ -100,20 +108,20 @@ and either changes what a job matches or needs measuring first.
      hears the count twice: once there, once from `#live-announcer`.
    - `filter-component.js` adds document-level listeners (around its
      `init()`) that `destroy()` does not remove.
-10. **An article's featured image has no box before it loads**, so the text
+11. **An article's featured image has no box before it loads**, so the text
     below jumps. Only its URL is stored. A 16:9 crop was tried on 2026-11-10
     and reverted: there were no articles locally to check a crop against.
     Store the dimensions, or pick the crop looking at the real images.
-11. **Per-request work nothing has measured.** The developers list loads
+12. **Per-request work nothing has measured.** The developers list loads
     and prefetches every developer on each request and each Load More
     (`games/views/developers.py`), the album rankings read every album's
     genre pairs on every render (`music/views.py`), and the games rankings
     run the HLTB totals aggregate on every render. Measure before caching:
     each cached value spends from the 512 MB budget and needs dropping.
-12. **The unsubscribe page's canonical link carries the token.** `base.html`
+13. **The unsubscribe page's canonical link carries the token.** `base.html`
     has no robots block to say `noindex` with. The address is in no page,
     only in the email.
-13. **Small leftovers.**
+14. **Small leftovers.**
     - `_refresh_wikipedia` in `refresh_all_metadata.py` is dead: only
       `_refresh_wikipedia_async` is called.
     - Nothing dispatches `reset-search-state` (four listeners).
@@ -140,7 +148,7 @@ The section is public at `music.acclaimedmedia.org`, beside the games site and
 a landing page at the apex (2026-10-30; AGENTS.md, "Domain"). The pages keep a
 "Beta" badge while `music.config.MUSIC_BETA` is on.
 
-14. **New brand artwork.** The favicons still read "Acclaimed Video Games"
+15. **New brand artwork.** The favicons still read "Acclaimed Video Games"
    (`games/static/games/brand/`), and a page without artwork of its own has
    no `og:image` since the old one was removed; every page title already
    says Acclaimed Media. A new default goes in `base.html`'s `og_image` block,
@@ -155,39 +163,39 @@ budget"). `--threads 3` was checked on 2026-11-09: over 72 hours the two
 workers peaked at 333 MiB RSS of the 512 MiB quota and swap was 0 but for
 one 6.9 MiB reading, so it stays.
 
-15. **Watch the two burst windows after the deploy.** A scraper asks for
+16. **Watch the two burst windows after the deploy.** A scraper asks for
    3,500-4,800 filtered pages in five minutes at about 04:00 and 21:00 UTC,
    and Sentry's uptime check timed out 11 times in the week to 2026-11-09
    (AGENTS.md, "Caching"). After the deploy, read the uptime monitor across
    the next two windows, `/`'s p50 inside them, and `heroku logs` for
    "Autorestarting worker" during one.
-16. **Read a week of render-budget reports, then decide on
+17. **Read a week of render-budget reports, then decide on
     `ANON_RENDER_BUDGET_ENFORCE`.** The budget only logs: "Anonymous renders
     over budget", at 10 in a burst (WARNING, the logs) and 100 and 1,000
     (ERROR, Sentry). If the only bursts are the scraper's windows, turn it
     on; if ordinary traffic reaches 100, raise
     `ANON_RENDER_BUDGET_PER_SECOND` or `_BURST` first. HTMX partials are not
     counted, so a scraper that learnt to send `HX-Request` would pass it.
-17. **Check memory under `--max-requests 2000`.** It was 500 until
+18. **Check memory under `--max-requests 2000`.** It was 500 until
     2026-11-09, and memory was measured flat only to 1,000 renders. The page
     cache also holds ~200 more pages, ~12 MB a worker. After a few days read
     `memory.rss.bytes.max` and `memory.swap.bytes.max` from the metrics API;
     back to 1,000 if the peak climbs towards the quota. An import's metadata
     fetch spends ~85 MB in one worker while it runs, so read a week that
     held one.
-18. **Merge the Dependabot queue.** #32 is Django 6.1.3, a security release;
+19. **Merge the Dependabot queue.** #32 is Django 6.1.3, a security release;
     #31 and #30 wait with it. #32 and #31 were green on 2026-11-10
     (`/upgrade-deps`).
-19. **The next deploy applies two migrations**, `games.0124` and
+20. **The next deploy applies two migrations**, `games.0124` and
     `music.0015`: unique constraints on game, developer and album slugs
     and on game and developer IGDB ids. Production had no duplicates on
     2026-11-10; if a release imported since then has one, the release
     phase fails on it and names the constraint. `/deploy` backs up first.
-20. **The first Sunday after the deploy, read the weekly games job.**
+21. **The first Sunday after the deploy, read the weekly games job.**
     `refresh_all_metadata` now fails when a phase could not run at all, so
     Sentry's cron monitor will alert on a phase that has been failing
     quietly. The job's output names the phase.
-21. **Check one notification email's headers** once a post goes out: Gmail
+22. **Check one notification email's headers** once a post goes out: Gmail
     and Apple Mail should show their own Unsubscribe control
     (`List-Unsubscribe-Post`), and the footer link should ask before it
     unsubscribes.

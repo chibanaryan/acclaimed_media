@@ -1213,8 +1213,16 @@ async function checkGamesFailedBackWithoutTheEngine(page) {
     await sleep(1500);
     const address = new URL(page.url());
     if (address.pathname !== '/' || address.search) return `Back went to ${page.url()}`;
+    if (await pressed() !== 'false') {
+        return 'the year grid named the 1990s under the address of every year';
+    }
+    // And a change that fails next is not put on that list either: its echo
+    // is the 1990s, which the address no longer is
+    const other = await page.waitForSelector('.year-grid-decade[title^="2000s:"]');
+    await other.click();
+    await sleep(1500);
     return await pressed() === 'false'
-        ? null : 'the year grid named the 1990s under the address of every year';
+        ? null : 'a second failure put the year grid on the 1990s, under the address of every year';
 }
 
 /**
@@ -1245,9 +1253,12 @@ async function checkGamesFailedSearchKeepsTheTyping(page) {
     await page.keyboard.type('gam');
     for (let tries = 0; tries < 80 && !failed; tries += 1) await sleep(50);
     if (!failed) return 'the search was never sent';
-    await sleep(800);
+    // Long enough for a text put back into the box to be read as a new
+    // search, sent, failed and put back again, several times over
+    await sleep(2500);
     const value = await input.evaluate(element => element.value);
-    return value === 'gam' ? null : `the search box was left on "${value}"`;
+    if (value !== 'gam') return `the search box was left on "${value}"`;
+    return failed === 1 ? null : `the failed search was sent ${failed} times`;
 }
 
 /**

@@ -265,7 +265,9 @@ Core Django models include:
   - Games link to developers via `Game.developers` M2M field
   - In IGDB's data model, all are "company" records - we add hierarchy on import
   - `igdb_id` and `slug` are unique where set; a subsidiary's slug is NULL or
-    `""` (294 rows), so the slug's constraint leaves both out
+    `""` (294 rows), so the slug's constraint leaves both out. A slug goes
+    to the developer IGDB names for it: a row still holding it, which may
+    never be refreshed again, is moved to `<slug>-<its IGDB id>`
 - **Platform** - Gaming platforms (PC, PS5, etc.)
 - **WikipediaGenre** - Game genres, hierarchical (`parent`, `level`, `path`)
 - **Series** - Game series, from IGDB's collections
@@ -941,7 +943,11 @@ The application uses Django templates with HTMX for dynamic interactions and Alp
 - `/developer-alias/<id>/` - 301s a developer's pk to its root developer's page
 - `/lists/` - The published source lists
 - `/blog/` and `/blog/<slug>/` - Articles. `/news/` answers 410
-- `/import/` - Staff import, and its three progress streams. The two that
+- `/import/` - Staff import, and its three progress streams. A batch is all
+  or nothing, streamed or not: until 2026-11-10 the streamed import went on
+  to the next file after one failed and committed the rest, lists replaced
+  with no games to match, or positions attached by rank to the previous
+  release's games. The two that
   `EventSource` opens start their work on a GET, so they answer only a
   request whose `Sec-Fetch-Site` is `same-origin` (or absent, for a browser
   too old to send it): a link followed from another site carries the
@@ -2406,8 +2412,14 @@ renders the filters asked for and pushes them; `init()` answering false is
 now reported (`_engineUnavailable`), which is what rolls back then. And not
 once the reader has changed something since the request was sent. The
 heading, the tab and the address are moved only by a render, so the
-controls are all there is to undo. smoke: "games failed request, engine
-failed first / after".
+controls are all there is to undo. Two more limits, each a bug in the first
+version: only while the address is still the list's (Back moves it before
+its render, so a failed Back is left alone, and so is a failure after one),
+and a search box with focus keeps its text. That text is never rewritten:
+Alpine's `$watch` fires on any write, so putting the same text back read as
+a new search, which failed, and was put back, three times a second. smoke:
+"games failed request, engine failed first / after", "games failed Back
+without the engine", "games failed search keeps the typing".
 
 Measure with real clicks, at 1x and 4x, through the Event Timing API
 (`interactionId` entries) plus a MutationObserver on

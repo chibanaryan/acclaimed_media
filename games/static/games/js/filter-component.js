@@ -498,8 +498,9 @@ document.addEventListener('alpine:init', () => {
          * renders the filters asked for, which the URL lacks, and pushes
          * them. And not once the reader has changed something since the
          * request was sent: that change is queued or on its way, and is
-         * theirs to keep. The address is the list's throughout, since only
-         * a control's request is recorded as failed (performUpdate).
+         * theirs to keep. And only while the address is the list's: a Back
+         * whose render failed has moved it, and is not recorded as failed
+         * either (performUpdate).
          */
         _rollBackIfStranded() {
             const failed = this._failedFilterKey;
@@ -509,20 +510,23 @@ document.addEventListener('alpine:init', () => {
             if (this._filterKey() !== failed) return;
             const echo = document.getElementById('game-rendered-filters');
             if (!echo) return;
-            const typed = this.filters.q;
+            const listed = this._filtersFrom(getFiltersFromURL(echo.dataset.query || ''));
+            // Only while the address is still the list's. After a Back whose
+            // own render failed it is not, and the controls stay with the
+            // address: put on the list, they named the page Back had left.
+            if (this._filterKeyOf(listed) !== this._urlFilterKey) return;
             // A search still being typed is the reader's: the box keeps its
-            // text, and the next keystroke sends it again. Music leaves it
-            // alone the same way.
+            // text, and the next keystroke sends it again, as on music.
+            // Never written at all, so its watcher has nothing to send: put
+            // back after a reset, the same text read as a new search, which
+            // failed, and was put back, three times a second.
             const typing = document.activeElement &&
                 typeof document.activeElement.matches === 'function' &&
                 document.activeElement.matches('[data-filter-search]');
-            this._syncFiltersFromUrl(echo.dataset.query || '');
-            if (typing) {
-                this.filters.q = typed;
-            } else if (this.filters.q !== typed) {
-                // The q watcher would send the restored text as a new search
-                this._restoredQuery = this.filters.q;
-            }
+            if (typing) listed.q = this.filters.q;
+            // The q watcher would send a restored text as a new search
+            if (listed.q !== this.filters.q) this._restoredQuery = listed.q;
+            Object.assign(this.filters, listed);
         },
 
         async loadSavedFilters() {
@@ -989,20 +993,23 @@ document.addEventListener('alpine:init', () => {
                 (query ? '/games/?' + query : '/');
         },
 
+        /** Read the filters back from the URL, which they then match. */
+        _syncFiltersFromUrl() {
+            Object.assign(this.filters, this._filtersFrom(getFiltersFromURL()));
+            this._setUrlFilterKey(this._filterKey());
+        },
+
         /**
-         * Read the filters back from the URL, which they then match, or
-         * from `search`, the query a list was rendered from. Reading a
-         * list's query says nothing of what the URL holds, so the record
-         * of that is left alone.
+         * What `getFiltersFromURL` read, from the address or from a list's
+         * echo of its own query, in the shape `filters` holds it: an open
+         * year is the corpus's first or last.
          */
-        _syncFiltersFromUrl(search) {
-            const url = getFiltersFromURL(search);
-            Object.assign(this.filters, url, {
+        _filtersFrom(url) {
+            return Object.assign({}, url, {
                 start: url.start === null ? this.minYear : url.start,
                 end: url.end === null ? this.maxYear : url.end,
                 hltb_preset: this.calculateHltbPreset(url.hltb_min, url.hltb_max)
             });
-            if (search === undefined) this._setUrlFilterKey(this._filterKey());
         },
 
         /** Record the filters the URL now holds, and a new visit if they moved. */
@@ -1013,7 +1020,12 @@ document.addEventListener('alpine:init', () => {
 
         /** The filters as one value. A highlight is spent by the first update. */
         _filterKey() {
-            const params = buildFilterParams(this.filters);
+            return this._filterKeyOf({});
+        },
+
+        /** `_filterKey` as it would be with `changes` made to the filters. */
+        _filterKeyOf(changes) {
+            const params = buildFilterParams(Object.assign({}, this.filters, changes));
             params.delete('highlight');
             return params.toString();
         },

@@ -38,9 +38,9 @@ logger = logging.getLogger(__name__)
 IGDB_FAILED = "IGDB import failed; see the server logs."
 WIKIPEDIA_FAILED = "Wikipedia lookup failed; see the server logs."
 IMPORT_FAILED = "Import failed; see the server logs."
-POSITIONS_SKIPPED = (
-    "Not imported: the lists or games file in this batch failed, and positions "
-    "are attached to their rows by order."
+BATCH_ROLLED_BACK = (
+    "Nothing was imported: a batch is all or nothing, so the files before "
+    "this one were rolled back with it."
 )
 
 
@@ -865,13 +865,21 @@ def import_batch_with_progress(data: Dict[str, Any]):
 
         def run_import():
             games_imported = False
-            # The files that failed, by field. A file is imported in a
-            # savepoint and the next one goes on, but positions are attached
-            # to lists and to games by their order in those two files:
-            # behind one that was not imported they would go onto the
-            # previous release's rows, and be committed there.
-            failed = set()
+
+            def refuse(display_name, message):
+                """Say which file failed and why, then roll the batch back."""
+                _queue_event(
+                    json.dumps(
+                        {"event": "error", "file": display_name, "message": message}
+                    )
+                )
+                raise _BatchFailed((False, message))
+
             try:
+                # All or nothing, as `import_batch` is. The loop used to go
+                # on to the next file after one failed and commit the rest:
+                # lists replaced with no games to match, or positions
+                # attached by rank to the previous release's games.
                 with transaction.atomic():
                     for (
                         field_name,
@@ -886,72 +894,24 @@ def import_batch_with_progress(data: Dict[str, Any]):
                         if not file_obj:
                             continue
 
-                        if field_name == "memberships_file" and failed & {
-                            "lists_file",
-                            "games_file",
-                        }:
-                            _queue_event(
-                                json.dumps(
-                                    {
-                                        "event": "error",
-                                        "file": display_name,
-                                        "message": POSITIONS_SKIPPED,
-                                    }
-                                )
-                            )
-                            continue
-
                         # Validate prerequisites
                         validation_error = _validate_prerequisites(import_type)
                         if validation_error:
-                            failed.add(field_name)
-                            _queue_event(
-                                json.dumps(
-                                    {
-                                        "event": "error",
-                                        "file": display_name,
-                                        "message": validation_error[1],
-                                    }
-                                )
-                            )
-                            continue
+                            refuse(display_name, validation_error[1])
 
-                        # Import the file, in a savepoint: a file that fails
-                        # rolls back alone instead of committing its first rows,
-                        # and on Postgres a database error would otherwise abort
-                        # the transaction under every later file's validation.
                         try:
                             f = TextIOWrapper(file_obj, encoding="utf-8")
-                            with transaction.atomic():
-                                handler(f, progress_callback)
-                            if field_name == "games_file":
-                                games_imported = True
+                            handler(f, progress_callback)
                         except ImportFileError as error:
                             # The file's own fault, in words: no traceback,
                             # and the message as written
-                            failed.add(field_name)
                             logger.warning("%s import refused: %s", display_name, error)
-                            _queue_event(
-                                json.dumps(
-                                    {
-                                        "event": "error",
-                                        "file": display_name,
-                                        "message": str(error),
-                                    }
-                                )
-                            )
+                            refuse(display_name, str(error))
                         except Exception:
-                            failed.add(field_name)
                             logger.exception("%s import failed", display_name)
-                            _queue_event(
-                                json.dumps(
-                                    {
-                                        "event": "error",
-                                        "file": display_name,
-                                        "message": IMPORT_FAILED,
-                                    }
-                                )
-                            )
+                            refuse(display_name, IMPORT_FAILED)
+                        if field_name == "games_file":
+                            games_imported = True
 
                 # Committed: the recreated games have no slugs until IGDB is
                 # fetched again, so start it, and tell the page.
@@ -959,6 +919,12 @@ def import_batch_with_progress(data: Dict[str, Any]):
                     note = post_import.schedule()
                     if note:
                         _queue_event(json.dumps({"event": "metadata", "message": note}))
+            except _BatchFailed:
+                # The file's own error has been sent; this says what became
+                # of the files before it
+                _queue_event(
+                    json.dumps({"event": "error", "message": BATCH_ROLLED_BACK})
+                )
             except Exception:
                 # A disconnect raises to roll back; that is no error to report
                 if not stop_event.is_set():
@@ -1700,9 +1666,8 @@ def import_games(
             f"{games_ranked} ranks calculated",
         )
 
-    except ImportFileError as error:
-        if progress_callback:
-            progress_callback("error", {"message": str(error)})
+    except ImportFileError:
+        # The caller says it, once, with the file's name
         raise
     except Exception:
         if progress_callback:
