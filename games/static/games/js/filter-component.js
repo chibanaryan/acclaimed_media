@@ -75,6 +75,9 @@ document.addEventListener('alpine:init', () => {
         // The filters a server request that failed was sent with, until a
         // render succeeds or the controls go back to the list
         _failedFilterKey: null,
+        // A Back or Forward whose render failed: the address has moved and
+        // the list has not, until a render succeeds
+        _listBehindAddress: false,
         _csf: null,
         // Store listener references for cleanup (memory leak fix)
         _popstateListener: null,
@@ -499,8 +502,9 @@ document.addEventListener('alpine:init', () => {
          * them. And not once the reader has changed something since the
          * request was sent: that change is queued or on its way, and is
          * theirs to keep. And only while the address is the list's: a Back
-         * whose render failed has moved it, and is not recorded as failed
-         * either (performUpdate).
+         * whose render failed has moved it (`_listBehindAddress`), and is
+         * not recorded as failed either. A change that fails after that is
+         * left in the controls, as every failed change was before.
          */
         _rollBackIfStranded() {
             const failed = this._failedFilterKey;
@@ -510,11 +514,14 @@ document.addEventListener('alpine:init', () => {
             if (this._filterKey() !== failed) return;
             const echo = document.getElementById('game-rendered-filters');
             if (!echo) return;
-            const listed = this._filtersFrom(getFiltersFromURL(echo.dataset.query || ''));
             // Only while the address is still the list's. After a Back whose
-            // own render failed it is not, and the controls stay with the
-            // address: put on the list, they named the page Back had left.
-            if (this._filterKeyOf(listed) !== this._urlFilterKey) return;
+            // own render failed it is not: put on the list, the controls
+            // named the page Back had left. Known from that failure itself,
+            // not by comparing the echo with what the URL holds, which
+            // differ for other reasons (the playtime mode is written to the
+            // address with no render) and switched the roll-back off.
+            if (this._listBehindAddress) return;
+            const listed = this._filtersFrom(getFiltersFromURL(echo.dataset.query || ''));
             // A search still being typed is the reader's: the box keeps its
             // text, and the next keystroke sends it again, as on music.
             // Never written at all, so its watcher has nothing to send: put
@@ -1020,12 +1027,7 @@ document.addEventListener('alpine:init', () => {
 
         /** The filters as one value. A highlight is spent by the first update. */
         _filterKey() {
-            return this._filterKeyOf({});
-        },
-
-        /** `_filterKey` as it would be with `changes` made to the filters. */
-        _filterKeyOf(changes) {
-            const params = buildFilterParams(Object.assign({}, this.filters, changes));
+            const params = buildFilterParams(this.filters);
             params.delete('highlight');
             return params.toString();
         },
@@ -1293,6 +1295,7 @@ document.addEventListener('alpine:init', () => {
                     this._writeHistory(historyMethod, pushUrl, filterKey);
                 }
                 this._failedFilterKey = null;
+                this._listBehindAddress = false;
                 // The client render sets the tab with the heading; this path
                 // has to as well, or the tab lags until the engine loads.
                 if (window.documentTitleSuffix) {
@@ -1309,6 +1312,8 @@ document.addEventListener('alpine:init', () => {
                     if (historyMethod) {
                         this._failedFilterKey = filterKey;
                         this._rollBackIfStranded();
+                    } else {
+                        this._listBehindAddress = true;
                     }
                 }
             } finally {
@@ -1356,6 +1361,7 @@ document.addEventListener('alpine:init', () => {
             });
             // The list now shows the filters: nothing is left to roll back
             this._failedFilterKey = null;
+            this._listBehindAddress = false;
 
             // Also empties Load Previous: a new result set starts at the top
             this._csf.renderWindowChrome();

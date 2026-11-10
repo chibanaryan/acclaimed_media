@@ -1330,8 +1330,23 @@ class Game(RemembersLoaded, MediaItemBase):
                 igdb_id=dev_data["id"]
             )
             for holder in holders:
-                holder.slug = f"{slug}-{holder.igdb_id or holder.pk}"
-                holder.save(update_fields=["slug"])
+                moved = f"{slug}-{holder.igdb_id or holder.pk}"
+                # Its own id tells it apart from every slug IGDB gives but
+                # one that happens to end in it: then the pk as well
+                if Developer.objects.filter(slug=moved).exists():
+                    moved = f"{moved}-{holder.pk}"
+                logger.info(
+                    "Developer %s gives the slug %s to IGDB company %s, for %s",
+                    holder.pk,
+                    slug,
+                    dev_data["id"],
+                    moved,
+                )
+                holder.slug = moved
+                # Built from the slug it has lost, so it is the other
+                # company's page now
+                holder.igdb_url = None
+                holder.save(update_fields=["slug", "igdb_url"])
 
         # update_or_create prevents duplicates - matches on igdb_id
         developer, _ = Developer.objects.update_or_create(

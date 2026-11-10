@@ -39,8 +39,8 @@ IGDB_FAILED = "IGDB import failed; see the server logs."
 WIKIPEDIA_FAILED = "Wikipedia lookup failed; see the server logs."
 IMPORT_FAILED = "Import failed; see the server logs."
 BATCH_ROLLED_BACK = (
-    "Nothing was imported: a batch is all or nothing, so the files before "
-    "this one were rolled back with it."
+    "Nothing was imported: a batch is all or nothing, so any file imported "
+    "before this one was rolled back with it."
 )
 
 
@@ -912,6 +912,13 @@ def import_batch_with_progress(data: Dict[str, Any]):
                             refuse(display_name, IMPORT_FAILED)
                         if field_name == "games_file":
                             games_imported = True
+
+                    # The rankings heading's "Updated:" date, as
+                    # `import_batch` sets it: an import from the staff page
+                    # left the previous release's. Inside the transaction,
+                    # so a batch rolled back leaves it.
+                    if games_imported:
+                        models.SiteMetadata.stamp_update()
 
                 # Committed: the recreated games have no slugs until IGDB is
                 # fetched again, so start it, and tell the page.

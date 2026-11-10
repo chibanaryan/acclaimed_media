@@ -185,6 +185,24 @@ class DeveloperSlugGivenByIgdbTests(TestCase):
         holder.refresh_from_db()
         self.assertEqual(holder.slug, f"acme-{holder.pk}")
 
+    def test_the_slug_it_is_moved_to_is_a_free_one(self):
+        """Its IGDB id tells it apart from every slug but one that ends in
+        it, and a refused write there failed the game's refresh."""
+        holder = self.developer(10, "acme", "Acme (old)")
+        models.Developer.objects.create(name="Acme 10", igdb_id=11, slug="acme-10")
+        self.developer(30, "acme")
+        self.assertEqual(
+            self.slugs(), {10: f"acme-10-{holder.pk}", 11: "acme-10", 30: "acme"}
+        )
+
+    def test_the_row_that_gave_it_up_no_longer_links_to_the_others_igdb_page(self):
+        holder = self.developer(10, "acme", "Acme (old)")
+        self.assertEqual(holder.igdb_url, "https://www.igdb.com/companies/acme")
+        newcomer = self.developer(30, "acme")
+        holder.refresh_from_db()
+        self.assertIsNone(holder.igdb_url)
+        self.assertEqual(newcomer.igdb_url, "https://www.igdb.com/companies/acme")
+
     def test_a_subsidiary_has_no_slug_to_take(self):
         self.developer(10, "acme")
         child = models.Game._get_or_create_developer_with_parents(
@@ -355,3 +373,23 @@ class StreamedImportIsAllOrNothingTests(InlineImportThreadMixin, TestCase):
         self.assertEqual(
             list(models.Game.objects.values_list("name", flat=True)), ["Alpha"]
         )
+
+    def test_a_committed_games_file_moves_the_updated_date(self):
+        """The heading's "Updated:" kept the previous release's date after
+        an import from the staff page: only the other import path set it."""
+        before = models.SiteMetadata.get_instance().last_full_update
+        with mock.patch(
+            "games.services.import_handler.post_import.schedule", return_value=None
+        ):
+            self.stream("1\tAlpha\t2000\tPC\t101\tQ1\r\n")
+        after = models.SiteMetadata.get_instance().last_full_update
+        self.assertIsNotNone(after)
+        self.assertNotEqual(after, before)
+
+    def test_a_rolled_back_batch_leaves_the_updated_date(self):
+        before = models.SiteMetadata.get_instance().last_full_update
+        self.stream(
+            "1\tAlpha\t2000\tPC\t101\tQ1\r\n",
+            positions=RuntimeError("bad positions"),
+        )
+        self.assertEqual(models.SiteMetadata.get_instance().last_full_update, before)

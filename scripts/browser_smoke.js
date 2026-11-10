@@ -1187,12 +1187,14 @@ async function checkGamesFailedRequestWithoutTheEngine(page, engineFirst) {
 async function checkGamesFailedBackWithoutTheEngine(page) {
     await page.setViewport({ width: 1440, height: 900 });
     let failing = false;
+    let refused = 0;
     await page.setRequestInterception(true);
     page.on('request', request => {
         const url = request.url();
         const render = url.startsWith(games + '/?') &&
             ['xhr', 'fetch'].includes(request.resourceType());
         if (url.startsWith(games + '/api/games/all/') || (render && failing)) {
+            if (render) refused += 1;
             request.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
         } else {
             request.continue();
@@ -1218,9 +1220,13 @@ async function checkGamesFailedBackWithoutTheEngine(page) {
     }
     // And a change that fails next is not put on that list either: its echo
     // is the 1990s, which the address no longer is
+    const sent = refused;
+    if (!sent) return 'the render Back asked for was never sent';
     const other = await page.waitForSelector('.year-grid-decade[title^="2000s:"]');
     await other.click();
-    await sleep(1500);
+    for (let tries = 0; tries < 60 && refused === sent; tries += 1) await sleep(50);
+    if (refused === sent) return 'the second change was never sent';
+    await sleep(800);
     return await pressed() === 'false'
         ? null : 'a second failure put the year grid on the 1990s, under the address of every year';
 }

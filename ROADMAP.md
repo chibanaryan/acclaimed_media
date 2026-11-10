@@ -125,6 +125,15 @@ and either changes what a job matches or needs measuring first.
     - `_refresh_wikipedia` in `refresh_all_metadata.py` is dead: only
       `_refresh_wikipedia_async` is called.
     - Nothing dispatches `reset-search-state` (four listeners).
+    - `import_batch` and `import_batch_with_progress` are two copies of one
+      loop, and have drifted three times ("GAMES" for `TYPE_GAME`, going on
+      after a failed file, the "Updated" date). One driver with an optional
+      progress callback would end that. Each handler also sends its own
+      "Import failed" before the batch names the file, so a failure shows
+      as two rows on the staff page.
+    - After a Back whose render failed, a change that fails too is left in
+      the controls, which then match neither the list nor the address
+      (bug 9's state).
     - `RateLimitedClient.get_bytes` reads a cover's whole body before
       `COVER_MAX_BYTES` is checked, so the ceiling bounds what is stored,
       not what a download can cost a worker. Streaming it means reading

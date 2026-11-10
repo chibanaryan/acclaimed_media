@@ -934,6 +934,14 @@
                         // Long enough to read the metadata note before the reload.
                         setTimeout(() => window.location.reload(), metadataNote ? 5000 : 2000)
                     } else {
+                        // A batch is all or nothing: a file whose bar reached
+                        // "Complete" before another failed was rolled back
+                        for (const id of ['platforms', 'lists', 'games', 'memberships']) {
+                            const status = document.getElementById(`${id}-status`)
+                            if (status && status.textContent === 'Complete') {
+                                status.textContent = 'Rolled back'
+                            }
+                        }
                         // Reset button for retry
                         submitBtn.disabled = false
                         submitBtn.innerHTML = '<span class="mdi mdi-upload" aria-hidden="true"></span>Import Files'
