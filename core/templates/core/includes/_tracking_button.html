@@ -37,6 +37,7 @@
     x-effect="if (open) { zHigh = true } else { setTimeout(() => zHigh = false, 100) }"
     :class="{ 'z-[9999]': zHigh, 'z-10': !zHigh }"
     @click.away="open = false"
+    @keydown.escape="open = false"
     @close-tracking-dropdowns.window="if ($event.detail !== $el) open = false"
     data-tracking-scope="{{ tracking_scope }}"
     data-item-id="{{ item.id }}"

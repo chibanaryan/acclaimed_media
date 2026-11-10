@@ -514,7 +514,8 @@ class GameListRenderer extends BaseMediaListRenderer {
         this._fillSlot(row, 'year', game.y || 'N/A');
 
         const yearLink = row.querySelector('[data-slot="year-link"]');
-        if (yearLink) yearLink.href = `/games/?start=${game.y}&end=${game.y}&highlight=${game.id}`;
+        // `/`, as the server's row writes it: `/games/?...` is a redirect to it
+        if (yearLink) yearLink.href = `/?start=${game.y}&end=${game.y}&highlight=${game.id}`;
 
         // Fill global rank (under the main rank)
         const globalRankEl = row.querySelector('[data-slot="global-rank"]');
@@ -689,7 +690,7 @@ class GameListRenderer extends BaseMediaListRenderer {
         <div class="flex-1 min-w-0 px-4">
             <div class="truncate">
                 <a href="/game/${game.s}/" class="game-title text-lg font-bold link link-hover">${this._escapeHtml(game.n)}</a>
-                <a rel="nofollow" href="/games/?start=${game.y}&end=${game.y}&highlight=${game.id}" class="text-base-content/80 ml-1.5">(${game.y || 'N/A'})</a>
+                <a rel="nofollow" href="/?start=${game.y}&end=${game.y}&highlight=${game.id}" class="text-base-content/80 ml-1.5">(${game.y || 'N/A'})</a>
             </div>
             <div class="game-row-details text-base-content/80 text-sm ml-4" data-slot="meta-row">${metaRowHtml}</div>
         </div>
@@ -868,7 +869,9 @@ class GameListRenderer extends BaseMediaListRenderer {
                 ? `<span class="font-normal text-xs text-base-content/80 tabular-nums" data-slot="global-rank"> (#${game.r})</span>`
                 : '';
             const rankHtml = showRankInline ? `<span class="text-accent tabular-nums text-lg" data-slot="rank">#${displayRank}</span> ` : '';
-            titleEl.innerHTML = `${rankHtml}${this._escapeHtml(game.n)} <span class="font-normal text-sm text-base-content/70">(${game.y || 'N/A'})</span>${globalRankHtml}`;
+            // The name is a link, as the server's row writes it: the card's
+            // data-href alone gave the keyboard no way in
+            titleEl.innerHTML = `${rankHtml}<a href="/game/${game.s}/" class="link link-hover" data-slot="title-link">${this._escapeHtml(game.n)}</a> <span class="font-normal text-sm text-base-content/70">(${game.y || 'N/A'})</span>${globalRankHtml}`;
         }
 
         // Fill meta (unified row: developer, platforms, genres, playtime, list count)
@@ -961,7 +964,7 @@ class GameListRenderer extends BaseMediaListRenderer {
     <div class="w-12 rounded overflow-hidden bg-base-100" style="aspect-ratio: 90/128;"><img src="${thumbnail}" alt="${this._escapeHtml(game.n)}" width="90" height="128" class="w-full h-full object-cover" loading="lazy" decoding="async"></div>
     <div class="min-w-0 flex items-center justify-between">
         <div class="min-w-0">
-            <div class="font-bold text-base leading-tight line-clamp-2" data-slot="title">${rankHtml}${this._escapeHtml(game.n)} <span class="font-normal text-sm text-base-content/70">(${game.y || 'N/A'})</span>${globalRankHtml}</div>
+            <div class="font-bold text-base leading-tight line-clamp-2" data-slot="title">${rankHtml}<a href="/game/${game.s}/" class="link link-hover" data-slot="title-link">${this._escapeHtml(game.n)}</a> <span class="font-normal text-sm text-base-content/70">(${game.y || 'N/A'})</span>${globalRankHtml}</div>
             <div class="text-xs text-base-content/65" data-slot="meta">${metaHtml}</div>
         </div>
     </div>

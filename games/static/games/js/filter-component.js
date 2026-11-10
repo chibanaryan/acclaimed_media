@@ -52,12 +52,14 @@ document.addEventListener('alpine:init', () => {
         platformGroupCounts: {},
         initialized: false,
         isLoading: false,
-        yearExpanded: localStorage.getItem('yearExpanded') !== 'false',
-        genresExpanded: localStorage.getItem('genresExpanded') !== 'false',
-        platformsExpanded: localStorage.getItem('platformsExpanded') !== 'false',
-        seriesExpanded: localStorage.getItem('seriesExpanded') !== 'false',
-        hltbExpanded: localStorage.getItem('hltbExpanded') !== 'false',
-        viewMode: localStorage.getItem('gameViewMode') || 'list',
+        // Through readStoredPreference: read bare, these threw for a reader
+        // whose browser refuses storage, and the component never started
+        yearExpanded: readStoredPreference('yearExpanded') !== 'false',
+        genresExpanded: readStoredPreference('genresExpanded') !== 'false',
+        platformsExpanded: readStoredPreference('platformsExpanded') !== 'false',
+        seriesExpanded: readStoredPreference('seriesExpanded') !== 'false',
+        hltbExpanded: readStoredPreference('hltbExpanded') !== 'false',
+        viewMode: readStoredPreference('gameViewMode') || 'list',
         fetchManager: new FetchManager(),
         _debouncedUpdate: null,
         _debouncedFilter: null,
@@ -82,6 +84,8 @@ document.addEventListener('alpine:init', () => {
         saveFilterModalOpen: false,
         saveFilterName: '',
         saveFilterError: '',
+        savedFiltersError: '',
+        deleteFilterError: '',
         saveFilterSaving: false,
         applyingSavedFilter: false,
         renameFilterModalOpen: false,
@@ -169,21 +173,21 @@ document.addEventListener('alpine:init', () => {
 
                 // Restore scroll position, but not if there's a highlight parameter
                 // (highlight scroll will handle positioning in that case)
-                const savedScrollPos = sessionStorage.getItem('gameListScrollPos');
+                const savedScrollPos = readStoredPreference('gameListScrollPos', true);
                 const urlParams = new URLSearchParams(window.location.search);
                 const hasHighlight = urlParams.has('highlight');
                 if (savedScrollPos && !hasHighlight) {
                     setTimeout(() => {
                         window.scrollTo(0, parseInt(savedScrollPos));
-                        sessionStorage.removeItem('gameListScrollPos');
+                        removeStoredPreference('gameListScrollPos', true);
                     }, 100);
                 } else if (savedScrollPos) {
                     // Still clear the saved position even if we're not using it
-                    sessionStorage.removeItem('gameListScrollPos');
+                    removeStoredPreference('gameListScrollPos', true);
                 }
 
                 const saveScrollPosition = () => {
-                    sessionStorage.setItem('gameListScrollPos', window.scrollY.toString());
+                    storePreference('gameListScrollPos', window.scrollY.toString(), true);
                 };
 
                 // Only register global listeners once to prevent memory leaks
@@ -464,14 +468,19 @@ document.addEventListener('alpine:init', () => {
             if (this.savedFiltersLoaded) return;
 
             this.savedFiltersLoading = true;
+            this.savedFiltersError = '';
             try {
                 const response = await fetch('/api/saved-filters/');
                 if (response.ok) {
                     const data = await response.json();
                     this.savedFilters = data.filter_sets || [];
                     this.savedFiltersLoaded = true;
+                } else {
+                    // The menu opened on nothing, with no word of why
+                    this.savedFiltersError = 'Saved filters could not be loaded.';
                 }
             } catch (e) {
+                this.savedFiltersError = 'Saved filters could not be loaded.';
                 console.error('[SavedFilters] Failed to load:', e);
             } finally {
                 this.savedFiltersLoading = false;
@@ -651,12 +660,14 @@ document.addEventListener('alpine:init', () => {
         deleteSavedFilter(filter) {
             this.deleteFilterTarget = filter;
             this.deleteFilterDeleting = false;
+            this.deleteFilterError = '';
             this.deleteFilterModalOpen = true;
             this.savedFiltersOpen = false;
         },
 
         async confirmDeleteFilter() {
             this.deleteFilterDeleting = true;
+            this.deleteFilterError = '';
             const csrfToken = this._getCsrfToken();
             try {
                 const response = await fetch('/api/saved-filters/' + this.deleteFilterTarget.id + '/', {
@@ -668,8 +679,11 @@ document.addEventListener('alpine:init', () => {
                     const index = this.savedFilters.indexOf(this.deleteFilterTarget);
                     if (index > -1) this.savedFilters.splice(index, 1);
                     this.deleteFilterModalOpen = false;
+                } else {
+                    this.deleteFilterError = 'This filter could not be deleted.';
                 }
             } catch (e) {
+                this.deleteFilterError = 'This filter could not be deleted.';
                 console.error('[SavedFilters] Failed to delete:', e);
             } finally {
                 this.deleteFilterDeleting = false;
@@ -1033,7 +1047,7 @@ document.addEventListener('alpine:init', () => {
             this.$dispatch('series-reset');
             window.dispatchEvent(new CustomEvent('hltb-reset'));
             if (this.initialized) this.debouncedFilterUpdate();
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            window.scrollTo({ top: 0, behavior: scrollBehavior() });
         },
 
         addPlatform(data) {
@@ -1046,7 +1060,7 @@ document.addEventListener('alpine:init', () => {
             this.filters.platforms = [id];
             this.$dispatch('genres-reset');
             if (this.initialized) this.debouncedFilterUpdate();
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            window.scrollTo({ top: 0, behavior: scrollBehavior() });
         },
 
         addPlatforms(data) {
@@ -1059,7 +1073,7 @@ document.addEventListener('alpine:init', () => {
             this.filters.platforms = ids;
             this.$dispatch('genres-reset');
             if (this.initialized) this.debouncedFilterUpdate();
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            window.scrollTo({ top: 0, behavior: scrollBehavior() });
         },
 
         addGenre(data) {
@@ -1072,7 +1086,7 @@ document.addEventListener('alpine:init', () => {
             this.filters.platforms = [];
             this.$dispatch('platforms-reset');
             if (this.initialized) this.debouncedFilterUpdate();
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            window.scrollTo({ top: 0, behavior: scrollBehavior() });
         },
 
         addGenres(data) {
@@ -1085,7 +1099,7 @@ document.addEventListener('alpine:init', () => {
             this.filters.platforms = [];
             this.$dispatch('platforms-reset');
             if (this.initialized) this.debouncedFilterUpdate();
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            window.scrollTo({ top: 0, behavior: scrollBehavior() });
         },
 
         async performUpdate(options = {}) {
@@ -1101,10 +1115,15 @@ document.addEventListener('alpine:init', () => {
             setLoading('game-results-container');
 
             const params = buildFilterParams(this.filters);
-            const url = '/games/?' + normalizeUrl(params.toString());
+            // The address the list is asked for at, and (below) the one the
+            // reader is shown, which keeps its `/games/?` spelling: Back and
+            // the landing pages read that shape. Fetching it was a redirect
+            // to `/?...` on every server-side filter change.
+            const query = normalizeUrl(params.toString());
+            const url = '/games/?' + query;
 
             try {
-                const html = await fetchHtml(url, signal);
+                const html = await fetchHtml('/?' + query, signal);
 
                 if (partial) {
                     const content = parseAndExtract(html, [
@@ -1468,7 +1487,7 @@ document.addEventListener('alpine:init', () => {
 
         setViewMode(mode) {
             this.viewMode = mode;
-            localStorage.setItem('gameViewMode', mode);
+            storePreference('gameViewMode', mode);
             if (this._csf) {
                 this._csf.setViewMode(mode);
             }

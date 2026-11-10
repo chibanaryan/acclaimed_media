@@ -34,7 +34,107 @@ async function fetchHtml(url, signal, targetId = 'content') {
         headers: createHtmxHeaders(targetId),
         signal: signal
     });
+    // An error page is not results: the filter component set the list to
+    // whatever came back, so a 500 put the server's error page inside it
+    if (!response.ok) {
+        throw new Error(`${url} answered ${response.status}`);
+    }
     return response.text();
+}
+
+/**
+ * How a scripted scroll should move: 'smooth', or 'auto' for a reader who
+ * has asked their system for less motion. The stylesheet already turns
+ * `scroll-behavior` off for them, but a script that names `smooth` itself
+ * overrides a stylesheet, so each one asks here instead.
+ * @returns {string}
+ */
+function scrollBehavior() {
+    const reduced = typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    return reduced ? 'auto' : 'smooth';
+}
+
+// ============================================================
+// Stored preferences
+// ============================================================
+
+/**
+ * `localStorage`, or `sessionStorage`, or null when the browser refuses it.
+ * With cookies blocked Chrome throws on the property itself, and a private
+ * window can refuse a write, so every use goes through the three functions
+ * below: a preference that cannot be kept is one that was never set. The
+ * games filter component read six of them in its data literal, bare, and
+ * never started for such a reader.
+ * @param {boolean} [session] - sessionStorage, not localStorage
+ */
+function webStorage(session) {
+    try {
+        return session ? window.sessionStorage : window.localStorage;
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * A stored string, or null if there is none or storage is refused.
+ * @param {string} key
+ * @param {boolean} [session]
+ * @returns {?string}
+ */
+function readStoredPreference(key, session) {
+    if (!key) return null;
+    try {
+        return webStorage(session).getItem(key);
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * A stored JSON value, or `fallback` if there is none, it does not parse or
+ * storage is refused.
+ * @param {string} key
+ * @param {*} fallback
+ * @param {boolean} [session]
+ */
+function readStoredJson(key, fallback, session) {
+    const stored = readStoredPreference(key, session);
+    if (stored === null) return fallback;
+    try {
+        return JSON.parse(stored);
+    } catch (e) {
+        return fallback;
+    }
+}
+
+/**
+ * Store a value, if the browser will: over quota or refused, the
+ * preference just does not persist.
+ * @param {string} key
+ * @param {*} value
+ * @param {boolean} [session]
+ */
+function storePreference(key, value, session) {
+    if (!key) return;
+    try {
+        webStorage(session).setItem(key, value);
+    } catch (e) {
+        // Not kept
+    }
+}
+
+/**
+ * Forget a stored value, if the browser will.
+ * @param {string} key
+ * @param {boolean} [session]
+ */
+function removeStoredPreference(key, session) {
+    try {
+        webStorage(session).removeItem(key);
+    } catch (e) {
+        // Nothing was kept
+    }
 }
 
 /**
@@ -1097,7 +1197,7 @@ function flashHighlight(scrollTarget, elements, options) {
         el.classList.add('is-highlighted');
     });
     if (scrollTarget) {
-        scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        scrollTarget.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
     }
 
     var timer = null;
@@ -1127,6 +1227,11 @@ function flashHighlight(scrollTarget, elements, options) {
 }
 
 window.flashHighlight = flashHighlight;
+window.scrollBehavior = scrollBehavior;
+window.readStoredPreference = readStoredPreference;
+window.readStoredJson = readStoredJson;
+window.storePreference = storePreference;
+window.removeStoredPreference = removeStoredPreference;
 
 // Signal that utils-base is ready for Alpine
 window.utilsBaseReady = true;

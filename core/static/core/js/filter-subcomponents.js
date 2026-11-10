@@ -149,18 +149,14 @@
             },
 
             loadExpandedState: function () {
-                try {
-                    var saved = localStorage.getItem("genreCategoriesExpanded");
-                    if (saved) {
-                        this.expandedCategories = JSON.parse(saved);
-                    }
-                } catch (e) {
-                    this.expandedCategories = {};
+                var saved = readStoredJson("genreCategoriesExpanded", null);
+                if (saved) {
+                    this.expandedCategories = saved;
                 }
             },
 
             saveExpandedState: function () {
-                localStorage.setItem("genreCategoriesExpanded", JSON.stringify(this.expandedCategories));
+                storePreference("genreCategoriesExpanded", JSON.stringify(this.expandedCategories));
             },
 
             toggleCategoryExpanded: function (categoryId) {
@@ -381,7 +377,7 @@
 
             handleReset: function () {
                 this.expandedCategories = {};
-                localStorage.removeItem("genreCategoriesExpanded");
+                removeStoredPreference("genreCategoriesExpanded");
             },
 
             areAllExpanded: function () {
@@ -986,14 +982,14 @@
             filters.genres = [];
         }
 
-        component.expanded = JSON.parse(localStorage.getItem("mobileFilterExpanded_genre") || "true");
+        component.expanded = readStoredJson("mobileFilterExpanded_genre", true);
         component.expandedCategories = {};
         component.countsReady = false;
 
         component.init = function () {
             var self = this;
             this.$watch("expanded", function (val) {
-                localStorage.setItem("mobileFilterExpanded_genre", JSON.stringify(val));
+                storePreference("mobileFilterExpanded_genre", JSON.stringify(val));
             });
             this._genreCountsHandler = function (event) {
                 self.updateFilteredCounts(event.detail);
@@ -1065,7 +1061,7 @@
         var maxYear = config.maxYear;
 
         return {
-            expanded: JSON.parse(localStorage.getItem("mobileFilterExpanded_time") || "true"),
+            expanded: readStoredJson("mobileFilterExpanded_time", true),
             mode: "decade",
             decades: buildDecades(minYear, maxYear),
             years: Array.from({ length: maxYear - minYear + 1 }, function (_, i) {
@@ -1152,7 +1148,7 @@
 
             init: function () {
                 this.$watch("expanded", function (val) {
-                    localStorage.setItem("mobileFilterExpanded_time", JSON.stringify(val));
+                    storePreference("mobileFilterExpanded_time", JSON.stringify(val));
                 });
             },
         };

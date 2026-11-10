@@ -6,7 +6,7 @@
     {% include 'includes/_theme_script.html' %}
 
     {# Theme toggle functions - compact for faster parsing #}
-    <script nonce="{{ csp_nonce }}">function setTheme(t){localStorage.setItem('theme',t);window.saveThemeCookie(t);document.documentElement.setAttribute('data-theme',t);updateThemeToggle(t)}function updateThemeToggle(t){var d=t==='forest';['theme-toggle','theme-toggle-mobile'].forEach(function(id){var e=document.getElementById(id);if(e)e.checked=d})}document.addEventListener('change',function(e){if(e.target.classList.contains('theme-controller'))setTheme(e.target.checked?'forest':'lofi')});document.addEventListener('DOMContentLoaded',function(){updateThemeToggle(localStorage.getItem('theme')||'lofi')})</script>
+    <script nonce="{{ csp_nonce }}">function setTheme(t){try{localStorage.setItem('theme',t)}catch(e){}window.saveThemeCookie(t);document.documentElement.setAttribute('data-theme',t);updateThemeToggle(t)}function updateThemeToggle(t){var d=t==='forest';['theme-toggle','theme-toggle-mobile'].forEach(function(id){var e=document.getElementById(id);if(e)e.checked=d})}document.addEventListener('change',function(e){if(e.target.classList.contains('theme-controller'))setTheme(e.target.checked?'forest':'lofi')});document.addEventListener('DOMContentLoaded',function(){updateThemeToggle(document.documentElement.getAttribute('data-theme')||'lofi')})</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     {# htmx re-creates the scripts a swap brings in; this gives them the page's nonce, the one its CSP header allows #}
@@ -246,7 +246,7 @@
     {% endif %}
 
     {# Global Contact Form Modal - accessible from any page #}
-    <dialog id="contactModal" class="modal">
+    <dialog id="contactModal" class="modal" aria-labelledby="contactModalTitle">
         <div class="modal-box bg-base-200 max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto">
             <form method="dialog">
                 <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" aria-label="close">
@@ -254,7 +254,7 @@
                 </button>
             </form>
             {# One form for every site; it posts to the host it is on, which tells the email the site it came from #}
-            <p class="text-lg font-bold mb-4">Contact Us</p>
+            <p id="contactModalTitle" class="text-lg font-bold mb-4">Contact Us</p>
             <p class="mb-4">
                 Have a question, suggestion, or found an issue? We'd love to hear from you!
                 Fill out the form below and we'll get back to you as soon as possible.
@@ -402,11 +402,11 @@
                         // On mobile, scroll to header
                         const isDesktop = window.matchMedia('(min-width: 962px)').matches;
                         if (isDesktop) {
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                            window.scrollTo({ top: 0, behavior: window.scrollBehavior ? window.scrollBehavior() : 'auto' });
                         } else {
                             const header = document.getElementById('header');
                             if (header) {
-                                header.scrollIntoView({ behavior: 'smooth' });
+                                header.scrollIntoView({ behavior: window.scrollBehavior ? window.scrollBehavior() : 'auto' });
                             }
                         }
                     }, 200);
@@ -514,7 +514,8 @@
         // its own (a developer detail page, an album detail page): send the
         // reader to that section's rankings with the filter applied. A page
         // that handles these itself sets listFilterActive and opts out.
-        window.mediaRankingsUrl = '{% if media_type == "music" %}{% url "music:home" %}{% elif media_type == "books" %}{% url "books:home" %}{% else %}/games/{% endif %}';
+        {# The site's own front page, where its rankings are. It was /games/ for games, a redirect to this. #}
+        window.mediaRankingsUrl = '{% if media_type == "books" %}{% url "books:home" %}{% else %}{{ site_home_url|escapejs }}{% endif %}';
         document.addEventListener('add-platforms', function(e) {
             if (window.listFilterActive) return;
             var platformIds = e.detail.platformIds;
@@ -538,7 +539,7 @@
         x-transition:leave="transition ease-in duration-200"
         x-transition:leave-start="opacity-100 translate-y-0"
         x-transition:leave-end="opacity-0 translate-y-4"
-        @click="window.scrollTo({ top: 0, behavior: 'smooth' })"
+        @click="window.scrollTo({ top: 0, behavior: scrollBehavior() })"
         class="btn btn-circle btn-primary fixed bottom-6 right-6 z-50 shadow-lg hover:shadow-xl"
         aria-label="Back to top"
         style="display: none;">

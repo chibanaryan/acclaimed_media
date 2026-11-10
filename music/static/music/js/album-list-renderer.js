@@ -342,10 +342,8 @@ class AlbumListRenderer extends BaseMediaListRenderer {
         const parts = artists.map(artist => {
             const name = this._escapeHtml(artist.n);
             if (!artist.s) return name;
-            // `_escapeHtml` leaves quotes alone, which an attribute cannot:
-            // Bonnie "Prince" Billy would end the title early.
             const title = artist.a && artist.a !== artist.n
-                ? ` title="${this._escapeHtml(artist.a).replace(/"/g, '&quot;')}"`
+                ? ` title="${this._escapeHtml(artist.a)}"`
                 : '';
             return `<a href="${this._musicPath(`artists/${encodeURIComponent(artist.s)}/`)}" ` +
                 `class="link link-hover"${title}>${name}</a>`;
@@ -516,15 +514,16 @@ class AlbumListRenderer extends BaseMediaListRenderer {
         }
         this._fillCover(row, album, 'thumbnail-mobile', 'thumbnail-mobile-placeholder');
 
-        // The title sits as a bare text node between the rank and the year,
-        // so it is written directly rather than through a slot of its own.
-        const title = row.querySelector('[data-slot="title-mobile"]');
+        // The title is a link between the rank and the year: the card's
+        // data-href alone gave the keyboard no way in.
+        const titleLink = row.querySelector('[data-slot="title-link-mobile"]');
+        if (titleLink) {
+            titleLink.href = url;
+            titleLink.textContent = album.name;
+        }
         const yearEl = row.querySelector('[data-slot="year-mobile"]');
         if (yearEl) {
             yearEl.textContent = album.year === null ? '' : `(${album.year})`;
-        }
-        if (title && yearEl) {
-            title.insertBefore(document.createTextNode(` ${album.name} `), yearEl);
         }
 
         // Mobile credit is the published text, not links.
@@ -625,6 +624,7 @@ AlbumListRenderer.SLOTS = [
     'thumbnail-mobile',
     'thumbnail-mobile-placeholder',
     'title-mobile',
+    'title-link-mobile',
     'year-mobile',
     'meta-mobile',
     'tracking-column-mobile'

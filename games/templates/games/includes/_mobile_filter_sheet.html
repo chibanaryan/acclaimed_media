@@ -92,6 +92,7 @@
                 <div x-show="savedFiltersLoading && !savedFiltersLoaded" class="py-2 text-center">
                     <span class="loading loading-spinner loading-sm"></span>
                 </div>
+                <p x-show="savedFiltersError" x-cloak class="py-2 text-center text-error text-sm" role="alert" x-text="savedFiltersError"></p>
 
                 {# Saved filters list #}
                 <div x-show="savedFiltersLoaded && savedFilters.length > 0"
@@ -107,13 +108,15 @@
                                 <button type="button"
                                         class="btn btn-ghost btn-sm btn-square text-base-content/50 active:text-info"
                                         @click.stop="renameSavedFilter(filter)"
-                                        title="Rename">
+                                        title="Rename"
+                                        :aria-label="'Rename ' + filter.name">
                                     <span class="mdi mdi-pencil text-lg" aria-hidden="true"></span>
                                 </button>
                                 <button type="button"
                                         class="btn btn-ghost btn-sm btn-square text-base-content/50 active:text-error"
                                         @click.stop="deleteSavedFilter(filter)"
-                                        title="Delete">
+                                        title="Delete"
+                                        :aria-label="'Delete ' + filter.name">
                                     <span class="mdi mdi-delete text-lg" aria-hidden="true"></span>
                                 </button>
                             </div>
@@ -194,8 +197,8 @@
 
         {# HLTB Playtime Filter #}
         <div class="pb-3 border-b border-base-100"
-             x-data="{ expanded: JSON.parse(localStorage.getItem('mobileFilterExpanded_hltb') || 'true') }"
-             x-init="$watch('expanded', val => localStorage.setItem('mobileFilterExpanded_hltb', JSON.stringify(val)))"
+             x-data="{ expanded: readStoredJson('mobileFilterExpanded_hltb', true) }"
+             x-init="$watch('expanded', val => storePreference('mobileFilterExpanded_hltb', JSON.stringify(val)))"
              @filter-changed="handleFilterChange($event.detail.type, $event.detail)">
             <div class="flex items-center w-full text-base font-semibold">
                 <button type="button"

@@ -1,6 +1,6 @@
 {% load static game_filters core_filters %}
 <nav class="navbar bg-transparent px-0" role="navigation" aria-label="main navigation"
-     x-data="priorityNav()" x-init="init()">
+     x-data="priorityNav()">
 
     {# Nav items that can overflow to hamburger menu #}
     <div class="flex-1 min-w-0 overflow-hidden" x-ref="navContainer">
@@ -400,10 +400,16 @@
 <script nonce="{{ csp_nonce }}">
 (function() {
     var cacheKey = 'navOverflow_' + window.innerWidth;
-    var cached = sessionStorage.getItem(cacheKey);
+    // Ahead of utils-base.js and its helpers, so guarded here: storage a
+    // browser refuses throws, and a value that does not parse is no cache
+    var hiddenIds = null;
+    try {
+        hiddenIds = JSON.parse(sessionStorage.getItem(cacheKey));
+    } catch (e) {
+        hiddenIds = null;
+    }
     var navItems = document.getElementById('mobile-nav-items');
-    if (cached && navItems) {
-        var hiddenIds = JSON.parse(cached);
+    if (Array.isArray(hiddenIds) && navItems) {
         hiddenIds.forEach(function(id) {
             var el = navItems.querySelector('[data-nav-item="' + id + '"]');
             if (el) el.style.display = 'none';
@@ -430,9 +436,8 @@ function priorityNav() {
 
             if (alreadyShown) {
                 // Pre-script handled it - just sync the hidden state to overflowItems
-                const cached = sessionStorage.getItem(this.cacheKey);
-                if (cached) {
-                    const hiddenIds = JSON.parse(cached);
+                const hiddenIds = readStoredJson(this.cacheKey, null, true);
+                if (Array.isArray(hiddenIds)) {
                     this.overflowItems.forEach(item => {
                         item.hidden = hiddenIds.includes(item.id);
                     });
@@ -446,11 +451,14 @@ function priorityNav() {
                 });
             }
 
-            window.addEventListener('resize', () => {
+            // Once the window has stopped moving: a resize fires a frame,
+            // and each one measured the nav and stored its state under a new
+            // key, the width in pixels, so a drag left hundreds behind
+            window.addEventListener('resize', debounce(() => {
                 this.cacheKey = 'navOverflow_' + window.innerWidth;
                 this.calculateFit();
                 this.cacheState();
-            });
+            }, 150));
         },
 
         showNav() {
@@ -462,7 +470,7 @@ function priorityNav() {
             const hiddenIds = this.overflowItems
                 .filter(item => item.hidden)
                 .map(item => item.id);
-            sessionStorage.setItem(this.cacheKey, JSON.stringify(hiddenIds));
+            storePreference(this.cacheKey, JSON.stringify(hiddenIds), true);
         },
 
         buildOverflowItems() {

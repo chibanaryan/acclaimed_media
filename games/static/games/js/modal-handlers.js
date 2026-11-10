@@ -5,6 +5,10 @@
  * Note: Modals (contactModal, authModal) are in the base layout and are NOT
  * swapped by HTMX. The guard prevents duplicate listener registration while
  * handlers re-query elements to be robust against any future DOM changes.
+ *
+ * A trigger in the mobile menu needs no help closing it: the menu closes
+ * itself on any click inside it (_nav_mobile.html). The code that was here
+ * for that read Alpine 2's `__x`, which Alpine 3 does not have.
  */
 (function() {
     'use strict';
@@ -32,12 +36,6 @@
             }
             htmx.ajax('GET', url, {target: '#auth-modal-content', swap: 'innerHTML'});
             authModal.showModal();
-
-            // Close mobile menu if open
-            var mobileMenu = document.querySelector('[x-data]');
-            if (mobileMenu && mobileMenu.__x) {
-                mobileMenu.__x.$data.expanded = false;
-            }
         }
     });
 
@@ -71,12 +69,6 @@
             }
 
             contactModal.showModal();
-
-            // Close mobile menu if open
-            var mobileMenu = document.querySelector('[x-data]');
-            if (mobileMenu && mobileMenu.__x) {
-                mobileMenu.__x.$data.expanded = false;
-            }
         }
 
         // Handle close button
@@ -94,7 +86,11 @@
         if (window.location.hash === '#contact') {
             setTimeout(function() {
                 contactModal.showModal();
-                history.replaceState(null, '', window.location.pathname);
+                // Without the #contact, and with the query the reader came
+                // with: this dropped it, and /?genres=1#contact lost its filter
+                history.replaceState(
+                    history.state, '', window.location.pathname + window.location.search
+                );
             }, 100);
         }
     }

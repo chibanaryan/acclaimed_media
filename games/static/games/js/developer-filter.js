@@ -485,7 +485,7 @@ function developerFilter() {
                 setTimeout(() => {
                     const gameEl = document.getElementById(`game-${gameId}`);
                     if (gameEl) {
-                        gameEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        gameEl.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
                         gameEl.classList.add('bg-primary/10', 'rounded-lg');
                         // Remove highlight after 2 seconds
                         setTimeout(() => {

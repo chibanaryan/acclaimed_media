@@ -16,8 +16,8 @@
 {% block structured_data %}{
     "@context": "https://schema.org",
     "@type": "MusicAlbum",
-    "name": "{{ album.name|escapejs }}",
-    "datePublished": "{{ album.year_released }}"{% if album.image_og %},
+    "name": "{{ album.name|escapejs }}"{% if album.year_released %},
+    "datePublished": "{{ album.year_released }}"{% endif %}{% if album.image_og %},
     "image": "{{ album.image_og }}"{% endif %}{% with credited=album.credited_artists %}{% if credited %},
     "byArtist": [{% for artist in credited %}
         {
@@ -28,18 +28,15 @@
     ]{% endif %}{% endwith %}
 }{% endblock %}
 
-{% block content %}
-{% if album %}
-<h1 class="text-3xl font-bold mb-4 flex items-center gap-3 flex-wrap">
-    {# The large listen button, where the games detail page puts its own #}
-    {% include 'music/includes/_listen_button.html' with is_owned=is_owned is_tracked=is_listened is_wanted=is_want_to_listen size='large' %}
-    <span>{{ album.name }}{% if album.year_released %} ({{ album.year_released }}){% endif %}</span>
-    {% include 'music/includes/_beta_badge.html' %}
-</h1>
-{# The artist is half of an album's identity - more than a developer is to #}
-{# a game - so the credit reads as a subtitle under the title rather than #}
-{# as one more row in the properties table. #}
-<p class="text-xl font-semibold -mt-2 mb-4">{% artist_links album 'link link-accent' %}</p>
+{# These two sit out here, not in `content`: a block nested in another #}
+{# renders where it is written as well as in its slot, so the tracking #}
+{# script loaded and registered twice and the preload was repeated in the #}
+{# body. early_preload is base.html's slot for the LCP image, as on games. #}
+{% block early_preload %}
+    {% if album.image %}
+        <link rel="preload" href="{{ album.image }}" as="image" fetchpriority="high">
+    {% endif %}
+{% endblock %}
 
 {% block pre_alpine %}
 {# The button here is HTMX-swapped like the rows', so the same listener has #}
@@ -61,12 +58,18 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 {% endblock %}
 
-{% block extra_head %}
-    {% if album.image %}
-        <link rel="preload" href="{{ album.image }}" as="image" fetchpriority="high">
-    {% endif %}
-{% endblock %}
-
+{% block content %}
+{% if album %}
+<h1 class="text-3xl font-bold mb-4 flex items-center gap-3 flex-wrap">
+    {# The large listen button, where the games detail page puts its own #}
+    {% include 'music/includes/_listen_button.html' with is_owned=is_owned is_tracked=is_listened is_wanted=is_want_to_listen size='large' %}
+    <span>{{ album.name }}{% if album.year_released %} ({{ album.year_released }}){% endif %}</span>
+    {% include 'music/includes/_beta_badge.html' %}
+</h1>
+{# The artist is half of an album's identity - more than a developer is to #}
+{# a game - so the credit reads as a subtitle under the title rather than #}
+{# as one more row in the properties table. #}
+<p class="text-xl font-semibold -mt-2 mb-4">{% artist_links album 'link link-accent' %}</p>
 <div class="flex flex-col-reverse md:flex-row gap-6 mb-8">
     <div class="md:w-1/2 min-w-0 overflow-hidden">
         {% include 'music/includes/_album_properties.html' %}

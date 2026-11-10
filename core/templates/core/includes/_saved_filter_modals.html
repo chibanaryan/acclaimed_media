@@ -118,6 +118,7 @@ Parameters:
         <p class="py-2">
             Are you sure you want to delete "<span x-text="deleteFilterTarget?.name" class="font-semibold"></span>"?
         </p>
+        <p x-show="deleteFilterError" x-cloak class="text-error text-sm" role="alert" x-text="deleteFilterError"></p>
         <div class="modal-action">
             <button type="button"
                     class="btn btn-ghost"

@@ -113,6 +113,31 @@ class TemplateStructureTests(TestCase):
                 f"Desktop row should have data-slot='{slot}' for JS compatibility",
             )
 
+    def test_a_mobile_row_names_its_game_in_a_link(self):
+        """The card went to its game on a click anywhere (`data-href`) and
+        held no link at all, so the keyboard had no way in and a screen
+        reader was told of nothing to open. The title is one now, to the
+        address the card goes to."""
+        response = self.client.get(reverse("home"))
+        soup = BeautifulSoup(response.content, "html.parser")
+        rows = soup.select(".game-card-mobile[data-href]")
+        self.assertTrue(rows)
+        for row in rows:
+            link = row.select_one('[data-slot="title"] a[data-slot="title-link"]')
+            self.assertIsNotNone(link)
+            self.assertEqual(link["href"], row["data-href"])
+            self.assertTrue(link.get_text(strip=True))
+
+    def test_the_renderer_links_a_mobile_rows_title_as_the_server_does(self):
+        """Its cloned row and its string fallback both."""
+        source = (
+            Path(settings.BASE_DIR) / "games/static/games/js/game-list-renderer.js"
+        ).read_text()
+        link = (
+            '<a href="/game/${game.s}/" class="link link-hover" data-slot="title-link">'
+        )
+        self.assertEqual(source.count(link), 2)
+
     def test_mobile_template_has_required_slots(self):
         """
         Verify mobile row includes all required data-slot attributes.

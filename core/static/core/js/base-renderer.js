@@ -66,13 +66,20 @@ class BaseMediaListRenderer {
     }
 
     /**
-     * Escape HTML special characters
+     * Escape text for HTML, as Django's `escape` does: safe between tags and
+     * inside a quoted attribute alike. It went through `textContent`, which
+     * leaves quotes alone, so a name with one in it ended its attribute
+     * early: 'Bonnie "Prince" Billy' as a title was `title="Bonnie "`.
+     * Checked against Django's in core/tests/test_escape_html.py.
      * @protected
      */
     _escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text || '';
-        return div.innerHTML;
+        return String(text || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#x27;');
     }
 
     /**

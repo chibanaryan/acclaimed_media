@@ -2693,6 +2693,34 @@ The minify skill/script:
 - The Django template (server-side rendering)
 - The JavaScript file (client-side rendering on home page)
 
+**What `utils-base.js` gives every script** (it loads on every page, before
+Alpine and the bundles), each because the bare form failed for someone
+(2026-11-09, `core/tests/test_utils_base_js.py`, run under Node):
+
+- **Stored preferences go through `readStoredPreference`, `readStoredJson`,
+  `storePreference` and `removeStoredPreference`**, never `localStorage` or
+  `sessionStorage` unguarded. With cookies blocked Chrome throws on the
+  property itself, and the games filter component read six preferences in
+  its data literal, so for those readers it never started. A script that
+  runs ahead of `utils-base.js` (the head's theme script, a pre-paint
+  script) wraps its own read in `try`, as `quick-mark.js` and the album
+  engine already did theirs.
+- **A scripted scroll asks `scrollBehavior()`**, not `'smooth'`: the
+  stylesheet turns smooth scrolling off under `prefers-reduced-motion`, but
+  a script that names `smooth` overrides a stylesheet.
+- **`fetchHtml` throws on an error status.** It returned the body whatever
+  the status, and the filter component set the results to a 500's page.
+
+**`_escapeHtml` (`base-renderer.js`) escapes as Django's `escape` does**,
+quotes included, since the renderers write names into attributes as well as
+text (`core/tests/test_escape_html.py`). It went through `textContent`,
+which leaves quotes alone: 'Bonnie "Prince" Billy' ended its `title` early.
+
+**A mobile row card's title is a link** (`title-link`; music's
+`title-link-mobile`), in the server's rows and the renderers' alike. The
+card still goes to its item on a click anywhere (`data-href`), but that
+alone gave the keyboard no way in. smoke: "mobile row opens by keyboard".
+
 ## Design Guidelines
 
 ### Quantitative Display Ruleset

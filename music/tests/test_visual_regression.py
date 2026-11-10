@@ -69,6 +69,7 @@ MOBILE_SLOTS = {
     "thumbnail-mobile",
     "thumbnail-mobile-placeholder",
     "title-mobile",
+    "title-link-mobile",
     "year-mobile",
     "meta-mobile",
     "tracking-column-mobile",
@@ -225,6 +226,16 @@ class ServerRenderedRowTests(TestCase):
         meta = soup.select_one('[data-slot="meta-row"]')
         self.assertIn("ml-4", credit["class"])
         self.assertIn("ml-4", meta["class"])
+
+    def test_a_mobile_row_names_its_album_in_a_link(self):
+        """The card went to its album on a click anywhere and held no link,
+        so the keyboard had no way in. The title is one now."""
+        soup = BeautifulSoup(self._page(), "html.parser")
+        row = soup.select_one(f"#music-{self.album.id}-mobile")
+        link = row.select_one('[data-slot="title-mobile"] a')
+        self.assertEqual(link["data-slot"], "title-link-mobile")
+        self.assertEqual(link["href"], row["data-href"])
+        self.assertEqual(link.get_text(strip=True), self.album.name)
 
     def test_the_row_ids_match_what_the_renderer_writes(self):
         page = self._page()

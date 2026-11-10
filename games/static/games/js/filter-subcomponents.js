@@ -181,24 +181,19 @@
             },
 
             loadExpandedState: function () {
-                try {
-                    var savedMfr = localStorage.getItem("platformManufacturersExpanded");
-                    var savedFF = localStorage.getItem("platformFormFactorsExpanded");
-                    if (savedMfr) {
-                        this.expandedManufacturers = JSON.parse(savedMfr);
-                    }
-                    if (savedFF) {
-                        this.expandedFormFactors = JSON.parse(savedFF);
-                    }
-                } catch (e) {
-                    this.expandedManufacturers = {};
-                    this.expandedFormFactors = {};
+                var savedMfr = readStoredJson("platformManufacturersExpanded", null);
+                var savedFF = readStoredJson("platformFormFactorsExpanded", null);
+                if (savedMfr) {
+                    this.expandedManufacturers = savedMfr;
+                }
+                if (savedFF) {
+                    this.expandedFormFactors = savedFF;
                 }
             },
 
             saveExpandedState: function () {
-                localStorage.setItem("platformManufacturersExpanded", JSON.stringify(this.expandedManufacturers));
-                localStorage.setItem("platformFormFactorsExpanded", JSON.stringify(this.expandedFormFactors));
+                storePreference("platformManufacturersExpanded", JSON.stringify(this.expandedManufacturers));
+                storePreference("platformFormFactorsExpanded", JSON.stringify(this.expandedFormFactors));
             },
 
             toggleManufacturerExpanded: function (mfrKey) {
@@ -644,8 +639,8 @@
             handleReset: function () {
                 this.expandedManufacturers = {};
                 this.expandedFormFactors = {};
-                localStorage.removeItem("platformManufacturersExpanded");
-                localStorage.removeItem("platformFormFactorsExpanded");
+                removeStoredPreference("platformManufacturersExpanded");
+                removeStoredPreference("platformFormFactorsExpanded");
             },
 
             areAllExpanded: function () {
@@ -953,7 +948,7 @@
             filters.platforms = [];
         }
 
-        component.expanded = JSON.parse(localStorage.getItem("mobileFilterExpanded_platform") || "true");
+        component.expanded = readStoredJson("mobileFilterExpanded_platform", true);
         component.expandedManufacturers = {};
         component.expandedFormFactors = {};
         component.groupCounts = {};
@@ -963,7 +958,7 @@
         component.init = function () {
             var self = this;
             this.$watch("expanded", function (val) {
-                localStorage.setItem("mobileFilterExpanded_platform", JSON.stringify(val));
+                storePreference("mobileFilterExpanded_platform", JSON.stringify(val));
             });
             this._platformCountsHandler = function (event) {
                 self.updateFilteredCounts(event.detail);
@@ -1067,13 +1062,13 @@
             filters.series = [];
         }
 
-        component.expanded = JSON.parse(localStorage.getItem("mobileFilterExpanded_series") || "true");
+        component.expanded = readStoredJson("mobileFilterExpanded_series", true);
         component.searchQuery = "";
 
         component.init = function () {
             var self = this;
             this.$watch("expanded", function (val) {
-                localStorage.setItem("mobileFilterExpanded_series", JSON.stringify(val));
+                storePreference("mobileFilterExpanded_series", JSON.stringify(val));
             });
             this.selectedSeries = (filters.series || []).slice();
             this._seriesCountsHandler = function (event) {

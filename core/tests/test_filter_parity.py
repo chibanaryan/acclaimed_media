@@ -8,7 +8,6 @@ the two orders must match. Skipped where Node is not installed.
 """
 
 import datetime
-import html
 import json
 import re
 import tempfile
@@ -303,21 +302,18 @@ class MusicParityTests(ParityTestCase):
     def test_the_renderer_writes_the_servers_credit_line(self):
         # Each credit under its credited name, linked to the artist, and
         # "Various Artists" last - `artist_links` and `_artistCreditHtml`.
-        # Compared unescaped: Django escapes quotes and the DOM does not.
+        # Compared as written, escapes and all: the renderer's escaper is
+        # Django's (core/tests/test_escape_html.py). It went through the DOM
+        # once, which leaves quotes alone, and the two had to be unescaped.
         payload = self.client.get("/api/all/").json()
         payload = payload.get("data", payload)
         client = run_engines(
             {"music": {"payload": payload, "queries": [], "credits": True}}
         )["musicCredits"]
-        # Unescaping cannot tell `&quot;` from a raw quote, so the attribute
-        # is checked as written.
         self.assertIn(
             'title="Bonnie &quot;Prince&quot; Billy">Palace Brothers</a>',
             client[str(self.quoted_album.id)],
         )
         for album in music.Album.objects.with_relations():
             with self.subTest(album=album.name):
-                self.assertEqual(
-                    html.unescape(client[str(album.id)]),
-                    html.unescape(str(artist_links(album))),
-                )
+                self.assertEqual(client[str(album.id)], str(artist_links(album)))

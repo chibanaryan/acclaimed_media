@@ -10,12 +10,22 @@
 {# Synchronous script to set initial filter visibility based on localStorage - prevents layout shift #}
 <script nonce="{{ csp_nonce }}">
 (function() {
-    // Read localStorage preferences (default to expanded = true)
-    var yearExpanded = localStorage.getItem('yearExpanded') !== 'false';
-    var genresExpanded = localStorage.getItem('genresExpanded') !== 'false';
-    var platformsExpanded = localStorage.getItem('platformsExpanded') !== 'false';
-    var seriesExpanded = localStorage.getItem('seriesExpanded') !== 'false';
-    var hltbExpanded = localStorage.getItem('hltbExpanded') !== 'false';
+    // Read localStorage preferences (default to expanded = true). Guarded
+    // here, ahead of utils-base.js and its helpers: a browser that refuses
+    // storage throws, which ended this script before `listFilterActive`
+    // below, and a genre clicked in a row left the page instead of filtering
+    function expanded(key) {
+        try {
+            return localStorage.getItem(key) !== 'false';
+        } catch (e) {
+            return true;
+        }
+    }
+    var yearExpanded = expanded('yearExpanded');
+    var genresExpanded = expanded('genresExpanded');
+    var platformsExpanded = expanded('platformsExpanded');
+    var seriesExpanded = expanded('seriesExpanded');
+    var hltbExpanded = expanded('hltbExpanded');
     // Add CSS to show/hide filter sections based on initial state
     var style = document.createElement('style');
     style.id = 'filter-init-styles';
@@ -123,13 +133,16 @@
                         <button type="button"
                                 class="btn btn-ghost btn-xs text-base-content/70 hover:text-info"
                                 @click="loadSavedFilters()"
-                                title="Saved filters">
+                                title="Saved filters"
+                                aria-haspopup="true"
+                                :aria-expanded="savedFiltersOpen ? 'true' : 'false'">
                             <span class="mdi mdi-bookmark-outline text-sm" aria-hidden="true"></span>
                             <span>Saved</span>
                         </button>
                         <ul class="absolute right-0 top-full menu bg-base-100 rounded-box w-96 p-2 shadow-lg z-50 mt-2 overflow-hidden"
                             x-show="savedFiltersOpen"
                             @click.away="savedFiltersOpen = false"
+                            @keydown.escape.window="savedFiltersOpen = false"
                             x-cloak>
                             {# Save current filters option - shown when filters are active #}
                             <template x-if="hasActiveFilters() && savedFiltersLoaded && savedFilters.length < 10">
@@ -155,6 +168,8 @@
                             <li x-show="savedFiltersLoading" class="p-4 text-center">
                                 <span class="loading loading-spinner loading-sm"></span>
                             </li>
+                            {# A load that failed says so: the menu opened on nothing, with no word of why. #}
+                            <li x-show="savedFiltersError" x-cloak class="p-3 text-center text-error text-sm pointer-events-none" role="alert" x-text="savedFiltersError"></li>
                             {# Empty state - only show after loading is complete #}
                             <template x-if="savedFiltersLoaded && !savedFiltersLoading && savedFilters.length === 0 && !hasActiveFilters()">
                                 <li class="p-3 text-center text-base-content/70 text-sm pointer-events-none">
@@ -174,13 +189,15 @@
                                             <button type="button"
                                                     class="btn btn-ghost btn-xs text-base-content/50 hover:text-info hover:bg-transparent"
                                                     @click.stop="renameSavedFilter(filter)"
-                                                    title="Rename">
+                                                    title="Rename"
+                                                    :aria-label="'Rename ' + filter.name">
                                                 <span class="mdi mdi-pencil text-sm" aria-hidden="true"></span>
                                             </button>
                                             <button type="button"
                                                     class="btn btn-ghost btn-xs text-base-content/50 hover:text-error hover:bg-transparent"
                                                     @click.stop="deleteSavedFilter(filter)"
-                                                    title="Delete">
+                                                    title="Delete"
+                                                    :aria-label="'Delete ' + filter.name">
                                                 <span class="mdi mdi-delete text-sm" aria-hidden="true"></span>
                                             </button>
                                         </div>
@@ -241,7 +258,7 @@
                 <div class="mb-4 pb-3 border-b border-base-100" :class="yearExpanded ? 'min-h-[15rem]' : ''">
                     <div class="flex items-center gap-2 mb-2">
                         {# A real button, so the section opens from the keyboard too #}
-                        <button type="button" class="flex flex-1 items-center gap-2 cursor-pointer text-left" @click="yearExpanded = !yearExpanded; localStorage.setItem('yearExpanded', yearExpanded)" :aria-expanded="yearExpanded ? 'true' : 'false'">
+                        <button type="button" class="flex flex-1 items-center gap-2 cursor-pointer text-left" @click="yearExpanded = !yearExpanded; storePreference('yearExpanded', yearExpanded)" :aria-expanded="yearExpanded ? 'true' : 'false'">
                             <span class="mdi mdi-calendar-range text-xl text-accent" aria-hidden="true"></span>
                             <span class="font-bold text-base">Release Year</span>
                             <span class="mdi text-base-content/70 ml-1" aria-hidden="true"
@@ -264,7 +281,7 @@
                 <div class="mb-4 pb-3 border-b border-base-100">
                     <div class="flex items-center gap-2 mb-2">
                         {# A real button, so the section opens from the keyboard too #}
-                        <button type="button" class="flex flex-1 items-center gap-2 cursor-pointer text-left" @click="platformsExpanded = !platformsExpanded; localStorage.setItem('platformsExpanded', platformsExpanded)" :aria-expanded="platformsExpanded ? 'true' : 'false'">
+                        <button type="button" class="flex flex-1 items-center gap-2 cursor-pointer text-left" @click="platformsExpanded = !platformsExpanded; storePreference('platformsExpanded', platformsExpanded)" :aria-expanded="platformsExpanded ? 'true' : 'false'">
                             <span class="mdi mdi-controller text-xl text-accent" aria-hidden="true"></span>
                             <span class="font-bold text-base">Platform</span>
                             <span class="mdi text-base-content/70 ml-1" aria-hidden="true"
@@ -275,7 +292,7 @@
                                 <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
                                 <span class="text-xs">Clear</span>
                             </button>
-                            <button type="button" class="btn btn-ghost btn-xs text-base-content/40 hover:text-base-content hover:bg-base-100" @click.stop="$dispatch('platforms-toggle-expand')" title="Expand/collapse all" x-cloak x-show="platformsExpanded">
+                            <button type="button" class="btn btn-ghost btn-xs text-base-content/40 hover:text-base-content hover:bg-base-100" @click.stop="$dispatch('platforms-toggle-expand')" title="Expand/collapse all" aria-label="Expand or collapse all" x-cloak x-show="platformsExpanded">
                                 <span class="mdi mdi-unfold-more-horizontal" aria-hidden="true"></span>
                             </button>
                         </div>
@@ -296,7 +313,7 @@
                 <div :class="genresExpanded ? 'mb-3' : 'mb-1'">
                     <div class="flex items-center gap-2 mb-2">
                         {# A real button, so the section opens from the keyboard too #}
-                        <button type="button" class="flex flex-1 items-center gap-2 cursor-pointer text-left" @click="genresExpanded = !genresExpanded; localStorage.setItem('genresExpanded', genresExpanded)" :aria-expanded="genresExpanded ? 'true' : 'false'">
+                        <button type="button" class="flex flex-1 items-center gap-2 cursor-pointer text-left" @click="genresExpanded = !genresExpanded; storePreference('genresExpanded', genresExpanded)" :aria-expanded="genresExpanded ? 'true' : 'false'">
                             <span class="mdi mdi-gamepad-variant text-xl text-accent" aria-hidden="true"></span>
                             <span class="font-bold text-base">Genre</span>
                             <span class="mdi text-base-content/70 ml-1" aria-hidden="true"
@@ -307,7 +324,7 @@
                                 <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
                                 <span class="text-xs">Clear</span>
                             </button>
-                            <button type="button" class="btn btn-ghost btn-xs text-base-content/40 hover:text-base-content hover:bg-base-100" @click.stop="$dispatch('genres-toggle-expand')" title="Expand/collapse all" x-cloak x-show="genresExpanded">
+                            <button type="button" class="btn btn-ghost btn-xs text-base-content/40 hover:text-base-content hover:bg-base-100" @click.stop="$dispatch('genres-toggle-expand')" title="Expand/collapse all" aria-label="Expand or collapse all" x-cloak x-show="genresExpanded">
                                 <span class="mdi mdi-unfold-more-horizontal" aria-hidden="true"></span>
                             </button>
                         </div>
@@ -327,7 +344,7 @@
                 <div class="mt-4 pt-3 border-t border-base-100" :class="seriesExpanded ? 'mb-3' : 'mb-1'">
                     <div class="flex items-center gap-2 mb-2">
                         {# A real button, so the section opens from the keyboard too #}
-                        <button type="button" class="flex flex-1 items-center gap-2 cursor-pointer text-left" @click="seriesExpanded = !seriesExpanded; localStorage.setItem('seriesExpanded', seriesExpanded)" :aria-expanded="seriesExpanded ? 'true' : 'false'">
+                        <button type="button" class="flex flex-1 items-center gap-2 cursor-pointer text-left" @click="seriesExpanded = !seriesExpanded; storePreference('seriesExpanded', seriesExpanded)" :aria-expanded="seriesExpanded ? 'true' : 'false'">
                             <span class="mdi mdi-mushroom text-xl text-accent" aria-hidden="true"></span>
                             <span class="font-bold text-base">Series</span>
                             <span class="mdi text-base-content/70 ml-1" aria-hidden="true"
@@ -353,7 +370,7 @@
                 <div class="mt-4 pt-3 border-t border-base-100" :class="hltbExpanded ? 'mb-3' : 'mb-1'">
                     <div class="flex items-center gap-2 mb-2">
                         {# A real button, so the section opens from the keyboard too #}
-                        <button type="button" class="flex flex-1 items-center gap-2 cursor-pointer text-left" @click="hltbExpanded = !hltbExpanded; localStorage.setItem('hltbExpanded', hltbExpanded)" :aria-expanded="hltbExpanded ? 'true' : 'false'">
+                        <button type="button" class="flex flex-1 items-center gap-2 cursor-pointer text-left" @click="hltbExpanded = !hltbExpanded; storePreference('hltbExpanded', hltbExpanded)" :aria-expanded="hltbExpanded ? 'true' : 'false'">
                             <span class="mdi mdi-clock-outline text-xl text-accent" aria-hidden="true"></span>
                             <span class="font-bold text-base">Playtime (HowLongToBeat)</span>
                             <span class="mdi text-base-content/70 ml-1" aria-hidden="true"
@@ -390,7 +407,7 @@
             </h3>
             <form @submit.prevent="submitSaveFilter()">
                 <div class="form-control">
-                    <label class="label">
+                    <label class="label" for="save-filter-name-input">
                         <span class="label-text">Filter name</span>
                     </label>
                     <input type="text"
@@ -437,7 +454,7 @@
             </h3>
             <form @submit.prevent="submitRenameFilter()">
                 <div class="form-control">
-                    <label class="label">
+                    <label class="label" for="rename-filter-name-input">
                         <span class="label-text">Filter name</span>
                     </label>
                     <input type="text"
@@ -484,6 +501,7 @@
             <p class="py-2">
                 Are you sure you want to delete "<span x-text="deleteFilterTarget?.name" class="font-semibold"></span>"?
             </p>
+            <p x-show="deleteFilterError" x-cloak class="text-error text-sm" role="alert" x-text="deleteFilterError"></p>
             <div class="modal-action">
                 <button type="button"
                         class="btn btn-ghost"

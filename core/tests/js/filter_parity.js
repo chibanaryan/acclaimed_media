@@ -64,12 +64,11 @@ if (input.music) {
     if (input.music.credits) {
         load('core/static/core/js/base-renderer.js');
         load('music/static/music/js/album-list-renderer.js');
-        // What `div.textContent = text; div.innerHTML` gives in a browser.
-        // and where the links point: the rankings page's address, which
-        // the page renders as window.albumRankingsUrl (the music host's root)
+        // The renderer's own escaper, which needs no DOM, and where the
+        // links point: the rankings page's address, which the page renders
+        // as window.albumRankingsUrl (the music host's root)
         const escaper = {
-            _escapeHtml: text => String(text || '')
-                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),
+            _escapeHtml: BaseMediaListRenderer.prototype._escapeHtml,
             _musicPath: AlbumListRenderer.prototype._musicPath,
         };
         const creditHtml = AlbumListRenderer.prototype._artistCreditHtml;

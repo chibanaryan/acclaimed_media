@@ -5126,7 +5126,16 @@ class LighthouseFindingsTests(TestCase):
         self.assertNotIn("nocookie.net", html)
         self.assertNotIn("Hey! Listen!", html)
         self.assertNotIn("naviSound", html)
-        self.assertIn('<p class="text-lg font-bold mb-4">Contact Us</p>', html)
+        self.assertIn(
+            '<p id="contactModalTitle" class="text-lg font-bold mb-4">Contact Us</p>',
+            html,
+        )
+        # Which is what names the dialog to a screen reader
+        self.assertIn(
+            '<dialog id="contactModal" class="modal" '
+            'aria-labelledby="contactModalTitle">',
+            html,
+        )
 
     def test_igdb_preconnect_is_on_games_pages_only(self):
         self.assertIn(

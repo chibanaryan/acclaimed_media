@@ -4,10 +4,12 @@
 {# Context: max_list_count (for list count micro-bar, mobile shows count as text only) #}
 {# When game is not provided, renders empty template structure for JS cloning with all elements present #}
 {% load game_filters static humanize %}
+{# Reversed once: the card's data-href and its title's link are one address #}
+{% if game %}{% url 'game-detail' slug=game.slug as detail_url %}{% endif %}
 <div class="game-row game-card-mobile desktop:hidden grid items-center gap-3 p-2 bg-base-200 rounded-lg mb-2 cursor-pointer"
      {% if game %}id="game-{{ game.id }}-mobile"{% endif %}
      data-slot="root"
-     {% if game %}data-href="{% url 'game-detail' slug=game.slug %}"{% endif %}
+     {% if game %}data-href="{{ detail_url }}"{% endif %}
      style="grid-template-columns: {% if not hide_played_button and user.is_authenticated or not game %}auto {% endif %}auto 1fr;">
 
     {# Played button - only render container if authenticated (server) or for JS template cloning #}
@@ -28,11 +30,14 @@
     </div>
 
     {# Game Info with inline rank #}
+    {# The title is a link: the card goes to its item on a click anywhere #}
+    {# (data-href, which skips a click on a link inside), but that alone gave #}
+    {# the keyboard no way in and a screen reader nothing to open. #}
     <div class="min-w-0 flex items-center justify-between">
         <div class="min-w-0">
             <div class="font-bold text-base leading-tight line-clamp-2" data-slot="title">
                 {# Inline rank - always present in template for JS, conditionally shown for server render #}
-                {% if show_rank == 'alltime' or show_rank == 'filtered' or not game %}<span class="text-accent tabular-nums text-lg" data-slot="rank">{% if game %}#{{ index|default:game.rank }}{% endif %}</span> {% endif %}{% if game %}{{ game.name }} <span class="font-normal text-sm text-base-content/70">({{ game.year_of_release }})</span>{% else %}<span class="font-normal text-sm text-base-content/70" data-slot="year"></span>{% endif %}{% if show_rank == 'filtered' or not game %}<span class="font-normal text-xs text-base-content/80 tabular-nums {% if show_rank != 'filtered' and game %}hidden{% endif %}" data-slot="global-rank">{% if game %} (#{{ game.rank }}){% endif %}</span>{% endif %}
+                {% if show_rank == 'alltime' or show_rank == 'filtered' or not game %}<span class="text-accent tabular-nums text-lg" data-slot="rank">{% if game %}#{{ index|default:game.rank }}{% endif %}</span> {% endif %}{% if game %}<a href="{{ detail_url }}" class="link link-hover" data-slot="title-link">{{ game.name }}</a> <span class="font-normal text-sm text-base-content/70">({{ game.year_of_release }})</span>{% else %}<span class="font-normal text-sm text-base-content/70" data-slot="year"></span>{% endif %}{% if show_rank == 'filtered' or not game %}<span class="font-normal text-xs text-base-content/80 tabular-nums {% if show_rank != 'filtered' and game %}hidden{% endif %}" data-slot="global-rank">{% if game %} (#{{ game.rank }}){% endif %}</span>{% endif %}
             </div>
             {# Meta row: Developer, Platforms, Genres, Playtime, List count - wraps as needed #}
             <div class="text-xs text-base-content/65" data-slot="meta">

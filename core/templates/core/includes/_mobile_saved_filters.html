@@ -34,6 +34,7 @@ Parameters:
         <div x-show="savedFiltersLoading && !savedFiltersLoaded" class="py-2 text-center">
             <span class="loading loading-spinner loading-sm"></span>
         </div>
+        <p x-show="savedFiltersError" x-cloak class="py-2 text-center text-error text-sm" role="alert" x-text="savedFiltersError"></p>
 
         <div x-show="savedFiltersLoaded && savedFilters.length > 0" class="space-y-1">
             <template x-for="filter in savedFilters" :key="filter.id">
@@ -47,13 +48,15 @@ Parameters:
                         <button type="button"
                                 class="btn btn-ghost btn-sm btn-square text-base-content/50 active:text-info"
                                 @click.stop="renameSavedFilter(filter)"
-                                title="Rename">
+                                title="Rename"
+                                :aria-label="'Rename ' + filter.name">
                             <span class="mdi mdi-pencil text-lg" aria-hidden="true"></span>
                         </button>
                         <button type="button"
                                 class="btn btn-ghost btn-sm btn-square text-base-content/50 active:text-error"
                                 @click.stop="deleteSavedFilter(filter)"
-                                title="Delete">
+                                title="Delete"
+                                :aria-label="'Delete ' + filter.name">
                             <span class="mdi mdi-delete text-lg" aria-hidden="true"></span>
                         </button>
                     </div>

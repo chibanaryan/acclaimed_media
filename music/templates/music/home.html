@@ -283,7 +283,7 @@ var listenStatusOptions = JSON.parse(
             <div class="mb-4 pb-3 border-b border-base-100" :class="yearExpanded ? 'min-h-[15rem]' : ''">
                 <div class="flex items-center gap-2 mb-2">
                     {# A real button, so the section opens from the keyboard too #}
-                    <button type="button" class="flex flex-1 items-center gap-2 cursor-pointer text-left" @click="yearExpanded = !yearExpanded; localStorage.setItem('yearExpanded', yearExpanded)" :aria-expanded="yearExpanded ? 'true' : 'false'">
+                    <button type="button" class="flex flex-1 items-center gap-2 cursor-pointer text-left" @click="yearExpanded = !yearExpanded; storePreference('yearExpanded', yearExpanded)" :aria-expanded="yearExpanded ? 'true' : 'false'">
                         <span class="mdi mdi-calendar-range text-xl text-accent" aria-hidden="true"></span>
                         <span class="font-bold text-base">Release Year</span>
                         <span class="mdi text-base-content/70 ml-1" aria-hidden="true"
@@ -307,7 +307,7 @@ var listenStatusOptions = JSON.parse(
             <div :class="genresExpanded ? 'mb-3' : 'mb-1'">
                 <div class="flex items-center gap-2 mb-2">
                     {# A real button, so the section opens from the keyboard too #}
-                    <button type="button" class="flex flex-1 items-center gap-2 cursor-pointer text-left" @click="genresExpanded = !genresExpanded; localStorage.setItem('genresExpanded', genresExpanded)" :aria-expanded="genresExpanded ? 'true' : 'false'">
+                    <button type="button" class="flex flex-1 items-center gap-2 cursor-pointer text-left" @click="genresExpanded = !genresExpanded; storePreference('genresExpanded', genresExpanded)" :aria-expanded="genresExpanded ? 'true' : 'false'">
                         <span class="mdi mdi-music-note text-xl text-accent" aria-hidden="true"></span>
                         <span class="font-bold text-base">Genre</span>
                         <span class="mdi text-base-content/70 ml-1" aria-hidden="true"
@@ -318,7 +318,7 @@ var listenStatusOptions = JSON.parse(
                             <span class="mdi mdi-close text-xs" aria-hidden="true"></span>
                             <span class="text-xs">Clear</span>
                         </button>
-                        <button type="button" class="btn btn-ghost btn-xs text-base-content/40 hover:text-base-content hover:bg-base-100" @click.stop="$dispatch('genres-toggle-expand')" title="Expand/collapse all" x-cloak x-show="genresExpanded">
+                        <button type="button" class="btn btn-ghost btn-xs text-base-content/40 hover:text-base-content hover:bg-base-100" @click.stop="$dispatch('genres-toggle-expand')" title="Expand/collapse all" aria-label="Expand or collapse all" x-cloak x-show="genresExpanded">
                             <span class="mdi mdi-unfold-more-horizontal" aria-hidden="true"></span>
                         </button>
                     </div>

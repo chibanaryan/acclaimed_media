@@ -601,6 +601,30 @@ class DocumentTitleViewTests(MusicDataMixin, TestCase):
 
 
 class AlbumDetailViewTests(MusicDataMixin, TestCase):
+    def test_the_head_blocks_are_rendered_once(self):
+        """A block nested in `content` renders where it is written as well as
+        in its slot. The tracking script loaded and registered twice, and
+        the cover's preload was repeated in the body."""
+        response = self.client.get(self.revolver.get_absolute_url())
+        self.assertContains(response, "core/js/media-tracking", count=1)
+        self.assertContains(response, "MediaTracking.register('album'", count=1)
+        body = response.content.decode().split("<body", 1)[1]
+        self.assertNotIn('rel="preload"', body)
+
+    def test_an_undated_album_names_no_publication_date(self):
+        """It read `"datePublished": "None"`."""
+        self.revolver.year_released = None
+        self.revolver.save()
+        response = self.client.get(self.revolver.get_absolute_url())
+        self.assertNotContains(response, "datePublished")
+        self.assertNotContains(response, '"None"')
+
+    def test_a_dated_album_names_its_year(self):
+        response = self.client.get(self.revolver.get_absolute_url())
+        self.assertContains(
+            response, f'"datePublished": "{self.revolver.year_released}"'
+        )
+
     def test_renders_the_album(self):
         response = self.client.get(self.revolver.get_absolute_url())
         self.assertEqual(response.status_code, 200)

@@ -14,6 +14,7 @@
            x-model="filters.q"
            @keyup.enter="updateUrlAndResults()"
            placeholder="{% if placeholder %}{{ placeholder }}{% else %}Search{% endif %}"
+           aria-label="{% if placeholder %}{{ placeholder }}{% else %}Search{% endif %}"
            autocomplete="off">
     <button type="button"
             @click="filters.q = ''"

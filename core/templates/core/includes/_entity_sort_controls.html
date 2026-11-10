@@ -38,7 +38,8 @@
         <button type="button"
                 class="flex items-center gap-1 text-base-content/70 hover:text-base-content transition-colors cursor-pointer"
                 @click="toggleSortDirection()"
-                :title="sortDirection === 'asc' ? 'Ascending order' : 'Descending order'">
+                :title="sortDirection === 'asc' ? 'Ascending order' : 'Descending order'"
+                :aria-label="sortDirection === 'asc' ? 'Ascending order: switch to descending' : 'Descending order: switch to ascending'">
             <span class="mdi text-base" aria-hidden="true" :class="sortDirection === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending'"></span>
             <span class="text-xs" x-text="sortDirection === 'asc' ? 'Asc' : 'Desc'"></span>
         </button>
@@ -58,7 +59,8 @@
         <button type="button"
                 class="p-1 text-base-content/70 hover:text-base-content transition-colors"
                 @click="toggleSortDirection()"
-                :title="sortDirection === 'asc' ? 'Ascending order' : 'Descending order'">
+                :title="sortDirection === 'asc' ? 'Ascending order' : 'Descending order'"
+                :aria-label="sortDirection === 'asc' ? 'Ascending order: switch to descending' : 'Descending order: switch to ascending'">
             <span class="mdi text-lg" aria-hidden="true" :class="sortDirection === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending'"></span>
         </button>
     </div>

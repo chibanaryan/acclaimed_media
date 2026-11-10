@@ -313,7 +313,7 @@ async function checkLoadMoreBehindAFilterChange(page) {
             held.data = request;
         } else if (url.includes('append=true')) {
             held.page = request;
-        } else if (url.startsWith(games + '/games/?') &&
+        } else if (url.startsWith(games + '/?') &&
                 ['xhr', 'fetch'].includes(request.resourceType())) {
             held.render = request;
         } else {
@@ -465,7 +465,7 @@ async function checkLoadMoreBehindBack(page) {
             held.data = request;
         } else if (url.includes('append=true')) {
             held.page = request;
-        } else if (url.startsWith(games + '/games/?') && !url.includes('sort=name') &&
+        } else if (url.startsWith(games + '/?') && !url.includes('sort=name') &&
                 ['xhr', 'fetch'].includes(request.resourceType())) {
             held.back = request;
         } else {
@@ -517,7 +517,7 @@ async function checkLoadMoreLandingBeforeBack(page) {
             // otherwise answer Back itself
         } else if (url.includes('append=true')) {
             held.page = request;
-        } else if (url.startsWith(games + '/games/?') && !url.includes('sort=name') &&
+        } else if (url.startsWith(games + '/?') && !url.includes('sort=name') &&
                 ['xhr', 'fetch'].includes(request.resourceType())) {
             held.back = request;
         } else {
@@ -1725,6 +1725,52 @@ async function checkCsvButtonCarriesNoHighlight(page, site, path, wanted) {
     return query === wanted ? null : `${site}${path}: the CSV button asked for ?${query}, not ?${wanted}`;
 }
 
+/**
+ * A phone-width row opens by keyboard. The card went to its item on a click
+ * anywhere and held no link, so Tab had nowhere to stop. Its title is a link
+ * now, in the rows the server renders and in the ones the engine does.
+ * Answers as above.
+ */
+async function checkMobileRowOpensByKeyboard(page, { site, cards, start }, detail) {
+    // Every card's title links where the card goes, hidden halves included
+    const unlinked = () => page.$$eval(cards, found => found.filter(card => {
+        const link = card.querySelector('a[data-slot^="title-link"]');
+        return !(link && link.getAttribute('href') === card.dataset.href);
+    }).length);
+    // The engine's rows first, at a width whose year grid can be clicked: a
+    // decade is rendered from its data, both halves of each row
+    await page.setViewport({ width: 1440, height: 900 });
+    await page.goto(site + '/', { waitUntil: 'networkidle2' });
+    await start(page);
+    const before = await page.$$eval(cards, found => found.length);
+    // Not clickDecade, which waits on music's address: games pushes
+    // /games/1990s/ for the same click
+    await (await page.waitForSelector('.year-grid-decade[title^="1990s:"]')).click();
+    await page.waitForFunction(
+        (selector, count) => document.querySelectorAll(selector).length !== count,
+        {}, cards, before
+    ).catch(() => {});
+    await sleep(500);
+    const after = await page.$$eval(cards, found => found.length);
+    if (!after || after === before) return `${site}: the decade did not re-render the list (${before} rows, then ${after})`;
+    if (await unlinked()) return `${site}: ${await unlinked()} of the engine's rows without a title link`;
+
+    // Then the server's, at a phone's width, and Enter on the first
+    await page.setViewport({ width: 420, height: 860 });
+    await page.goto(site + '/', { waitUntil: 'networkidle2' });
+    if (await unlinked()) return `${site}: ${await unlinked()} of the server's rows without a title link`;
+    const link = await page.$(`${cards} a[data-slot^="title-link"]`);
+    if (!link) return `${site}: no row with a title link`;
+    const href = await link.evaluate(element => element.href);
+    await link.focus();
+    await Promise.all([
+        page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
+        page.keyboard.press('Enter'),
+    ]);
+    if (page.url() !== href) return `${site}: Enter on a row went to ${page.url()}, not ${href}`;
+    return detail.test(page.url()) ? null : `${site}: a row's link is ${href}`;
+}
+
 /** The text of each row an entity page lists, to tell them apart. */
 const entityRows = (page, rows) =>
     page.$$eval(rows, found => found.map(row => row.textContent.replace(/\s+/g, ' ').trim()));
@@ -2196,7 +2242,9 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
         games: {
             site: games,
             data: '/api/games/all/',
-            render: '/games/?',
+            // Asked for at `/`, though the address shown is /games/?...,
+            // which only redirects there
+            render: '/?',
             ready: element => Alpine.$data(element).clientFilterReady,
             // Any filter: the engine re-renders it, as it does not a bare page
             loadMorePath: '/?sort=name',
@@ -2375,6 +2423,16 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     }
     await report('games highlight past the first page',
         page => checkGamesHighlightLands(page, '/?highlight=150', 150));
+    await report('games mobile row opens by keyboard',
+        page => checkMobileRowOpensByKeyboard(page, {
+            site: games, cards: '#game-list-container .game-card-mobile', start: startGamesEngine,
+        }, /\/game\/smoke-game-\d+\/$/));
+    await report('music mobile row opens by keyboard',
+        page => checkMobileRowOpensByKeyboard(page, {
+            site: music, cards: '#album-list-container .media-card-mobile',
+            start: async visitor => visitor.waitForFunction(
+                musicReady, {}, await visitor.waitForSelector('.year-grid-decade')),
+        }, /\/smoke-album-\d+\/$/));
     await report('games highlight from a kept page', checkGamesHighlightFromAKeptPage);
     await report('games CSV button carries no highlight',
         page => checkCsvButtonCarriesNoHighlight(

@@ -25,7 +25,7 @@ class ClientSideFiltering {
         this.minYear = 1970;
         this.maxYear = new Date().getFullYear();
         this._hasRenderedUI = false;  // Track if CSF has taken over the UI
-        this._viewMode = localStorage.getItem('gameViewMode') || 'list';
+        this._viewMode = readStoredPreference('gameViewMode') || 'list';
     }
 
     /**
@@ -34,7 +34,7 @@ class ClientSideFiltering {
      */
     setViewMode(mode) {
         this._viewMode = mode;
-        localStorage.setItem('gameViewMode', mode);
+        storePreference('gameViewMode', mode);
     }
 
     /**

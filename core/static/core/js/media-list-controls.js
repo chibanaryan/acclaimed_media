@@ -22,24 +22,8 @@
  * stays the single source of truth, so the two paths cannot disagree.
  */
 
-/** localStorage, treated as absent when a private window refuses it. */
-function readStoredPreference(key) {
-    if (!key) return null;
-    try {
-        return localStorage.getItem(key);
-    } catch (e) {
-        return null;
-    }
-}
-
-function storePreference(key, value) {
-    if (!key) return;
-    try {
-        localStorage.setItem(key, value);
-    } catch (e) {
-        // Quota or private mode: the preference just does not persist.
-    }
-}
+// readStoredPreference and storePreference are utils-base.js's, which every
+// page loads before Alpine: storage a private window refuses reads as empty.
 
 /**
  * The CSRF token from the cookie (settings.CSRF_COOKIE_NAME).
@@ -128,6 +112,8 @@ function mediaListControlsData(config) {
         saveFilterModalOpen: false,
         saveFilterName: '',
         saveFilterError: '',
+        savedFiltersError: '',
+        deleteFilterError: '',
         saveFilterSaving: false,
         renameFilterModalOpen: false,
         renameFilterName: '',
@@ -463,16 +449,21 @@ function mediaListControlsData(config) {
             if (this.savedFiltersLoaded) return;
 
             this.savedFiltersLoading = true;
+            this.savedFiltersError = '';
             try {
                 const response = await fetch(this.savedFiltersUrl);
                 if (response.ok) {
                     const data = await response.json();
                     this.savedFilters = data.filter_sets || [];
                     this.savedFiltersLoaded = true;
+                } else {
+                    // The menu opened on nothing, with no word of why
+                    this.savedFiltersError = 'Saved filters could not be loaded.';
                 }
             } catch (e) {
-                // Offline or blocked: the dropdown stays empty rather than
-                // leaving a spinner running forever.
+                // Offline or blocked: said, rather than a spinner left
+                // running or a menu left blank.
+                this.savedFiltersError = 'Saved filters could not be loaded.';
             } finally {
                 this.savedFiltersLoading = false;
             }
@@ -646,12 +637,14 @@ function mediaListControlsData(config) {
         deleteSavedFilter(filter) {
             this.deleteFilterTarget = filter;
             this.deleteFilterDeleting = false;
+            this.deleteFilterError = '';
             this.deleteFilterModalOpen = true;
             this.savedFiltersOpen = false;
         },
 
         async confirmDeleteFilter() {
             this.deleteFilterDeleting = true;
+            this.deleteFilterError = '';
             try {
                 const response = await this._send(
                     this._savedFilterUrl(this.deleteFilterTarget.id), 'DELETE'
@@ -660,9 +653,12 @@ function mediaListControlsData(config) {
                     const index = this.savedFilters.indexOf(this.deleteFilterTarget);
                     if (index > -1) this.savedFilters.splice(index, 1);
                     this.deleteFilterModalOpen = false;
+                } else {
+                    this.deleteFilterError = 'This filter could not be deleted.';
                 }
             } catch (e) {
                 // Leave the modal open so the reader can try again.
+                this.deleteFilterError = 'This filter could not be deleted.';
             } finally {
                 this.deleteFilterDeleting = false;
             }

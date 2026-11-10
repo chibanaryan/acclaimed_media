@@ -89,11 +89,13 @@
 
 {# Mobile Row Structure #}
 {% if row_variant != 'desktop' %}
+{# Reversed once: the card's data-href and its title's link are one address #}
+{% with detail_url=item.get_absolute_url %}
 <div class="media-row media-card-mobile desktop:hidden grid items-center gap-3 p-2 bg-base-200 rounded-lg mb-2 cursor-pointer {% if item and highlight and item.id == highlight %}is-highlighted{% endif %}"
      {% if item %}id="{{ media_type }}-{{ item.id }}-mobile"{% endif %}
      data-slot="root-mobile"
      {% block mobile_grid_style %}style="grid-template-columns: auto 1fr;"{% endblock %}
-     {% if item %}data-href="{{ item.get_absolute_url }}"{% endif %}>
+     {% if item %}data-href="{{ detail_url }}"{% endif %}>
     
     {% block mobile_tracking_button %}{% endblock %}
     
@@ -116,7 +118,9 @@
                     {% if item %}#{% if show_rank == 'filtered' %}{{ index|default:item.rank }}{% else %}{{ item.rank }}{% endif %}{% endif %}
                 </span>
                 {% endif %}
-                {% if item %}{{ item.name }}{% endif %}
+                {# A link, and the card's keyboard way in: its data-href answers a #}
+                {# click anywhere else, and skips one on a link inside. #}
+                <a {% if item %}href="{{ detail_url }}"{% endif %} class="link link-hover" data-slot="title-link-mobile">{% if item %}{{ item.name }}{% endif %}</a>
                 <span class="font-normal text-sm text-base-content/70" data-slot="year-mobile">
                     {% if item %}({% firstof year_text item.year %}){% endif %}
                 </span>
@@ -127,4 +131,5 @@
         </div>
     </div>
 </div>
+{% endwith %}
 {% endif %}
