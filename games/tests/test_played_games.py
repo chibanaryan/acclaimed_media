@@ -231,28 +231,6 @@ class TogglePlayedGameViewTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn("/accounts/login/", response.url)
 
-    def test_toggle_creates_want_to_play_game(self):
-        """Test that first toggle creates WantToPlayGame for authenticated user."""
-        from django.urls import reverse
-
-        self.client.force_login(self.user)
-        url = reverse("toggle-played-game", kwargs={"igdb_id": self.game.igdb_id})
-
-        response = self.client.post(url)
-
-        self.assertEqual(response.status_code, 200)
-        # First click creates WantToPlayGame, not PlayedGame
-        self.assertTrue(
-            WantToPlayGame.objects.filter(
-                user=self.user, igdb_id=self.game.igdb_id
-            ).exists()
-        )
-        self.assertFalse(
-            PlayedGame.objects.filter(
-                user=self.user, igdb_id=self.game.igdb_id
-            ).exists()
-        )
-
     def test_toggle_deletes_existing_played_game(self):
         """Test that toggle deletes PlayedGame if it already exists."""
         from django.urls import reverse

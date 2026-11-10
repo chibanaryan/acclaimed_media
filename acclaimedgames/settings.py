@@ -10,7 +10,7 @@ import sentry_sdk
 from sentry_sdk.integrations.django import DjangoIntegration
 
 from core.cache_config import build_caches, release_cache_prefix
-from core.csp import handler_hash, sentry_enabled, sentry_report_uri
+from core.csp import handler_hash, running_tests, sentry_enabled, sentry_report_uri
 from core.sentry import name_unrouted_transactions
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -22,8 +22,8 @@ if local_env.exists():
     env.read_env(local_env, overwrite=True)
 
 # Define TEST_MODE early for Sentry configuration
-# Check both Django's manage.py test and pytest
-TEST_MODE = "test" in sys.argv or "pytest" in sys.modules
+# Django's `manage.py test` (the subcommand only) or pytest
+TEST_MODE = running_tests(sys.argv, sys.modules)
 RUNNING_DEVSERVER = "runserver" in sys.argv
 
 SENTRY_DSN = env("SENTRY_DSN", default=None)
@@ -315,9 +315,10 @@ INTERNAL_IPS = [
     "127.0.0.1",
 ]
 
-# Cache configuration. `core.cache_config` explains why there are two
+# Cache configuration. `core.cache_config` explains why there are three
 # aliases: `default` is shared across processes (DatabaseCache in production),
-# `local` is per-process and holds whole-page HTML and rate-limit counters.
+# `local` is per-process and holds whole-page HTML, and `ratelimit` is
+# per-process too and holds the rate-limit counters.
 CACHES = build_caches(
     env("CACHE_URL", default=None),
     debug=DEBUG,
@@ -351,7 +352,9 @@ STORAGES = {
 }
 
 # WhiteNoise caching optimizations
-# Note: CORS headers for font files are handled in CSP middleware
+# Fonts need no CORS setting here: WhiteNoise sends
+# `Access-Control-Allow-Origin: *` with every static file by default
+# (WHITENOISE_ALLOW_ALL_ORIGINS).
 # Cache static files for 1 year in production, where every name carries a
 # content hash, so a changed file is a new URL and no `?v=` literal is needed.
 # In development names are unhashed: a year's cache there kept a browser on
@@ -582,3 +585,10 @@ if not DEBUG and not TEST_MODE and not RUNNING_DEVSERVER:
         "." + urlsplit(CANONICAL_ORIGIN).hostname
     )
     SECURE_SSL_REDIRECT = True  # Redirect HTTP to HTTPS
+    # How Django knows a request came over HTTPS: Heroku's router ends TLS,
+    # sets this header on every request and replaces whatever a client sent.
+    # Without the setting the redirect above worked only because Heroku's
+    # Python buildpack exports FORWARDED_ALLOW_IPS=*, which has gunicorn read
+    # the same header: a default of theirs, and without it every request
+    # would be redirected to itself.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

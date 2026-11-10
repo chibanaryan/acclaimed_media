@@ -276,7 +276,15 @@ class AlbumHomePageViewTests(MusicDataMixin, TestCase):
         )
 
     def test_ascending_direction_is_the_default(self):
-        response = self.client.get(reverse("music:home"), {"sort": "year"})
+        """Whatever the sort, and for a direction that is not one."""
+        for params in (
+            {"sort": "name"},
+            {"sort": "lists"},
+            {"sort": "year", "dir": "sideways"},
+        ):
+            with self.subTest(params=params):
+                response = self.client.get(reverse("music:home"), params)
+                self.assertEqual(response.context["current_dir"], "asc")
         self.assertEqual(
             [a.year_released for a in response.context["albums"]], [1966, 1979, 2000]
         )

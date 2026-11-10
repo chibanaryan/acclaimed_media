@@ -23,7 +23,7 @@ class IGDBImportServiceTests(TestCase):
 
     @mock.patch("games.services.igdb_importer.get_api")
     def test_init_fails_when_api_client_is_none(self, mock_get_api):
-        """Test initialization raises RuntimeError when API client is None (line 51)."""
+        """Test initialization raises RuntimeError when API client is None."""
         mock_get_api.return_value = None
 
         with self.assertRaises(RuntimeError) as cm:
@@ -32,7 +32,7 @@ class IGDBImportServiceTests(TestCase):
 
     @mock.patch("games.services.igdb_importer.get_api")
     def test_init_auto_detects_batch_size(self, mock_get_api):
-        """Test that batch_size is auto-detected from tier when None (line 58)."""
+        """Test that batch_size is auto-detected from tier when None."""
         mock_api = mock.MagicMock()
         mock_api.max_batch_size = 50
         mock_get_api.return_value = mock_api
@@ -42,7 +42,7 @@ class IGDBImportServiceTests(TestCase):
 
     @mock.patch("games.services.igdb_importer.get_api")
     def test_import_games_no_games_in_database(self, mock_get_api):
-        """Test import_games with no games returns early (lines 89-98)."""
+        """Test import_games with no games returns early."""
         mock_api = mock.MagicMock()
         mock_get_api.return_value = mock_api
 
@@ -59,7 +59,7 @@ class IGDBImportServiceTests(TestCase):
 
     @mock.patch("games.services.igdb_importer.get_api")
     def test_import_games_error_notification(self, mock_get_api):
-        """Test error notification path (line 163)."""
+        """Test error notification path."""
         mock_api = mock.MagicMock()
         mock_api.max_batch_size = 50
         mock_get_api.return_value = mock_api
@@ -69,7 +69,7 @@ class IGDBImportServiceTests(TestCase):
         def progress_callback(event_type, data):
             callback_events.append((event_type, data))
 
-        # Use batch_size > 0 to trigger _import_batched path (line 163)
+        # Use batch_size > 0 to trigger _import_batched path
         service = IGDBImportService(
             progress_callback=progress_callback, batch_size=10, concurrency=1
         )
@@ -85,13 +85,13 @@ class IGDBImportServiceTests(TestCase):
                 models.Game.objects.filter(pk=self.game.pk)
             )
 
-        # Should have error notification (line 163)
+        # Should have error notification
         error_events = [e for e in callback_events if e[0] == "error"]
         self.assertGreater(len(error_events), 0)
 
     @mock.patch("games.services.igdb_importer.get_api")
     def test_import_games_progress_notification(self, mock_get_api):
-        """Test progress notification on success (line 195)."""
+        """Test progress notification on success."""
         mock_api = mock.MagicMock()
         mock_api.max_batch_size = 50
         mock_get_api.return_value = mock_api
@@ -101,7 +101,7 @@ class IGDBImportServiceTests(TestCase):
         def progress_callback(event_type, data):
             callback_events.append((event_type, data))
 
-        # Use concurrency > 1 to trigger _import_concurrent path (line 195)
+        # Use concurrency > 1 to trigger _import_concurrent path
         service = IGDBImportService(
             progress_callback=progress_callback, batch_size=0, concurrency=2
         )
@@ -114,7 +114,7 @@ class IGDBImportServiceTests(TestCase):
                 models.Game.objects.filter(pk=self.game.pk)
             )
 
-        # Should have progress notification (line 195)
+        # Should have progress notification
         progress_events = [e for e in callback_events if e[0] == "progress"]
         self.assertGreater(len(progress_events), 0)
 
@@ -146,7 +146,7 @@ class IGDBImportServiceTests(TestCase):
 
     @mock.patch("games.services.igdb_importer.get_api")
     def test_import_batched_success_notification(self, mock_get_api):
-        """Test progress notification in _import_batched success path (line 152)."""
+        """Test progress notification in _import_batched success path."""
         mock_api = mock.MagicMock()
         mock_api.max_batch_size = 50
         mock_get_api.return_value = mock_api
@@ -171,7 +171,7 @@ class IGDBImportServiceTests(TestCase):
                 models.Game.objects.filter(pk=self.game.pk)
             )
 
-        # Should have progress notification from _import_batched (line 152)
+        # Should have progress notification from _import_batched
         progress_events = [e for e in callback_events if e[0] == "progress"]
         self.assertGreater(len(progress_events), 0)
         # Verify progress data structure
@@ -181,7 +181,7 @@ class IGDBImportServiceTests(TestCase):
 
     @mock.patch("games.services.igdb_importer.get_api")
     def test_process_game_batch_no_igdb_ids(self, mock_get_api):
-        """Test _process_game_batch with games that have no IGDB IDs (lines 298-302)."""
+        """Test _process_game_batch with games that have no IGDB IDs."""
         mock_api = mock.MagicMock()
         mock_api.max_batch_size = 50
         mock_get_api.return_value = mock_api
@@ -196,7 +196,7 @@ class IGDBImportServiceTests(TestCase):
 
         results = service._process_game_batch([game_no_id])
 
-        # Should return error for each game (lines 298-302)
+        # Should return error for each game
         self.assertEqual(len(results), 1)
         self.assertFalse(results[0][0])  # success is False
         self.assertEqual(results[0][2], "No IGDB ID")
@@ -234,7 +234,7 @@ class IGDBImportServiceTests(TestCase):
 
     @mock.patch("games.services.igdb_importer.get_api")
     def test_process_game_batch_exception_handling(self, mock_get_api):
-        """Test _process_game_batch exception handling (lines 402-416)."""
+        """Test _process_game_batch exception handling."""
         mock_api = mock.MagicMock()
         mock_api.max_batch_size = 50
         mock_get_api.return_value = mock_api
@@ -246,14 +246,14 @@ class IGDBImportServiceTests(TestCase):
 
         results = service._process_game_batch([self.game])
 
-        # Should mark all games as errors (lines 402-416)
+        # Should mark all games as errors
         self.assertEqual(len(results), 1)
         self.assertFalse(results[0][0])  # success is False
         self.assertIn("Batch fetch failed", results[0][2])
 
     @mock.patch("games.services.igdb_importer.get_api")
     def test_process_game_batch_not_found_in_response(self, mock_get_api):
-        """Test _process_game_batch when game not found in IGDB (lines 406-409)."""
+        """Test _process_game_batch when game not found in IGDB."""
         mock_api = mock.MagicMock()
         mock_api.max_batch_size = 50
         mock_get_api.return_value = mock_api
@@ -265,7 +265,7 @@ class IGDBImportServiceTests(TestCase):
 
         results = service._process_game_batch([self.game])
 
-        # Should mark as error (lines 406-409)
+        # Should mark as error
         self.assertEqual(len(results), 1)
         self.assertFalse(results[0][0])  # success is False
         self.assertEqual(results[0][2], "Not found in IGDB response")
@@ -302,14 +302,14 @@ class IGDBImportServiceTests(TestCase):
 
     @mock.patch("games.services.igdb_importer.get_api")
     def test_estimate_remaining_with_zero_elapsed(self, mock_get_api):
-        """Test _estimate_remaining with zero elapsed time (line 423)."""
+        """Test _estimate_remaining with zero elapsed time."""
         mock_api = mock.MagicMock()
         mock_api.max_batch_size = 50
         mock_get_api.return_value = mock_api
 
         service = IGDBImportService()
 
-        # Test with elapsed <= 0 (line 423)
+        # Test with elapsed <= 0
         remaining = service._estimate_remaining(10, 100, 0.0)
         self.assertEqual(remaining, 0)
 
@@ -318,7 +318,7 @@ class IGDBImportServiceTests(TestCase):
 
     @mock.patch("games.services.igdb_importer.get_api")
     def test_process_game_batch_with_parent_developer(self, mock_get_api):
-        """Test _process_game_batch with developer that has parent (lines 339-360)."""
+        """Test _process_game_batch with developer that has parent."""
         mock_api = mock.MagicMock()
         mock_api.max_batch_size = 50
         mock_get_api.return_value = mock_api

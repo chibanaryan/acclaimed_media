@@ -18,9 +18,15 @@ permissions:
 # timeout-minutes on every job: a test that deadlocks (a thread waiting on a
 # row the test's transaction holds) otherwise runs to GitHub's six hours.
 
+# A PR's runs share a group by ref, and a newer push cancels the older run.
+# Every other run gets a group of its own, by event and commit: on main every
+# push is a merge and gets its result. cancel-in-progress alone did not see to
+# that, since GitHub keeps one *pending* run per group whatever it says, so
+# with one group for the branch the middle of three quick pushes never ran,
+# and a push on a Monday morning could cancel the waiting audit. The event is
+# in the name so that the audit and a push of the same commit do not share.
 concurrency:
-  group: ci-${{ github.ref }}
-  # Only a superseded PR run: on main every push is a merge and gets its result.
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || format('{0}-{1}', github.event_name, github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -159,6 +165,16 @@ jobs:
                   status = client.get(path, HTTP_HOST=host, secure=True).status_code
                   print(host, path, status)
                   assert status == 200, host + path
+          # Heroku's router ends TLS and says so in X-Forwarded-Proto, which
+          # SECURE_PROXY_SSL_HEADER names: with it a request is served,
+          # without it redirected. The production block of settings runs
+          # only here, so this is its one check.
+          host = 'games.acclaimedmedia.org'
+          https = client.get('/healthz/', HTTP_HOST=host, HTTP_X_FORWARDED_PROTO='https')
+          assert https.status_code == 200, https.status_code
+          plain = client.get('/healthz/', HTTP_HOST=host)
+          assert plain.status_code == 301, plain.status_code
+          assert plain['Location'] == 'https://' + host + '/healthz/', plain['Location']
           "
 
   audit:
@@ -246,3 +262,8 @@ jobs:
       - run: node scripts/browser_smoke.js http://127.0.0.1:8000
         env:
           NODE_PATH: /tmp/smoke/node_modules
+      # The server's side of a failed check: a 500's traceback is only here.
+      # No file yet if a step before the server failed.
+      - name: Print the server log
+        if: failure()
+        run: test ! -f runserver.log || cat runserver.log

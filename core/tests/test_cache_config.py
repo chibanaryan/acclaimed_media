@@ -35,6 +35,14 @@ class BuildDefaultCacheTests(SimpleTestCase):
         self.assertEqual(config["BACKEND"], cache_config.LOCMEM_BACKEND)
         self.assertEqual(config["LOCATION"], "")
 
+    def test_tests_without_a_url_use_locmem_not_a_cache_on_disk(self):
+        # A file cache in ./django_cache is shared by every xdist worker and
+        # is still there on the next run.
+        for debug in (False, True):
+            with self.subTest(debug=debug):
+                config = self._build(None, debug=debug, test_mode=True)
+                self.assertEqual(config, {"BACKEND": cache_config.LOCMEM_BACKEND})
+
     def test_dbcache_url_gets_a_table_and_entry_limits(self):
         config = self._build("dbcache://cache_table")
         self.assertEqual(config["BACKEND"], cache_config.DATABASE_BACKEND)

@@ -209,7 +209,7 @@ class AlbumMetadataService:
                         "name": album.name,
                     },
                 )
-            except Exception as exc:  # noqa: BLE001 - one album must not stop the run
+            except Exception as exc:  # one album must not stop the run
                 logger.exception("Wikidata pass failed for %s", album.name)
                 result.errors.append(f"{album.name}: {exc}")
                 self._notify(

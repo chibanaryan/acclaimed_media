@@ -129,7 +129,7 @@ def drop_keys(keys, generation_key) -> bool:
     try:
         cache.set(generation_key, uuid4().hex, GENERATION_TIMEOUT)
         cache.delete_many(keys)
-    except Exception:  # noqa: BLE001 - logged, and the write stands
+    except Exception:  # logged, and the write stands
         logger.exception("Cache keys were not dropped: %s", keys[:5])
         return False
     return True

@@ -4,7 +4,7 @@ import re
 import subprocess
 
 from django.core.management import call_command
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.apps import apps
 from django.db import connection, transaction
 
@@ -33,6 +33,31 @@ from games.models import (
 FIXTURES_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "fixtures"
 )
+
+
+def _database_vendor():
+    """The configured database's engine. A function so the tests, which run
+    on Postgres too, can stand in for a local SQLite one."""
+    return connection.vendor
+
+
+def refusal():
+    """Why the configured database must not be replaced, or None if it may.
+
+    The command deletes every game and album in whatever database the
+    settings name, and that is not always the one the shell names:
+    `.env.development.local`'s DATABASE_URL beats the shell's. So it runs
+    only where the data is a developer's copy: SQLite, and not on a dyno.
+    """
+    dyno = os.environ.get("DYNO")
+    if dyno:
+        return f"this is a Heroku dyno (DYNO={dyno})"
+    vendor = _database_vendor()
+    if vendor != "sqlite":
+        name = connection.settings_dict.get("NAME")
+        host = connection.settings_dict.get("HOST") or "no host"
+        return f"the configured database is {vendor}, not SQLite ({name}, {host})"
+    return None
 
 
 class Command(BaseCommand):
@@ -78,6 +103,15 @@ class Command(BaseCommand):
         app_name = options["app"]
         keep_fixture = options["keep_fixture"]
         no_input = options["no_input"]
+
+        # Before the prompt, the dump and the delete
+        why_not = refusal()
+        if why_not:
+            raise CommandError(
+                "sync_from_prod deletes every game and album in the configured "
+                "database and loads production's, so it runs only against a "
+                f"local SQLite database. Refusing: {why_not}."
+            )
 
         self.stdout.write("Syncing production database to local SQLite...")
         self.stdout.write(f"Heroku app: {app_name}")

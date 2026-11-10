@@ -11,6 +11,17 @@ def handler_hash(source):
     return f"'sha256-{base64.b64encode(digest).decode()}'"
 
 
+def running_tests(argv, modules):
+    """Whether this process is a test run: Django's runner, or pytest.
+
+    Settings switches to an in-memory database, blank credentials and no
+    HTTPS block on the answer, so only the subcommand counts. The word
+    anywhere in ``argv`` used to, and ``get_igdb --game test`` on a dyno ran
+    as a test would.
+    """
+    return list(argv[1:2]) == ["test"] or "pytest" in modules
+
+
 def sentry_enabled(dsn, environment, test_mode=False, argv=()):
     """Whether this process reports to Sentry, CSP reports included.
 

@@ -107,8 +107,8 @@ def clear_cache_between_tests():
     in the locmem cache, which outlives the test database rollback. Without
     this, one test's rendered page can be served to another test that happens
     to share an xdist worker, which fails depending on how xdist distributes
-    the tests. Both aliases are cleared because whole pages and the
-    rate-limit counters live on `local` while everything else is on
+    the tests. Every alias is cleared because whole pages live on `local`
+    and the rate-limit counters on `ratelimit`, while everything else is on
     `default`; see `core.cache_config`.
     """
     clear_all_caches()

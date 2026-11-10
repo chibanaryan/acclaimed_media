@@ -696,12 +696,12 @@ class HierarchicalGenreFilterTest(TestCase):
         self.assertEqual(filtered.count(), 0)
 
     def test_filter_match_any_without_hierarchy_expansion(self):
-        """Test match_any filtering with expand_hierarchy=False (lines 77-80)."""
+        """Test match_any filtering with expand_hierarchy=False."""
         qs = Game.objects.filter(
             pk__in=[self.game1.pk, self.game2.pk, self.game3.pk, self.game4.pk]
         )
         # Filter by child genres directly without hierarchy expansion
-        # match_all=False with expand_hierarchy=False triggers lines 77-80
+        # match_all=False with expand_hierarchy=False: the ids as given
         filtered = apply_genre_filter(
             qs,
             [self.shooter.id, self.fighting.id],
@@ -746,7 +746,7 @@ class ApplySeriesFilterTest(TestCase):
     """Tests for the apply_series_filter helper."""
 
     def test_empty_series_ids_returns_queryset_unchanged(self):
-        """Test that empty series_ids returns queryset unchanged (line 205)."""
+        """Test that empty series_ids returns queryset unchanged."""
         game = Game.objects.create(name="Test Series Game", rank=1)
         qs = Game.objects.filter(pk=game.pk)
 

@@ -48,13 +48,23 @@ const pages = [
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-/** Clicks the first visible button whose text matches, if there is one. */
+/**
+ * Clicks the first visible button whose text matches, and answers whether
+ * there was one: a check that goes on without asking has pressed nothing and
+ * passed.
+ */
 const press = (page, label) => page.evaluate(source => {
     const button = [...document.querySelectorAll('button')].find(
         b => b.offsetParent && new RegExp(source).test(b.textContent.trim())
     );
     if (button) button.click();
+    return Boolean(button);
 }, label.source);
+
+/** The pages with a mobile filter sheet, which the page loop must find and open. */
+const sheetPages = new Set([
+    games + '/', games + '/games/1990s/', music + '/', music + '/genres/smoke-rock/',
+]);
 
 /**
  * Holds the engine's data, and whatever request `isServerWork` picks out, until
@@ -622,7 +632,7 @@ async function checkJumpThenClearAll(page) {
     const passes = await page.evaluate(() => window.__filterPasses);
     if (passes !== 1) return `games: a jump filtered the corpus ${passes} times`;
     const entries = await page.evaluate(() => history.length);
-    await press(page, /^Clear All$/);
+    if (!await press(page, /^Clear All$/)) return 'games: no Clear All button after a jump';
     await sleep(800);
     const added = await page.evaluate(() => history.length) - entries;
     if (added !== 0) return `games: Clear All after a jump added ${added} history entries`;
@@ -1309,7 +1319,7 @@ async function checkBackKeepsTheArtistInTheHeading(page) {
     const decade = await page.waitForSelector('.year-grid-decade');
     await page.waitForFunction(element => Alpine.$data(element).initialized, {}, decade);
     await held.release();
-    await press(page, /^Clear All$/);
+    if (!await press(page, /^Clear All$/)) return "no Clear All button on the artist's albums";
     await page.waitForFunction(() => !location.search.includes('artists'));
     await sleep(300);
     await page.evaluate(() => history.back());
@@ -2104,16 +2114,18 @@ async function checkRangeOutsideTheCorpus(page, site) {
     if (!/match your filters/.test(message)) {
         return `${site} lost its message that nothing matches`;
     }
-    await press(page, /Filters/);
+    if (!await press(page, /Filters/)) return `${site} has no Filters button to open the sheet`;
     await sleep(800);
-    await press(page, /^Range$/);
+    if (!await press(page, /^Range$/)) return `${site} has no Range button in the filter sheet`;
     await sleep(300);
     const shown = await page.evaluate(() => ['From year', 'To year'].map(
         name => document.querySelector(`select[aria-label="${name}"]`)
             .selectedOptions[0].textContent
     ));
     if (shown.join() !== '1900,1950') return `${site} From and To show ${shown}`;
-    await press(page, /^Clear All Filters$/);
+    if (!await press(page, /^Clear All Filters$/)) {
+        return `${site} has no Clear All Filters button on an empty result`;
+    }
     await page.waitForSelector('[id$="-list-container"] a');
     return null;
 }
@@ -2159,7 +2171,10 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     };
     let short = false;
     for (const step of steps) {
-        await actions[step]();
+        // Only Clear All answers false, when there was no button to press
+        if (await actions[step]() === false) {
+            return `${site}${path}: no button for ${step}`;
+        }
         await sleep(800);
         const [shown, expected] = [await page.title(), await served()];
         if (shown !== expected) {
@@ -2200,12 +2215,19 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
             await page.goto(url, { waitUntil: 'networkidle2' });
             await sleep(1000);
             if (width < 962) {
-                // The bottom sheet's contents are only rendered once opened
-                await press(page, /Filters/);
+                // The bottom sheet's contents are only rendered once opened.
+                // Most pages have no sheet; one that should and does not
+                // would otherwise pass with its contents never rendered
+                const sheet = sheetPages.has(url);
+                if (!await press(page, /Filters/) && sheet) {
+                    problems.push('no Filters button to open the sheet');
+                }
                 await sleep(800);
                 // And the year selects only once their mode is open
                 for (const mode of [/^Year$/, /^Range$/]) {
-                    await press(page, mode);
+                    if (!await press(page, mode) && sheet) {
+                        problems.push(`no ${mode.source} button in the filter sheet`);
+                    }
                     await sleep(300);
                 }
             }

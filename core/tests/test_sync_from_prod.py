@@ -5,7 +5,9 @@ import tempfile
 from unittest import mock
 
 from django.core.management import call_command
-from django.test import TestCase
+from django.core.management.base import CommandError
+from django.db import connection
+from django.test import SimpleTestCase, TestCase
 
 from games import models
 from music.models import Album, DiscogsAlbumData, MusicBrainzAlbumData
@@ -22,6 +24,14 @@ class SyncFromProdCommandTests(TestCase):
         self.fixtures_dir = tmp.name
         patcher = mock.patch(
             "core.management.commands.sync_from_prod.FIXTURES_DIR", tmp.name
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        # The test database stands in for a developer's SQLite one, whatever
+        # engine the suite runs on (CI's django-tests job is on Postgres)
+        patcher = mock.patch(
+            "core.management.commands.sync_from_prod._database_vendor",
+            return_value="sqlite",
         )
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -452,6 +462,64 @@ class SyncFromProdCommandTests(TestCase):
         self.assertEqual(mock_subprocess.call_count, 1)
 
 
+class SyncFromProdTargetTests(TestCase):
+    """The command deletes every game and album in the configured database,
+    so it runs only against a local SQLite one."""
+
+    COMMAND = "core.management.commands.sync_from_prod"
+
+    def setUp(self):
+        self.game = models.Game.objects.create(
+            name="Local Game", rank=1, year_of_release=2020
+        )
+        Album.objects.create(name="Local Album", rank=1, wikidata_id="Q1")
+
+    def _assert_refused(self, expected):
+        with (
+            mock.patch("builtins.input") as ask,
+            mock.patch("subprocess.run") as run,
+            self.assertRaises(CommandError) as raised,
+        ):
+            call_command("sync_from_prod", no_input=True)
+        self.assertIn(expected, str(raised.exception))
+        # Refused before the prompt, the dump and the delete
+        ask.assert_not_called()
+        run.assert_not_called()
+        self.assertEqual(models.Game.objects.count(), 1)
+        self.assertEqual(Album.objects.count(), 1)
+
+    def test_refuses_a_database_that_is_not_sqlite(self):
+        with mock.patch(f"{self.COMMAND}._database_vendor", return_value="postgresql"):
+            self._assert_refused("postgresql")
+
+    def test_the_refusal_names_the_database(self):
+        with mock.patch(f"{self.COMMAND}._database_vendor", return_value="postgresql"):
+            self._assert_refused(str(connection.settings_dict["NAME"]))
+
+    def test_refuses_to_run_on_a_dyno(self):
+        with (
+            mock.patch(f"{self.COMMAND}._database_vendor", return_value="sqlite"),
+            mock.patch.dict(os.environ, {"DYNO": "run.4821"}),
+        ):
+            self._assert_refused("DYNO=run.4821")
+
+    def test_refuses_before_asking_for_confirmation(self):
+        with (
+            mock.patch(f"{self.COMMAND}._database_vendor", return_value="postgresql"),
+            mock.patch("builtins.input") as ask,
+            self.assertRaises(CommandError),
+        ):
+            call_command("sync_from_prod")
+        ask.assert_not_called()
+
+
+class SyncFromProdVendorTests(SimpleTestCase):
+    def test_the_vendor_is_the_configured_connections(self):
+        from core.management.commands import sync_from_prod
+
+        self.assertEqual(sync_from_prod._database_vendor(), connection.vendor)
+
+
 class UserModelTests(TestCase):
     """Tests for core User model"""
 
@@ -531,7 +599,7 @@ class ListBaseTests(TestCase):
     """Tests for ListBase abstract model (via List)."""
 
     def test_get_type_label(self):
-        """Test get_type_label returns human-readable label (lines 385-387)."""
+        """Test get_type_label returns human-readable label."""
         game_list = models.List.objects.create(
             name="Top Games 2024",
             type="E",  # End of year

@@ -65,13 +65,13 @@ class ImportGamesTests(TestCase):
         )
 
     def test_import_games_with_progress_callback(self):
-        """Test import_games with progress callback (lines 580, 614, 629, 637, 687)."""
+        """Test import_games with progress callback."""
         callback_events = []
 
         def progress_callback(event_type, data):
             callback_events.append((event_type, data))
 
-        # Create enough games to trigger progress updates (every 10, line 687)
+        # Create enough games to trigger progress updates (every 10)
         data_lines = []
         for i in range(25):  # More than 10 to trigger progress
             data_lines.append(f"{i+1}\tGame {i+1}\t1990\tPC\t{i+100}\tQ{12345+i}")
@@ -82,8 +82,8 @@ class ImportGamesTests(TestCase):
         self.assertTrue(success)
         # Should have received progress events
         self.assertGreater(len(callback_events), 0)
-        # Check for start, progress (line 687), and complete events
-        # Line 687 triggers when row_number % 10 == 0, progress at rows 10, 20
+        # Check for start, progress, and complete events
+        # Progress is reported when row_number % 10 == 0: at rows 10 and 20
         start_events = [e for e in callback_events if e[0] == "start"]
         progress_events = [e for e in callback_events if e[0] == "progress"]
         complete_events = [e for e in callback_events if e[0] == "complete"]
@@ -97,7 +97,7 @@ class ImportGamesTests(TestCase):
         self.assertGreater(len(complete_events), 0)
 
     def test_import_games_with_error_callback(self):
-        """Test import_games error handling with callback (lines 634-637)."""
+        """Test import_games error handling with callback."""
         callback_events = []
 
         def progress_callback(event_type, data):
@@ -894,13 +894,13 @@ class ImportPlatformsTests(TestCase):
         self.assertEqual((snes.year_start, snes.year_end), (1991, 1999))
 
     def test_import_platforms_with_progress_callback_line_687(self):
-        """Test import_platforms progress callback at line 687 (row % 10 == 0)."""
+        """Test import_platforms progress callback, every tenth row."""
         callback_events = []
 
         def progress_callback(event_type, data):
             callback_events.append((event_type, data))
 
-        # Create enough platforms to trigger progress updates (every 10, line 687)
+        # Create enough platforms to trigger progress updates (every 10)
         data_lines = []
         for i in range(25):  # More than 10 to trigger progress at rows 10, 20
             data_lines.append(f"PC{i}\tPlatform {i}\r\n")
@@ -909,7 +909,7 @@ class ImportPlatformsTests(TestCase):
         success, message = utils.import_platforms(StringIO(data), progress_callback)
 
         self.assertTrue(success)
-        # Should have received progress events at rows 10, 20 (line 687)
+        # Should have received progress events at rows 10, 20
         progress_events = [e for e in callback_events if e[0] == "progress"]
         # Should have at least 2 progress events
         self.assertGreaterEqual(
@@ -958,13 +958,13 @@ class ImportListsTests(TestCase):
         self.assertEqual(models.List.objects.first().publisher.name, "IGN")
 
     def test_import_lists_with_progress_callback(self):
-        """Test import_lists with progress callback (lines 434, 462, 477, 481-484)."""
+        """Test import_lists with progress callback."""
         callback_events = []
 
         def progress_callback(event_type, data):
             callback_events.append((event_type, data))
 
-        # Create multiple lists to trigger progress updates (every 5 rows, line 462)
+        # Create multiple lists to trigger progress updates (every 5 rows)
         # Need at least 5 to trigger progress callback
         data = (
             "\r\n".join(
@@ -987,7 +987,7 @@ class ImportListsTests(TestCase):
         self.assertGreater(len(complete_events), 0)
 
     def test_import_lists_with_error_callback(self):
-        """Test import_lists error handling with callback (lines 481-484)."""
+        """Test import_lists error handling with callback."""
         callback_events = []
 
         def progress_callback(event_type, data):
@@ -999,7 +999,7 @@ class ImportListsTests(TestCase):
         with self.assertRaises(Exception):
             utils.import_lists(StringIO(data), progress_callback)
 
-        # Should have received error event (lines 482-483)
+        # Should have received error event
         error_events = [e for e in callback_events if e[0] == "error"]
         self.assertGreater(len(error_events), 0)
 
@@ -1030,7 +1030,7 @@ class ImportListMembershipsTests(TestCase):
         self.assertEqual(top_entry.rank, 1)
 
     def test_import_listmemberships_with_progress_callback(self):
-        """Test import_listmemberships with progress callback (lines 507, 527, 551)."""
+        """Test import_listmemberships with progress callback."""
         # Create more games to trigger progress updates (every 50)
         # setUp already creates 2 games, so create 58 more
         for i in range(3, 61):  # ranks 3-60
@@ -1063,7 +1063,7 @@ class ImportListMembershipsTests(TestCase):
         self.assertGreater(len(complete_events), 0)
 
     def test_import_listmemberships_with_error_callback(self):
-        """Test import_listmemberships error handling with callback (lines 548-551)."""
+        """Test import_listmemberships error handling with callback."""
         callback_events = []
 
         def progress_callback(event_type, data):
@@ -1080,7 +1080,7 @@ class ImportListMembershipsTests(TestCase):
         self.assertGreater(len(error_events), 0)
 
     def test_import_listmemberships_batch_flush(self):
-        """Test that listmemberships are flushed in batches (lines 551-554).
+        """Test that listmemberships are flushed in batches.
 
         When more than 1000 memberships are created, they should be flushed
         to the database in batches to manage memory on large imports.
@@ -1129,14 +1129,14 @@ class ValidatePrerequisitesTests(TestCase):
     """Tests for _validate_prerequisites function."""
 
     def test_validate_list_no_dependencies(self):
-        """Test _validate_prerequisites for lists (line 170)."""
+        """Test _validate_prerequisites for lists."""
         from games import constants
 
         result = utils._validate_prerequisites(constants.TYPE_LIST)
         self.assertIsNone(result)
 
     def test_validate_game_no_platforms(self):
-        """Test _validate_prerequisites for games without platforms (line 175)."""
+        """Test _validate_prerequisites for games without platforms."""
         from games import constants
 
         result = utils._validate_prerequisites(constants.TYPE_GAME)
@@ -1153,7 +1153,7 @@ class ValidatePrerequisitesTests(TestCase):
         self.assertIsNone(result)
 
     def test_validate_membership_no_lists(self):
-        """Test _validate_prerequisites for memberships without lists (line 186)."""
+        """Test _validate_prerequisites for memberships without lists."""
         from games import constants
 
         result = utils._validate_prerequisites(constants.TYPE_LIST_MEMBERSHIP)
@@ -1162,7 +1162,7 @@ class ValidatePrerequisitesTests(TestCase):
         self.assertIn("lists", result[1].lower())
 
     def test_validate_membership_no_games(self):
-        """Test _validate_prerequisites for memberships without games (line 192)."""
+        """Test _validate_prerequisites for memberships without games."""
         from games import constants
         from games.models import Publication
 
@@ -1216,7 +1216,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
         self.assertGreater(len(events), 0)
 
     def test_import_batch_with_progress_error(self):
-        """Test import_batch_with_progress error handling (lines 310-312)."""
+        """Test import_batch_with_progress error handling."""
         # Invalid file that will cause error
         invalid_file = SimpleUploadedFile("test.txt", b"invalid")
         data = {"platforms_file": invalid_file}
@@ -1231,7 +1231,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
         self.assertGreater(len(error_events), 0)
 
     def test_import_batch_with_progress_validation_error(self):
-        """Test import_batch_with_progress with validation error (lines 256-265)."""
+        """Test import_batch_with_progress with validation error."""
         # Try to import games without platforms (should fail validation)
         games_file = SimpleUploadedFile(
             "Top1400.txt", b"1\tGame\t2024\tPC\t12345\tQ44444\r\n"
@@ -1246,14 +1246,14 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
         # Consume events
         events = list(generator)
         self.assertGreater(len(events), 0)
-        # Should have validation error (lines 256-265)
+        # Should have validation error
         error_events = [
             e for e in events if "error" in e.lower() or "platform" in e.lower()
         ]
         self.assertGreater(len(error_events), 0)
 
     def test_import_batch_with_progress_exception_in_thread(self):
-        """Test import_batch_with_progress exception in thread (lines 270-283)."""
+        """Test import_batch_with_progress exception in thread."""
         # Create invalid file that will cause exception during import
         invalid_file = SimpleUploadedFile(
             "PlatformDB.txt", b"invalid\tdata\ttoo\tmany\tcolumns\r\n"
@@ -1262,7 +1262,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
 
         generator = utils.import_batch_with_progress(data)
 
-        # Consume events - get error from exception handler (lines 270-279, 282-283)
+        # Consume events - get error from exception handler
         events = list(generator)
         self.assertGreater(len(events), 0)
         error_events = [e for e in events if "error" in e.lower()]
@@ -1272,7 +1272,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
     def test_import_batch_with_progress_exception_inner_try(
         self, mock_import_platforms
     ):
-        """Test import_batch_with_progress exception in inner try (lines 282-283)."""
+        """Test import_batch_with_progress exception in inner try."""
         # Make import_platforms raise exception to trigger inner exception handler
         mock_import_platforms.side_effect = Exception("Import error")
 
@@ -1281,7 +1281,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
 
         generator = utils.import_batch_with_progress(data)
 
-        # Consume events - should get error event from exception handler (lines 282-283)
+        # Consume events - should get error event from exception handler
         events = list(generator)
         self.assertGreater(len(events), 0)
         error_events = [
@@ -1308,7 +1308,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
 
     @mock.patch("games.services.import_handler.TextIOWrapper")
     def test_import_batch_with_progress_exception_inner_try_textio(self, mock_textio):
-        """Test import_batch_with_progress exception in inner try (lines 282-283)."""
+        """Test import_batch_with_progress exception in inner try."""
         # Make TextIOWrapper raise exception during file processing
         mock_textio.side_effect = Exception("TextIOWrapper error")
 
@@ -1317,7 +1317,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
 
         generator = utils.import_batch_with_progress(data)
 
-        # Consume events - should get error event from exception handler (lines 282-283)
+        # Consume events - should get error event from exception handler
         events = list(generator)
         self.assertGreater(len(events), 0)
         error_events = [
@@ -1329,7 +1329,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
     def test_import_batch_with_progress_exception_outer_try_lines_311_313(
         self, mock_start_thread
     ):
-        """Test import_batch_with_progress exception in outer try (lines 311-313)."""
+        """Test import_batch_with_progress exception in outer try."""
         # Make starting the thread raise to trigger the outer exception handler
         mock_start_thread.side_effect = Exception("Thread creation error")
 
@@ -1338,7 +1338,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
 
         generator = utils.import_batch_with_progress(data)
 
-        # Consume events - should get error event from exception handler (lines 311-313)
+        # Consume events - should get error event from exception handler
         events = list(generator)
         self.assertGreater(len(events), 0)
         error_events = [
@@ -1348,7 +1348,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
 
     @mock.patch("queue.Queue")
     def test_import_batch_with_progress_timeout(self, mock_queue_class):
-        """Test import_batch_with_progress timeout handling (lines 303-313)."""
+        """Test import_batch_with_progress timeout handling."""
         import queue
 
         platform_file = SimpleUploadedFile("PlatformDB.txt", b"PC\tPC\r\n")
@@ -1361,7 +1361,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
 
         generator = utils.import_batch_with_progress(data)
 
-        # Consume events - should get timeout error (lines 303-313)
+        # Consume events - should get timeout error
         events = list(generator)
         # Should have received timeout error event
         self.assertGreater(len(events), 0)
@@ -1374,7 +1374,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
         )
 
     def test_import_batch_with_progress_validation_error_detailed(self):
-        """Test import_batch_with_progress validation error handling (lines 256-265)."""
+        """Test import_batch_with_progress validation error handling."""
         # Try to import games without platforms - should trigger validation error
         games_file = SimpleUploadedFile(
             "Top1400.txt", b"1\tGame\t2024\tPC\t12345\tQ88888\r\n"
@@ -1386,7 +1386,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
 
         generator = utils.import_batch_with_progress(data)
 
-        # Consume events - should get validation error (lines 256-265)
+        # Consume events - should get validation error
         events = list(generator)
         self.assertGreater(len(events), 0)
         # Should have validation error event with file and message
@@ -1401,7 +1401,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
     def test_import_batch_with_progress_validation_error_lines_256_265(
         self, mock_validate
     ):
-        """Test import_batch_with_progress validation error handling (lines 256-265)."""
+        """Test import_batch_with_progress validation error handling."""
         # Mock validation to return an error
         mock_validate.return_value = (False, "Missing prerequisites")
 
@@ -1412,7 +1412,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
 
         generator = utils.import_batch_with_progress(data)
 
-        # Consume events - should get validation error (lines 256-265)
+        # Consume events - should get validation error
         events = list(generator)
         self.assertGreater(len(events), 0)
         # Should have validation error event with file and message
@@ -1510,7 +1510,7 @@ class ImportDataTests(TestCase):
     """Tests for import_data function."""
 
     def test_import_data_with_batch_files(self):
-        """Test import_data routes to import_batch for batch files (line 32)."""
+        """Test import_data routes to import_batch for batch files."""
         platform_file = SimpleUploadedFile("PlatformDB.txt", b"PC\tPC\r\n")
         data = {"platforms_file": platform_file}
 
@@ -1523,7 +1523,7 @@ class ImportDataTests(TestCase):
         self.assertEqual(models.Platform.objects.count(), 1)
 
     def test_import_batch_validation_error_return(self):
-        """Test import_batch validation error return (line 355)."""
+        """Test import_batch validation error return."""
         # Try to import games without platforms
         games_file = SimpleUploadedFile(
             "Top1400.txt", b"1\tGame\t2024\tPC\t12345\tQ55555\r\n"
@@ -1535,12 +1535,12 @@ class ImportDataTests(TestCase):
 
         success, message = utils.import_batch(data)
 
-        # Should fail with validation error (line 355 returns error)
+        # Should fail with validation error
         self.assertFalse(success)
         self.assertIn("platforms", message.lower())
 
     def test_import_batch_exception_return(self):
-        """Test import_batch exception handling return (lines 374-375)."""
+        """Test import_batch exception handling return."""
         # Create invalid data that will cause exception during import
         invalid_file = SimpleUploadedFile(
             "PlatformDB.txt", b"invalid\tdata\ttoo\tmany\tcolumns\r\n"
@@ -1549,7 +1549,7 @@ class ImportDataTests(TestCase):
 
         success, message = utils.import_batch(data)
 
-        # Should fail with exception message (lines 374-375)
+        # Should fail with exception message
         self.assertFalse(success)
         self.assertIn("failed", message.lower())
 
@@ -1589,7 +1589,7 @@ class ImportDataTests(TestCase):
         self.assertFalse(models.List.objects.exists())
 
     def test_import_batch_exception_in_transaction(self):
-        """Test import_batch exception in transaction block (lines 374-375)."""
+        """Test import_batch exception in transaction block."""
 
         # Create data that will cause an exception inside the transaction
         # Use a file that will fail validation or cause DB error
@@ -1605,7 +1605,7 @@ class ImportDataTests(TestCase):
 
         success, message = utils.import_batch(data)
 
-        # Should fail with exception message (lines 374-375)
+        # Should fail with exception message
         self.assertFalse(success)
         self.assertIn("failed", message.lower())
 
@@ -1620,7 +1620,7 @@ class ImportDataTests(TestCase):
 
         success, message = utils.import_batch(data)
 
-        # Should fail with exception message (lines 374-375)
+        # Should fail with exception message
         self.assertFalse(success)
         self.assertIn("failed", message.lower())
 
@@ -1637,7 +1637,7 @@ class ImportDataTests(TestCase):
         self.assertEqual(models.Platform.objects.count(), 1)
 
     def test_import_data_legacy_game_import_updates_metadata(self):
-        """Test that legacy game import updates SiteMetadata (lines 51-58)."""
+        """Test that legacy game import updates SiteMetadata."""
         from io import BytesIO
 
         # Create required platform
@@ -1660,7 +1660,7 @@ class ImportDataTests(TestCase):
         self.assertTrue(success)
         self.assertEqual(models.Game.objects.count(), 1)
 
-        # Check that metadata was updated (lines 51-58)
+        # Check that metadata was updated
         metadata_after = models.SiteMetadata.get_instance()
         self.assertIsNotNone(metadata_after.last_full_update)
         # The timestamp should be different if it was None before, or newer
@@ -1758,7 +1758,7 @@ class ImportIGDBWithProgressTests(NoHeartbeatMixin, InlineImportThreadMixin, Tes
     def test_import_igdb_with_progress_timeout(
         self, mock_queue_class, mock_service_class
     ):
-        """Test import_igdb_with_progress timeout handling (lines 150-156)."""
+        """Test import_igdb_with_progress timeout handling."""
         import queue
 
         # Create a game so the service is initialized
@@ -1779,7 +1779,7 @@ class ImportIGDBWithProgressTests(NoHeartbeatMixin, InlineImportThreadMixin, Tes
         # Get generator
         generator = utils.import_igdb_with_progress()
 
-        # Consume events - should get timeout error (lines 150-156)
+        # Consume events - should get timeout error
         events = list(generator)
 
         # Should have received timeout error event
@@ -1793,7 +1793,7 @@ class ImportIGDBWithProgressTests(NoHeartbeatMixin, InlineImportThreadMixin, Tes
 
     @mock.patch("games.services.igdb_importer.IGDBImportService")
     def test_import_igdb_with_progress_exception(self, mock_service_class):
-        """Test import_igdb_with_progress exception handling (lines 158-160)."""
+        """Test import_igdb_with_progress exception handling."""
         # Create a game so the service is initialized
         platform, _ = models.Platform.objects.get_or_create(
             code="PC", defaults={"name": "PC"}
@@ -1807,7 +1807,7 @@ class ImportIGDBWithProgressTests(NoHeartbeatMixin, InlineImportThreadMixin, Tes
         # Get generator
         generator = utils.import_igdb_with_progress()
 
-        # Consume events - should get error event (lines 158-160)
+        # Consume events - should get error event
         events = list(generator)
         self.assertGreater(len(events), 0)
         # Check for error event
@@ -1841,7 +1841,7 @@ class ImportIGDBWithProgressTests(NoHeartbeatMixin, InlineImportThreadMixin, Tes
     def test_import_igdb_with_progress_callback_with_existing_event(
         self, mock_service_class
     ):
-        """Test import_igdb_with_progress when data has 'event' key (lines 106-109)."""
+        """Test import_igdb_with_progress when data has 'event' key."""
         # Create a game so the service is initialized
         platform, _ = models.Platform.objects.get_or_create(
             code="PC", defaults={"name": "PC"}
@@ -1870,15 +1870,13 @@ class ImportIGDBWithProgressTests(NoHeartbeatMixin, InlineImportThreadMixin, Tes
         # If we captured the callback, test it with data that already has 'event' key
         if captured_callback:
             callback = captured_callback[0]
-            # Test lines 106-109: if "event" not in data
-            # Test with data WITHOUT event key (line 106 is False, 107 executes)
+            # The callback adds an "event" key only to data that has none.
+            # Data without the key, which gets it:
             test_data_no_event = {"message": "test"}
             callback("start", test_data_no_event)
-            # Test with data that has 'event' key (line 106 is True, 107 skipped)
+            # Data that already has the key, which keeps its own:
             test_data_with_event = {"event": "custom", "message": "test"}
             callback("start", test_data_with_event)
-            # The callback should check if "event" is in data (line 106)
-            # and not add it if it already exists (line 107 won't execute)
 
         # Consume a few events
         events = []

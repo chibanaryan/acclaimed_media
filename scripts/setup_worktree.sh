@@ -187,11 +187,14 @@ link_shared theme/static_src/node_modules
 
 # The main checkout's venv lags a .python-version bump until it is rebuilt,
 # and a worktree linked to it would quietly test a stack production has left.
-want_py="$(cat .python-version 2>/dev/null)"
+# Compared on major.minor, as scripts/setup_cloud.sh does: a patch-pinned
+# .python-version (3.14.6) would otherwise never match. The warning goes to
+# stdout, like the cloud one above: on exit 0 a hook's stderr is not shown.
+want_py="$(cut -d. -f1,2 .python-version 2>/dev/null || true)"
 have_py="$(venv/bin/python -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || true)"
 if [ -n "$want_py" ] && [ -n "$have_py" ] && [ "$want_py" != "$have_py" ]; then
     echo "  WARNING: venv is Python $have_py but .python-version says $want_py;" \
-        "rebuild it (AGENTS.md \"Dependencies\")" >&2
+        "rebuild it (AGENTS.md \"Dependencies\")"
 fi
 
 copy_untracked .env
@@ -226,7 +229,8 @@ if [ "$MIGRATE" != 0 ] && [ -f db.sqlite3 ] && [ -x venv/bin/python ]; then
         rm -f "$MIGRATE_PENDING"
         echo "  migrated db.sqlite3 onto this branch"
     else
-        echo "  WARNING: migrate failed - run it yourself to see why" >&2
+        # To stdout, as above: this script exits 0 either way
+        echo "  WARNING: migrate failed - run it yourself to see why"
     fi
 fi
 

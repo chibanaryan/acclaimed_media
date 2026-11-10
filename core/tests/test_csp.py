@@ -5,7 +5,7 @@ import re
 from django.conf import settings
 from django.test import SimpleTestCase, TestCase
 
-from core.csp import handler_hash, sentry_enabled, sentry_report_uri
+from core.csp import handler_hash, running_tests, sentry_enabled, sentry_report_uri
 from core.tests.utils import clear_all_caches
 from games.models import Game
 
@@ -119,6 +119,40 @@ class SentryEnabledTests(SimpleTestCase):
     def test_only_the_shell_subcommand_counts_as_a_shell(self):
         argv = ["manage.py", "fetch_album_metadata", "--slug", "shell"]
         self.assertIs(sentry_enabled(self.DSN, "production", argv=argv), True)
+
+
+class RunningTestsTests(SimpleTestCase):
+    """What settings calls TEST_MODE: in-memory SQLite, blank credentials and
+    no HTTPS block, so nothing but a test run may switch it on."""
+
+    def test_the_django_runner(self):
+        argv = ["manage.py", "test", "games.tests", "--parallel", "auto"]
+        self.assertIs(running_tests(argv, {}), True)
+
+    def test_flags_after_the_subcommand_do_not_hide_it(self):
+        argv = ["manage.py", "test", "--settings=acclaimedgames.settings", "-v2"]
+        self.assertIs(running_tests(argv, {}), True)
+
+    def test_pytest_whatever_its_arguments(self):
+        argv = ["/venv/bin/pytest", "-n", "auto"]
+        self.assertIs(running_tests(argv, {"pytest": object()}), True)
+
+    def test_a_command_given_the_word_as_an_argument_is_not_a_test_run(self):
+        for argv in (
+            ["manage.py", "get_igdb", "--game", "test"],
+            ["manage.py", "mark_albums_listened", "--user", "test"],
+            ["manage.py", "runserver", "test"],
+        ):
+            with self.subTest(argv=argv):
+                self.assertIs(running_tests(argv, {}), False)
+
+    def test_no_subcommand_is_not_a_test_run(self):
+        for argv in ([], ["manage.py"], ["gunicorn", "acclaimedgames.wsgi"]):
+            with self.subTest(argv=argv):
+                self.assertIs(running_tests(argv, {}), False)
+
+    def test_settings_asks_it(self):
+        self.assertIs(settings.TEST_MODE, True)
 
 
 class ReportUriTests(SimpleTestCase):

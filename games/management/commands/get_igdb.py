@@ -219,7 +219,7 @@ class Command(BaseCommand):
         self.batch_processed += 1
 
         # Checkpoint every batch_size games (progress output only)
-        if self.batch_processed >= 50:  # pragma: no cover
+        if self.batch_processed >= 50:
             elapsed = time.time() - self.start_time
             rate = current / elapsed if elapsed > 0 else 0
             remaining = total_games - current

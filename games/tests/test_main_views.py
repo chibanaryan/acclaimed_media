@@ -4,6 +4,8 @@ Tests for main site views (Django + HTMX + Alpine.js).
 Comprehensive test coverage for all user-facing views.
 """
 
+import csv
+import io
 import re
 import zlib
 from unittest import mock
@@ -1057,14 +1059,16 @@ class HomePageFilterTest(TestCase):
         self.assertIn("platforms", response.context)
 
     def test_invalid_page_defaults_to_first(self):
-        """Test that invalid page parameter defaults to page 1."""
-        response = self.client.get(reverse("home") + "?page=invalid")
-        self.assertEqual(response.status_code, 200)
+        with mock.patch("games.views.rankings.HomePageView.paginate_by", 1):
+            response = self.client.get(reverse("home") + "?page=invalid")
+        self.assertEqual(list(response.context["games"]), [self.game1])
+        self.assertEqual(response.context["next_page"], 2)
 
     def test_out_of_range_page_returns_last(self):
-        """Test that out of range page returns last page."""
-        response = self.client.get(reverse("home") + "?page=999")
-        self.assertEqual(response.status_code, 200)
+        with mock.patch("games.views.rankings.HomePageView.paginate_by", 1):
+            response = self.client.get(reverse("home") + "?page=999")
+        self.assertEqual(list(response.context["games"]), [self.game2])
+        self.assertIs(response.context["has_more"], False)
 
     def test_the_server_marks_no_row_for_a_highlight(self):
         """The browser does, from the address: the page is kept whole
@@ -1658,25 +1662,38 @@ class DeveloperListViewTest(TestCase):
             response, "developers/includes/_developer_list_append.html"
         )
 
-    def test_invalid_page_defaults_to_first(self):
-        """Test that invalid page parameter defaults to page 1."""
-        response = self.client.get(reverse("developers-list") + "?page=invalid")
-        self.assertEqual(response.status_code, 200)
+    def _three_developers(self):
+        """Atlus with three games, Nintendo with one of its own and one more
+        through its studio, and that studio. Returned in name order."""
+        atlus = Developer.objects.create(name="Atlus", slug="atlus", igdb_id=3)
+        studio = Developer.objects.create(
+            name="Nintendo EAD", igdb_id=4, parent=self.dev1
+        )
+        for rank in (2, 3, 5):
+            Game.objects.create(name=f"Game {rank}", rank=rank).developers.add(atlus)
+        Game.objects.create(name="Game 4", rank=4).developers.add(studio)
+        return atlus, self.dev1, studio
 
-    def test_out_of_range_page_returns_last(self):
-        """Test that out of range page returns last page."""
-        response = self.client.get(reverse("developers-list") + "?page=999")
-        self.assertEqual(response.status_code, 200)
+    def _listed(self, query):
+        response = self.client.get(reverse("developers-list") + query)
+        return list(response.context["developers"])
+
+    def test_invalid_page_defaults_to_first(self):
+        atlus, _nintendo, _studio = self._three_developers()
+        with mock.patch("games.views.developers.DeveloperListView.paginate_by", 1):
+            response = self.client.get(
+                reverse("developers-list") + "?sort=name&page=invalid"
+            )
+        self.assertEqual(list(response.context["developers"]), [atlus])
+        self.assertEqual(response.context["next_page"], 2)
 
     def test_sort_by_name_ascending(self):
-        """Test sorting developers by name ascending."""
-        response = self.client.get(reverse("developers-list") + "?sort=name&dir=asc")
-        self.assertEqual(response.status_code, 200)
+        atlus, nintendo, studio = self._three_developers()
+        self.assertEqual(self._listed("?sort=name&dir=asc"), [atlus, nintendo, studio])
 
     def test_sort_by_name_descending(self):
-        """Test sorting developers by name descending."""
-        response = self.client.get(reverse("developers-list") + "?sort=name&dir=desc")
-        self.assertEqual(response.status_code, 200)
+        atlus, nintendo, studio = self._three_developers()
+        self.assertEqual(self._listed("?sort=name&dir=desc"), [studio, nintendo, atlus])
 
     def test_sort_by_name_lists_only_developers_with_games(self):
         """The name sort used Django's paginator, which ran before the
@@ -1711,27 +1728,36 @@ class DeveloperListViewTest(TestCase):
         self.assertEqual(response.context["sort"], "games")
         self.assertEqual(list(response.context["developers"]), [self.dev1])
 
-    def test_sort_by_games_descending(self):
-        """Test sorting developers by game count descending."""
-        response = self.client.get(reverse("developers-list") + "?sort=games&dir=desc")
-        self.assertEqual(response.status_code, 200)
-
-    def test_sort_by_studios_descending(self):
-        """Test sorting developers by studio count descending."""
-        response = self.client.get(
-            reverse("developers-list") + "?sort=studios&dir=desc"
+    def test_sort_by_games_lists_the_most_first_and_dir_desc_the_fewest(self):
+        """Counted through subsidiaries: Atlus 3, Nintendo 2, its studio 1."""
+        atlus, nintendo, studio = self._three_developers()
+        self.assertEqual(self._listed("?sort=games"), [atlus, nintendo, studio])
+        self.assertEqual(
+            self._listed("?sort=games&dir=desc"), [studio, nintendo, atlus]
         )
-        self.assertEqual(response.status_code, 200)
+
+    def test_sort_by_studios_lists_the_most_first_and_dir_desc_the_fewest(self):
+        """Nintendo has the one studio; a tie is in name order either way."""
+        atlus, nintendo, studio = self._three_developers()
+        self.assertEqual(self._listed("?sort=studios"), [nintendo, atlus, studio])
+        self.assertEqual(
+            self._listed("?sort=studios&dir=desc"), [atlus, studio, nintendo]
+        )
 
     def test_sort_by_rank_descending(self):
-        """Test sorting developers by rank descending."""
-        response = self.client.get(reverse("developers-list") + "?sort=rank&dir=desc")
-        self.assertEqual(response.status_code, 200)
+        """By each developer's best game: Nintendo #1, Atlus #2, the studio #4."""
+        atlus, nintendo, studio = self._three_developers()
+        self.assertEqual(self._listed("?sort=rank"), [nintendo, atlus, studio])
+        self.assertEqual(self._listed("?sort=rank&dir=desc"), [studio, atlus, nintendo])
 
     def test_page_zero_defaults_to_first_for_manual_pagination(self):
-        """Test page<1 defaults to first page for manual pagination."""
-        response = self.client.get(reverse("developers-list") + "?sort=games&page=0")
-        self.assertEqual(response.status_code, 200)
+        atlus, _nintendo, _studio = self._three_developers()
+        with mock.patch("games.views.developers.DeveloperListView.paginate_by", 1):
+            response = self.client.get(
+                reverse("developers-list") + "?sort=games&page=0"
+            )
+        self.assertEqual(list(response.context["developers"]), [atlus])
+        self.assertEqual(response.context["next_page"], 2)
 
 
 class DeveloperDetailViewTest(TestCase):
@@ -2408,15 +2434,21 @@ class ListListViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "lists/includes/_list_list_content.html")
 
+    def _publications_on(self, query):
+        with mock.patch("games.views.lists.ListListView.paginate_by", 1):
+            response = self.client.get(reverse("list-list") + query)
+        return [
+            group["publication"].name
+            for group in response.context["publication_groups"]
+        ]
+
     def test_invalid_page_defaults_to_first(self):
-        """Test that invalid page parameter defaults to page 1."""
-        response = self.client.get(reverse("list-list") + "?page=invalid")
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            self._publications_on("?sort=alpha&page=invalid"), ["GameSpot"]
+        )
 
     def test_out_of_range_page_returns_last(self):
-        """Test that out of range page returns last page."""
-        response = self.client.get(reverse("list-list") + "?page=999")
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self._publications_on("?sort=alpha&page=999"), ["IGN"])
 
     def test_sort_alpha_ascending(self):
         """Test sorting publications alphabetically ascending."""
@@ -4365,10 +4397,12 @@ class HLTBFilteringTests(TestCase):
         self.assertIn("Short Game", game_names)
 
     def test_hltb_invalid_values_ignored(self):
-        """Test that invalid HLTB values are ignored."""
+        """Every game is listed, the one with no playtime included."""
         response = self.client.get(reverse("home") + "?hltb_min=abc&hltb_max=xyz")
-        self.assertEqual(response.status_code, 200)
-        # Should return all games since invalid values are ignored
+        self.assertEqual(
+            list(response.context["games"]),
+            [self.game1, self.game2, self.game3, self.game_no_hltb],
+        )
 
     def test_sort_by_playtime_ascending(self):
         """Playtime sort should use main-story hours ascending."""
@@ -4405,10 +4439,14 @@ class HLTBFilteringTests(TestCase):
         self.assertNotIn(self.game_no_hltb, games)
 
     def test_hltb_max_less_than_min_corrected(self):
-        """Test that max < min is corrected to max = min."""
+        """The max is raised to the min, so 30 to 10 is exactly 30 hours:
+        not the 20-hour game a swapped range would let in."""
+        hltb = HLTBGameData.objects.get(game=self.game1, is_primary=True)
+        hltb.main_story_hours = 30
+        hltb.save()
+
         response = self.client.get(reverse("home") + "?hltb_min=30&hltb_max=10")
-        self.assertEqual(response.status_code, 200)
-        # Max should be corrected to 30, filtering for exactly 30 hours
+        self.assertEqual(list(response.context["games"]), [self.game1])
 
     def test_hltb_max_only_defaults_min_to_zero(self):
         """Test that max only defaults min to 0."""
@@ -4439,6 +4477,28 @@ class CSVDownloadHLTBTests(TestCase):
         self.game.primary_hltb_game_data = hltb
         self.game.save()
 
+    def _game(self, name, rank, hours=None):
+        game = Game.objects.create(
+            name=name, rank=rank, igdb_id=rank, year_of_release=2020
+        )
+        if hours is not None:
+            game.primary_hltb_game_data = HLTBGameData.objects.create(
+                game=game,
+                igdb_id=rank,
+                hltb_id=str(rank),
+                main_story_hours=hours,
+                is_primary=True,
+            )
+            game.save()
+        return game
+
+    def _names_in_csv(self, query):
+        response = self.client.get(reverse("games-download") + query)
+        self.assertEqual(response.status_code, 200)
+        rows = list(csv.reader(io.StringIO(response.content.decode("utf-8"))))
+        self.assertEqual(rows[0][2], "Name")
+        return [row[2] for row in rows[1:]]
+
     def test_csv_with_hltb_filter(self):
         """Test CSV download respects HLTB filter."""
         response = self.client.get(
@@ -4449,20 +4509,19 @@ class CSVDownloadHLTBTests(TestCase):
         self.assertIn("Test Game", content)
 
     def test_csv_with_hltb_negative_values(self):
-        """Test CSV download handles negative HLTB values."""
-        response = self.client.get(
-            reverse("games-download") + "?hltb_min=-10&hltb_max=20"
-        )
-        self.assertEqual(response.status_code, 200)
-        # Should still work with negative corrected to 0
+        """A negative min is 0, and the max still applies."""
+        self._game("Long Game", 2, hours=25)
+        self.assertEqual(self._names_in_csv("?hltb_min=-10&hltb_max=20"), ["Test Game"])
 
     def test_csv_with_hltb_invalid_values(self):
-        """Test CSV download handles invalid HLTB values."""
-        response = self.client.get(
-            reverse("games-download") + "?hltb_min=abc&hltb_max=def"
+        """Values that are not numbers filter nothing, so every game is in
+        the file, the one with no playtime included."""
+        self._game("Long Game", 2, hours=25)
+        self._game("No HLTB Game", 3)
+        self.assertEqual(
+            self._names_in_csv("?hltb_min=abc&hltb_max=def"),
+            ["Test Game", "Long Game", "No HLTB Game"],
         )
-        self.assertEqual(response.status_code, 200)
-        # Should return results without HLTB filtering
 
     def test_csv_with_hltb_max_only(self):
         """Test CSV download handles max-only filter (no min)."""
@@ -4472,18 +4531,18 @@ class CSVDownloadHLTBTests(TestCase):
         self.assertIn("Test Game", content)
 
     def test_csv_with_hltb_negative_max(self):
-        """Test CSV download handles negative max value (corrects to 0)."""
-        response = self.client.get(reverse("games-download") + "?hltb_max=-5")
-        self.assertEqual(response.status_code, 200)
-        # Negative max should be corrected to 0
+        """A negative max is 0, which no game with a playtime is within."""
+        self._game("No HLTB Game", 2)
+        self.assertEqual(self._names_in_csv("?hltb_max=-5"), [])
 
     def test_csv_with_hltb_max_less_than_min(self):
-        """Test CSV download handles max < min (corrects max to min)."""
-        response = self.client.get(
-            reverse("games-download") + "?hltb_min=30&hltb_max=10"
+        """The max is raised to the min, so 30 to 10 is exactly 30 hours:
+        not the 15- and 20-hour games a swapped range would let in."""
+        self._game("Twenty Hour Game", 2, hours=20)
+        self._game("Thirty Hour Game", 3, hours=30)
+        self.assertEqual(
+            self._names_in_csv("?hltb_min=30&hltb_max=10"), ["Thirty Hour Game"]
         )
-        self.assertEqual(response.status_code, 200)
-        # Max should be corrected to equal min (30)
 
     def test_csv_with_hltb_preset(self):
         """Test CSV download respects HLTB preset filter."""

@@ -71,6 +71,12 @@ def build_default_cache(cache_url, *, debug, test_mode, base_dir):
             config.setdefault("OPTIONS", dict(DATABASE_CACHE_OPTIONS))
         return config
 
+    if test_mode:
+        # A test run that names no cache gets one of its own. The file cache
+        # below is one directory shared by every xdist worker, and by the
+        # next run.
+        return {"BACKEND": LOCMEM_BACKEND}
+
     # No URL and not DEBUG: a file-based cache survives dev server restarts.
     return {"BACKEND": FILE_BACKEND, "LOCATION": base_dir / "django_cache"}
 
