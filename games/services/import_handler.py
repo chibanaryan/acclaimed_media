@@ -40,6 +40,14 @@ WIKIPEDIA_FAILED = "Wikipedia lookup failed; see the server logs."
 IMPORT_FAILED = "Import failed; see the server logs."
 
 
+class ImportFileError(ValueError):
+    """Something wrong in an import file, in words for the staff page.
+
+    Any other exception is shown as ``IMPORT_FAILED``, since its text can
+    carry SQL; this one is written to be read.
+    """
+
+
 def _start_import_thread(target: Callable[[], None]):
     """Run an import off the request; see ``start_background_thread``.
 
@@ -892,6 +900,19 @@ def import_batch_with_progress(data: Dict[str, Any]):
                                 handler(f, progress_callback)
                             if field_name == "games_file":
                                 games_imported = True
+                        except ImportFileError as error:
+                            # The file's own fault, in words: no traceback,
+                            # and the message as written
+                            logger.warning("%s import refused: %s", display_name, error)
+                            _queue_event(
+                                json.dumps(
+                                    {
+                                        "event": "error",
+                                        "file": display_name,
+                                        "message": str(error),
+                                    }
+                                )
+                            )
                         except Exception:
                             logger.exception("%s import failed", display_name)
                             _queue_event(
@@ -1437,6 +1458,7 @@ def import_games(
         carried = _igdb_fields_by_record()
         developer_links = []
         series_links = []
+        primary_ids_seen = {}
         models.PlayedGame.objects.all().update(game=None)
         models.WantToPlayGame.objects.all().update(game=None)
         # The IGDB ids a reader's row names, read once. Reconnecting was
@@ -1471,6 +1493,21 @@ def import_games(
                     if x.strip() and x.strip().isdigit()
                 ]
             primary_igdb_id = all_igdb_ids[0] if all_igdb_ids else None
+
+            # A game's first IGDB id is its own (`unique_game_igdb_id`): the
+            # played toggle and the readers' tracking rows find a game by
+            # it. Said here, with both rows, rather than left to the
+            # constraint, whose error names neither.
+            if primary_igdb_id is not None:
+                if primary_igdb_id in primary_ids_seen:
+                    first_row, first_name = primary_ids_seen[primary_igdb_id]
+                    raise ImportFileError(
+                        f"Games file: rows {first_row} ({first_name}) and "
+                        f"{row_number} ({game_name}) both start with the IGDB "
+                        f"id {primary_igdb_id}. A game's first IGDB id must be "
+                        "its own."
+                    )
+                primary_ids_seen[primary_igdb_id] = (row_number, game_name)
 
             # Parse comma-separated Wikidata IDs (first is primary)
             all_wikidata_ids = []
@@ -1635,6 +1672,10 @@ def import_games(
             f"{games_ranked} ranks calculated",
         )
 
+    except ImportFileError as error:
+        if progress_callback:
+            progress_callback("error", {"message": str(error)})
+        raise
     except Exception:
         if progress_callback:
             progress_callback("error", {"message": IMPORT_FAILED})

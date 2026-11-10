@@ -466,6 +466,15 @@ class Album(RemembersLoaded, MediaItemBase):
             models.Index(fields=["musicbrainz_release_group_id"]),
             models.Index(fields=["discogs_master_id"]),
         ]
+        # `_build_unique_slug` keeps slugs apart in code; the detail page,
+        # the catch-all route of the host, looks an album up by its slug
+        constraints = [
+            models.UniqueConstraint(
+                fields=["slug"],
+                condition=models.Q(slug__isnull=False) & ~models.Q(slug=""),
+                name="unique_album_slug",
+            ),
+        ]
 
     def save(self, *args: Any, **kwargs: Any) -> None:
         """Generate a unique slug, then defer to MediaItemBase for the rest."""

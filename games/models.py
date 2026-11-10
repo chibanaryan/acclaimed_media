@@ -288,6 +288,22 @@ class Developer(CreatorBase):
     class Meta:
         ordering = ["name"]
         verbose_name_plural = "Developers"
+        # Read as unique everywhere (`update_or_create(igdb_id=...)`, the
+        # detail page's slug lookup) and never enforced, so a second row
+        # was a MultipleObjectsReturned from then on. A subsidiary has no
+        # slug, stored as NULL or as "", so the slug's is conditional.
+        constraints = [
+            models.UniqueConstraint(
+                fields=["igdb_id"],
+                condition=models.Q(igdb_id__isnull=False),
+                name="unique_developer_igdb_id",
+            ),
+            models.UniqueConstraint(
+                fields=["slug"],
+                condition=models.Q(slug__isnull=False) & ~models.Q(slug=""),
+                name="unique_developer_slug",
+            ),
+        ]
 
     def save(self, *args, **kwargs):
         self.name_normalized = normalize_name(self.name)
@@ -1109,6 +1125,34 @@ class Game(RemembersLoaded, MediaItemBase):
         indexes = [
             models.Index(fields=["year_of_release", "rank"]),
         ]
+        # The played toggle looks a game up by its IGDB id and the detail
+        # page by its slug, and a second game with either was a 500 on
+        # both. A game has neither until IGDB is fetched for it.
+        constraints = [
+            models.UniqueConstraint(
+                fields=["igdb_id"],
+                condition=models.Q(igdb_id__isnull=False),
+                name="unique_game_igdb_id",
+            ),
+            models.UniqueConstraint(
+                fields=["slug"],
+                condition=models.Q(slug__isnull=False) & ~models.Q(slug=""),
+                name="unique_game_slug",
+            ),
+        ]
+
+    def _free_slug(self, candidate: str) -> str:
+        """``candidate``, or it with this game's IGDB id if another game has it.
+
+        Slugs are unique (``unique_game_slug``). IGDB's own are, but the
+        fallback from a game's name is not, and during a refresh a game can
+        be given a slug IGDB has moved from one not yet refreshed. The
+        suffixed slug lasts until the next refresh finds the plain one free.
+        """
+        if not candidate:
+            return candidate
+        taken = Game.objects.filter(slug=candidate).exclude(pk=self.pk).exists()
+        return f"{candidate}-{self.igdb_id}" if taken else candidate
 
     def get_igdb_data(
         self,
@@ -1184,10 +1228,10 @@ class Game(RemembersLoaded, MediaItemBase):
                 igdb_slug = game_data.get("slug")
                 if igdb_slug:
                     # IGDB provides a slug - use it (whether we have one or not)
-                    self.slug = slugify(igdb_slug)
+                    self.slug = self._free_slug(slugify(igdb_slug))
                 elif not self.slug:
                     # No slug yet and IGDB doesn't provide one - generate from game name
-                    self.slug = slugify(self.name)
+                    self.slug = self._free_slug(slugify(self.name))
                 # else: Keep existing slug if IGDB doesn't provide one
 
                 # Unset is_primary to avoid UNIQUE constraint violation
