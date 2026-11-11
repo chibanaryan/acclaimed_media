@@ -425,7 +425,7 @@ function refreshClientLoadMore(csf) {
 
     const state = csf.renderWindowChrome();
     if (loadMoreContainer) {
-        loadMoreContainer.innerHTML = csf.renderer.getLoadMoreHtml(state);
+        replaceKeepingFocus(loadMoreContainer, csf.renderer.getLoadMoreHtml(state));
         if (state.hasMore) {
             csf._initLoadMoreButton(loadMoreContainer, gameListContainer, countContainer);
         }
@@ -710,7 +710,7 @@ function handleLoadMoreCSF(csf) {
 
     // Update Load More button
     if (loadMoreContainer) {
-        loadMoreContainer.innerHTML = csf.renderer.getLoadMoreHtml(state);
+        replaceKeepingFocus(loadMoreContainer, csf.renderer.getLoadMoreHtml(state));
     }
 }
 

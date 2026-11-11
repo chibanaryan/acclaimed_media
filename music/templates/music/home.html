@@ -295,7 +295,7 @@ var listenStatusOptions = JSON.parse(
                     </button>
                 </div>
                 <div x-show="yearExpanded" x-collapse data-filter-init="year">
-                    {% include 'core/includes/_year_grid.html' with item_noun_plural='albums' %}
+                    {% include 'core/includes/_year_grid.html' with item_noun_singular='album' item_noun_plural='albums' %}
                 </div>
                 {# The year range the grid writes, as the form sends it. #}
                 <input type="hidden" name="start" value="{{ current_start }}">
@@ -329,7 +329,7 @@ var listenStatusOptions = JSON.parse(
                      data-filter-type="genres"
                      @filter-changed="handleFilterChange($event.detail.type, $event.detail.items)"
                      @filter-update="handleFilterChange($event.detail.type, $event.detail.items)">
-                    {% include 'core/includes/_genre_filter.html' with item_noun_plural='albums' genre_icons_element='genre-icons-data' default_genre_icon=default_genre_icon genre_counts_include_descendants=True data_credit_text='Genres use data provided by Discogs' data_credit_url='https://www.discogs.com/' %}
+                    {% include 'core/includes/_genre_filter.html' with item_noun_singular='album' item_noun_plural='albums' genre_icons_element='genre-icons-data' default_genre_icon=default_genre_icon genre_counts_include_descendants=True data_credit_text='Genres use data provided by Discogs' data_credit_url='https://www.discogs.com/' %}
                 </div>
                 {# The genre ids the tree writes, as the form sends them. #}
                 <input type="hidden" name="genres" value="{{ current_genres }}">

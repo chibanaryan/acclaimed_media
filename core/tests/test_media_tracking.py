@@ -100,3 +100,28 @@ class TwinsTakeTheWholeButtonTests(SimpleTestCase):
         self.assertNotIn("btn.querySelector('span')", partial)
         # Of the same size only, as music's twins are matched
         self.assertIn("(otherWrapper.dataset.size || '') === size", partial)
+
+
+class FocusComesBackAfterAChoiceTests(SimpleTestCase):
+    """Choosing a status replaces the button, and focus fell to the top of
+    the page: a keyboard reader marking games or albums started over from
+    the top after each one."""
+
+    def test_music_puts_focus_back_on_the_new_button(self):
+        source = TRACKING_JS.read_text()
+        self.assertIn("'htmx:beforeRequest'", source)
+        self.assertIn("target.contains(document.activeElement)", source)
+        self.assertIn("if (this._hadFocus) this._refocus(", source)
+        refocus = source.split("_refocus(scope, itemId, size) {", 1)[1][:700]
+        # Only where focus was lost, and on the half on screen
+        self.assertIn("active !== document.body", refocus)
+        self.assertIn("el.offsetParent !== null", refocus)
+
+    def test_games_puts_focus_back_and_walks_its_menu(self):
+        menu = (
+            Path(settings.BASE_DIR) / "games/static/games/js/played-menu.js"
+        ).read_text()
+        self.assertIn("menu.contains(document.activeElement)", menu)
+        self.assertIn("button = freshTrigger(wrapper)", menu)
+        self.assertIn("event.key === 'ArrowDown' || event.key === 'ArrowUp'", menu)
+        self.assertIn("if (event.key === 'Tab') {", menu)

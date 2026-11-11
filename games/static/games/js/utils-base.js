@@ -43,6 +43,27 @@ async function fetchHtml(url, signal, targetId = 'content') {
 }
 
 /**
+ * Replace a Load More container's markup without losing a keyboard
+ * reader's place. Enter on Load More replaced the focused button, and focus
+ * fell to the top of the page. If focus was inside, it goes to the new
+ * button, or, at the end of the list, to the container itself, whose "All N
+ * results loaded" is then read out.
+ * @param {Element} container
+ * @param {string} html
+ */
+function replaceKeepingFocus(container, html) {
+    const hadFocus = container.contains(document.activeElement);
+    container.innerHTML = html;
+    if (!hadFocus) return;
+    const next = container.querySelector('button:not([disabled]), a[href]');
+    if (next) {
+        next.focus({ preventScroll: true });
+        return;
+    }
+    container.setAttribute('tabindex', '-1');
+    container.focus({ preventScroll: true });
+}
+/**
  * How a scripted scroll should move: 'smooth', or 'auto' for a reader who
  * has asked their system for less motion. The stylesheet already turns
  * `scroll-behavior` off for them, but a script that names `smooth` itself
@@ -1303,6 +1324,7 @@ function flashHighlight(scrollTarget, elements, options) {
 
 window.flashHighlight = flashHighlight;
 window.scrollBehavior = scrollBehavior;
+window.replaceKeepingFocus = replaceKeepingFocus;
 window.readStoredPreference = readStoredPreference;
 window.readStoredJson = readStoredJson;
 window.storePreference = storePreference;

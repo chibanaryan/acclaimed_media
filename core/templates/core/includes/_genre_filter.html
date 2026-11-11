@@ -1,6 +1,6 @@
 {# Hierarchical genre tree, shared by every ranking page. #}
 {# Props: genres (from the parent, each with parent_id, level, a count and #}
-{#   optionally filtered_count), item_noun_plural for the tooltips #}
+{#   optionally filtered_count), item_noun_singular / item_noun_plural for the tooltips #}
 {# Uses the parent Alpine component's `genres` array and filters.genres. #}
 {# Replaces the flat <select> the album page used to carry, where a root #}
 {# genre and one of its styles looked exactly alike. #}
@@ -72,7 +72,7 @@
                                  'bg-error/20 text-error': hasZeroResults(genre.id)
                              }"
                              @click="toggleGenre(genre.id)"
-                             :title="genre.name + ' - ' + getEffectiveCount(genre) + ' {{ item_noun_plural|default:'games' }}'">
+                             :title="genre.name + ' - ' + getEffectiveCount(genre) + ' ' + (getEffectiveCount(genre) === 1 ? '{{ item_noun_singular|default:'game' }}' : '{{ item_noun_plural|default:'games' }}')">
                             {# Genre Name #}
                             <span class="flex-1 truncate" x-text="genre.name"></span>
                             {# Game Count #}

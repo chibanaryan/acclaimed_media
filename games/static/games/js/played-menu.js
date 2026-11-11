@@ -86,21 +86,53 @@
         return menu.dataset.url.replace('/0/', '/' + wrapper.dataset.igdbId + '/');
     }
 
-    function post(wrapper, status) {
+    // The button that replaced `wrapper`'s, in the row half on screen
+    function freshTrigger(wrapper) {
+        const size = wrapper.dataset.size || '';
+        const candidates = document.querySelectorAll(
+            '.played-button-wrapper[data-igdb-id="' + wrapper.dataset.igdbId + '"]'
+        );
+        for (const candidate of candidates) {
+            if ((candidate.dataset.size || '') === size && candidate.offsetParent !== null) {
+                return trigger(candidate);
+            }
+        }
+        return null;
+    }
+
+    function post(wrapper, status, refocus) {
         if (typeof htmx === 'undefined') return;
         const url = toggleUrl(wrapper) +
             '?status=' + status +
             (wrapper.dataset.size === 'large' ? '&size=large' : '');
         // The wrapper as source inherits the body's hx-headers CSRF token.
-        htmx.ajax('POST', url, { source: wrapper, target: wrapper, swap: 'outerHTML' });
+        const swapped = htmx.ajax('POST', url, { source: wrapper, target: wrapper, swap: 'outerHTML' });
+        // A keyboard reader is put back on the button: the swap replaced the
+        // one they came from, and focus fell to the top of the page
+        if (refocus && swapped && typeof swapped.then === 'function') {
+            swapped.then(function() {
+                const active = document.activeElement;
+                if (active && active !== document.body) return;
+                const button = freshTrigger(wrapper);
+                if (button) button.focus();
+            });
+        }
     }
 
     function choose(status) {
         const menu = getMenu();
         const wrapper = activeWrapper;
-        close(false);
+        // Chosen from the keyboard if the menu holds focus
+        const refocus = Boolean(menu && menu.contains(document.activeElement));
+        close(refocus);
         if (!menu || !wrapper) return;
-        post(wrapper, status);
+        post(wrapper, status, refocus);
+    }
+
+    // The menu's items in order, the hidden one (the current status) left out
+    function items() {
+        const menu = getMenu();
+        return menu ? Array.from(menu.querySelectorAll('li:not(.hidden) button')) : [];
     }
 
     // The quick-mark mode for games, or '' when off or not on this page.
@@ -142,7 +174,28 @@
     }, true);
 
     document.addEventListener('keydown', function(event) {
-        if (event.key === 'Escape' && activeWrapper) close(true);
+        if (!activeWrapper) return;
+        if (event.key === 'Escape') {
+            close(true);
+            return;
+        }
+        const menu = getMenu();
+        if (!menu || !menu.contains(event.target)) return;
+        // A menu is walked with the arrow keys (role="menu"), and Tab leaves
+        // it: back to its button, from where Tab carries on. It stayed open,
+        // floating, with focus gone on through the page.
+        if (event.key === 'Tab') {
+            close(true);
+            return;
+        }
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            const list = items();
+            if (!list.length) return;
+            event.preventDefault();
+            const step = event.key === 'ArrowDown' ? 1 : -1;
+            const at = list.indexOf(document.activeElement);
+            list[(at + step + list.length) % list.length].focus();
+        }
     });
 
     // A position computed from the button goes stale when the layout moves.

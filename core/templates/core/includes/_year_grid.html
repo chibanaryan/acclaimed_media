@@ -1,7 +1,7 @@
 {# Year heatmap selector, shared by every ranking page. #}
 {# Props: year_counts (list of {year, count}), min_year, max_year, #}
 {#   year_baseline_counts (optional, the same for the whole corpus: the colour scale, else year_counts is), #}
-{#   item_noun_plural ('games' / 'albums') for the cell tooltips #}
+{#   item_noun_singular / item_noun_plural ('game' / 'games', 'album' / 'albums') for the cell tooltips, the singular for a count of one #}
 {# Uses the parent Alpine component: filters.start, filters.end, #}
 {#   initialized, debouncedFilterUpdate(). #}
 {# Lived in games/templates/includes/ until the album rankings page adopted #}
@@ -39,7 +39,7 @@
                      data-col="0"
                      :tabindex="isTabStop(row, 0) ? 0 : -1"
                      :aria-pressed="isDecadeSelected(decade.start) ? 'true' : 'false'"
-                     :aria-label="decade.label + ', ' + getDecadeCount(decade) + ' {{ item_noun_plural|default:'games' }}'"
+                     :aria-label="decade.label + ', ' + getDecadeCount(decade) + ' ' + (getDecadeCount(decade) === 1 ? '{{ item_noun_singular|default:'game' }}' : '{{ item_noun_plural|default:'games' }}')"
                      @focus="focusRow = row; focusCol = 0"
                      :class="{
                          'is-in-range': isDecadeSelected(decade.start),
@@ -49,7 +49,7 @@
                      @mousedown="startDragDecade(decade.start, $event)"
                      @mouseenter="updateDragDecade(decade.start)"
                      @click.stop="pickRange($event, decade.start, decade.start + 9)"
-                     :title="decade.label + ': ' + getDecadeCount(decade) + ' {{ item_noun_plural|default:'games' }}'">
+                     :title="decade.label + ': ' + getDecadeCount(decade) + ' ' + (getDecadeCount(decade) === 1 ? '{{ item_noun_singular|default:'game' }}' : '{{ item_noun_plural|default:'games' }}')">
                     <span class="year-grid-tile-label" x-text="decade.label"></span>
                 </div>
 
@@ -61,7 +61,7 @@
                          :data-col="cell && cell.year && !cell.hidden ? idx + 1 : null"
                          :tabindex="cell && cell.year && !cell.hidden ? (isTabStop(row, idx + 1) ? 0 : -1) : null"
                          :aria-pressed="cell && cell.year ? (isInRange(cell.year) ? 'true' : 'false') : null"
-                         :aria-label="cell && cell.year ? cell.year + ', ' + cell.count + ' {{ item_noun_plural|default:'games' }}' : null"
+                         :aria-label="cell && cell.year ? cell.year + ', ' + cell.count + ' ' + (cell.count === 1 ? '{{ item_noun_singular|default:'game' }}' : '{{ item_noun_plural|default:'games' }}') : null"
                          @focus="focusRow = row; focusCol = idx + 1"
                          :class="{
                              'is-in-range': cell && cell.year && isInRange(cell.year),
@@ -74,7 +74,7 @@
                              'is-unavailable': cell && cell.year && !cell.available && !isInRange(cell.year)
                          }"
                          :style="cell && cell.year ? '--heatmap-opacity: ' + getOpacity(cell.count) : ''"
-                         :title="cell && cell.year ? cell.year + ': ' + cell.count + ' {{ item_noun_plural|default:'games' }}' : ''"
+                         :title="cell && cell.year ? cell.year + ': ' + cell.count + ' ' + (cell.count === 1 ? '{{ item_noun_singular|default:'game' }}' : '{{ item_noun_plural|default:'games' }}') : ''"
                          @mousedown="cell && cell.year && startDrag(cell.year, $event)"
                          @mouseenter="cell && cell.year && updateDrag(cell.year)"
                          @click.stop="cell && cell.year && pickRange($event, cell.year, cell.year)">

@@ -2066,3 +2066,48 @@ class JumpBoxKeyGuardTests(SimpleTestCase):
             with self.subTest(path=path):
                 source = (Path(settings.BASE_DIR) / path).read_text()
                 self.assertRegex(source, r"\.isComposing \|\| \w+\.repeat\) return;")
+
+
+class LoadMoreKeepsFocusTests(SimpleTestCase):
+    """Enter on an engine's Load More replaced the focused button, and focus
+    fell to the top of the page."""
+
+    def test_every_engine_load_more_keeps_focus(self):
+        for path in (
+            "games/static/games/js/client-filtering.js",
+            "games/static/games/js/utils-loadmore.js",
+            "music/static/music/js/album-client-filtering.js",
+        ):
+            with self.subTest(path=path):
+                source = (Path(settings.BASE_DIR) / path).read_text()
+                self.assertIn("replaceKeepingFocus(", source)
+                self.assertNotIn(".innerHTML = csf.renderer.getLoadMoreHtml", source)
+                self.assertNotIn(".innerHTML = this.renderer.getLoadMoreHtml", source)
+
+    def test_the_helper_moves_focus_only_when_it_was_inside(self):
+        source = (
+            Path(settings.BASE_DIR) / "games/static/games/js/utils-base.js"
+        ).read_text()
+        helper = source.split("function replaceKeepingFocus(container, html) {", 1)[1]
+        helper = helper.split("\n}\n", 1)[0]
+        self.assertIn(
+            "const hadFocus = container.contains(document.activeElement);", helper
+        )
+        self.assertIn("if (!hadFocus) return;", helper)
+
+
+class RenderedIconsAreHiddenTests(SimpleTestCase):
+    """An icon the renderers write is decoration, as the server's are: the
+    client's Load More icon and status icons were read out."""
+
+    def test_no_renderer_writes_a_named_icon(self):
+        for path in (
+            "games/static/games/js/game-list-renderer.js",
+            "core/static/core/js/base-renderer.js",
+            "music/static/music/js/album-list-renderer.js",
+        ):
+            with self.subTest(path=path):
+                source = (Path(settings.BASE_DIR) / path).read_text()
+                self.assertEqual(
+                    re.findall(r'<span class="mdi [^"]*"></span>', source), []
+                )

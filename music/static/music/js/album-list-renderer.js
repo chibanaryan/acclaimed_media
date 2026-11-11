@@ -217,7 +217,12 @@ class AlbumListRenderer extends BaseMediaListRenderer {
 
         this._fillCover(card, album, 'cover', 'cover-placeholder', { retina: true });
         const coverLink = card.querySelector('[data-slot="cover-link"]');
-        if (coverLink) coverLink.href = url;
+        if (coverLink) {
+            coverLink.href = url;
+            // Named, as the server's is: a coverless album's link holds only
+            // the aria-hidden placeholder
+            coverLink.setAttribute('aria-label', album.name);
+        }
 
         this._fillSlot(card, 'name-grid', album.name);
         const titleLink = card.querySelector('[data-slot="title-link-grid"]');
@@ -491,7 +496,10 @@ class AlbumListRenderer extends BaseMediaListRenderer {
         const titleLink = row.querySelector('[data-slot="title-link"]');
         if (titleLink) titleLink.href = url;
         const thumbLink = row.querySelector('[data-slot="thumb-link"]');
-        if (thumbLink) thumbLink.href = url;
+        if (thumbLink) {
+            thumbLink.href = url;
+            thumbLink.setAttribute('aria-label', album.name);
+        }
 
         const credit = row.querySelector('[data-slot="artist-credit-inline"]');
         if (credit) credit.innerHTML = this._artistCreditHtml(album);

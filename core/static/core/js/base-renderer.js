@@ -566,7 +566,7 @@ class BaseMediaListRenderer {
             return '<div class="text-base-content/70 text-center">All results loaded</div>';
         }
 
-        return '<button type="button" class="btn btn-ghost load-more-button"><span class="mdi mdi-plus-circle-outline"></span><span class="load-more-text">Load More (' + remaining.toLocaleString() + ' remaining)</span></button>';
+        return '<button type="button" class="btn btn-ghost load-more-button"><span class="mdi mdi-plus-circle-outline" aria-hidden="true"></span><span class="load-more-text">Load More (' + remaining.toLocaleString() + ' remaining)</span></button>';
     }
 
     /**

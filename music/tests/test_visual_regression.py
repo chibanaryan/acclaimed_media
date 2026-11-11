@@ -181,6 +181,20 @@ class ServerRenderedRowTests(TestCase):
     def _page(self):
         return self.client.get(reverse("music:home")).content.decode()
 
+    def test_a_coverless_albums_image_links_are_named(self):
+        """With no cover a thumbnail link holds only the aria-hidden
+        placeholder, which a screen reader read as an unnamed link."""
+        soup = BeautifulSoup(self._page(), "html.parser")
+        links = soup.select('[data-slot="thumb-link"][href]')
+        self.assertTrue(links)
+        for link in links:
+            self.assertEqual(link.get("aria-label"), "Doolittle")
+        renderer = (
+            Path(settings.BASE_DIR) / "music/static/music/js/album-list-renderer.js"
+        ).read_text()
+        self.assertIn("thumbLink.setAttribute('aria-label', album.name)", renderer)
+        self.assertIn("coverLink.setAttribute('aria-label', album.name)", renderer)
+
     def test_the_year_carries_its_own_brackets(self):
         soup = BeautifulSoup(self._page(), "html.parser")
         link = soup.select_one('.media-row.desktop [data-slot="year-link"]')

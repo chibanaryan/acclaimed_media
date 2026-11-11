@@ -456,7 +456,11 @@ class AlbumClientSideFiltering {
         const container = existing || document.createElement('div');
         container.id = 'load-more-container';
         container.className = 'load-more-container text-center my-6';
-        container.innerHTML = html;
+        if (existing && typeof replaceKeepingFocus === 'function') {
+            replaceKeepingFocus(container, html);
+        } else {
+            container.innerHTML = html;
+        }
         if (!existing) {
             document.getElementById('album-results-container').appendChild(container);
         }

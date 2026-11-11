@@ -55,6 +55,16 @@
             document.addEventListener('htmx:afterRequest', (event) => {
                 this._onToggle(event);
             });
+            // Whether the reader was in the button's menu when they chose:
+            // the swap replaces the wrapper and its menu, and focus fell to
+            // the top of the page, so a keyboard reader started over
+            document.addEventListener('htmx:beforeRequest', (event) => {
+                const target = event.detail && event.detail.target;
+                this._hadFocus = Boolean(
+                    target && target.dataset && target.dataset.trackingScope &&
+                    target.contains(document.activeElement)
+                );
+            });
         },
 
         /**
@@ -95,6 +105,7 @@
 
             this._updateSets(config, itemId, status);
             this._mirrorTwins(scope, itemId, status, target.dataset.size);
+            if (this._hadFocus) this._refocus(scope, itemId, target.dataset.size);
 
             window.dispatchEvent(
                 new CustomEvent(config.event, { detail: { id: itemId, status } })
@@ -111,6 +122,23 @@
                     ids.delete(itemId);
                 }
             });
+        },
+
+        /**
+         * Put focus back on the item's button, in the row half on screen,
+         * unless the reader has moved it somewhere already.
+         */
+        _refocus(scope, itemId, size) {
+            this._hadFocus = false;
+            const active = document.activeElement;
+            if (active && active !== document.body) return;
+            const selector =
+                '[data-tracking-scope="' + scope + '"][data-item-id="' + itemId + '"]';
+            const wrapper = Array.from(document.querySelectorAll(selector)).find(
+                (el) => (!size || el.dataset.size === size) && el.offsetParent !== null
+            );
+            const button = wrapper && wrapper.querySelector('.tracking-button');
+            if (button) button.focus();
         },
 
         /**

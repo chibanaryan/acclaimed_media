@@ -737,9 +737,9 @@ class GameListRenderer extends BaseMediaListRenderer {
         if (status === 'played') {
             innerHtml = `<span class="flex items-center justify-center w-6 h-6"><img src="${this._staticUrls.marioStar}" srcset="${this._staticUrls.marioStar} 1x, ${this._staticUrls.marioStar2x} 2x" alt="Played" width="32" height="32" class="w-6 h-6 drop-shadow-[0_0_6px_rgba(250,204,21,0.9)]"></span>`;
         } else if (status === 'want') {
-            innerHtml = `<span class="flex items-center justify-center w-6 h-6"><span class="mdi mdi-star-plus-outline text-2xl text-warning"></span></span>`;
+            innerHtml = `<span class="flex items-center justify-center w-6 h-6"><span class="mdi mdi-star-plus-outline text-2xl text-warning" aria-hidden="true"></span></span>`;
         } else {
-            innerHtml = `<span class="flex items-center justify-center w-6 h-6"><span class="mdi mdi-star-outline text-2xl text-base-content/30"></span></span>`;
+            innerHtml = `<span class="flex items-center justify-center w-6 h-6"><span class="mdi mdi-star-outline text-2xl text-base-content/30" aria-hidden="true"></span></span>`;
         }
 
         const ariaLabels = {
@@ -1238,7 +1238,7 @@ class GameListRenderer extends BaseMediaListRenderer {
 
         return `
             <button type="button" class="btn btn-ghost load-more-button">
-                <span class="mdi mdi-space-invaders"></span>
+                <span class="mdi mdi-space-invaders" aria-hidden="true"></span>
                 <span class="load-more-text">Load More (${remaining.toLocaleString()} remaining)</span>
             </button>
         `;

@@ -326,7 +326,7 @@ class ClientSideFiltering {
             this.renderWindowChrome();
 
             // Update or replace Load More button
-            loadMoreContainer.innerHTML = this.renderer.getLoadMoreHtml(state);
+            replaceKeepingFocus(loadMoreContainer, this.renderer.getLoadMoreHtml(state));
 
             if (state.hasMore) {
                 this._initLoadMoreButton(loadMoreContainer, gameListContainer, countContainer);

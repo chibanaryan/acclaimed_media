@@ -28,7 +28,8 @@
 
         {# Cover image. Both the img and the placeholder are always emitted, #}
         {# one hidden, so a clone always has somewhere to write the cover. #}
-        <a {% if item %}href="{{ item.get_absolute_url }}"{% endif %}
+        {# Named by aria-label, as a coverless album's link has no content to read #}
+        <a {% if item %}href="{{ item.get_absolute_url }}" aria-label="{{ item.name }}"{% endif %}
            class="block w-full h-full"
            data-slot="cover-link">
             <img {% if item and item.thumbnail %}src="{{ item.thumbnail }}" srcset="{{ item.thumbnail }} 1x, {{ item.image }} 2x" alt="{{ item.name }}"{% endif %}

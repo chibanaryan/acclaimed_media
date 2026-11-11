@@ -48,9 +48,11 @@ document.addEventListener('DOMContentLoaded', function() {
 {% block content %}
 {% if album %}
 <h1 class="text-3xl font-bold mb-4 flex items-center gap-3 flex-wrap">
-    {# The large listen button, where the games detail page puts its own #}
-    {% include 'music/includes/_listen_button.html' with is_owned=is_owned is_tracked=is_listened is_wanted=is_want_to_listen size='large' %}
     <span>{{ album.name }}{% if album.year_released %} ({{ album.year_released }}){% endif %}</span>
+    {# The large listen button after the title, where the games detail page #}
+    {# puts its own: before it, the heading was read as "Untracked - click #}
+    {# to change" ahead of the album's name #}
+    {% include 'music/includes/_listen_button.html' with is_owned=is_owned is_tracked=is_listened is_wanted=is_want_to_listen size='large' %}
     {% include 'music/includes/_beta_badge.html' %}
 </h1>
 {# The artist is half of an album's identity - more than a developer is to #}
