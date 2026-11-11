@@ -1944,3 +1944,29 @@ class ImportDropsReleaseCachesTests(TestCase):
         self.assertFalse(success)
         self.assertEqual(cache.get(config.CACHE_KEY_YEAR_STATS), "kept")
         self.assertTrue(release_cache_keys())
+
+    def test_a_read_across_the_drop_does_not_save_the_old_value(self):
+        """The drop moves the release generation, and a read that started
+        before it does not save its old value over it: the guard every
+        dropped games cache keeps (`core.cache_helpers.cached`)."""
+        from unittest import mock
+
+        from django.core.cache import cache
+
+        from core.cache_helpers import drop_keys
+        from games.cache import GENERATION_RELEASE
+        from games.services import landing_pages
+
+        real = models.Game.objects.filter
+
+        def drop_while_reading(*args, **kwargs):
+            drop_keys(["unrelated"], GENERATION_RELEASE)
+            return real(*args, **kwargs)
+
+        key = landing_pages._cache_key("decades")
+        cache.delete(key)
+        with mock.patch.object(
+            models.Game.objects, "filter", side_effect=drop_while_reading
+        ):
+            landing_pages.get_landing_decades()
+        self.assertIsNone(cache.get(key))

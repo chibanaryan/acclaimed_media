@@ -15,6 +15,10 @@ from games.cache import GENERATION_DEVELOPERS
 
 # Cache key for developer hierarchy data
 DEVELOPER_HIERARCHY_CACHE_KEY = f"{config.CACHE_VERSION}:developer_hierarchy"
+# Its game counts alone, for the search dropdown: every keystroke read the
+# whole hierarchy, its sets of game and subsidiary ids included, to look up
+# a few counts
+DEVELOPER_GAME_COUNTS_CACHE_KEY = f"{config.CACHE_VERSION}:developer_game_counts"
 
 
 def get_developer_hierarchy() -> Dict[str, Any]:
@@ -41,6 +45,25 @@ def get_developer_hierarchy() -> Dict[str, Any]:
     )
 
 
+def get_developer_game_counts() -> Dict[int, int]:
+    """Each developer's games, its subsidiaries' included, for those with any.
+
+    Kept apart from the hierarchy, and dropped with it.
+    """
+    return cache_helpers.cached(
+        DEVELOPER_GAME_COUNTS_CACHE_KEY,
+        lambda: {
+            dev_id: count
+            for dev_id, count in get_developer_hierarchy()[
+                "recursive_game_counts"
+            ].items()
+            if count
+        },
+        config.CACHE_TIMEOUT_24_HOURS,
+        GENERATION_DEVELOPERS,
+    )
+
+
 def invalidate_developer_cache() -> None:
     """
     Invalidate the developer hierarchy cache.
@@ -48,7 +71,9 @@ def invalidate_developer_cache() -> None:
     Call this after Developer save/delete or Game.developers M2M changes.
     """
     cache_helpers.drop_on_commit(
-        DEVELOPER_HIERARCHY_CACHE_KEY, generation_key=GENERATION_DEVELOPERS
+        DEVELOPER_HIERARCHY_CACHE_KEY,
+        DEVELOPER_GAME_COUNTS_CACHE_KEY,
+        generation_key=GENERATION_DEVELOPERS,
     )
 
 

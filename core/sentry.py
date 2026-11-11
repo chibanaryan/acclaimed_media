@@ -15,8 +15,15 @@ EXTRA_DENYLIST = [
 
 
 def event_scrubber():
-    """The default scrubber, with the field names our forms use."""
-    return EventScrubber(denylist=DEFAULT_DENYLIST + EXTRA_DENYLIST)
+    """The default scrubber, with the field names our forms use.
+
+    With ``send_default_pii``, as settings pass it to the SDK: a scrubber
+    built without it also filters client addresses, which the SDK's own
+    leaves, and the uptime, scraper and rate-limit traces read.
+    """
+    return EventScrubber(
+        denylist=DEFAULT_DENYLIST + EXTRA_DENYLIST, send_default_pii=True
+    )
 
 
 def name_unrouted_transactions(event, hint):

@@ -1124,6 +1124,42 @@ class SeriesModelTests(TestCase):
         self.assertEqual((first.name, first.slug), ("Mario", "mario"))
         self.assertEqual((second.name, second.slug), ("Mario (2)", "mario-2"))
 
+    def test_a_collection_another_thread_made_meanwhile_is_taken(self):
+        """`get_or_create` re-read the row a second creator lost to; this
+        must too, or the 8-thread IGDB pool fails one game on a new series."""
+        from unittest import mock
+
+        from games.models import Series
+
+        made = Series.objects.create(name="Zelda", slug="zelda", igdb_id=11)
+        real_filter = Series.objects.filter
+        calls = []
+
+        def first_lookup_misses(*args, **kwargs):
+            calls.append(kwargs)
+            if kwargs == {"igdb_id": 11} and len(calls) == 1:
+                return Series.objects.none()
+            return real_filter(*args, **kwargs)
+
+        with mock.patch.object(
+            Series.objects, "filter", side_effect=first_lookup_misses
+        ):
+            series = Series.from_igdb({"id": 11, "name": "Zelda", "slug": "zelda"})
+        self.assertEqual(series.pk, made.pk)
+        self.assertEqual(Series.objects.count(), 1)
+
+    def test_a_save_that_fails_for_another_reason_is_raised(self):
+        from unittest import mock
+
+        from django.db import IntegrityError
+
+        from games.models import Series
+
+        Series.objects.create(name="Old", slug="old", igdb_id=12)
+        with mock.patch.object(Series, "save", side_effect=IntegrityError("x")):
+            with self.assertRaises(IntegrityError):
+                Series.from_igdb({"id": 12, "name": "New", "slug": "new"})
+
     def test_a_renamed_collection_is_renamed(self):
         from games.models import Series
 

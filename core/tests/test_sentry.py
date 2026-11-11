@@ -93,6 +93,20 @@ class EventScrubberTests(SimpleTestCase):
         frame = event["exception"]["values"][0]["stacktrace"]["frames"][0]
         self.assertNotEqual(frame["vars"]["password1"], "hunter22")
 
+    def test_client_addresses_are_kept(self):
+        """Settings send PII on purpose (`send_default_pii=True`), and the
+        SDK's own scrubber honours that; one built without saying so also
+        filtered every client address, which trace scrapers and limits."""
+        from core.sentry import event_scrubber
+
+        event = {
+            "request": {"headers": {"X-Forwarded-For": "203.0.113.9"}},
+            "user": {"ip_address": "203.0.113.9"},
+        }
+        event_scrubber().scrub_event(event)
+        self.assertEqual(event["user"]["ip_address"], "203.0.113.9")
+        self.assertEqual(event["request"]["headers"]["X-Forwarded-For"], "203.0.113.9")
+
     def test_settings_pass_it(self):
         from pathlib import Path
 

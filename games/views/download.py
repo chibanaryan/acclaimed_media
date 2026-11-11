@@ -9,7 +9,7 @@ from django.utils.text import slugify
 from core.services import render_budget
 from core.services.query_params import parse_id_list
 from games import models, utils
-from games.cache import CSV_GENRES_CACHE_KEY
+from games.cache import CSV_GENRES_CACHE_KEY, GENERATION_RELEASE
 from games.services import playtime
 from games.services.query_filters import resolve_year_range
 from games.services.game_filters import (
@@ -81,6 +81,7 @@ def download_games_csv(request):
         ["id", "name", "game_count"],
         order_by="name",
         transform_id=True,
+        generation_key=GENERATION_RELEASE,
     )
     # platforms_lookup_list already loaded above for virtual ID expansion
 

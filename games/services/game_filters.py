@@ -14,6 +14,7 @@ from django.db.models import Q
 
 from core.services.query_params import parse_id_list, parse_int
 from games import config, models, utils
+from games.cache import GENERATION_RELEASE
 from games.services import playtime
 
 # Every dimension, and the query parameters that set it. A facet count
@@ -79,6 +80,7 @@ def platforms_lookup():
         ["id", "name", "code", "year_start", "year_end"],
         order_by="name",
         transform_id=True,
+        generation_key=GENERATION_RELEASE,
     )
 
 

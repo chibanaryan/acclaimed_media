@@ -398,6 +398,32 @@ class VerificationBelongsToAnAccountTests(TestCase):
         self.assertEqual(mail.outbox, [])
         self.assertContains(response, "another account")
 
+    def test_a_resend_for_an_address_already_verified_says_so(self):
+        """Verified in another browser, then Resend in the modal left open:
+        nothing is sent, and the screen must not say a link is on its way."""
+        from django.core import mail
+
+        user = self._account("reader", "done@example.com")
+        self._log_in("reader")
+        EmailAddress.objects.filter(user=user).update(verified=True)
+        response = self.client.post(reverse("auth-modal-resend-verification"))
+        self.assertEqual(mail.outbox, [])
+        self.assertNotContains(response, "We've sent")
+        self.assertContains(response, "Already Verified")
+
+    def test_an_account_with_no_address_row_gets_one_and_a_link(self):
+        """Made in the admin, it has no row: its login said unverified, and
+        Resend had nothing to confirm."""
+        from django.core import mail
+
+        user = User.objects.create_user(
+            username="adminmade", email="adminmade@example.com", password=self.PASSWORD
+        )
+        self.assertContains(self._log_in("adminmade"), "Email Not Verified")
+        response = self.client.post(reverse("auth-modal-resend-verification"))
+        self.assertContains(response, "Email Sent")
+        self.assertEqual(_confirmation_row(mail.outbox[0]).user, user)
+
     def test_the_browser_that_signed_up_is_logged_in_by_its_link(self):
         from django.core import mail
 

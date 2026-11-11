@@ -1,14 +1,20 @@
-{# After the resend button: sent, refused because another account has verified the address (taken), or no account to send for (no_account) #}
+{# After the resend button: sent, refused because another account has verified the address (taken), already verified (verified), or no account to send for (no_account) #}
 
 <div class="text-center py-4">
-    {% if no_account or taken %}
+    {% if verified %}
+    <span class="mdi mdi-check-circle text-6xl text-success mb-4 block" aria-hidden="true"></span>
+    {% elif no_account or taken %}
     <span class="mdi mdi-email-alert text-6xl text-warning mb-4 block" aria-hidden="true"></span>
     {% else %}
     <span class="mdi mdi-email-fast text-6xl text-success mb-4 block" aria-hidden="true"></span>
     {% endif %}
 
-    <h3 id="authModalTitle" class="text-lg font-bold mb-2">{% if no_account %}Log In to Resend{% elif taken %}Address Already in Use{% else %}Email Sent{% endif %}</h3>
-    {% if no_account %}
+    <h3 id="authModalTitle" class="text-lg font-bold mb-2">{% if verified %}Already Verified{% elif no_account %}Log In to Resend{% elif taken %}Address Already in Use{% else %}Email Sent{% endif %}</h3>
+    {% if verified %}
+    <p class="text-sm text-base-content/70 mb-6">
+        <strong>{{ email }}</strong> is verified. Log in to continue.
+    </p>
+    {% elif no_account %}
     <p class="text-sm text-base-content/70 mb-6">
         Log in to the account to get a new verification link.
     </p>

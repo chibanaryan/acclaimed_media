@@ -316,13 +316,26 @@ class AuthModalResendVerificationView(View):
             .exclude(user=user)
             .exists()
         )
-        if email_address and not email_address.verified and not taken:
+        # An account with no address row (one made in the admin) has nothing
+        # a link could confirm, and its login says unverified: give it one
+        if email_address is None and user.email and not taken:
+            email_address = EmailAddress.objects.create(
+                user=user, email=user.email, primary=True, verified=False
+            )
+        # Verified already (in another browser, say): nothing to send, and
+        # the screen says so rather than promise a link
+        verified = bool(email_address and email_address.verified)
+        if email_address and not verified and not taken:
             _send_confirmation(request, email_address, signup=False)
 
         response = TemplateResponse(
             request,
             "auth/partials/_verification_resent.html",
-            {"email": user.email, "taken": taken},
+            {
+                "email": user.email,
+                "taken": taken,
+                "verified": verified,
+            },
         )
         response["HX-Push-Url"] = "false"
         return response

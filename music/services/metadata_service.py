@@ -27,6 +27,7 @@ reconnect it without a single HTTP request.
 """
 
 import logging
+import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional
@@ -45,6 +46,11 @@ from music.services.credits import credit_text
 from music.wikidata import WikidataClient
 
 logger = logging.getLogger(__name__)
+
+# A MusicBrainz id is a UUID
+MBID_PATTERN = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE
+)
 
 
 def fit(model, field_name: str, value):
@@ -147,10 +153,13 @@ class AlbumMetadataService:
         """Run ``step(album, *args)``, keeping its failure to the album.
 
         In a savepoint, so a database error leaves the connection usable,
-        and logged and counted as that album's error: one bad row used to
-        end the cover, Discogs and MusicBrainz passes, and escape the
-        command before its genre rebuild, release dates, slugs and cache
-        drop. The Wikidata pass has always worked this way.
+        and the album is read back afterwards, so the object the next pass
+        is handed matches what the rollback left. Logged and counted as that
+        album's error. The savepoint spans the album's downloads too, which
+        holds a connection in a transaction for a few seconds at most. One
+        bad row used to end the cover, Discogs and MusicBrainz passes, and
+        escape the command before its genre rebuild, release dates, slugs
+        and cache drop. The Wikidata pass has always worked this way.
         """
         try:
             with transaction.atomic():
@@ -161,6 +170,13 @@ class AlbumMetadataService:
             self._notify(
                 "error", {"pass": pass_key, "name": album.name, "message": str(exc)}
             )
+            # The savepoint undid the album's writes, not this object, which
+            # the next pass is handed: read it back as the database has it,
+            # its cached relations (a primary record rolled away) with it
+            try:
+                album.refresh_from_db()
+            except Exception:  # an album deleted meanwhile is the next pass's
+                logger.exception("Could not re-read %s", album.name)
 
     # -------------------------------------------------------- wikidata pass
 
@@ -325,9 +341,13 @@ class AlbumMetadataService:
         for artist in models.Artist.objects.filter(wikidata_id__in=list(artists)):
             fetched = artists[artist.wikidata_id]
             changed = []
-            # Fitted, as the title is: an overlong value was a DataError on
-            # Postgres, outside any album's guard, which ended the pass
-            mbid = fit(models.Artist, "musicbrainz_id", fetched.musicbrainz_id)
+            # Only a well-formed id: an overlong one was a DataError on
+            # Postgres, outside any album's guard, which ended the pass, and
+            # one cut to fit would be a wrong id over a right one
+            mbid = fetched.musicbrainz_id
+            if mbid and not MBID_PATTERN.fullmatch(mbid):
+                logger.warning("Malformed MusicBrainz id for %s: %r", artist, mbid)
+                mbid = None
             if mbid and artist.musicbrainz_id != mbid:
                 artist.musicbrainz_id = mbid
                 changed.append("musicbrainz_id")

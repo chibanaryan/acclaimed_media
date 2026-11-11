@@ -27,7 +27,7 @@ from core.services.genre_tree import descendants_by_id
 from core.services.query_params import parse_id_list, parse_limit
 from core.services.request_body import SavedFilterJSONParser, read_saved_filter
 from games.services.data_version import compute_game_data_version
-from games.services.developer_service import get_developer_hierarchy
+from games.services.developer_service import get_developer_game_counts
 
 from .. import config, models, utils
 from . import serializers
@@ -590,13 +590,17 @@ class UnifiedSearchView(APIView):
         # Counted through subsidiaries, as the developers list counts: by
         # direct games, a parent whose games are all its studios' was not
         # found, and one that was showed fewer than its page
+        # Only developers with games somewhere in their tree take a place
+        # in the bounded read
+        counts = get_developer_game_counts()
         developer_rows = _best_first(
             q,
             models.Developer.objects.filter(
-                Q(name__icontains=q) | Q(name_normalized__contains=q_normalized)
+                Q(name__icontains=q) | Q(name_normalized__contains=q_normalized),
+                id__in=list(counts),
             ).annotate(games_count=Count("developed_games")),
             developer_limit,
-            counts=get_developer_hierarchy()["recursive_game_counts"],
+            counts=counts,
         )
         # root_developer walks the parent chain; join it instead
         developers_by_id = models.Developer.objects.select_related(

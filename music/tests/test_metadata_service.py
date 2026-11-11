@@ -127,7 +127,9 @@ class WikidataPassTests(ServiceTestCase):
             if artists is not None
             else {
                 "Q1299": ArtistMetadata(
-                    wikidata_id="Q1299", name="The Beatles", musicbrainz_id="b10bbbfc"
+                    wikidata_id="Q1299",
+                    name="The Beatles",
+                    musicbrainz_id="b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d",
                 )
             }
         )
@@ -170,12 +172,14 @@ class WikidataPassTests(ServiceTestCase):
         self.run_pass(
             artists={
                 "Q1299": ArtistMetadata(
-                    wikidata_id="Q1299", name="Beatles (label)", musicbrainz_id="b10"
+                    wikidata_id="Q1299",
+                    name="Beatles (label)",
+                    musicbrainz_id="b10bbbfc-0000-0000-0000-000000000000",
                 )
             }
         )
         beatles.refresh_from_db()
-        self.assertEqual(beatles.musicbrainz_id, "b10")
+        self.assertEqual(beatles.musicbrainz_id, "b10bbbfc-0000-0000-0000-000000000000")
         # The name is the release's, never Wikidata's label.
         self.assertEqual(beatles.name, "The Beatles")
 
@@ -288,7 +292,7 @@ class WikidataPassTests(ServiceTestCase):
         )
         self.run_pass(metadata={})
         artist.refresh_from_db()
-        self.assertEqual(artist.musicbrainz_id, "b10bbbfc")
+        self.assertEqual(artist.musicbrainz_id, "b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d")
 
     def test_an_album_without_a_qid_is_skipped_beside_the_others(self):
         """The release gives 'Old Nobody' no QID, and the weekly run is not a
@@ -1530,17 +1534,46 @@ class OneAlbumsErrorTests(ServiceTestCase):
         self.assertEqual(result.processed, 1)
         self.assertEqual(result.errors, ["Abbey Road: boom"])
 
-    def test_an_overlong_artist_mbid_does_not_end_the_wikidata_pass(self):
-        """P434 was stored unfitted; on Postgres one malformed value was a
-        DataError outside the per-album guard, which ended the pass."""
+    def test_a_failed_album_is_read_back_as_the_database_has_it(self):
+        """The savepoint undoes the album's writes, not the object the next
+        pass is handed: it went on carrying an id or a primary record the
+        rollback had removed."""
+
+        def half_done(album, *args):
+            album.musicbrainz_release_group_id = "33333333-3333-3333-3333-333333333333"
+            album.save(update_fields=["musicbrainz_release_group_id"])
+            raise RuntimeError("boom")
+
+        result = PassResult(name="Cover art")
+        self.service._for_one_album("covers", self.album, result, half_done)
+        self.assertEqual(self.album.musicbrainz_release_group_id, RG_MBID)
+        self.assertEqual(result.errors, ["Abbey Road: boom"])
+
+    def test_an_album_that_cannot_be_read_back_is_logged(self):
+        def fails(album, *args):
+            raise RuntimeError("boom")
+
+        result = PassResult(name="Cover art")
+        with mock.patch.object(
+            self.album, "refresh_from_db", side_effect=models.Album.DoesNotExist
+        ), self.assertLogs("music.services.metadata_service", "ERROR") as logs:
+            self.service._for_one_album("covers", self.album, result, fails)
+        self.assertIn("Could not re-read", "\n".join(logs.output))
+
+    def test_a_malformed_artist_mbid_is_skipped_not_stored(self):
+        """P434 was stored as it came; on Postgres one overlong value was a
+        DataError outside the per-album guard, which ended the pass. Cut to
+        fit, it would be a wrong id over a right one: it is left out."""
         from music.wikidata import ArtistMetadata
 
+        good = "b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d"
         artist = models.Artist.objects.create(
-            name="The Beatles", source_id=1, wikidata_id="Q1299"
+            name="The Beatles", source_id=1, wikidata_id="Q1299", musicbrainz_id=good
         )
-        self.service._save_artist_ids(
-            {"Q1299": ArtistMetadata(wikidata_id="Q1299", musicbrainz_id="x" * 80)}
-        )
-        artist.refresh_from_db()
-        field = models.Artist._meta.get_field("musicbrainz_id")
-        self.assertLessEqual(len(artist.musicbrainz_id), field.max_length)
+        for bad in ("x" * 80, "not-a-uuid"):
+            with self.subTest(bad=bad):
+                self.service._save_artist_ids(
+                    {"Q1299": ArtistMetadata(wikidata_id="Q1299", musicbrainz_id=bad)}
+                )
+                artist.refresh_from_db()
+                self.assertEqual(artist.musicbrainz_id, good)

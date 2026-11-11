@@ -5,7 +5,7 @@ from typing import Any, Optional
 import markdown
 from unidecode import unidecode
 from django.conf import settings
-from django.db import models
+from django.db import IntegrityError, models, transaction
 from django.utils.text import Truncator, slugify
 
 from core.loaded_values import RemembersLoaded
@@ -533,7 +533,7 @@ class Series(models.Model):
         super().save(*args, **kwargs)
 
     @classmethod
-    def from_igdb(cls, collection: dict) -> "Series":
+    def from_igdb(cls, collection: dict, _retried: bool = False) -> "Series":
         """The series for an IGDB collection, made or brought up to date.
 
         Name and slug are unique, but IGDB's collection names are not: two
@@ -553,7 +553,15 @@ class Series(models.Model):
             slug = f"{slug}-{igdb_id}"
         if (series.name, series.slug) != (name, slug):
             series.name, series.slug = name, slug
-            series.save()
+            try:
+                with transaction.atomic():
+                    series.save()
+            except IntegrityError:
+                # Another thread made it between the lookup and the save
+                # (the IGDB pool runs eight); `get_or_create` re-read it too
+                if series.pk is not None or _retried:
+                    raise
+                return cls.from_igdb(collection, _retried=True)
         return series
 
 

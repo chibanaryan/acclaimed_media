@@ -10,8 +10,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from django.db.models import Count
 
-from core.cache_helpers import cache_get, cache_set
+from core.cache_helpers import cached
 from games import config, models, utils
+from games.cache import GENERATION_RELEASE
 
 # Number of games shown on each landing page
 TOP_N = 25
@@ -37,93 +38,99 @@ def cache_keys() -> List[str]:
 
 def get_landing_genres() -> List[Dict[str, Any]]:
     """Root genres that have games (directly or via descendants)."""
-    cache_key = _cache_key("genres")
-    result = cache_get(cache_key)
-    if result is not None:
+
+    def compute():
+        result = []
+        roots = models.WikipediaGenre.objects.filter(level=0).order_by(
+            "display_order", "name"
+        )
+        # One hierarchy fetch for every root, rather than one per root.
+        descendants = utils.genre_descendant_map()
+        for genre in roots:
+            game_count = utils.apply_genre_filter(
+                models.Game.objects.all(),
+                [genre.id],
+                match_all=False,
+                descendants=descendants,
+            ).count()
+            if game_count > 0:
+                result.append(
+                    {
+                        "id": genre.id,
+                        "name": genre.name,
+                        "slug": genre.slug,
+                        "game_count": game_count,
+                    }
+                )
+
         return result
 
-    result = []
-    roots = models.WikipediaGenre.objects.filter(level=0).order_by(
-        "display_order", "name"
+    return cached(
+        _cache_key("genres"), compute, config.CACHE_TIMEOUT_24_HOURS, GENERATION_RELEASE
     )
-    # One hierarchy fetch for every root, rather than one per root.
-    descendants = utils.genre_descendant_map()
-    for genre in roots:
-        game_count = utils.apply_genre_filter(
-            models.Game.objects.all(),
-            [genre.id],
-            match_all=False,
-            descendants=descendants,
-        ).count()
-        if game_count > 0:
-            result.append(
-                {
-                    "id": genre.id,
-                    "name": genre.name,
-                    "slug": genre.slug,
-                    "game_count": game_count,
-                }
-            )
-
-    cache_set(cache_key, result, config.CACHE_TIMEOUT_24_HOURS)
-    return result
 
 
 def get_landing_platforms() -> List[Dict[str, Any]]:
     """Platforms with enough games to warrant a landing page."""
-    cache_key = _cache_key("platforms")
-    result = cache_get(cache_key)
-    if result is not None:
+
+    def compute():
+        result = list(
+            models.Platform.objects.exclude(slug__isnull=True)
+            .annotate(game_count=Count("games", distinct=True))
+            .filter(game_count__gte=MIN_PLATFORM_GAMES)
+            .order_by("name")
+            .values("id", "name", "slug", "code", "game_count")
+        )
+
         return result
 
-    result = list(
-        models.Platform.objects.exclude(slug__isnull=True)
-        .annotate(game_count=Count("games", distinct=True))
-        .filter(game_count__gte=MIN_PLATFORM_GAMES)
-        .order_by("name")
-        .values("id", "name", "slug", "code", "game_count")
+    return cached(
+        _cache_key("platforms"),
+        compute,
+        config.CACHE_TIMEOUT_24_HOURS,
+        GENERATION_RELEASE,
     )
-
-    cache_set(cache_key, result, config.CACHE_TIMEOUT_24_HOURS)
-    return result
 
 
 def get_landing_years() -> List[int]:
     """Years with enough games to warrant a landing page."""
-    cache_key = _cache_key("years")
-    result = cache_get(cache_key)
-    if result is not None:
+
+    def compute():
+        result = sorted(
+            models.Game.objects.exclude(year_of_release__isnull=True)
+            .values("year_of_release")
+            .annotate(game_count=Count("id"))
+            .filter(game_count__gte=MIN_YEAR_GAMES)
+            .values_list("year_of_release", flat=True)
+        )
+
         return result
 
-    result = sorted(
-        models.Game.objects.exclude(year_of_release__isnull=True)
-        .values("year_of_release")
-        .annotate(game_count=Count("id"))
-        .filter(game_count__gte=MIN_YEAR_GAMES)
-        .values_list("year_of_release", flat=True)
+    return cached(
+        _cache_key("years"), compute, config.CACHE_TIMEOUT_24_HOURS, GENERATION_RELEASE
     )
-
-    cache_set(cache_key, result, config.CACHE_TIMEOUT_24_HOURS)
-    return result
 
 
 def get_landing_decades() -> List[int]:
     """Decades that have at least one game."""
-    cache_key = _cache_key("decades")
-    result = cache_get(cache_key)
-    if result is not None:
+
+    def compute():
+        result = [
+            decade
+            for decade in DECADES
+            if models.Game.objects.filter(
+                year_of_release__gte=decade, year_of_release__lte=decade + 9
+            ).exists()
+        ]
+
         return result
 
-    result = [
-        decade
-        for decade in DECADES
-        if models.Game.objects.filter(
-            year_of_release__gte=decade, year_of_release__lte=decade + 9
-        ).exists()
-    ]
-
-    cache_set(cache_key, result, config.CACHE_TIMEOUT_24_HOURS)
-    return result
+    return cached(
+        _cache_key("decades"),
+        compute,
+        config.CACHE_TIMEOUT_24_HOURS,
+        GENERATION_RELEASE,
+    )
 
 
 def resolve_slug(slug: str) -> Optional[Tuple[str, Dict[str, Any]]]:

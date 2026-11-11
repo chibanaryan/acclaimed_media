@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from django.db.models import Q, QuerySet
 
-from core.cache_helpers import cache_get, cache_set
+from core.cache_helpers import cached
 from core.services.query_params import MAX_INT, parse_int
 from games import config
 
@@ -163,6 +163,7 @@ def get_or_set_cache(
     timeout: int = config.CACHE_TIMEOUT_DEFAULT,
     order_by: Optional[str] = None,
     transform_id: bool = False,
+    generation_key: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Get cached list or build and cache from queryset.
@@ -174,20 +175,22 @@ def get_or_set_cache(
         timeout: Cache timeout in seconds (default from config)
         order_by: Optional field to order by
         transform_id: If True, convert 'id' field to string
+        generation_key: The family's generation, for a value something drops
 
     Returns:
         List of dictionaries with requested fields
     """
-    result = cache_get(cache_key)
-    if result is None:
-        qs = queryset
-        if order_by:
-            qs = qs.order_by(order_by)
-        result = list(qs.values(*fields))
+
+    def build():
+        qs = queryset.order_by(order_by) if order_by else queryset
+        rows = list(qs.values(*fields))
         if transform_id and "id" in fields:
-            result = [{**item, "id": str(item["id"])} for item in result]
-        cache_set(cache_key, result, timeout)
-    return result
+            rows = [{**item, "id": str(item["id"])} for item in rows]
+        return rows
+
+    # Through `cached`, which guards the save with ``generation_key`` when a
+    # drop names one (a games import drops the release's lists)
+    return cached(cache_key, build, timeout, generation_key)
 
 
 # A decade as the links spell it, "1990-99": the browser reads the same

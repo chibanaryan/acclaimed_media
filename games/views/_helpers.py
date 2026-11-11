@@ -7,6 +7,7 @@ from core.cache_helpers import cached, get_year_bounds
 from core.services.facets import count_by
 from games import config, models
 from games.cache import (
+    GENERATION_RELEASE,
     GENERATION_HERO,
     GENERATION_TRACKING,
     HERO_STATS_CACHE_KEY,
@@ -25,6 +26,9 @@ def _get_year_bounds():
         cache_key=config.CACHE_KEY_YEAR_STATS,
         cache_timeout=config.CACHE_TIMEOUT_24_HOURS,
         default_min=config.DEFAULT_MIN_YEAR,
+        # Dropped at an import's commit; the guard keeps a read from before
+        # it from saving the old bounds over the drop
+        generation_key=GENERATION_RELEASE,
     )
 
 
