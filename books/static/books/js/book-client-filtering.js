@@ -24,7 +24,6 @@ class BookClientSideFiltering {
         this.currentFilters = {};
         this.minYear = 1800;
         this.maxYear = new Date().getFullYear();
-        this._hasRenderedUI = false;  // Track if CSF has taken over the UI
         this._viewMode = localStorage.getItem('bookViewMode') || 'list';
     }
 
@@ -154,9 +153,6 @@ class BookClientSideFiltering {
             showRank = 'filtered'
         } = options;
 
-        // Mark that CSF has taken over UI rendering
-        this._hasRenderedUI = true;
-
         // Clear and render new results with current view mode
         this.renderer.render(filterResult.books, bookListContainer, {
             showRank,
@@ -192,46 +188,6 @@ class BookClientSideFiltering {
         return this.renderer.loadMore(bookListContainer, {
             showRank
         });
-    }
-
-    /**
-     * Update DOM with filter results
-     * This is the main entry point called from Alpine.js
-     *
-     * @param {Object} filters - Filters from Alpine component
-     * @param {Object} elements - DOM element references
-     */
-    updateUI(filters, elements) {
-        const {
-            bookListContainer,
-            countContainer,
-            loadMoreContainer,
-            highlightId
-        } = elements;
-
-        const result = this.applyFilters(filters);
-        if (!result) return null;
-
-        const state = this.renderResults(result, bookListContainer, {
-            highlightId,
-            showRank: this._computeShowRank()
-        });
-
-        // Update count display
-        if (countContainer) {
-            countContainer.innerHTML = this.renderer.getResultSummaryHtml(state.loaded, state.total);
-        }
-
-        // Update Load More button
-        if (loadMoreContainer) {
-            loadMoreContainer.innerHTML = this.renderer.getLoadMoreHtml(state);
-            this._initLoadMoreButton(loadMoreContainer, bookListContainer, countContainer);
-        }
-
-        return {
-            total: state.total,
-            facets: state.facets
-        };
     }
 
     /**
@@ -324,14 +280,6 @@ class BookClientSideFiltering {
      */
     isReady() {
         return this.isInitialized;
-    }
-
-    /**
-     * Check if CSF has taken over UI rendering
-     * @returns {boolean}
-     */
-    hasRenderedUI() {
-        return this._hasRenderedUI;
     }
 
     /**

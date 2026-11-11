@@ -216,6 +216,24 @@ class NormalizationTests(TestCase):
         self.assertEqual(normalized["genres"], ["Fiction", "Adventure"])
         self.assertEqual(normalized["pages"], 300)
 
+    def test_the_year_is_read_out_of_free_text(self):
+        """Open Library's `publish_date` is free text; its first four
+        characters were taken for the year, "Marc" for "March 1999"."""
+        from books.book_metadata import _publish_year
+
+        for text, year in (
+            ("March 1999", 1999),
+            ("1999", 1999),
+            ("2020-01-15", 2020),
+            ("c. 1850", 1850),
+            ("Jan 5, 2003", 2003),
+            ("", None),
+            (None, None),
+            ("n.d.", None),
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(_publish_year(text), year)
+
     @mock.patch("books.book_metadata.hardcover.get_api")
     def test_normalize_openlibrary_limits_genres(self, mock_get_hardcover):
         """Test Open Library normalization limits genres to 10."""
@@ -295,7 +313,7 @@ class NormalizeOpenLibraryWorkTests(TestCase):
 
         self.assertEqual(normalized["title"], "Edition Title")
         self.assertEqual(normalized["authors"], ["Test Author"])
-        self.assertEqual(normalized["year"], "2020")
+        self.assertEqual(normalized["year"], 2020)
         self.assertEqual(normalized["isbn"], ["9781234567890"])
         self.assertEqual(normalized["genres"], ["Fantasy", "Magic"])
         self.assertEqual(normalized["source"], "openlibrary")

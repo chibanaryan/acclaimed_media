@@ -1,5 +1,6 @@
 """Tests for Goodreads CSV importer."""
 
+import csv
 from io import BytesIO, StringIO, TextIOBase
 from unittest import mock
 
@@ -29,6 +30,18 @@ class GoodreadsImporterTests(TestCase):
             username="reader",
             password="password",
         )
+
+    def test_a_row_the_csv_reader_refuses_is_named_not_raised(self):
+        """The form checks the header row alone: a `csv.Error` further down
+        was a 500 on the import page, which shows a ValueError's text."""
+        csv_data = (
+            "Book Id,Title,Author,Exclusive Shelf\n"
+            "123,Book One,Author A,read\n"
+            f"456,{'x' * (csv.field_size_limit() + 1)},Author B,read\n"
+        )
+        with self.assertRaisesMessage(ValueError, "could not be read as CSV"):
+            import_goodreads_csv(StringIO(csv_data), self.user)
+        self.assertFalse(ReadBook.objects.exists())
 
     def test_import_creates_read_and_want(self):
         Book.objects.create(

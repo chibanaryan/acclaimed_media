@@ -9,6 +9,7 @@ Tests must use staff users to access these endpoints.
 """
 
 import importlib
+from datetime import datetime
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -255,6 +256,15 @@ class BookListListAPITests(StaffAPITestMixin, TestCase):
         response = self.client.get("/api/books/lists/", {"year": 2024})
         self.assertEqual(response.status_code, 200)
 
+    def test_a_list_with_no_publisher_is_listed(self):
+        """`publisher` is nullable; the serializer raised on it, a 500."""
+        models.BookList.objects.create(name="Orphan List", year=2023, type="A")
+        response = self.client.get("/api/books/lists/")
+        self.assertEqual(response.status_code, 200)
+        by_name = {row["name"]: row for row in response.json()["results"]}
+        self.assertEqual(by_name["Orphan List"]["publication"], "")
+        self.assertEqual(by_name["Best Books 2024"]["publication"], "Test Pub")
+
 
 class BookMetaAPITests(StaffAPITestMixin, TestCase):
     """Tests for the BookMetaView API endpoint."""
@@ -292,6 +302,14 @@ class BookMetaAPITests(StaffAPITestMixin, TestCase):
 
         # Check authors data
         self.assertIn("total_count", data["authors"])
+
+    def test_the_years_run_through_this_year(self):
+        """`range` stopped a year short, so a book published this year was
+        in no year."""
+        this_year = datetime.today().year
+        models.Book.objects.create(name="New Book", rank=2, year_published=this_year)
+        data = self.client.get("/api/books/meta/").json()
+        self.assertEqual(data["books"]["years"][-1], {"year": this_year, "count": 1})
 
 
 class BookGenreListAPITests(StaffAPITestMixin, TestCase):

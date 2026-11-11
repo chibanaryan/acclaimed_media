@@ -226,61 +226,6 @@ class HardcoverApi:
             logger.warning("Failed to parse search results: %s", exc)
             return []
 
-    def get_book_by_id(self, book_id: int) -> Optional[Dict[str, Any]]:
-        """
-        Get book details by Hardcover book ID.
-
-        Args:
-            book_id: Hardcover book ID
-
-        Returns:
-            Book metadata dictionary or None if not found
-        """
-        cache_key = f"book:{book_id}"
-        cached = self._get_from_cache(self.book_cache, cache_key)
-        if cached is not None:
-            return cached
-
-        graphql_query = """
-        query GetBook($id: Int!) {
-            books(where: {id: {_eq: $id}}) {
-                id
-                title
-                slug
-                description
-                release_date
-                pages
-                cached_contributors
-                cached_tags
-                cached_image
-                editions {
-                    isbn_13
-                    isbn_10
-                    pages
-                    audio_seconds
-                }
-            }
-        }
-        """
-
-        variables = {"id": book_id}
-        data = self._make_request(graphql_query, variables)
-
-        if data is None:
-            return None
-
-        try:
-            books = data.get("books", [])
-            if not books:
-                return None
-
-            book = books[0]
-            self._set_in_cache(self.book_cache, cache_key, book)
-            return book
-        except (ValueError, KeyError) as exc:
-            logger.warning("Failed to parse book response: %s", exc)
-            return None
-
     def get_book_by_isbn(self, isbn: str) -> Optional[Dict[str, Any]]:
         """
         Look up a book by ISBN.

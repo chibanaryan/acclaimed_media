@@ -231,19 +231,6 @@ class MakeRequestTests(TestCase):
 class HardcoverRequestExceptionTests(TestCase):
     """Tests for HardcoverApi request exception handling and parsing."""
 
-    def test_get_book_by_id_handles_invalid_response(self):
-        """Test invalid response data triggers parse error handling."""
-        api = HardcoverApi(api_token="token")
-
-        class BadData:
-            def get(self, *args, **kwargs):
-                raise ValueError("bad data")
-
-        with mock.patch.object(HardcoverApi, "_make_request", return_value=BadData()):
-            result = api.get_book_by_id("123")
-
-        self.assertIsNone(result)
-
     @mock.patch("time.sleep")
     @mock.patch("books.hardcover.HardcoverApi._wait_for_rate_limit")
     @mock.patch("requests.post")
@@ -364,61 +351,6 @@ class SearchBooksTests(TestCase):
         results = api.search_books("test")
 
         self.assertEqual(results, [])
-
-
-class GetBookByIdTests(TestCase):
-    """Tests for get_book_by_id method."""
-
-    @mock.patch.object(HardcoverApi, "_make_request")
-    def test_get_book_by_id_returns_data(self, mock_request):
-        """Test get_book_by_id returns book data."""
-        api = HardcoverApi(api_token="token")
-        mock_request.return_value = {"books": [{"id": 123, "title": "Test Book"}]}
-
-        result = api.get_book_by_id(123)
-
-        self.assertEqual(result["title"], "Test Book")
-
-    @mock.patch.object(HardcoverApi, "_make_request")
-    def test_get_book_by_id_caches_result(self, mock_request):
-        """Test book lookup is cached."""
-        api = HardcoverApi(api_token="token")
-        mock_request.return_value = {"books": [{"id": 123, "title": "Book"}]}
-
-        api.get_book_by_id(123)
-        api.get_book_by_id(123)
-
-        self.assertEqual(mock_request.call_count, 1)
-
-    @mock.patch.object(HardcoverApi, "_make_request")
-    def test_get_book_by_id_returns_none_if_not_found(self, mock_request):
-        """Test get_book_by_id returns None if no books found."""
-        api = HardcoverApi(api_token="token")
-        mock_request.return_value = {"books": []}
-
-        result = api.get_book_by_id(999)
-
-        self.assertIsNone(result)
-
-    @mock.patch.object(HardcoverApi, "_make_request")
-    def test_get_book_by_id_returns_none_on_request_failure(self, mock_request):
-        """Test get_book_by_id returns None when request fails."""
-        api = HardcoverApi(api_token="token")
-        mock_request.return_value = None
-
-        result = api.get_book_by_id(123)
-
-        self.assertIsNone(result)
-
-    @mock.patch.object(HardcoverApi, "_make_request")
-    def test_get_book_by_id_returns_none_on_parse_error(self, mock_request):
-        """Test get_book_by_id returns None when parsing fails."""
-        api = HardcoverApi(api_token="token")
-        mock_request.return_value = {"invalid": "structure"}
-
-        result = api.get_book_by_id(123)
-
-        self.assertIsNone(result)
 
 
 class GetBookByIsbnTests(TestCase):

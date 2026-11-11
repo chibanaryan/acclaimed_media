@@ -9,9 +9,11 @@ from collections import defaultdict
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import Count, Prefetch, Q
 from django.db.models.functions import Lower
-from django.shortcuts import get_object_or_404, render
+from django.http import Http404
+from django.shortcuts import render
 from django.views import View
 from django.views.generic import DetailView, ListView
 
@@ -21,6 +23,7 @@ from books.services.goodreads_importer import import_goodreads_csv
 from core import constants as core_constants
 from core.cache_helpers import get_year_bounds
 from core.mixins import HTMXPartialMixin, RobustPaginationMixin, StaffOnlyMixin
+from core.models import User
 
 
 def _get_year_bounds():
@@ -588,41 +591,39 @@ class ToggleReadBookView(StaffOnlyMixin, LoginRequiredMixin, View):
     """
 
     def post(self, request, goodreads_id):
-        book = get_object_or_404(models.Book, goodreads_id=goodreads_id)
+        # `first()`: a Goodreads id is indexed, not unique, and `get()` on
+        # two books was a 500
+        book = (
+            models.Book.objects.filter(goodreads_id=goodreads_id)
+            .order_by("rank", "pk")
+            .first()
+        )
+        if book is None:
+            raise Http404("No such book")
+        key = {"user": request.user, "goodreads_id": goodreads_id}
 
-        # Check current state
-        is_read = models.ReadBook.objects.filter(
-            user=request.user, goodreads_id=goodreads_id
-        ).exists()
-        is_want_to_read = models.WantToReadBook.objects.filter(
-            user=request.user, goodreads_id=goodreads_id
-        ).exists()
-
-        # Cycle through states: none -> want -> read -> none
-        if is_read:
-            # read -> none: Remove from read
-            models.ReadBook.objects.filter(
-                user=request.user, goodreads_id=goodreads_id
-            ).delete()
-            new_is_read = False
-            new_is_want_to_read = False
-        elif is_want_to_read:
-            # want -> read: Remove from want, add to read
-            models.WantToReadBook.objects.filter(
-                user=request.user, goodreads_id=goodreads_id
-            ).delete()
-            models.ReadBook.objects.create(
-                user=request.user, goodreads_id=goodreads_id, book=book
-            )
-            new_is_read = True
-            new_is_want_to_read = False
-        else:
-            # none -> want: Add to want to read
-            models.WantToReadBook.objects.create(
-                user=request.user, goodreads_id=goodreads_id, book=book
-            )
-            new_is_read = False
-            new_is_want_to_read = True
+        # One transaction under the reader's lock, and update_or_create on
+        # the unique_together, as games' and music's toggles are: the
+        # check-then-create this replaced let a double-click race into an
+        # IntegrityError.
+        with transaction.atomic():
+            User.objects.select_for_update().filter(pk=request.user.pk).first()
+            # Cycle through states: none -> want -> read -> none
+            if models.ReadBook.objects.filter(**key).exists():
+                models.ReadBook.objects.filter(**key).delete()
+                new_is_read = False
+                new_is_want_to_read = False
+            elif models.WantToReadBook.objects.filter(**key).exists():
+                models.WantToReadBook.objects.filter(**key).delete()
+                models.ReadBook.objects.update_or_create(**key, defaults={"book": book})
+                new_is_read = True
+                new_is_want_to_read = False
+            else:
+                models.WantToReadBook.objects.update_or_create(
+                    **key, defaults={"book": book}
+                )
+                new_is_read = False
+                new_is_want_to_read = True
 
         # Invalidate caches
         invalidate_read_books_cache(request.user.id)

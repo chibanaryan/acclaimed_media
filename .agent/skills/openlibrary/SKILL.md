@@ -28,7 +28,6 @@ python3 manage.py fetch_book_metadata --isbn "9780743273565"
 | `--author NAME` | Filter search by author name |
 | `--isbn ISBN` | Look up book by ISBN |
 | `--limit N` | Limit number of results (default: 10) |
-| `--delay SECONDS` | Delay between requests (default: 1.0) |
 | `--source SOURCE` | Data source: `openlibrary`, `hardcover`, or `both` (default: openlibrary) |
 | `--output FILE` | Save results to CSV file |
 | `--json` | Output results as JSON |
@@ -49,23 +48,8 @@ python3 manage.py fetch_book_metadata --search "Science Fiction" --limit 50 --ou
 python3 manage.py fetch_book_metadata --search "Pride and Prejudice" --author "Jane Austen"
 ```
 
-## Database Mode (Future)
-
-When the Book model database integration is complete, additional options will be available:
-
-```bash
-# Process specific book from database
-python3 manage.py fetch_book_metadata --book "The Great Gatsby" --save
-
-# Process all books needing metadata
-python3 manage.py fetch_book_metadata --save --skip-existing
-
-# Force refresh all book metadata
-python3 manage.py fetch_book_metadata --save --force
-
-# Control concurrency
-python3 manage.py fetch_book_metadata --save --concurrency 5
-```
+The command searches and prints (or writes a CSV); it saves nothing to the
+database.
 
 ## What Open Library Provides
 

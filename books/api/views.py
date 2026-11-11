@@ -1,8 +1,8 @@
 """
 Books API views.
 
-These views follow the same patterns as games/api/views.py.
-They will be fully functional once the books models are created in Phase 4.2.
+These views follow the same patterns as games/api/views.py, and are
+staff-only (``StaffReadAPIMixin``).
 """
 
 from datetime import datetime
@@ -226,8 +226,10 @@ class BookMetaView(StaffReadAPIMixin, APIView):
             min_year=Min("year_published"),
         )
         min_year = book_stats["min_year"] or 1900
+        # Through this year: `range` stops short of its end, and the
+        # current year was left out (games' copy counts it)
         max_year = datetime.today().year
-        all_years = range(min_year, max_year)
+        all_years = range(min_year, max_year + 1)
         year_count_map = {
             entry["year_published"]: entry["count"]
             for entry in models.Book.objects.values("year_published")

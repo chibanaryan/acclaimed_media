@@ -14,7 +14,9 @@ from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils.html import escape
 
@@ -819,6 +821,40 @@ class ToggleReadBookViewTests(StaffUserTestMixin, TestCase):
                 user=self.user, goodreads_id="12345"
             ).exists()
         )
+
+    def test_two_books_with_one_goodreads_id_are_not_an_error(self):
+        """The id is indexed, not unique; `get()` on two rows was a 500."""
+        models.Book.objects.create(
+            name="Test Book, again", rank=2, slug="test-book-2", goodreads_id="12345"
+        )
+        response = self.client.post(
+            reverse("books:toggle-read", kwargs={"goodreads_id": "12345"})
+        )
+        self.assertEqual(response.status_code, 200)
+        row = models.WantToReadBook.objects.get(user=self.user, goodreads_id="12345")
+        self.assertEqual(row.book, self.book)
+
+    def test_an_unknown_goodreads_id_is_a_404(self):
+        response = self.client.post(
+            reverse("books:toggle-read", kwargs={"goodreads_id": "999"})
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_the_toggle_runs_in_one_transaction_under_the_readers_lock(self):
+        """As games' and music's do: check-then-create let a double-click
+        race into an IntegrityError."""
+        with CaptureQueriesContext(connection) as queries:
+            self.client.post(
+                reverse("books:toggle-read", kwargs={"goodreads_id": "12345"})
+            )
+        statements = [query["sql"] for query in queries.captured_queries]
+        savepoint = next(i for i, sql in enumerate(statements) if "SAVEPOINT" in sql)
+        insert = next(
+            i
+            for i, sql in enumerate(statements)
+            if "INSERT" in sql and "wanttoread" in sql
+        )
+        self.assertLess(savepoint, insert)
 
     def test_toggle_read_to_none(self):
         """Test cycling from read to none."""

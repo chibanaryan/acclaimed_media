@@ -1,13 +1,11 @@
 """
-Management command to fetch book metadata from Open Library and Hardcover.
+Search Open Library and Hardcover for book metadata, by title or ISBN.
 
-This command provides functionality to:
-- Search for books by title/author
-- Fetch metadata for books in the database
-- Save metadata to BookMetadata models
-
-Note: Full database integration requires the Book model from Phase 4.2.
-Until then, this command supports standalone search functionality.
+It prints what it finds, or writes it to a CSV; it saves nothing. Until
+2026-11-10 it also took ``--book``, ``--save``, ``--skip-existing``,
+``--force``, ``--concurrency`` and ``--delay``: the first two reached a stub
+that said "not yet implemented" and exited 0, and the rest were read by
+nothing.
 """
 
 import csv
@@ -30,11 +28,10 @@ class Command(BaseCommand):
         self.start_time = None
 
     def add_arguments(self, parser):
-        # Search mode arguments
         parser.add_argument(
             "--search",
             type=str,
-            help="Search for books by title (standalone mode)",
+            help="Search for books by title",
         )
         parser.add_argument(
             "--author",
@@ -54,13 +51,6 @@ class Command(BaseCommand):
             default=10,
             help="Limit number of results (default: 10)",
         )
-        parser.add_argument(
-            "--delay",
-            type=float,
-            default=1.0,
-            help="Delay between requests in seconds (default: 1.0)",
-        )
-
         # Source selection
         parser.add_argument(
             "--source",
@@ -82,34 +72,6 @@ class Command(BaseCommand):
             help="Output results as JSON",
         )
 
-        # Database mode arguments (for future Phase 4.2 integration)
-        parser.add_argument(
-            "--book",
-            type=str,
-            help="Process specific book by title (requires Book model)",
-        )
-        parser.add_argument(
-            "--save",
-            action="store_true",
-            help="Save results to database (requires Book model)",
-        )
-        parser.add_argument(
-            "--skip-existing",
-            action="store_true",
-            help="Skip books that already have metadata",
-        )
-        parser.add_argument(
-            "--force",
-            action="store_true",
-            help="Force refresh all books",
-        )
-        parser.add_argument(
-            "--concurrency",
-            type=int,
-            default=5,
-            help="Number of concurrent requests (default: 5)",
-        )
-
     def handle(self, *args, **options):
         self.start_time = time.time()
 
@@ -117,14 +79,10 @@ class Command(BaseCommand):
         if options.get("search") or options.get("isbn"):
             return self._handle_search(options)
 
-        # Database mode (requires Book model)
-        if options.get("book") or options.get("save"):
-            return self._handle_database_mode(options)
-
         # Default: show help
         self.stdout.write(
             self.style.WARNING(
-                "No action specified. Use --search, --isbn, or --book.\n"
+                "No action specified. Use --search or --isbn.\n"
                 "Run with --help for usage information."
             )
         )
@@ -181,33 +139,6 @@ class Command(BaseCommand):
 
         elapsed = time.time() - self.start_time
         self.stdout.write(f"\nCompleted in {elapsed:.1f} seconds\n")
-
-    def _handle_database_mode(self, options):
-        """Handle database mode (requires Book model)."""
-        try:
-            __import__("books.models")
-        except ImportError:
-            self.stdout.write(
-                self.style.ERROR(
-                    "Book model not available. Database mode requires Phase 4.2 "
-                    "(Create books models) to be completed.\n\n"
-                    "Use --search or --isbn for standalone search mode."
-                )
-            )
-            return
-
-        # TODO: Implement database mode when Book model is available
-        # This will mirror the fetch_hltb_data.py pattern:
-        # 1. Get books from database
-        # 2. Fetch metadata concurrently
-        # 3. Save results to BookMetadata model
-
-        self.stdout.write(
-            self.style.WARNING(
-                "Database mode not yet implemented. "
-                "Waiting for Phase 4.2 (Book model) completion."
-            )
-        )
 
     def _print_book_result(self, result: Dict[str, Any]):
         """Print a single book result."""

@@ -18,11 +18,23 @@ Sources researched and considered:
 """
 
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 from books import openlibrary, hardcover
 
 logger = logging.getLogger(__name__)
+
+
+def _publish_year(publish_date) -> Optional[int]:
+    """The year in Open Library's ``publish_date``, or None.
+
+    The field is free text ("March 1999", "1999", "c. 1850"), and its first
+    four characters were taken for the year: "Marc". An int, as the search
+    path's ``first_publish_year`` is.
+    """
+    match = re.search(r"\b(\d{4})\b", str(publish_date or ""))
+    return int(match.group(1)) if match else None
 
 
 class BookMetadataService:
@@ -228,11 +240,7 @@ class BookMetadataService:
         return {
             "title": edition.get("title") or work.get("title"),
             "authors": authors,
-            "year": (
-                edition.get("publish_date", "")[:4]
-                if edition.get("publish_date")
-                else None
-            ),
+            "year": _publish_year(edition.get("publish_date")),
             "isbn": [isbn],
             "cover_url": cover_url,
             "genres": work.get("subjects", [])[:10],

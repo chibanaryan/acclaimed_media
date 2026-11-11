@@ -177,7 +177,9 @@ class BookGenreTreeSerializer(serializers.ModelSerializer):
 class BookListSerializer(serializers.ModelSerializer):
     """Serializer for book lists (uses books.BookList)."""
 
-    publication = serializers.CharField(source="publisher.name")
+    # A list can have no publisher: without the default, DRF raised on it,
+    # and the lists API was a 500 (music's copy has had it)
+    publication = serializers.CharField(source="publisher.name", default="")
 
     class Meta:
         model = models.BookList

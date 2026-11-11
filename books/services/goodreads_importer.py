@@ -154,6 +154,19 @@ def _build_isbn_map(candidate_isbns, books_queryset):
     return isbn_map, ambiguous
 
 
+def _rows(reader):
+    """The reader's rows, a malformed one raised as the ValueError the
+    import page shows. The form checks only the header row, so a
+    ``csv.Error`` further down (a field over the size limit, a stray NUL)
+    was a 500."""
+    try:
+        yield from reader
+    except csv.Error as exc:
+        raise ValueError(
+            f"Row {reader.line_num} could not be read as CSV: {exc}"
+        ) from exc
+
+
 def parse_goodreads_records(file_obj, summary: Optional[GoodreadsImportSummary] = None):
     """Parse Goodreads export CSV into a record map keyed by Goodreads ID."""
     if summary is None:
@@ -171,7 +184,7 @@ def parse_goodreads_records(file_obj, summary: Optional[GoodreadsImportSummary] 
 
         records: Dict[str, Dict[str, str]] = {}
 
-        for row in reader:
+        for row in _rows(reader):
             summary.total_rows += 1
             goodreads_id = _get_value(
                 row,
