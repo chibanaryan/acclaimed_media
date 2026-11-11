@@ -124,7 +124,34 @@ most of the small leftovers; `DEVLOG.md`). Left, or found by it:
    Dynablaster" (1230, 2.4 h; 1244, which is Bomberman II, 2.0 h). The
    last is a wrong match by name. Giving each its HLTB id on Wikidata
    (P2816) settles it for good, since an id is looked up before any name.
-8. **Small leftovers.**
+8. **Resending a verification is keyed on the address alone.** Found by
+   the 2026-11-11 review, and older than it. Two accounts can hold one
+   address unverified (allauth keeps an address to one account only once
+   verified), and `AuthModalResendVerificationView` takes just the email:
+   - It mails the oldest unverified row, which need not be the account the
+     requester just signed up as or tried to log in to. Following the link
+     verifies that row and logs them in to it: someone who signed up first
+     with another person's address and their own password is then the one
+     who knows that account's password.
+   - The "Email Not Verified" screens (sign-up on a taken address, login)
+     offer Resend by `.first()` over every row for the address, a different
+     rule from the resend's own. Where another account has verified the
+     address, Resend answers "Email Sent" and, rightly, sends nothing, so
+     the reader waits for a link that cannot come.
+
+   The fix is to resend for an account, not an address: carry the account
+   the screen was shown for (signed, or in the session) and send only to it.
+9. **Small leftovers.**
+    - `/accounts/signup/` drops the `?next=` allauth's login page puts on
+      its sign-up link, so a reader sent to log in from a game's page ends
+      on the home page with the sign-up form. A validated `next` path plus
+      `#signup` would keep them where they were: the modal is on every page.
+    - `run_wikidata` returns early for a selection with no QID, before the
+      artist half of the pass, which does not depend on the albums selected.
+      Only `--slug` on a QID-less album reaches it.
+    - `modal-handlers.js` opens a dialog from the address's fragment two
+      ways: `#contact` after a 100 ms timeout, `#signup` once htmx has
+      started. One helper would hold the pattern.
     - `populate_platform_years` has no caller; `games/platform_years.py`
       keeps it "for re-applying the whole table after editing it".
     - The games import's "Load Test Data" is hidden without `DEBUG` but
@@ -164,7 +191,7 @@ The section is public at `music.acclaimedmedia.org`, beside the games site and
 a landing page at the apex (2026-10-30; AGENTS.md, "Domain"). The pages keep a
 "Beta" badge while `music.config.MUSIC_BETA` is on.
 
-9. **New brand artwork.** The favicons still read "Acclaimed Video Games"
+10. **New brand artwork.** The favicons still read "Acclaimed Video Games"
    (`games/static/games/brand/`), and a page without artwork of its own has
    no `og:image` since the old one was removed; every page title already
    says Acclaimed Media. A new default goes in `base.html`'s `og_image` block,
@@ -173,8 +200,8 @@ a landing page at the apex (2026-10-30; AGENTS.md, "Domain"). The pages keep a
 
 ## Production: after the 2026-11-09 and 2026-11-10 passes ship
 
-The third 2026-11-10 pass adds no migration. Items 17 to 20 below are for
-the deploy that ships it.
+The third 2026-11-10 pass adds no migration. It shipped on 2026-11-11 (v921), after four
+review rounds. Items 18 to 21 below are what to check now that it has.
 
 The rankings page is 690 KB anonymous and 833 KB logged in, and the dyno
 runs gthread with three threads per worker (AGENTS.md, "Production memory
@@ -182,13 +209,13 @@ budget"). `--threads 3` was checked on 2026-11-09: over 72 hours the two
 workers peaked at 333 MiB RSS of the 512 MiB quota and swap was 0 but for
 one 6.9 MiB reading, so it stays.
 
-10. **Watch the two burst windows after the deploy.** A scraper asks for
+11. **Watch the two burst windows after the deploy.** A scraper asks for
    3,500-4,800 filtered pages in five minutes at about 04:00 and 21:00 UTC,
    and Sentry's uptime check timed out 11 times in the week to 2026-11-09
    (AGENTS.md, "Caching"). After the deploy, read the uptime monitor across
    the next two windows, `/`'s p50 inside them, and `heroku logs` for
    "Autorestarting worker" during one.
-11. **Read a week of render-budget reports, then decide on
+12. **Read a week of render-budget reports, then decide on
     `ANON_RENDER_BUDGET_ENFORCE`.** The budget only logs: "Anonymous renders
     over budget", at 10 in a burst (WARNING, the logs) and 100 and 1,000
     (ERROR, Sentry). If the only bursts are the scraper's windows, turn it
@@ -197,31 +224,31 @@ one 6.9 MiB reading, so it stays.
     it is a script's (`HX-Request`) is not counted, so a scraper that learnt
     to send the header would pass it; `?partial=true` on its own no longer
     does.
-12. **Check memory under `--max-requests 2000`.** It was 500 until
+13. **Check memory under `--max-requests 2000`.** It was 500 until
     2026-11-09, and memory was measured flat only to 1,000 renders. The page
     cache also holds ~200 more pages, ~12 MB a worker. After a few days read
     `memory.rss.bytes.max` and `memory.swap.bytes.max` from the metrics API;
     back to 1,000 if the peak climbs towards the quota. An import's metadata
     fetch spends ~85 MB in one worker while it runs, so read a week that
     held one.
-13. **Merge the Dependabot queue.** #32 is Django 6.1.3, a security release;
+14. **Merge the Dependabot queue.** #32 is Django 6.1.3, a security release;
     #31 and #30 wait with it. #32 and #31 were green on 2026-11-10
     (`/upgrade-deps`).
-14. **The next deploy applies two migrations**, `games.0124` and
+15. **The next deploy applies two migrations**, `games.0124` and
     `music.0015`: unique constraints on game, developer and album slugs
     and on game and developer IGDB ids. Production had no duplicates on
     2026-11-10; if a release imported since then has one, the release
     phase fails on it and names the constraint. `/deploy` backs up first.
-15. **The first Sunday after the deploy, read the weekly games job.**
+16. **The first Sunday after the deploy, read the weekly games job.**
     `refresh_all_metadata` now fails when a phase could not run at all, so
     Sentry's cron monitor will alert on a phase that has been failing
     quietly. The job's output names the phase.
-16. **Check one notification email's headers** once a post goes out: Gmail
+17. **Check one notification email's headers** once a post goes out: Gmail
     and Apple Mail should show their own Unsubscribe control
     (`List-Unsubscribe-Post`), and the footer link should ask before it
     unsubscribes.
 
-17. **The first Sunday after it ships, read both weekly jobs.**
+18. **The first Sunday after it ships, read both weekly jobs.**
     `fetch_album_metadata` now fails when its Wikidata pass lands nothing,
     so Sentry's cron monitor will alert on an outage it has been reading as
     a good Sunday. Games' Wikipedia phase now sends the credentials it paces
@@ -229,16 +256,16 @@ one 6.9 MiB reading, so it stays.
     and its timeout is 30 seconds, so a stalled page is a logged failure,
     not a five-minute wait. The HLTB phase will move Wordle and the three
     games in bug 7.
-18. **The games API's old cache rows lapse by themselves.** Its keys
+19. **The games API's old cache rows lapse by themselves.** Its keys
     changed shape (`games_api:...`); the rows Django's `cache_page` wrote
     (`views.decorators.cache...`) are never read again and expire within a
     day. Nothing to clear.
-19. **`/accounts/signup/` redirects to the modal's sign-up screen.** Check production once for
+20. **`/accounts/signup/` redirects to the modal's sign-up screen.** Check production once for
     accounts whose username contains `@` and is not their own email
     (`User.objects.filter(username__contains="@").exclude(username=F("email"))`):
     each is a name taken through the old page, and may be squatting
     another person's address.
-20. **Run the search rows of the assistive-tech checklist** (bug 1) on the
+21. **Run the search rows of the assistive-tech checklist** (bug 1) on the
     deployed site, since production is where a screen reader is easiest to
     point.
 
