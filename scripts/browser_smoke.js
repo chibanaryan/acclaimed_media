@@ -1248,7 +1248,11 @@ async function checkSearchBoxByKeyboard(page, site, query) {
             role: input.getAttribute('role'),
             expanded: input.getAttribute('aria-expanded'),
             listbox: listbox && listbox.getAttribute('role'),
-            options: listbox ? listbox.querySelectorAll('[role="option"]').length : 0,
+            // Counted once they can be seen: Alpine shows the listbox a task
+            // after it renders the options, and a key pressed in between
+            // (which no hand is fast enough for) found them at no height
+            options: listbox && listbox.getBoundingClientRect().height > 0
+                ? listbox.querySelectorAll('[role="option"]').length : 0,
             selected: listbox ? listbox.querySelectorAll('[aria-selected="true"]').length : 0,
             active: active && {
                 role: active.getAttribute('role'),

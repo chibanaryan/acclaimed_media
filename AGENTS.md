@@ -114,7 +114,9 @@ create a superuser with `python3 manage.py createsuperuser`. Clearing and
 loading run in one transaction, so a failed load leaves the local data as it
 was. It refuses any database but SQLite, and a dyno: it deletes every game and
 album from whatever database is configured, and `.env.development.local`
-beats the shell.
+beats the shell. A failure exits non-zero (it returned normally on every one
+until 2026-11-10), and a dyno that has not answered in 30 minutes is given
+up on.
 
 **Collect static files (before deployment):**
 ```bash
@@ -173,7 +175,6 @@ heroku run -- python manage.py shell
   - **openlibrary.py** - Open Library API client for book metadata
   - **hardcover.py** - Hardcover GraphQL API client (optional)
   - **book_metadata.py** - Unified metadata service combining multiple sources
-  - **templatetags/book_filters.py** - Book-specific template filters
   - **management/commands/** - Book metadata commands (fetch_book_metadata.py)
   - **templates/books/** - Book templates
   - **static/books/js/** - Book list renderer and client-side filtering
@@ -938,16 +939,27 @@ The application uses Django templates with HTMX for dynamic interactions and Alp
 - `/games/`, `/games/search/`, `/rankings/` - Redirects to `/`, query kept.
   The filter component still writes its address as `/games/?...`
 - `/download/` - The rankings as filtered, as CSV
-- `/developers/` - Developer list with game counts and hierarchy
+- `/developers/` - Developer list with game counts and hierarchy. Each sort
+  starts in its own direction, as the other entity lists' do: a name A-Z, a
+  rank from the top, a count biggest first (`ASCENDING_SORTS`; the page's
+  `directionFor` agrees). Until 2026-11-10 every sort started at "asc" and
+  the counts ran backwards to match, so "Asc" listed the most games first
 - `/developers/<slug>/` - Developer detail view with subsidiary hierarchy and games
-- `/developer-alias/<id>/` - 301s a developer's pk to its root developer's page
+- `/developer-alias/<id>/` - 301s a developer's pk to its root developer's
+  page, or answers 404 for a root IGDB gave no slug
 - `/lists/` - The published source lists
 - `/blog/` and `/blog/<slug>/` - Articles. `/news/` answers 410
 - `/import/` - Staff import, and its three progress streams. A batch is all
   or nothing, streamed or not: until 2026-11-10 the streamed import went on
   to the next file after one failed and committed the rest, lists replaced
   with no games to match, or positions attached by rank to the previous
-  release's games. The two that
+  release's games. Both run one loop, `import_handler._run_batch`, which
+  owns the transaction, the error rule and the "Updated" stamp: a handler
+  raises and says nothing itself, so a failed file is named once, and an
+  exception's text goes to the log, never the page (an `ImportFileError`
+  is written to be read, and is shown). They were two copies until
+  2026-11-10 and had drifted three times. Each caller starts the metadata
+  fetch itself. The two that
   `EventSource` opens start their work on a GET, so they answer only a
   request whose `Sec-Fetch-Site` is `same-origin` (or absent, for a browser
   too old to send it): a link followed from another site carries the
@@ -1161,6 +1173,14 @@ test compares it with the server's for each shape.
 - Fresh page load (server-rendered)
 - Filtered results (client-rendered via JS template cloning)
 
+**An undated item** (2026-11-10): a game's year is no link, on either side
+(it went to `?start=None&end=None` from the server and `?start=null` from
+the renderer), and an album's `year` slot holds its own brackets, so the
+row shows nothing where it showed "()". **The end of a list** reads "All N
+results loaded" from both sides on both sites;
+`music/tests/test_load_more_parity.py` renders music's note and button both
+ways, where the engine used to remove the container.
+
 ## IGDB Integration
 
 The `games/igdb.py` module handles IGDB API integration with multiple optimization strategies:
@@ -1234,7 +1254,23 @@ summary and after the metadata lock is let go: each phase catches its own
 error so the others go on, and until 2026-11-10 it exited 0 with all three
 FAILED, which Sentry's cron monitor read as a good Sunday. Errors on some
 games do not fail it. HLTB answers a burst with 429s; a failed lookup leaves the row as it
-was. The `/api/games/all/` version hash fingerprints the playtimes it serves
+was. Its Wikipedia phase sends the Wikidata credentials it paces itself by
+(`wikidata_credentials`): until 2026-11-10 it took the authenticated rate
+for any token and sent none, and its requests had aiohttp's five-minute
+timeout, now 30 seconds.
+
+**Which HLTB entry a game gets** is `games/services/hltb_matching.py`, for
+`fetch_hltb_data` and the weekly job alike (each had a copy until
+2026-11-10). A game is looked up by the HLTB id Wikidata holds; 53 of 1,400
+have none and are searched for by name, Wikipedia's title first. A name
+search's entries are narrowed by similarity, then release year (within one),
+then platform, each only while several are left and only if it leaves any.
+The platform step never ran before 2026-11-10: it read `profile_platform`,
+and howlongtobeatpy's entry has `profile_platforms`, a list. A platform is
+matched by its whole name through `PLATFORM_ALIASES` (HLTB's name to ours):
+looked for anywhere in the name, "playstation" answered for PlayStation 4.
+Run against all 88 name-searched games that day, it changed one entry:
+Wordle, from the 2020 mobile game to the 2021 browser one. The `/api/games/all/` version hash fingerprints the playtimes it serves
 (summed hours, and the ids of open-ended games). An HLTB save leaves
 `Game.modified` alone, and the weekly refresh saves every row whether or not
 anything changed, so `updated_at` would make every visitor re-download the
@@ -1576,6 +1612,16 @@ every pass but Wikidata skips records that already landed, so a routine run
 costs Wikidata's ~25 requests plus whatever an import left missing, then the
 genre rebuild and the cache invalidation - about a minute, nearly all of it
 Wikidata's network time. A full re-fetch stays a manual `heroku run:detached`.
+The Sunday gate is `core.services.monitoring.skips_today`, for both weekly
+commands, on UTC's day.
+
+The command fails (`CommandError`) when the Wikidata pass lands nothing,
+inside the cron check-in and after the lock is let go, as games' job does:
+that pass attempts every album on every run, so one that lands none could
+not run. Until 2026-11-10 it exited 0 with Wikidata down and every album
+failed. The other passes attempt only what is missing, and a week's only
+cover work can be the two albums with no cover anywhere, so errors on some
+albums fail nothing.
 
 `--refresh-stale 125` is the one deliberate re-fetch: the MusicBrainz pass
 also re-reads the 125 albums whose rows have the oldest `updated_at`, ~2
@@ -1643,7 +1689,9 @@ Decisions worth knowing before changing any of it:
   is kept only as an image under 5 MB (`COVER_CONTENT_TYPES`,
   `COVER_MAX_BYTES`), and `AlbumCoverView` serves only those types: the
   bytes are served from this origin with the type the remote sent, so an
-  error page answered with a 200 would otherwise be our HTML.
+  error page answered with a 200 would otherwise be our HTML. The download
+  is streamed and given up on past the ceiling (`get_bytes`), so the ceiling
+  bounds what a download costs a worker, not only what is stored.
 - **A `front` flag is not a sleeve.** The archive tags each image with types,
   and a front can also be `Obi`, `Sticker` or `Spine` (a Japanese pressing,
   shrink-wrap, a cassette J-card) or `Back`/`Medium` (a photo of the whole
@@ -1880,6 +1928,20 @@ URL whatever the request is uses `sites.site_reverse()` (music's
   POSTs, and so does a mail client's own control, through the email's
   `List-Unsubscribe-Post` header (RFC 8058). That request has no cookie, so
   the view is `csrf_exempt`: the token in the address is the credential.
+  The page says `noindex`, through `base.html`'s `robots` block, as the
+  contact thank-you and the email confirmation do: its address carries the
+  reader's token.
+- **Sign-up is the modal's, and the username rules are one function**
+  (2026-11-10). `User.username_error` (3 to 30 letters, digits, `_` or `-`,
+  not a name a verified account holds) is used by the sign-up and profile
+  forms and by `ModalAccountAdapter.populate_username`, which allauth's own
+  forms reach without either. allauth's `/accounts/signup/` was still
+  mounted and the adapter took any posted username: none of the rules, and
+  a name equal to another person's email, which then held the name that
+  person's signup defaults to. The page now redirects home (its route name
+  stays, since allauth's flows reverse it), a name that breaks the rules
+  gives way to the email, and an email someone already holds as a username
+  gets allauth's generated name where it was an `IntegrityError`.
 - **The old apex paths redirect.** Everything the apex served before is in
   links and search indexes, so `urls_root`'s catch-all
   (`core.views.redirect_to_site`) sends `/music/<rest>` to
@@ -1950,8 +2012,13 @@ Three aliases, defined by `core/cache_config.py` (which `settings.py` calls):
   it, the `cache_page` ones at six queries a hit. Only a bare path is kept: a query string
   is the caller's to write, each one was two rows in this table, and a few
   thousand `?q=` values culled the generation keys and the metadata lock
-  with them. A request with one is rendered, under DRF's throttle. `Accept`
-  still varies a key. The rest of the alias is not
+  with them. A request with one is rendered, under DRF's throttle. The key
+  is the release, the data version, the host spelt one way
+  (`sites.host_key`) and the path, and the value the rendered JSON
+  (2026-11-10): Django's `cache_page`, which this was, also keyed on
+  `Accept` and on the port in `Host`. An `Accept` that is not plainly JSON
+  (the browsable API) is left to DRF and not kept, and only a 200 rendered
+  for the canonical host is, since a list's `next` link is absolute. The rest of the alias is not
   prefixed. A whole-alias prefix reset allauth's and the contact form's
   rate-limit counters on every release, and aimed a long job's
   invalidation at the release it started under. The hand-built caches carry
@@ -2101,8 +2168,15 @@ in a week. What changed:
   (ERROR, which Sentry takes). It refuses nothing until
   `ANON_RENDER_BUDGET_ENFORCE` is set, which waits on a week of those
   reports: a real visitor to a page that cannot be kept would be refused in
-  a burst too. HTMX partials are not counted. The apex answers an old filter
+  a burst too. A script's request, which says so in a header (`HX-Request`,
+  `X-Requested-With`), is not counted. `?partial=true` or `?append=true`
+  without one is (2026-11-10): the address is the caller's to write, it took
+  a request round the cache and the budget both, and every script of ours
+  sends the header. The apex answers an old filter
   link in `dispatch`, ahead of the cache and the budget.
+- **`HEAD` is the `GET` it is served by** (2026-11-10): answered from the
+  kept page with no body, and rendered and kept on a miss. It went round
+  the cache and the budget, a whole render for a body the server drops.
 
 That is ~200 more keys in `local` at ~60 KB deflated, ~12 MB a worker.
 `scripts/browser_smoke.js` pins the landing ("games highlight ..."), which
@@ -2421,6 +2495,16 @@ a new search, which failed, and was put back, three times a second. smoke:
 "games failed request, engine failed first / after", "games failed Back
 without the engine", "games failed search keeps the typing".
 
+A failed Back is left alone by the roll-back, so its list stays the one it
+left, under the address it went to (`_listBehindAddress`). If the engine's
+data then arrives, the takeover renders the address's list and writes no
+history (2026-11-10). It used to find the filters equal to the address's
+and adopt the rows as that list, so Load More continued the 1990s with the
+whole ranking's second page. The flag, not a comparison of the filters with
+`#game-rendered-filters`: the playtime mode moves the address with no
+render, so those differ on a list that is the right one. smoke: "games
+failed Back, then the engine".
+
 Measure with real clicks, at 1x and 4x, through the Event Timing API
 (`interactionId` entries) plus a MutationObserver on
 `#game-list-container`. Puppeteer's `mouse.click` hits nothing off-screen,
@@ -2675,7 +2759,7 @@ Four layers, from automatic to manual:
   | `audit` | `pip-audit` on both locks, `npm audit` (any severity). The one job a Monday's scheduled run does |
   | `css` | rebuilds the CSS and fails if it differs from the committed file |
   | `js` | `scripts/minify_js.sh --check`: the same for the minified JS and bundles |
-  | `browser` | `scripts/browser_smoke.js`: Chrome over the main pages, failing on a JS, Alpine or CSP error, plus Back and Load More across the engine load, music's takeover leaving a row's POST alone, a year range outside the corpus and leaving it, a games highlight landing, a mobile row opened by keyboard, the CSV button, and a failed filter request rolled back on both sites |
+  | `browser` | `scripts/browser_smoke.js`: Chrome over the main pages, failing on a JS, Alpine or CSP error, plus Back and Load More across the engine load, music's takeover leaving a row's POST alone, a year range outside the corpus and leaving it, a games highlight landing, a mobile row opened by keyboard, the CSV button, a failed filter request rolled back on both sites, a failed Back followed by the engine, and each site's search box by keyboard |
 
   `css` exists because Heroku runs only the Python buildpack, so the
   committed `theme/static/css/dist/styles.css` is what ships. An npm bump
@@ -2887,7 +2971,20 @@ Alpine and the bundles), each because the bare form failed for someone
   `base.html`). A count that arrives inside a swapped list is a live region
   inserted with its text, which is usually not read out. Do not call it for
   a count the client renderer rewrites in place: that region stayed put and
-  announces itself.
+  announces itself. The rankings' count carries no `role` in its markup;
+  `markResultCountsLive` gives it `role="status"` once it is on the page
+  (2026-11-10). With the role in the template, a count the server swapped
+  in was a region inserted with its text, which the readers that do read
+  those then heard again from the announcer.
+- **A search box is a combobox** (`searchComboboxState`, spread into both
+  search components; 2026-11-10): the arrow keys move an active option the
+  field names with `aria-activedescendant`, Enter follows it, and Enter
+  with none is the full search, as it was. The results are `role="option"`
+  links in a `role="group"` per kind inside a `role="listbox"`; the hints
+  are a list of their own, since a listbox owns options alone. A new query
+  or the clear button forgets the active option, because a keyed loop
+  reuses elements. Checked against Chrome's accessibility tree, not yet on
+  a screen reader (`docs/ASSISTIVE_TECH_CHECKLIST.md`).
 - **A search box aborts the request it overtakes** (`FetchManager`), in
   `createUnifiedSearchData` and `core/js/media-search.js`: a slow answer
   for "be" replaced the results for "beatles".

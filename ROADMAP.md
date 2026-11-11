@@ -20,7 +20,12 @@ it in `scripts/browser_smoke.js` first.
    and the mobile sheet were checked in Chrome, WebKit and Firefox, plus
    Chrome's accessibility tree, but never with VoiceOver, NVDA or iOS Safari.
    `docs/ASSISTIVE_TECH_CHECKLIST.md` is the script: run it, record the
-   results there, and file what fails here.
+   results there, and file what fails here. The search boxes became
+   comboboxes on 2026-11-10 and were checked the same way, by keyboard and
+   against Chrome's accessibility tree: rows 1.11-1.17, 2.10 and 3.6 are
+   theirs. A combobox that reads wrongly is worse than the field and links
+   it replaced, so if those rows fail, revert that one commit ("The search
+   boxes are comboboxes") rather than patch it unheard.
 
 The browser harnesses used for v905 are in the ashgabat worktree's
 `.context/ygrid/`, which is gitignored and so exists only there:
@@ -57,99 +62,97 @@ were fixed on 2026-11-10 (`DEVLOG.md`).
      caller), and its mobile renderer writes to slots the template lacks.
    - The mobile row's title is no link, the read button has no name, and
      every `mdi-book-*` icon is undefined, so the button renders as nothing.
-   - `_book_genre_filter.html` is included nowhere.
+   - The read button's partial ships a `<script>` with every row
+     (`_read_button.html`); games' copy sends it only with a toggle's answer.
+
+   Its server side was gone over on 2026-11-10 (`DEVLOG.md`). Left there:
+   the Goodreads import runs two to four queries a row inside one request,
+   and the Open Library and Hardcover clients retry on a flat one-second
+   sleep and never on a 5xx, where music's `RateLimitedClient` backs off.
 
 ## Open bugs (found 2026-11-10)
 
-Found by the second improvement pass and left: each is older than the pass,
-and either changes what a job matches or needs measuring first.
+The third pass that day fixed what the second had filed here (the HLTB
+platform preference, the developers list's direction, undated items, music's
+"all loaded" line, the games API's keys, a failed Back followed by the
+engine, the accessibility leftovers, the unsubscribe page's `noindex`, and
+most of the small leftovers; `DEVLOG.md`). Left, or found by it:
 
-4. **HowLongToBeat's platform preference never runs.** `fetch_hltb_data` and
-   `refresh_all_metadata` read `result.profile_platform`, but
-   howlongtobeatpy's entry has `profile_platforms`, a list, so the `hasattr`
-   is always false. `platform_matches` would raise on a list if reached,
-   matches alias keys as substrings ("PlayStation" matches "PlayStation 4",
-   "NES" matches "SNES") and does not know the site's own names ("PC"
-   against "Windows PC", "Wii" against "Nintendo Wii"). Two expected
-   failures in `games/tests/test_hltb_matching.py` state the right
-   behaviour. Fixing it changes which entry some games are given, so
-   compare the playtimes before and after on a copy of production.
-5. **The developers list's direction is inverted for counts.**
-   `/developers/?sort=games`, labelled "Asc", lists the most games first,
-   and `&dir=desc` the fewest; the same for `sort=studios`. Rank and name
-   read correctly. The two tests are named for what happens
-   (`games/tests/test_main_views.py`).
-6. **Undated items, the rest.** An undated game's year link goes to
-   `?start=None&end=None` from the server and `?start=null&end=null` from
-   the renderer, and an undated album's desktop row prints "()" on both
-   sides. The descriptions, headings and mobile rows were fixed.
-7. **Music's "all loaded" state differs.** The server prints "All N results
-   loaded"; `album-client-filtering.js` removes the container.
-8. **The games API cache's keys still vary on `Accept`.** A query string no
-   longer makes a key (`games.api.views.cache_page`), but Django's
-   `cache_page` keys on the `Vary` headers too, and a caller writes those.
-   Closing it means keying on the path alone and storing the JSON ourselves.
-9. **A failed Back, then the engine.** A Back whose own render fails,
-   before the engine has loaded, leaves the old list under the new address and controls, as it always has (the
-   roll-back is for a control's change, and leaves it alone). If the
-   engine's data then arrives, its takeover finds the filters equal to the
-   address's and adopts the rows as that address's list, so Load More
-   appends the wrong continuation. Music's takeover compares the form with
-   `#album-rendered-filters` (`formAhead`); games' could compare the
-   filters with `#game-rendered-filters` the same way and render.
-10. **Accessibility, the rest** (beside bug 1's real-device pass):
-   - The search boxes have labels but no combobox semantics (`role`,
-     `aria-expanded`, `aria-controls`, arrow keys).
-   - `text-base-content/50` remains on the auth partials' fine print,
-     "(optional)" and its hint in `_signup_form.html`, "No file selected" on
-     the import page, `_mobile_filter_sheet.html` and
-     `_mobile_saved_filters.html` (one line each).
-   - On the server path a reader that does read an inserted `role="status"`
-     hears the count twice: once there, once from `#live-announcer`.
-   - `filter-component.js` adds document-level listeners (around its
-     `init()`) that `destroy()` does not remove.
-11. **An article's featured image has no box before it loads**, so the text
-    below jumps. Only its URL is stored. A 16:9 crop was tried on 2026-11-10
-    and reverted: there were no articles locally to check a crop against.
-    Store the dimensions, or pick the crop looking at the real images.
-12. **Per-request work nothing has measured.** The developers list loads
-    and prefetches every developer on each request and each Load More
-    (`games/views/developers.py`), the album rankings read every album's
-    genre pairs on every render (`music/views.py`), and the games rankings
-    run the HLTB totals aggregate on every render. Measure before caching:
-    each cached value spends from the 512 MB budget and needs dropping.
-13. **The unsubscribe page's canonical link carries the token.** `base.html`
-    has no robots block to say `noindex` with. The address is in no page,
-    only in the email.
-14. **Small leftovers.**
-    - `_refresh_wikipedia` in `refresh_all_metadata.py` is dead: only
-      `_refresh_wikipedia_async` is called.
-    - Nothing dispatches `reset-search-state` (four listeners).
-    - `import_batch` and `import_batch_with_progress` are two copies of one
-      loop, and have drifted three times ("GAMES" for `TYPE_GAME`, going on
-      after a failed file, the "Updated" date). One driver with an optional
-      progress callback would end that. Each handler also sends its own
-      "Import failed" before the batch names the file, so a failure shows
-      as two rows on the staff page.
-    - After a Back whose render failed, a change that fails too is left in
-      the controls, which then match neither the list nor the address
-      (bug 9's state).
-    - `RateLimitedClient.get_bytes` reads a cover's whole body before
-      `COVER_MAX_BYTES` is checked, so the ceiling bounds what is stored,
-      not what a download can cost a worker. Streaming it means reading
-      inside the retry loop's `try`, and closing what is not read.
+4. **An article's featured image has no box before it loads**, so the text
+   below jumps. Only its URL is stored. A 16:9 crop was tried on 2026-11-10
+   and reverted: there were no articles locally to check a crop against.
+   Store the dimensions, or pick the crop looking at the real images.
+5. **The games rankings' list query is the one piece of per-request work
+   worth a look.** The three pieces filed here as unmeasured were timed on
+   2026-11-10 against a local copy of production's data (SQLite, shared
+   caches warm, the whole-page cache emptied for each run, median of six):
+
+   | Page | Time | Queries | In SQL |
+   |---|---|---|---|
+   | `/developers/` | 65 ms | 4 | 3 ms |
+   | `/developers/?page=2&append=true` | 47 ms | 4 | 2 ms |
+   | music `/` | 285 ms | 14 | 29 ms |
+   | games `/` | 242 ms | 15 | 120 ms |
+
+   None of the three is the cost it was feared to be: the developers list
+   is cheap, the album rankings' genre pairs do not show among its queries,
+   and the HLTB totals aggregate takes 1 ms. What does show is games' main
+   list query, 109 ms of the 120: `SELECT DISTINCT` over every column of
+   every game, joined to the list memberships and grouped for
+   `COUNT(DISTINCT listmembership.id)`, before the first 100 are taken. A
+   correlated subquery for `list_count`, or dropping the `DISTINCT` the
+   `GROUP BY` already makes redundant, would narrow it. Not changed: it
+   is the query the parity tests order by, the numbers are SQLite's, and
+   production's Postgres may plan it differently. Time it there
+   (`EXPLAIN ANALYZE` from a one-off dyno) before touching it. The rest of
+   each page's time is template rendering, which the page cache answers.
+6. **A failed Back, then a failed change, with no engine.** A Back whose
+   render fails leaves the old list under the new address, and the engine
+   now renders the address's list when it arrives. With the engine's data
+   failed too, a control's change that also fails is left in the controls,
+   which then match neither the list nor the address
+   (`_rollBackIfStranded` returns early while `_listBehindAddress` is set).
+   Three failures in a row, in the function that has cost the most review
+   rounds; the fix would be to read the controls back from the address.
+7. **Three name-searched games hold an HLTB entry a search no longer
+   gives.** The 2026-11-10 comparison searched HLTB for the 88 games with
+   no usable Wikidata HLTB id. Beside Wordle, which the platform preference
+   corrects, three differ from what is stored whether or not the
+   preference runs, so the weekly job will move them: Call of Duty: Modern
+   Warfare 2 (stored entry 109060, 8.2 h; a search gives 1477, 6.6 h),
+   Puyo Puyo (83379, 0.5 h; 9411, 1.2 h) and "Bomberman / Atomic Punk /
+   Dynablaster" (1230, 2.4 h; 1244, which is Bomberman II, 2.0 h). The
+   last is a wrong match by name. Giving each its HLTB id on Wikidata
+   (P2816) settles it for good, since an id is looked up before any name.
+8. **Small leftovers.**
     - `populate_platform_years` has no caller; `games/platform_years.py`
       keeps it "for re-applying the whole table after editing it".
-    - `test_progress_callback_with_event_key` (`games/tests/test_imports.py`)
-      asserts nothing about the callback it exercises.
-    - `games/static/games/css/mdi-subset.css` lacks 43 of `base.html`'s
-      icon mappings. The font is unaffected: the build reads both files.
     - The games import's "Load Test Data" is hidden without `DEBUG` but
       accepted by the server. It loads the checked-in release, as
       `import_games_data` does, so it was left.
     - The shared venv has no `fonttools`, which the dev lock pins: run
       `pip install -r requirements-dev.txt` in the main checkout before
       rebuilding the icon font.
+    - The three progress streams in `games/services/import_handler.py`
+      (IGDB, Wikipedia, the batch) each carry a copy of the queue and the
+      drain loop with its keepalives. The batch's import loop is one now.
+    - Music's takeover runs in `csf.init().then(...)` with no `catch`. One
+      that only logged would turn an uncaught error, which the smoke test
+      fails on, into a console line it does not see; one that did more
+      would have to decide what a half-finished takeover leaves.
+    - `HTMXPushURLMiddleware` reads the `HX-Request` header two ways in one
+      expression (`META` and `headers`), which are the same value.
+    - Staff-written markdown (flat pages, articles, posts) is rendered and
+      marked safe unsanitized. Fine while only staff write it.
+    - `PlayedGame`, `WantToPlayGame` and `SavedFilterSet` re-declare the
+      fields of `core.models.UserTrackingBase` and `SavedFilterSetBase`,
+      which music and books subclass.
+    - `base.html` and `_nav_mobile.html` carry about 400 lines of inline
+      script on every page, which a static file would let a browser keep.
+      Unmeasured.
+    - The 100% coverage gate omits every management command and both
+      `import_handler.py` modules, about 7,700 lines: the scheduled jobs
+      and the import pipelines. Each has tests; none of it is measured.
 
 ## Music: after launch
 
@@ -157,7 +160,7 @@ The section is public at `music.acclaimedmedia.org`, beside the games site and
 a landing page at the apex (2026-10-30; AGENTS.md, "Domain"). The pages keep a
 "Beta" badge while `music.config.MUSIC_BETA` is on.
 
-15. **New brand artwork.** The favicons still read "Acclaimed Video Games"
+9. **New brand artwork.** The favicons still read "Acclaimed Video Games"
    (`games/static/games/brand/`), and a page without artwork of its own has
    no `og:image` since the old one was removed; every page title already
    says Acclaimed Media. A new default goes in `base.html`'s `og_image` block,
@@ -166,48 +169,74 @@ a landing page at the apex (2026-10-30; AGENTS.md, "Domain"). The pages keep a
 
 ## Production: after the 2026-11-09 and 2026-11-10 passes ship
 
+The third 2026-11-10 pass adds no migration. Items 17 to 20 below are for
+the deploy that ships it.
+
 The rankings page is 690 KB anonymous and 833 KB logged in, and the dyno
 runs gthread with three threads per worker (AGENTS.md, "Production memory
 budget"). `--threads 3` was checked on 2026-11-09: over 72 hours the two
 workers peaked at 333 MiB RSS of the 512 MiB quota and swap was 0 but for
 one 6.9 MiB reading, so it stays.
 
-16. **Watch the two burst windows after the deploy.** A scraper asks for
+10. **Watch the two burst windows after the deploy.** A scraper asks for
    3,500-4,800 filtered pages in five minutes at about 04:00 and 21:00 UTC,
    and Sentry's uptime check timed out 11 times in the week to 2026-11-09
    (AGENTS.md, "Caching"). After the deploy, read the uptime monitor across
    the next two windows, `/`'s p50 inside them, and `heroku logs` for
    "Autorestarting worker" during one.
-17. **Read a week of render-budget reports, then decide on
+11. **Read a week of render-budget reports, then decide on
     `ANON_RENDER_BUDGET_ENFORCE`.** The budget only logs: "Anonymous renders
     over budget", at 10 in a burst (WARNING, the logs) and 100 and 1,000
     (ERROR, Sentry). If the only bursts are the scraper's windows, turn it
     on; if ordinary traffic reaches 100, raise
-    `ANON_RENDER_BUDGET_PER_SECOND` or `_BURST` first. HTMX partials are not
-    counted, so a scraper that learnt to send `HX-Request` would pass it.
-18. **Check memory under `--max-requests 2000`.** It was 500 until
+    `ANON_RENDER_BUDGET_PER_SECOND` or `_BURST` first. A request that says
+    it is a script's (`HX-Request`) is not counted, so a scraper that learnt
+    to send the header would pass it; `?partial=true` on its own no longer
+    does.
+12. **Check memory under `--max-requests 2000`.** It was 500 until
     2026-11-09, and memory was measured flat only to 1,000 renders. The page
     cache also holds ~200 more pages, ~12 MB a worker. After a few days read
     `memory.rss.bytes.max` and `memory.swap.bytes.max` from the metrics API;
     back to 1,000 if the peak climbs towards the quota. An import's metadata
     fetch spends ~85 MB in one worker while it runs, so read a week that
     held one.
-19. **Merge the Dependabot queue.** #32 is Django 6.1.3, a security release;
+13. **Merge the Dependabot queue.** #32 is Django 6.1.3, a security release;
     #31 and #30 wait with it. #32 and #31 were green on 2026-11-10
     (`/upgrade-deps`).
-20. **The next deploy applies two migrations**, `games.0124` and
+14. **The next deploy applies two migrations**, `games.0124` and
     `music.0015`: unique constraints on game, developer and album slugs
     and on game and developer IGDB ids. Production had no duplicates on
     2026-11-10; if a release imported since then has one, the release
     phase fails on it and names the constraint. `/deploy` backs up first.
-21. **The first Sunday after the deploy, read the weekly games job.**
+15. **The first Sunday after the deploy, read the weekly games job.**
     `refresh_all_metadata` now fails when a phase could not run at all, so
     Sentry's cron monitor will alert on a phase that has been failing
     quietly. The job's output names the phase.
-22. **Check one notification email's headers** once a post goes out: Gmail
+16. **Check one notification email's headers** once a post goes out: Gmail
     and Apple Mail should show their own Unsubscribe control
     (`List-Unsubscribe-Post`), and the footer link should ask before it
     unsubscribes.
+
+17. **The first Sunday after it ships, read both weekly jobs.**
+    `fetch_album_metadata` now fails when its Wikidata pass lands nothing,
+    so Sentry's cron monitor will alert on an outage it has been reading as
+    a good Sunday. Games' Wikipedia phase now sends the credentials it paces
+    itself by: it should run with no 429s where it may have been throttled,
+    and its timeout is 30 seconds, so a stalled page is a logged failure,
+    not a five-minute wait. The HLTB phase will move Wordle and the three
+    games in bug 7.
+18. **The games API's old cache rows lapse by themselves.** Its keys
+    changed shape (`games_api:...`); the rows Django's `cache_page` wrote
+    (`views.decorators.cache...`) are never read again and expire within a
+    day. Nothing to clear.
+19. **`/accounts/signup/` redirects home.** Check production once for
+    accounts whose username contains `@` and is not their own email
+    (`User.objects.filter(username__contains="@").exclude(username=F("email"))`):
+    each is a name taken through the old page, and may be squatting
+    another person's address.
+20. **Run the search rows of the assistive-tech checklist** (bug 1) on the
+    deployed site, since production is where a screen reader is easiest to
+    point.
 
 ## Music: not worth doing as parity
 

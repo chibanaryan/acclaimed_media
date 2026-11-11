@@ -1,5 +1,53 @@
 # Developer Log
 
+## 2026-11-10 (third improvement pass)
+
+- **Sign-up is the modal's.** allauth's own `/accounts/signup/` was still
+  mounted and took any posted username: none of the modal's rules, and a
+  name equal to another person's email, which that person's signup then
+  collided with. The page redirects home, the rules are one function the
+  forms and the adapter share, and a taken name is no longer a 500
+- **`HEAD` and the games API go through their caches honestly.** An
+  anonymous `HEAD` was a whole render, round the page cache and the render
+  budget; `?partial=true` on its own went round both too. The games API's
+  kept answers were keyed on `Accept` and on the port in `Host`, each the
+  caller's to write
+- **The search boxes work by keyboard.** Arrow keys move through the
+  results, Enter follows one, and Enter with none is still the full search:
+  the WAI-ARIA combobox pattern, in all four boxes. Checked in Chrome's
+  accessibility tree, not yet on a screen reader
+- **The games batch import is one loop.** The streamed and unstreamed
+  imports were two copies that had drifted three times. A failed file is
+  named once, where the stream showed three rows, and an exception's text
+  stays out of the message staff read
+- **HowLongToBeat's platform preference runs.** It read a field the library
+  does not have. Matching and saving are one module for both commands, and
+  a platform is matched by its whole name. Across the 88 games matched by
+  name it changes one: Wordle, to the 2021 browser game
+- **The weekly jobs say when they could not run.** Music's exited 0 with
+  Wikidata down; games' Wikipedia phase paced itself as authenticated and
+  sent no credentials, with a five-minute timeout. `sync_from_prod` exits
+  non-zero on a failure
+- **The developers list sorts the way its label says**: "Asc" listed the
+  most games first. Each sort starts in its own direction
+- **A failed Back no longer leaves another list's rows** for the games
+  engine to adopt; undated games and albums show no dead link and no "()";
+  music's list ends with "All N results loaded" from either side; a result
+  count is read out once, not twice
+- Requests that were a 500 are not: resending a verification to an address
+  two accounts share, an alias for a developer with no page, two flat pages
+  with one URL, a hand-made import POST, and in books the read toggle, the
+  lists API and the Goodreads import. A cover download is bounded while it
+  is read; `noindex` on the unsubscribe page; album and article structured
+  data built as JSON; the remaining 40% and 50% text at 65%
+- Removed about 2,400 lines nothing used, their tests included (books'
+  template tags, the weekly job's dead Wikipedia path, a legacy import
+  branch, aliases, client methods), and folded four duplicated blocks onto
+  the copy that existed.
+  Tests that asserted nothing assert something. The three pieces of
+  per-request work the roadmap called unmeasured were timed
+  (`ROADMAP.md`, bug 5): none needs a cache
+
 ## 2026-11-10
 
 - **Icons that were blank or wrong are right.** Fourteen icons were used and
