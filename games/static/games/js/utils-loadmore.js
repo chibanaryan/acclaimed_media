@@ -344,7 +344,6 @@ function jumpToRankClientSide(csf, targetRank, state = getCurrentState()) {
     const plan = renderer.planJump(targetRank - 1);
     if (plan.mode !== 'scroll') {
         renderer.showRange(gameListContainer, plan.start, plan.end, { showRank, viewMode });
-        csf._hasRenderedUI = true;
     }
 
     refreshClientLoadMore(csf);
@@ -412,7 +411,6 @@ function answerLoadMore(csf, end) {
         showRank: csf._computeShowRank(),
         viewMode: csf.getViewMode ? csf.getViewMode() : undefined
     });
-    csf._hasRenderedUI = true;
     refreshClientLoadMore(csf);
 }
 
@@ -701,9 +699,6 @@ function handleLoadMoreCSF(csf) {
     // Use CSF's loadMore method
     const state = csf.loadMore(gameListContainer, { showRank });
     if (!state) return;
-
-    // Mark that CSF has taken over
-    csf._hasRenderedUI = true;
 
     // Reinitialize HTMX for dynamically rendered content
     if (typeof htmx !== 'undefined') {

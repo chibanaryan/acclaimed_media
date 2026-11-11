@@ -122,7 +122,6 @@ def apply_game_filters(
             queryset,
             genre_ids,
             match_all=False,
-            use_wikipedia=True,
             descendants=descendants,
         )
 

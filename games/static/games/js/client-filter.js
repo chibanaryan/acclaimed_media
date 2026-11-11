@@ -104,14 +104,6 @@ class GameFilterEngine {
     }
 
     /**
-     * Get the maximum rank across all games
-     * @returns {number} Maximum rank value
-     */
-    getMaxRank() {
-        return this.maxRank;
-    }
-
-    /**
      * Lazily build genre lookup and descendant sets
      * @private
      */

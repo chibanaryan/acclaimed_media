@@ -75,7 +75,3 @@ class ModalSocialAccountAdapter(DefaultSocialAccountAdapter):
     """
 
     pass
-
-
-# Legacy alias for backwards compatibility
-EmailAsUsernameAdapter = ModalAccountAdapter

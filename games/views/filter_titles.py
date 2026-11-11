@@ -6,9 +6,6 @@ from games import config
 # Both heading helpers now live in core, so the album rankings page composes
 # its heading the same way this one does.
 _join_names = titles.join_names
-
-
-_join_names = titles.join_names
 _build_time_window = titles.build_time_window
 
 
@@ -140,19 +137,6 @@ def _build_platform_segment(selected_platform_ids, platforms, include_games=True
     if not labels:
         return "Video" + (" Games" if include_games else "")
     return f"{_join_names(labels)}" + (" Games" if include_games else "")
-
-
-def _build_genre_subtitle(selected_genre_ids, option, genres):
-    """Return subtitle string with AND/OR connector for genres."""
-    if not selected_genre_ids:
-        return ""
-    name_lookup = {str(g["id"]): g["name"] for g in genres}
-    genre_names = [name_lookup.get(str(gid), str(gid)) for gid in selected_genre_ids]
-    genre_names = [name for name in genre_names if name]
-    if not genre_names:
-        return ""
-    connector = " AND " if option == "all" else " OR "
-    return f"Genre: {connector.join(genre_names)}"
 
 
 def _playtime_label(filters):

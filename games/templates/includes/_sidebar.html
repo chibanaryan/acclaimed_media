@@ -14,7 +14,6 @@
         {# sidebar uses. The section had none until it had an endpoint. #}
         <div class="relative"
              x-data="createMediaSearchData('{% url 'music-api:unified-search' %}', { artists: 3, albums: 5 })"
-             @reset-search-state.window="reset()"
              @click.away="showMenu = false">
             <label for="sidebar-search" class="sr-only">Search albums and artists</label>
             <label class="input input-bordered input-sm w-full bg-base-100 border-base-content/20">
@@ -114,7 +113,6 @@
         {# Search bar #}
         <div class="relative"
              x-data="createUnifiedSearchData('{% url 'games-api:unified-search' %}', 3, 5)"
-             @reset-search-state.window="reset()"
              @click.away="showMenu = false">
             <label for="sidebar-search" class="sr-only">Search games, developers, and series</label>
             <label class="input input-bordered input-sm w-full bg-base-100 border-base-content/20">

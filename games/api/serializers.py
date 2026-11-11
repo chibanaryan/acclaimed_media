@@ -117,11 +117,6 @@ class DeveloperSerializer(serializers.ModelSerializer):
         return obj.developed_games.count()
 
 
-# Legacy aliases for backward compatibility
-CompanySerializer = DeveloperSerializer
-StudioSerializer = DeveloperSerializer
-
-
 class ListSerializer(serializers.ModelSerializer):
 
     publication = serializers.CharField(source="publisher.name")

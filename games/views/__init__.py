@@ -19,7 +19,6 @@ from .filter_titles import (
     _join_names,
     _build_time_window,
     _build_platform_segment,
-    _build_genre_subtitle,
     _build_filter_title,
     _build_tab_title,
 )
@@ -43,7 +42,6 @@ from .game_pages import (
 )
 from .developers import (
     DeveloperListView,
-    StudioListView,
     DeveloperDetailView,
     DeveloperRedirectView,
 )
@@ -92,7 +90,6 @@ __all__ = [
     "_join_names",
     "_build_time_window",
     "_build_platform_segment",
-    "_build_genre_subtitle",
     "_build_filter_title",
     "_build_tab_title",
     "download_games_csv",
@@ -108,7 +105,6 @@ __all__ = [
     "_game_json_ld",
     "TogglePlayedGameView",
     "DeveloperListView",
-    "StudioListView",
     "DeveloperDetailView",
     "DeveloperRedirectView",
     "ListListView",

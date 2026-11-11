@@ -199,10 +199,6 @@ class DeveloperListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
         return context
 
 
-# Legacy alias for backward compatibility
-StudioListView = DeveloperListView
-
-
 class DeveloperDetailView(DetailView):
     """
     Detail view for a developer showing all games and subsidiary hierarchy.
@@ -252,23 +248,26 @@ class DeveloperDetailView(DetailView):
         prefetch_related_objects([developer], *lookups)
 
     def _get_cached_context(self, developer):
-        """Get cached context for this developer, or None if not cached."""
+        """This developer's cached context, or None.
+
+        Only a payload of this schema version: anything else is dropped
+        and rebuilt. Until 2026-11-10 payloads from before the version
+        existed were still read (their model objects merged into the
+        context as they were); entries live a day, so none are left.
+        """
         from django.core.cache import cache
 
         cache_key = developer_detail_cache_key(developer.id)
         cached = cache.get(cache_key)
-        if isinstance(cached, dict):
-            cached_schema = cached.get("cache_schema_version")
-            if cached_schema is not None and cached_schema != self.CACHE_SCHEMA_VERSION:
-                cache.delete(cache_key)
-                return None
-            if cached_schema == self.CACHE_SCHEMA_VERSION:
-                return cached
-            # Drop legacy cached payloads that stored model objects.
-            if "all_games" in cached and "subsidiaries_with_games" in cached:
-                cache.delete(cache_key)
-                return None
-        return cached
+        if cached is None:
+            return None
+        if (
+            isinstance(cached, dict)
+            and cached.get("cache_schema_version") == self.CACHE_SCHEMA_VERSION
+        ):
+            return cached
+        cache.delete(cache_key)
+        return None
 
     def _set_cached_context(self, developer, context_data, generation):
         """Cache the expensive context data for this developer."""
@@ -443,49 +442,43 @@ class DeveloperDetailView(DetailView):
         # Try to get cached context first
         cached = self._get_cached_context(developer)
         if cached is not None:
-            if (
-                isinstance(cached, dict)
-                and cached.get("cache_schema_version") == self.CACHE_SCHEMA_VERSION
-            ):
-                all_game_ids = cached.get("all_game_ids", [])
-                all_games, games_by_id = self._fetch_games_by_ids(all_game_ids)
-                developer_ids = self._collect_developer_ids(
-                    cached.get("subsidiaries_serialized", [])
-                )
-                developers_by_id = models.Developer.objects.in_bulk(developer_ids)
-                root_game_ids = cached.get("root_game_ids", [])
-                root_games = [
-                    games_by_id[gid] for gid in root_game_ids if gid in games_by_id
-                ]
-                subsidiaries_with_games = self._hydrate_subsidiaries(
-                    cached.get("subsidiaries_serialized", []),
-                    games_by_id,
-                    developers_by_id,
-                )
+            all_game_ids = cached.get("all_game_ids", [])
+            all_games, games_by_id = self._fetch_games_by_ids(all_game_ids)
+            developer_ids = self._collect_developer_ids(
+                cached.get("subsidiaries_serialized", [])
+            )
+            developers_by_id = models.Developer.objects.in_bulk(developer_ids)
+            root_game_ids = cached.get("root_game_ids", [])
+            root_games = [
+                games_by_id[gid] for gid in root_game_ids if gid in games_by_id
+            ]
+            subsidiaries_with_games = self._hydrate_subsidiaries(
+                cached.get("subsidiaries_serialized", []),
+                games_by_id,
+                developers_by_id,
+            )
 
-                context.update(
-                    {
-                        "subsidiaries_with_games": subsidiaries_with_games,
-                        "root_games": root_games,
-                        "total_games": cached.get("total_games", 0),
-                        "subsidiaries_count": cached.get("subsidiaries_count", 0),
-                        "developers_flat": cached.get("developers_flat", []),
-                        "all_games": all_games,
-                        "developer_game_map_json": cached.get(
-                            "developer_game_map_json", "{}"
-                        ),
-                        "developer_child_map_json": cached.get(
-                            "developer_child_map_json", "{}"
-                        ),
-                        "game_rank_map_json": cached.get("game_rank_map_json", "{}"),
-                        "game_data_map_json": cached.get("game_data_map_json", "{}"),
-                        "game_developer_map": cached.get("game_developer_map", {}),
-                        "rank_distribution": cached.get("rank_distribution", []),
-                        "max_rank": cached.get("max_rank", 0),
-                    }
-                )
-            else:
-                context.update(cached)
+            context.update(
+                {
+                    "subsidiaries_with_games": subsidiaries_with_games,
+                    "root_games": root_games,
+                    "total_games": cached.get("total_games", 0),
+                    "subsidiaries_count": cached.get("subsidiaries_count", 0),
+                    "developers_flat": cached.get("developers_flat", []),
+                    "all_games": all_games,
+                    "developer_game_map_json": cached.get(
+                        "developer_game_map_json", "{}"
+                    ),
+                    "developer_child_map_json": cached.get(
+                        "developer_child_map_json", "{}"
+                    ),
+                    "game_rank_map_json": cached.get("game_rank_map_json", "{}"),
+                    "game_data_map_json": cached.get("game_data_map_json", "{}"),
+                    "game_developer_map": cached.get("game_developer_map", {}),
+                    "rank_distribution": cached.get("rank_distribution", []),
+                    "max_rank": cached.get("max_rank", 0),
+                }
+            )
             return context
 
         # Before the rows are read, so a change during the build is not saved

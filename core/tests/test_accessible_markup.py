@@ -251,7 +251,7 @@ class ListenersDoNotPileUpTests(SimpleTestCase):
     runs every `x-init` again: a listener added there was added again each
     time. One Alpine binds itself (`@event.window`) it also removes."""
 
-    def test_the_search_boxes_listen_through_alpine(self):
+    def test_the_search_boxes_add_no_window_listener_of_their_own(self):
         for path in (
             "games/templates/includes/_sidebar.html",
             "games/templates/includes/_nav_mobile.html",
@@ -259,7 +259,9 @@ class ListenersDoNotPileUpTests(SimpleTestCase):
             with self.subTest(path=path):
                 source = read(path)
                 self.assertNotIn("addEventListener('reset-search-state'", source)
-                self.assertEqual(source.count("@reset-search-state.window="), 2)
+                # Nothing ever dispatched the event its four listeners
+                # waited for; they went on 2026-11-10
+                self.assertNotIn("reset-search-state", source)
 
     def test_the_filter_component_removes_every_window_listener_it_adds(self):
         source = read("games/static/games/js/filter-component.js")

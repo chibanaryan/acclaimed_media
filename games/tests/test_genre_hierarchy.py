@@ -637,9 +637,7 @@ class HierarchicalGenreFilterTest(TestCase):
     def test_filter_by_child_genre_exact(self):
         """Test filtering by a specific child genre."""
         qs = Game.objects.all()
-        filtered = apply_genre_filter(
-            qs, [self.shooter.id], match_all=True, use_wikipedia=True
-        )
+        filtered = apply_genre_filter(qs, [self.shooter.id], match_all=True)
         self.assertEqual(filtered.count(), 2)  # game1 and game4
         self.assertIn(self.game1, filtered)
         self.assertIn(self.game4, filtered)
@@ -647,9 +645,7 @@ class HierarchicalGenreFilterTest(TestCase):
     def test_filter_by_parent_includes_children(self):
         """Test that filtering by parent genre includes games with child genres."""
         qs = Game.objects.all()
-        filtered = apply_genre_filter(
-            qs, [self.action.id], match_all=True, use_wikipedia=True
-        )
+        filtered = apply_genre_filter(qs, [self.action.id], match_all=True)
         # Should include games with Shooter and Fighting (children of Action)
         self.assertEqual(filtered.count(), 3)  # game1, game2, game4
         self.assertIn(self.game1, filtered)
@@ -661,9 +657,7 @@ class HierarchicalGenreFilterTest(TestCase):
         """Test match_all with multiple genre selections."""
         qs = Game.objects.all()
         # Filter by both Action category and RPG category
-        filtered = apply_genre_filter(
-            qs, [self.action.id, self.rpg.id], match_all=True, use_wikipedia=True
-        )
+        filtered = apply_genre_filter(qs, [self.action.id, self.rpg.id], match_all=True)
         # Only game4 has genres from both categories (Shooter + Action RPG)
         self.assertEqual(filtered.count(), 1)
         self.assertIn(self.game4, filtered)
@@ -676,7 +670,7 @@ class HierarchicalGenreFilterTest(TestCase):
         )
         # Filter by either Action or RPG
         filtered = apply_genre_filter(
-            qs, [self.action.id, self.rpg.id], match_all=False, use_wikipedia=True
+            qs, [self.action.id, self.rpg.id], match_all=False
         )
         # All 4 test games should match (they all have at least one genre)
         self.assertEqual(filtered.count(), 4)
@@ -689,7 +683,6 @@ class HierarchicalGenreFilterTest(TestCase):
             qs,
             [self.action.id],
             match_all=True,
-            use_wikipedia=True,
             expand_hierarchy=False,
         )
         # No games are tagged directly with Action root
@@ -706,7 +699,6 @@ class HierarchicalGenreFilterTest(TestCase):
             qs,
             [self.shooter.id, self.fighting.id],
             match_all=False,
-            use_wikipedia=True,
             expand_hierarchy=False,
         )
         # game1 has shooter, game2 has fighting, game4 has shooter

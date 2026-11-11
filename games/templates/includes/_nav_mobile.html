@@ -24,7 +24,6 @@
                      showSearchDropdown: false,
                      ...createMediaSearchData('{% url 'music-api:unified-search' %}', { artists: 3, albums: 5 })
                  }"
-                 @reset-search-state.window="reset(); showSearchDropdown = false"
                  @click.away="showSearchDropdown = false; reset()">
 
                 <button @click="showSearchDropdown = !showSearchDropdown; $nextTick(() => { if(showSearchDropdown) $refs.searchInputMobile.focus(); })"
@@ -162,7 +161,6 @@
                      showSearchDropdown: false,
                      ...createUnifiedSearchData('{% url 'games-api:unified-search' %}', 3, 5)
                  }"
-                 @reset-search-state.window="reset(); showSearchDropdown = false"
                  @click.away="showSearchDropdown = false; reset()">
 
                 {# Search button #}

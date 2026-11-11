@@ -432,25 +432,21 @@ class ExternalDataModelTests(TestCase):
         record = models.WikipediaAlbumData.objects.create(album=self.album)
         self.assertIsNone(record.wikipedia_url)
 
-    def test_discogs_data_str_and_url(self):
+    def test_discogs_data_str(self):
         record = models.DiscogsAlbumData.objects.create(
             album=self.album, master_id=24047
         )
         self.assertEqual(str(record), "Discogs data for Abbey Road")
-        self.assertEqual(record.discogs_url, "https://www.discogs.com/master/24047")
 
     def test_an_orphaned_discogs_record_says_so(self):
         record = models.DiscogsAlbumData.objects.create(master_id=24047)
         self.assertEqual(str(record), "Orphaned Discogs data (master: 24047)")
 
-    def test_musicbrainz_data_str_and_url(self):
+    def test_musicbrainz_data_str(self):
         record = models.MusicBrainzAlbumData.objects.create(
             album=self.album, release_group_mbid="rg-1"
         )
         self.assertEqual(str(record), "MusicBrainz data for Abbey Road")
-        self.assertEqual(
-            record.release_group_url, "https://musicbrainz.org/release-group/rg-1"
-        )
 
     def test_an_orphaned_musicbrainz_record_says_so(self):
         record = models.MusicBrainzAlbumData.objects.create(release_group_mbid="rg-1")

@@ -39,7 +39,6 @@ CACHE_KEY_PLAYED_COUNTS = "user_played_counts"
 
 DEFAULT_PAGE_SIZE = 100
 SEARCH_PAGE_SIZE = 100
-POST_PAGE_SIZE = 5
 
 # The source-lists page's sort choices, by grouping: publications sort by
 # what they contribute or by name, list types by year or by name. Rendered

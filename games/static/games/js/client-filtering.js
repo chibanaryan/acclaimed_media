@@ -24,7 +24,6 @@ class ClientSideFiltering {
         this.currentFilters = {};
         this.minYear = 1970;
         this.maxYear = new Date().getFullYear();
-        this._hasRenderedUI = false;  // Track if CSF has taken over the UI
         // utils-base.js's helper, which guards a browser that refuses
         // storage. Asked for by `typeof`: this bundle is fetched on its own,
         // and must still construct if that script has not run
@@ -195,9 +194,6 @@ class ClientSideFiltering {
             showRank = 'filtered'
         } = options;
 
-        // Mark that CSF has taken over UI rendering
-        this._hasRenderedUI = true;
-
         // Clear and render new results with current view mode
         this.renderer.render(filterResult.games, gameListContainer, {
             showRank,
@@ -233,45 +229,6 @@ class ClientSideFiltering {
         return this.renderer.loadMore(gameListContainer, {
             showRank
         });
-    }
-
-    /**
-     * Update DOM with filter results
-     * This is the main entry point called from Alpine.js
-     *
-     * @param {Object} filters - Filters from Alpine component
-     * @param {Object} elements - DOM element references
-     */
-    updateUI(filters, elements) {
-        const {
-            gameListContainer,
-            countContainer,
-            loadMoreContainer,
-            highlightId
-        } = elements;
-
-        const result = this.applyFilters(filters);
-        if (!result) return null;
-
-        const state = this.renderResults(result, gameListContainer, {
-            highlightId,
-            showRank: this._computeShowRank()
-        });
-
-        // A fresh render starts at the top: redraw the count, and empty Load
-        // Previous if a jump had filled it
-        this.renderWindowChrome();
-
-        // Update Load More button
-        if (loadMoreContainer) {
-            loadMoreContainer.innerHTML = this.renderer.getLoadMoreHtml(state);
-            this._initLoadMoreButton(loadMoreContainer, gameListContainer, countContainer);
-        }
-
-        return {
-            total: state.total,
-            facets: state.facets
-        };
     }
 
     /**
@@ -418,15 +375,6 @@ class ClientSideFiltering {
     followsPage() {
         return Boolean(this.cache.dataVersion) &&
             this.cache.dataVersion === this.cache._pageVersion();
-    }
-
-    /**
-     * Check if CSF has taken over UI rendering
-     * (i.e., CSF has actively rendered the page, not just loaded data)
-     * @returns {boolean}
-     */
-    hasRenderedUI() {
-        return this._hasRenderedUI;
     }
 
     /**

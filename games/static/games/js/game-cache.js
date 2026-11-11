@@ -213,33 +213,6 @@ class GameDataCache {
             console.warn('Cache clear error:', e);
         }
     }
-
-    /**
-     * Get cache info (for debugging)
-     */
-    async getCacheInfo() {
-        const cached = await this._getCached();
-        if (!cached) return null;
-
-        return {
-            version: cached.version,
-            timestamp: new Date(cached.timestamp),
-            gameCount: cached.data?.games?.length || 0,
-            sizeEstimate: this._estimateSize(cached.data)
-        };
-    }
-
-    /**
-     * Estimate data size in bytes
-     * @private
-     */
-    _estimateSize(data) {
-        try {
-            return new Blob([JSON.stringify(data)]).size;
-        } catch (e) {
-            return 0;
-        }
-    }
 }
 
 // Export for use in other modules

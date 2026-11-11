@@ -395,45 +395,6 @@ class GameListSeriesFilterTests(TestCase):
         self.assertIn("series_list", response.context)
 
 
-class GenreSubtitleTests(TestCase):
-    """Tests for _build_genre_subtitle helper."""
-
-    def test_build_genre_subtitle_empty(self):
-        """Test subtitle with no genres."""
-        result = views._build_genre_subtitle([], "any", [])
-        self.assertEqual(result, "")
-
-    def test_build_genre_subtitle_single(self):
-        """Test subtitle with single genre."""
-        genres = [{"id": 1, "name": "Action"}]
-        result = views._build_genre_subtitle([1], "any", genres)
-        self.assertEqual(result, "Genre: Action")
-
-    def test_build_genre_subtitle_multiple_any(self):
-        """Test subtitle with multiple genres using 'any' option."""
-        genres = [{"id": 1, "name": "Action"}, {"id": 2, "name": "RPG"}]
-        result = views._build_genre_subtitle([1, 2], "any", genres)
-        self.assertEqual(result, "Genre: Action OR RPG")
-
-    def test_build_genre_subtitle_multiple_all(self):
-        """Test subtitle with multiple genres using 'all' option."""
-        genres = [{"id": 1, "name": "Action"}, {"id": 2, "name": "RPG"}]
-        result = views._build_genre_subtitle([1, 2], "all", genres)
-        self.assertEqual(result, "Genre: Action AND RPG")
-
-    def test_build_genre_subtitle_missing_genre(self):
-        """Test subtitle with genre ID not in lookup."""
-        genres = [{"id": 1, "name": "Action"}]
-        result = views._build_genre_subtitle([999], "any", genres)
-        self.assertEqual(result, "Genre: 999")
-
-    def test_build_genre_subtitle_empty_names(self):
-        """Test subtitle returns empty when names are blank."""
-        genres = [{"id": 1, "name": ""}]
-        result = views._build_genre_subtitle([1], "any", genres)
-        self.assertEqual(result, "")
-
-
 class PlayedFilterTests(TestCase):
     """Tests for _apply_played_filter helper."""
 

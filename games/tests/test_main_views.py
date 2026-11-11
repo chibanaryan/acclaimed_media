@@ -1890,18 +1890,26 @@ class DeveloperDetailViewTest(TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
-    def test_cached_context_is_used(self):
-        """Test cached context short-circuits expensive computation."""
+    def test_a_cached_payload_of_another_shape_is_rebuilt(self):
+        """Only this schema version is read. An unversioned payload, from
+        before the version existed, was merged into the context as it was."""
         from django.core.cache import cache
         from games import config
+        from games.views import DeveloperDetailView
 
         cache_key = f"{config.CACHE_VERSION}:developer_detail:{self.dev.id}"
-        cache.set(cache_key, {"cached_flag": True}, 60)
-
-        response = self.client.get(
-            reverse("developer-detail", kwargs={"slug": self.dev.slug})
-        )
-        self.assertTrue(response.context.get("cached_flag"))
+        for stale in ({"cached_flag": True}, {"cache_schema_version": 1}, "text"):
+            with self.subTest(stale=stale):
+                cache.set(cache_key, stale, 60)
+                response = self.client.get(
+                    reverse("developer-detail", kwargs={"slug": self.dev.slug})
+                )
+                self.assertIsNone(response.context.get("cached_flag"))
+                self.assertEqual(response.context["total_games"], 2)
+                self.assertEqual(
+                    cache.get(cache_key)["cache_schema_version"],
+                    DeveloperDetailView.CACHE_SCHEMA_VERSION,
+                )
         cache.delete(cache_key)
 
     def test_cached_context_hydrates_developers(self):

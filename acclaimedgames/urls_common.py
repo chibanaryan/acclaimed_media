@@ -97,10 +97,10 @@ def common_urlpatterns(sitemaps):
 
 def with_debug_and_static(urlpatterns):
     """``urlpatterns`` with the static routes, and in DEBUG the dev tools."""
+    # WhiteNoise serves the static files; Django's `static()` helper, which
+    # this returned beside the routes, answers an empty list without DEBUG
     if not settings.DEBUG:
-        return urlpatterns + static(
-            settings.STATIC_URL, document_root=settings.STATIC_ROOT
-        )
+        return urlpatterns
 
     from django.views.defaults import page_not_found
 

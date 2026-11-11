@@ -427,33 +427,6 @@ class ApplyYearFiltersTests(TestCase):
         self.assertEqual(result.count(), 4)  # 1985, 1990, 1995, 2000
 
 
-class SafeIntFilterTests(TestCase):
-    """Tests for safe_int_filter utility function."""
-
-    def setUp(self):
-        """Create test games."""
-        models.Game.objects.create(name="Game 1", year_of_release=1990, rank=1)
-        models.Game.objects.create(name="Game 2", year_of_release=2000, rank=2)
-
-    def test_valid_filter(self):
-        """Test filtering with valid integer."""
-        qs = models.Game.objects.all()
-        result = utils.safe_int_filter(qs, "1990", "year_of_release")
-        self.assertEqual(result.count(), 1)
-
-    def test_invalid_filter_ignored(self):
-        """Test that invalid values are ignored."""
-        qs = models.Game.objects.all()
-        result = utils.safe_int_filter(qs, "invalid", "year_of_release")
-        self.assertEqual(result.count(), 2)
-
-    def test_none_value_returns_queryset(self):
-        """Test that None value returns unchanged queryset."""
-        qs = models.Game.objects.all()
-        result = utils.safe_int_filter(qs, None, "year_of_release")
-        self.assertEqual(result.count(), 2)
-
-
 class GetOrSetCacheTests(TestCase):
     """Tests for get_or_set_cache utility function."""
 

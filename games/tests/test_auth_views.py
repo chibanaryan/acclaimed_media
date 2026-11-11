@@ -130,16 +130,6 @@ class ModalSocialAccountAdapterTest(TestCase):
         self.assertIsInstance(adapter, DefaultSocialAccountAdapter)
 
 
-class LegacyAdapterAliasTest(TestCase):
-    """Test backwards compatibility of EmailAsUsernameAdapter alias."""
-
-    def test_email_as_username_adapter_alias(self):
-        """Test that EmailAsUsernameAdapter is an alias for ModalAccountAdapter."""
-        from games.adapters import EmailAsUsernameAdapter
-
-        self.assertIs(EmailAsUsernameAdapter, ModalAccountAdapter)
-
-
 class AllauthSignupIsClosedTests(TestCase):
     """Sign-up is the modal's. allauth's own page, still mounted until
     2026-11-10, took any posted username: none of the modal's rules, and a

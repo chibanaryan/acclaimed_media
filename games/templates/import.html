@@ -242,12 +242,6 @@
     <button type="button" class="btn btn-sm btn-ghost" data-dismiss-errors>Dismiss</button>
 </div>
 <script nonce="{{ csp_nonce }}">
-    // Nothing reads this flag any more; clear the one older pages left
-    try {
-        localStorage.removeItem('importErrorsDismissed');
-    } catch (e) {
-        // Storage refused: there is nothing to clear
-    }
     function dismissErrorContainer() {
         const container = document.getElementById('error-container');
         if (container) {

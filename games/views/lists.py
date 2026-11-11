@@ -260,14 +260,6 @@ class ListListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
         if type_code:
             list_filter &= Q(lists__type=type_code)
 
-        # Annotate publications with list counts by type
-        # Only count lists that match the current filters
-        count_filter = Q()
-        if year_value:
-            count_filter &= Q(year=year_value)
-        if type_code:
-            count_filter &= Q(type=type_code)
-
         # Build filter conditions for badge counts
         # Year filter applies to all counts
         # Type filter: only show count for matching type (others become 0)

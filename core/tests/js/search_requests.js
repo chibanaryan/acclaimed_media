@@ -109,7 +109,7 @@ async function run({ make, body, names }) {
         await settle();
         out[mode + 'Cleared'] = state(box);
 
-        // reset() (a navigation's `reset-search-state`) while one is out
+        // reset() (the box's clear button) while one is out
         box = start();
         box.q = 'be';
         const beforeReset = box.loadResults();

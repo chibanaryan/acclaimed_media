@@ -1058,11 +1058,6 @@ document.addEventListener('alpine:init', () => {
             this._setUrlFilterKey(key);
         },
 
-        resetSearch() {
-            this.filters.q = '';
-            if (this.initialized) this.updateResults();
-        },
-
         resetYears() {
             this.filters.start = this.minYear;
             this.filters.end = this.maxYear;

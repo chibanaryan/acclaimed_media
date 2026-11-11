@@ -35,7 +35,6 @@ def apply_genre_filter(
     queryset: QuerySet,
     genre_ids: List[int],
     match_all: bool = True,
-    use_wikipedia: bool = True,  # Now defaults to Wikipedia genres
     expand_hierarchy: bool = True,
     descendants: Optional[Dict[int, List[int]]] = None,
 ) -> QuerySet:
@@ -50,7 +49,6 @@ def apply_genre_filter(
         genre_ids: List of genre IDs to filter by
         match_all: If True, games must match ALL selected genres (each can be
                    satisfied by itself or any descendant). If False, ANY match.
-        use_wikipedia: Deprecated, always uses wikipedia_genres.
         expand_hierarchy: If True, expand parent genres to include all
                           descendants. If False, filter by exact genre IDs only.
         descendants: A ``genre_descendant_map()`` to reuse. A caller filtering
@@ -249,29 +247,6 @@ def apply_year_filters(
     if last is not None:
         queryset = queryset.filter(year_of_release__lte=last)
 
-    return queryset
-
-
-def safe_int_filter(
-    queryset: QuerySet, value: Optional[str], field_name: str
-) -> QuerySet:
-    """
-    Apply integer filter, ignoring invalid values.
-
-    Args:
-        queryset: The queryset to filter
-        value: String value to convert to int
-        field_name: Field name to filter on
-
-    Returns:
-        Filtered queryset (unchanged if value is invalid)
-    """
-    if not value:
-        return queryset
-    try:
-        queryset = queryset.filter(**{field_name: int(value)})
-    except (ValueError, TypeError):
-        pass
     return queryset
 
 

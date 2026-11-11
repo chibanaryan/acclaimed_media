@@ -618,25 +618,13 @@ class RefreshAllMetadataCommandTests(NoHeartbeatMixin, TestCase):
         self.assertIn("Limiting to first 1 games", output)
         self.assertIn("Processing 1 games", output)
 
-    @mock.patch("games.management.commands.refresh_all_metadata.WikiPageLookupService")
-    @mock.patch("games.management.commands.refresh_all_metadata.WikiGenreService")
     @mock.patch("games.management.commands.refresh_all_metadata.IGDBImportService")
-    def test_error_handling_igdb_failure(
-        self, mock_igdb_service, mock_genre_service, mock_page_service
-    ):
+    def test_error_handling_igdb_failure(self, mock_igdb_service):
         """Test that Wikipedia refresh continues even if IGDB fails"""
         from io import StringIO
 
         # Make IGDB service constructor raise an error
         mock_igdb_service.side_effect = RuntimeError("IGDB API failed")
-
-        # Mock Wikipedia services to succeed
-        mock_page_instance = mock.MagicMock()
-        mock_page_service.return_value = mock_page_instance
-
-        page_result = mock.MagicMock()
-        page_result.success = False
-        mock_page_instance.lookup_page.return_value = page_result
 
         out = StringIO()
         # The other phases still run, and then the command fails: it exited
@@ -853,12 +841,8 @@ class RefreshAllMetadataCommandTests(NoHeartbeatMixin, TestCase):
         self.assertIn("IGDB Complete", output)
         self.assertIn("2 processed", output)
 
-    @mock.patch("games.management.commands.refresh_all_metadata.WikiPageLookupService")
-    @mock.patch("games.management.commands.refresh_all_metadata.WikiGenreService")
     @mock.patch("games.management.commands.refresh_all_metadata.IGDBImportService")
-    def test_summary_with_errors(
-        self, mock_igdb_service, mock_genre_service, mock_page_service
-    ):
+    def test_summary_with_errors(self, mock_igdb_service):
         """Test summary output with mixed success/errors"""
         from io import StringIO
 
@@ -878,34 +862,6 @@ class RefreshAllMetadataCommandTests(NoHeartbeatMixin, TestCase):
             return mock_igdb_instance
 
         mock_igdb_service.side_effect = capture_callback
-
-        # Mock Wikipedia with partial success
-        mock_page_instance = mock.MagicMock()
-        mock_page_service.return_value = mock_page_instance
-
-        # First page succeeds
-        page_result_success = mock.MagicMock()
-        page_result_success.success = True
-        page_result_success.page_title = "Test Game 1"
-        page_result_success.lookup_source = "Wikidata"
-        page_result_success.wikipedia_url = "https://en.wikipedia.org/wiki/Test_Game_1"
-
-        # Second page fails
-        page_result_fail = mock.MagicMock()
-        page_result_fail.success = False
-        page_result_fail.error_message = "Not found"
-
-        mock_page_instance.lookup_page.side_effect = [
-            page_result_success,
-            page_result_fail,
-        ]
-
-        genre_service_instance = mock.MagicMock()
-        mock_genre_service.return_value = genre_service_instance
-        genre_result = mock.MagicMock()
-        genre_result.primary_genre = "Action"
-        genre_result.all_genres = ["Action"]
-        genre_service_instance.get_genre_from_url.return_value = genre_result
 
         out = StringIO()
         call_command("refresh_all_metadata", limit=2, stdout=out)

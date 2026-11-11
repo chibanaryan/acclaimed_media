@@ -52,7 +52,6 @@ from games.services.query_filters import (  # noqa: F401
     apply_series_filter,
     get_or_set_cache,
     apply_year_filters,
-    safe_int_filter,
     Filter,
 )
 

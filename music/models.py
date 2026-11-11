@@ -1059,10 +1059,6 @@ class DiscogsAlbumData(ExternalDataBase):
             return f"Discogs data for {self.album.name}"
         return f"Orphaned Discogs data (master: {self.master_id})"
 
-    @property
-    def discogs_url(self) -> str:
-        return f"https://www.discogs.com/master/{self.master_id}"
-
 
 class MusicBrainzAlbumData(ExternalDataBase):
     """
@@ -1137,10 +1133,6 @@ class MusicBrainzAlbumData(ExternalDataBase):
         if self.album:
             return f"MusicBrainz data for {self.album.name}"
         return f"Orphaned MusicBrainz data ({self.release_group_mbid})"
-
-    @property
-    def release_group_url(self) -> str:
-        return f"https://musicbrainz.org/release-group/{self.release_group_mbid}"
 
     def local_cover_art_url(self, size: int) -> Optional[str]:
         """The URL of our own stored copy of the cover.
