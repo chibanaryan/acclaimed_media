@@ -23,12 +23,32 @@
 
 set -e
 
+# Whether runserver could not bind a port, asked the way runserver will: by
+# binding it. lsof was asked before, and shows only this user's sockets, so a
+# system service's was invisible: macOS's launchd holds 8021 for ftp-proxy,
+# a worktree whose path hashed to 8021 was told it was free, and runserver
+# answered "That port is already in use". Parsing netstat instead would need
+# net-tools on Linux, which cloud images lack. python3 is here already (the
+# hook input is read with it); without it, lsof is the best there is.
+port_in_use() {
+    if command -v python3 >/dev/null 2>&1; then
+        ! python3 -c '
+import socket, sys
+probe = socket.socket()
+probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+probe.bind(("127.0.0.1", int(sys.argv[1])))
+' "$1" >/dev/null 2>&1
+        return
+    fi
+    lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+}
+
 # Dev-server port, derived from the path so a worktree keeps the same one
 # across restarts, and nudged up while something else is already listening.
 worktree_port() {
     local port=$((8001 + $(printf '%s' "$WORKTREE" | cksum | cut -d' ' -f1) % 99))
 
-    while lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; do
+    while port_in_use "$port"; do
         port=$((port + 1))
     done
 
