@@ -2,7 +2,7 @@ import logging
 import threading
 import time
 from collections import OrderedDict
-from typing import Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 import requests
 from django.conf import settings
@@ -24,6 +24,29 @@ REQUEST_TIMEOUT = 30
 
 class GameNotFound(LookupError):
     """IGDB has no one game under the id asked for: dropped, or merged away."""
+
+
+# Companies per request: IGDB's page size, past which it drops the rest
+COMPANIES_PER_REQUEST = 500
+# How far up a company's parents are followed
+MAX_PARENT_DEPTH = 10
+
+
+def _chosen_company_ids(data) -> List[int]:
+    """The companies a game is credited to: its developers, or failing
+    those its supporting studios, publishers or porters, in that order."""
+    roles = {"developer": [], "supporting": [], "publisher": [], "porting": []}
+    for involved in data.get("involved_companies", []):
+        company_id = involved.get("company") if isinstance(involved, dict) else None
+        if not company_id:
+            continue
+        for role, ids in roles.items():
+            if involved.get(role):
+                ids.append(company_id)
+    for role in ("developer", "supporting", "publisher", "porting"):
+        if roles[role]:
+            return roles[role]
+    return []
 
 
 class IgbdApi:
@@ -360,20 +383,27 @@ class IgbdApi:
         if not ids_to_fetch:
             return companies_dict
 
-        # Batch fetch companies
-        ids_str = ",".join(str(cid) for cid in ids_to_fetch)
-        try:
-            res = self._make_request_with_retry(
-                self._get_endpoint_url("companies"),
-                data=f"where id = ({ids_str}); fields id,name,slug,parent; limit 500;",
-            )
-            if res is None:
-                return companies_dict
-            res.raise_for_status()
-            results = res.json()
-        except Exception as exc:
-            logger.warning("Unable to load IGDB companies %s: %s", ids_to_fetch, exc)
-            return companies_dict
+        # Batch fetch companies, at most a page per request: one request
+        # capped at `limit 500` silently dropped the rest of a Pro-tier
+        # batch's companies
+        results = []
+        for start in range(0, len(ids_to_fetch), COMPANIES_PER_REQUEST):
+            chunk = ids_to_fetch[start : start + COMPANIES_PER_REQUEST]
+            ids_str = ",".join(str(cid) for cid in chunk)
+            try:
+                res = self._make_request_with_retry(
+                    self._get_endpoint_url("companies"),
+                    data=(
+                        f"where id = ({ids_str}); fields id,name,slug,parent; "
+                        f"limit {COMPANIES_PER_REQUEST};"
+                    ),
+                )
+                if res is None:
+                    continue
+                res.raise_for_status()
+                results.extend(res.json())
+            except Exception as exc:
+                logger.warning("Unable to load IGDB companies %s: %s", chunk, exc)
 
         # Process results and update cache
         for company_data in results:
@@ -384,6 +414,97 @@ class IgbdApi:
                     self._set_in_company_cache(company_id, company_data)
 
         return companies_dict
+
+    def _company_tree(self, company_ids, cache_results) -> Dict[int, Dict[str, Any]]:
+        """``company_ids`` and every parent above them, by id.
+
+        A parent IGDB does not return is asked for once, not on every round.
+        """
+        companies = self.get_companies_by_ids(
+            list(dict.fromkeys(company_ids)), cache_results
+        )
+        asked = set(company_ids)
+        for _ in range(MAX_PARENT_DEPTH):  # a cycle cannot loop for ever
+            parent_ids = {
+                c.get("parent")
+                for c in companies.values()
+                if c.get("parent") and c.get("parent") not in asked
+            }
+            if not parent_ids:
+                break
+            asked |= parent_ids
+            companies.update(self.get_companies_by_ids(list(parent_ids), cache_results))
+        return companies
+
+    def _game_data(self, data, company_ids, companies) -> Dict[str, Any]:
+        """One game's answer from IGDB, as the importers read it.
+
+        The single and batch lookups were two copies of this until
+        2026-11-11, and had drifted: the single one read an involved
+        company's flags by key and raised on any IGDB left out.
+        """
+
+        def chain(company_id: int, seen: set) -> Optional[dict]:
+            """The company with its parents, as nested dicts."""
+            if company_id in seen:
+                return None  # a cycle
+            seen.add(company_id)
+            company = companies.get(company_id)
+            if not company:
+                return None
+            parent_id = company.get("parent")
+            return {
+                "id": company_id,
+                "name": company["name"],
+                "slug": company.get("slug", ""),
+                "parent": chain(parent_id, seen) if parent_id else None,
+            }
+
+        developers = [dev for dev in (chain(cid, set()) for cid in company_ids) if dev]
+
+        theme_names = [
+            self.themes.get(x)
+            for x in data.get("themes", [])
+            if self.themes.get(x) in genre_themes
+        ]
+        genre_names = [
+            genre["name"]
+            for genre in data.get("genres", [])
+            if isinstance(genre, dict) and "name" in genre
+        ]
+
+        cover = data.get("cover")
+        if cover and isinstance(cover, dict) and "url" in cover:
+            cover_filename = cover["url"].split("/")[-1]
+        else:
+            cover_filename = None
+
+        series = [
+            {
+                "id": collection["id"],
+                "name": collection.get("name", ""),
+                "slug": collection.get("slug", ""),
+            }
+            for collection in data.get("collections", [])
+            if isinstance(collection, dict) and "id" in collection
+        ]
+
+        videos = data.get("videos", [])
+        youtube_video_id = None
+        if videos and isinstance(videos[0], dict):
+            youtube_video_id = videos[0].get("video_id")
+
+        return {
+            "cover": cover_filename,
+            "developers": developers,
+            "genres": list(set(theme_names + genre_names)),
+            "series": series,
+            "storyline": data.get("storyline"),
+            "summary": data.get("summary"),
+            "url": data.get("url"),
+            "slug": data.get("slug"),
+            "youtube_video_id": youtube_video_id,
+        }
 
     def get_games_info_by_ids(
         self, game_ids: list, cache_results: bool = True
@@ -451,151 +572,15 @@ class IgbdApi:
             logger.warning("Unable to load IGDB games %s: %s", ids_to_fetch, exc)
             return games_dict
 
-        # Collect all company IDs that need to be fetched
-        all_company_ids = set()
-        for data in results:
-            for involved_company_dict in data.get("involved_companies", []):
-                company_id = involved_company_dict.get("company")
-                if company_id:
-                    all_company_ids.add(company_id)
-                parent_id = involved_company_dict.get("parent")
-                if parent_id:
-                    all_company_ids.add(parent_id)
+        # Every game's chosen companies, and their parents, in a few requests
+        chosen = {data["id"]: _chosen_company_ids(data) for data in results}
+        companies = self._company_tree(
+            [cid for ids in chosen.values() for cid in ids], cache_results
+        )
 
-        # Batch fetch all companies
-        companies = self.get_companies_by_ids(list(all_company_ids), cache_results)
-
-        # Recursively fetch all parent companies up the chain
-        max_depth = 10  # Prevent infinite loops
-        depth = 0
-        while depth < max_depth:
-            # Collect parent IDs that need fetching
-            parent_ids = [
-                c.get("parent")
-                for c in companies.values()
-                if c.get("parent") and c.get("parent") not in companies
-            ]
-
-            if not parent_ids:
-                break  # No more parents to fetch
-
-            # Batch fetch parent companies
-            parent_data = self.get_companies_by_ids(parent_ids, cache_results)
-            companies.update(parent_data)
-            depth += 1
-
-        # Process each game
         for data in results:
             game_id = data["id"]
-
-            # Process developers (companies marked as developers in IGDB)
-            developer_ids = []
-            porters = []
-            supporters = []
-            publishers = []
-
-            for involved_company_dict in data.get("involved_companies", []):
-                company_id = involved_company_dict.get("company")
-                if not company_id:
-                    continue
-
-                if involved_company_dict.get("developer"):
-                    developer_ids.append(company_id)
-                if involved_company_dict.get("supporting"):
-                    supporters.append(company_id)
-                if involved_company_dict.get("publisher"):
-                    publishers.append(company_id)
-                if involved_company_dict.get("porting"):
-                    porters.append(company_id)
-
-            company_ids = []
-            if developer_ids:
-                company_ids += developer_ids
-            else:
-                if supporters:
-                    company_ids += supporters
-                elif publishers:
-                    company_ids += publishers
-                elif porters:
-                    company_ids += porters
-
-            def build_parent_chain(company_id: int, seen: set = None) -> Optional[dict]:
-                """Recursively build parent chain with full dict objects."""
-                if seen is None:
-                    seen = set()
-                if company_id in seen:
-                    return None  # Prevent infinite loops
-                seen.add(company_id)
-
-                company_obj = companies.get(company_id)
-                if not company_obj:
-                    return None
-
-                parent_id = company_obj.get("parent")
-                parent_dict = build_parent_chain(parent_id, seen) if parent_id else None
-
-                return {
-                    "id": company_id,
-                    "name": company_obj["name"],
-                    "slug": company_obj.get("slug", ""),
-                    "parent": parent_dict,
-                }
-
-            developer_objs = []
-            for company_id in company_ids:
-                dev_dict = build_parent_chain(company_id)
-                if dev_dict:
-                    developer_objs.append(dev_dict)
-
-            # Process genres
-            theme_names = [
-                self.themes.get(x)
-                for x in data.get("themes", [])
-                if self.themes.get(x) in genre_themes
-            ]
-            genre_names = [
-                genre_obj["name"]
-                for genre_obj in data.get("genres", [])
-                if isinstance(genre_obj, dict) and "name" in genre_obj
-            ]
-            genres = list(set(theme_names + genre_names))
-
-            # Process cover
-            cover_data = data.get("cover")
-            if cover_data and isinstance(cover_data, dict) and "url" in cover_data:
-                cover_filename = cover_data["url"].split("/")[-1]
-            else:
-                cover_filename = None
-
-            # Process collections (series) - games can be in multiple collections
-            series_data = []
-            for collection_obj in data.get("collections", []):
-                if isinstance(collection_obj, dict) and "id" in collection_obj:
-                    series_info = {
-                        "id": collection_obj["id"],
-                        "name": collection_obj.get("name", ""),
-                        "slug": collection_obj.get("slug", ""),
-                    }
-                    series_data.append(series_info)
-
-            # Extract first video's YouTube ID
-            videos = data.get("videos", [])
-            youtube_video_id = None
-            if videos and isinstance(videos[0], dict):
-                youtube_video_id = videos[0].get("video_id")
-
-            game_data = {
-                "cover": cover_filename,
-                "developers": developer_objs,
-                "genres": genres,
-                "series": series_data,
-                "storyline": data.get("storyline"),
-                "summary": data.get("summary"),
-                "url": data.get("url"),
-                "slug": data.get("slug"),
-                "youtube_video_id": youtube_video_id,
-            }
-
+            game_data = self._game_data(data, chosen[game_id], companies)
             games_dict[game_id] = game_data
             if cache_results:
                 with self.cache_lock:
@@ -690,139 +675,9 @@ class IgbdApi:
             )
         data = results[0]
 
-        # Get developer information (companies marked as developers in IGDB)
-        developer_ids = []
-        porters = []
-        supporters = []
-        publishers = []
-
-        for involved_company_dict in data.get("involved_companies", []):
-            company_id = involved_company_dict["company"]
-
-            if involved_company_dict["developer"]:
-                developer_ids.append(company_id)
-
-            if involved_company_dict["supporting"]:
-                supporters.append(company_id)
-
-            if involved_company_dict["publisher"]:
-                publishers.append(company_id)
-
-            if involved_company_dict["porting"]:
-                porters.append(company_id)
-
-        company_ids = []
-
-        if developer_ids:
-            company_ids += developer_ids
-        else:
-            if supporters:
-                company_ids += supporters
-            elif publishers:
-                company_ids += publishers
-            elif porters:
-                company_ids += porters
-
-        # Batch fetch all companies at once instead of sequential calls
-        companies_data = self.get_companies_by_ids(company_ids, cache_results)
-
-        # Recursively fetch all parent companies up the chain
-        max_depth = 10  # Prevent infinite loops
-        depth = 0
-        while depth < max_depth:
-            # Collect parent IDs that need fetching
-            parent_ids = [
-                c.get("parent")
-                for c in companies_data.values()
-                if c.get("parent") and c.get("parent") not in companies_data
-            ]
-
-            if not parent_ids:
-                break  # No more parents to fetch
-
-            # Batch fetch parent companies
-            parent_data = self.get_companies_by_ids(parent_ids, cache_results)
-            companies_data.update(parent_data)
-            depth += 1
-
-        # Build developer objects using fetched data with full parent chains
-        def build_parent_chain(company_id: int, seen: set = None) -> Optional[dict]:
-            """Recursively build parent chain with full dict objects."""
-            if seen is None:
-                seen = set()
-            if company_id in seen:
-                return None  # Prevent infinite loops
-            seen.add(company_id)
-
-            company_obj = companies_data.get(company_id)
-            if not company_obj:
-                return None
-
-            parent_id = company_obj.get("parent")
-            parent_dict = build_parent_chain(parent_id, seen) if parent_id else None
-
-            return {
-                "id": company_id,
-                "name": company_obj["name"],
-                "slug": company_obj.get("slug", ""),
-                "parent": parent_dict,
-            }
-
-        developer_objs = []
-        for company_id in company_ids:
-            dev_dict = build_parent_chain(company_id)
-            if dev_dict:
-                developer_objs.append(dev_dict)
-
-        # Get genres - now expanded in the query
-        theme_names = [
-            self.themes.get(x)
-            for x in data.get("themes", [])
-            if self.themes.get(x) in genre_themes
-        ]
-        # Parse expanded genre data directly (no extra API calls needed)
-        genre_names = [
-            genre_obj["name"]
-            for genre_obj in data.get("genres", [])
-            if isinstance(genre_obj, dict) and "name" in genre_obj
-        ]
-        genres = list(set(theme_names + genre_names))
-
-        # Parse expanded cover data directly (no extra API call needed)
-        cover_data = data.get("cover")
-        if cover_data and isinstance(cover_data, dict) and "url" in cover_data:
-            cover_filename = cover_data["url"].split("/")[-1]
-        else:
-            cover_filename = None
-
-        # Process collections (series) - games can be in multiple collections
-        series_data = []
-        for collection_obj in data.get("collections", []):
-            if isinstance(collection_obj, dict) and "id" in collection_obj:
-                series_info = {
-                    "id": collection_obj["id"],
-                    "name": collection_obj.get("name", ""),
-                    "slug": collection_obj.get("slug", ""),
-                }
-                series_data.append(series_info)
-
-        # Extract first video's YouTube ID
-        videos = data.get("videos", [])
-        youtube_video_id = None
-        if videos and isinstance(videos[0], dict):
-            youtube_video_id = videos[0].get("video_id")
-
-        game_data = {
-            "cover": cover_filename,
-            "developers": developer_objs,
-            "genres": genres,
-            "series": series_data,
-            "storyline": data.get("storyline"),
-            "summary": data.get("summary"),
-            "url": data.get("url"),
-            "slug": data.get("slug"),
-            "youtube_video_id": youtube_video_id,
-        }
+        company_ids = _chosen_company_ids(data)
+        companies = self._company_tree(company_ids, cache_results)
+        game_data = self._game_data(data, company_ids, companies)
 
         if cache_results:
             with self.cache_lock:

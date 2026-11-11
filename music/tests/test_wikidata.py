@@ -496,3 +496,21 @@ class DataclassTests(SimpleTestCase):
         second = AlbumMetadata(wikidata_id="Q2")
         first.performer_qids.append("Q9")
         self.assertEqual(second.performer_qids, [])
+
+
+class MasterIdTests(SimpleTestCase):
+    """A Discogs master id is a positive integer. Zero or a negative one
+    from a bad Wikidata edit was an IntegrityError on the
+    PositiveIntegerField, which ended the Discogs pass."""
+
+    def test_only_positive_ids_are_kept(self):
+        from music.wikidata import WikidataClient
+
+        for value, expected in (
+            ("24047", 24047),
+            ("0", None),
+            ("-5", None),
+            ("x", None),
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(WikidataClient._coerce_master_id(value), expected)

@@ -16,25 +16,14 @@ class Command(BaseCommand):
         super().__init__(*args, **kwargs)
         self.batch_processed = 0
         self.start_time = None
+        self.checkpoint_size = 50
 
     def add_arguments(self, parser):
-        parser.add_argument(
-            "--delay",
-            type=float,
-            default=0.0,
-            help=(
-                "Additional delay in seconds between processing games "
-                "(default: 0.0s). Rate limiting is automatically handled "
-                "by the API client. Only increase this if you need extra "
-                "throttling."
-            ),
-        )
         parser.add_argument(
             "--batch-size",
             type=int,
             default=50,
-            help="Number of games to process before a longer pause (default: 50). "
-            "Helps with memory management and provides progress checkpoints.",
+            help="Games between progress checkpoints (default: 50).",
         )
         parser.add_argument(
             "--game",
@@ -93,6 +82,7 @@ class Command(BaseCommand):
         use_pro_tier = options.get("pro", False)
         batch_games_option = options.get("batch_games")
         batch_size = options.get("batch_size", 50)
+        self.checkpoint_size = max(1, batch_size)
 
         # Handle single game update
         if game_name or game_slug or game_id:
@@ -186,8 +176,8 @@ class Command(BaseCommand):
                 )
                 return
 
+            # Saves the slug and the IGDB row itself
             game.get_igdb_data()
-            game.save(update_fields=["slug", "description"])
             self.stdout.write(self.style.SUCCESS(f"Successfully updated '{game.name}'"))
 
         except Game.DoesNotExist:
@@ -219,7 +209,7 @@ class Command(BaseCommand):
         self.batch_processed += 1
 
         # Checkpoint every batch_size games (progress output only)
-        if self.batch_processed >= 50:
+        if self.batch_processed >= self.checkpoint_size:
             elapsed = time.time() - self.start_time
             rate = current / elapsed if elapsed > 0 else 0
             remaining = total_games - current

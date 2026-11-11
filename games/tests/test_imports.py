@@ -8,7 +8,7 @@ from django.test import TestCase
 
 from core.models import User
 from core.tests.utils import NoHeartbeatMixin
-from .. import models, utils
+from .. import config, models, utils
 
 
 def _run_import_inline(target):
@@ -1901,3 +1901,46 @@ class ImportIGDBWithProgressTests(NoHeartbeatMixin, InlineImportThreadMixin, Tes
         self.assertGreater(
             len(error_events), 0, f"Expected error about no games, got: {events}"
         )
+
+
+class ImportDropsReleaseCachesTests(TestCase):
+    """The caches a release changes, which nothing keyed on the data version
+    and nothing dropped: the year bounds, the platform list, the landing
+    page lists and the CSV's genre list. A release adding a year left the
+    year grid at the old last year, and `/games/<new year>/` a 404, for a
+    day."""
+
+    def test_a_committed_import_drops_them(self):
+        from django.core.cache import cache
+
+        from games.cache import release_cache_keys
+
+        keys = release_cache_keys()
+        self.assertIn(config.CACHE_KEY_YEAR_STATS, keys)
+        for key in keys:
+            cache.set(key, "stale", 3600)
+        models.Platform.objects.create(code="PC", name="Personal Computer")
+        with self.captureOnCommitCallbacks(execute=True):
+            success, _ = utils.import_batch(
+                {
+                    "games_file": SimpleUploadedFile(
+                        "Top1400.txt", b"1\tTest Game\t2031\tPC\t12345\tQ66666\r\n"
+                    )
+                }
+            )
+        self.assertTrue(success)
+        self.assertEqual(cache.get_many(keys), {})
+
+    def test_a_failed_import_drops_nothing(self):
+        from django.core.cache import cache
+
+        from games.cache import release_cache_keys
+
+        cache.set(config.CACHE_KEY_YEAR_STATS, "kept", 3600)
+        with self.captureOnCommitCallbacks(execute=True):
+            success, _ = utils.import_batch(
+                {"games_file": SimpleUploadedFile("Top1400.txt", b"not\ta\tgame\r\n")}
+            )
+        self.assertFalse(success)
+        self.assertEqual(cache.get(config.CACHE_KEY_YEAR_STATS), "kept")
+        self.assertTrue(release_cache_keys())

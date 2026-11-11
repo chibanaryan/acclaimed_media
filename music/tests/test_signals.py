@@ -151,6 +151,23 @@ class ReleaseRowSignalTests(CommitHooksRunNowMixin, TestCase):
         artist.delete()
         self.assert_all_dropped()
 
+    def test_a_genre_renamed_or_deleted_drops_them_too(self):
+        """The filter offers genres by name and the landing pages list them:
+        a rename or a delete in the admin lasted a day, and a deleted
+        genre's id led to an empty page."""
+        from music.models import MusicGenre
+
+        self._fill()
+        genre = MusicGenre.objects.create(name="Shoegaze", slug="shoegaze")
+        self.assert_all_dropped()
+        self._fill()
+        genre.name = "Dream Pop"
+        genre.save()
+        self.assert_all_dropped()
+        self._fill()
+        genre.delete()
+        self.assert_all_dropped()
+
 
 class SignalDropsWaitForTheCommitTests(TestCase):
     """Dropped inside an import's transaction, a page load before the commit

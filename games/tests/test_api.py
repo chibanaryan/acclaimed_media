@@ -1385,3 +1385,15 @@ class RegistrationRequiredPageTests(TestCase):
 
     def test_the_api_does_not_serve_it(self):
         self.assertEqual(self.client.get("/api/pages/members/").status_code, 404)
+
+
+class PublisherlessListTests(TestCase):
+    """A list made in the admin can leave its publisher empty, and
+    `/api/lists/` was a 500 for every caller while one did."""
+
+    def test_the_lists_api_answers(self):
+        models.List.objects.create(name="Orphan List", year=2020, type="A")
+        response = self.client.get("/api/lists/")
+        self.assertEqual(response.status_code, 200)
+        names = [row["name"] for row in response.json()["results"]]
+        self.assertIn("Orphan List", names)

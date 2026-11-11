@@ -156,15 +156,17 @@ def _reconnect_model_records(
             records.sort(key=lambda r: r.created)
             keeper = records[0]
 
+            # Delete the rest first: one of them may hold the primary id,
+            # and (user, igdb_id) is unique, so saving the keeper onto it
+            # first raised and aborted the import's transaction
+            for record in records[1:]:
+                record.delete()
+                stats["merged"] += 1
+
             # Reconnect and normalize the keeper
             keeper.game = game
             keeper.igdb_id = primary_igdb_id
             keeper.save(update_fields=["game", "igdb_id"])
             stats["reconnected"] += 1
-
-            # Delete the rest
-            for record in records[1:]:
-                record.delete()
-                stats["merged"] += 1
 
     return stats

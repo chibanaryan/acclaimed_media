@@ -1694,3 +1694,35 @@ class ImportReconnectsTrackingTests(TestCase):
         import_release()
 
         self.assertEqual(cache.get(key), [album.id])
+
+
+class AlbumsFileValidationTests(TestCase):
+    """The albums file is checked as the artists file is: a row number for
+    anything wrong, before anything is written."""
+
+    def parse(self, text):
+        return import_handler.parse_albums_file(StringIO(text))
+
+    def test_wikidata_ids_are_read_as_the_artists_file_reads_them(self):
+        rows = self.parse("1\tPet Sounds\t1,0\t1966\tq183483, Q99\n")
+        self.assertEqual(rows[0].wikidata_ids, ["Q183483", "Q99"])
+
+    def test_a_malformed_wikidata_id_names_its_row(self):
+        """One bad id in a batch of fifty made Wikidata refuse the batch, and
+        49 other albums lost their metadata every week."""
+        with self.assertRaisesMessage(ValueError, "Albums row 1"):
+            self.parse("1\tPet Sounds\t1,0\t1966\tQ12x\n")
+
+    def test_a_rank_that_is_not_a_number_names_its_row(self):
+        with self.assertRaisesMessage(ValueError, "Albums row 2"):
+            self.parse("1\tA\t1,0\t1966\t\nfirst\tB\t1,0\t1967\t\n")
+
+    def test_a_repeated_rank_names_both_rows(self):
+        """Positions are attached by rank, so the second row's album lost its
+        list appearances and the import failed on a misleading message."""
+        with self.assertRaisesMessage(ValueError, "rows 1 and 2"):
+            self.parse("1\tA\t1,0\t1966\t\n1\tB\t1,0\t1967\t\n")
+
+    def test_a_year_that_is_not_a_number_names_its_row(self):
+        with self.assertRaisesMessage(ValueError, "Albums row 1: the year"):
+            self.parse("1\tA\t1,0\tsixties\t\n")

@@ -100,3 +100,15 @@ class EventScrubberTests(SimpleTestCase):
 
         source = (Path(settings.BASE_DIR) / "acclaimedgames/settings.py").read_text()
         self.assertIn("event_scrubber=event_scrubber()", source)
+
+
+class RequestErrorsReachTheLogsTests(SimpleTestCase):
+    """Django prints a request's traceback only under DEBUG and mails it to
+    ADMINS, of which there are none: a 500 reached Sentry alone."""
+
+    def test_django_request_logs_to_the_console(self):
+        from django.conf import settings
+
+        logger = settings.LOGGING["loggers"]["django.request"]
+        self.assertEqual(logger["handlers"], ["console"])
+        self.assertFalse(logger["propagate"])

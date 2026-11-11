@@ -312,8 +312,8 @@ class IGDBImportService:
                     self.error_count += 1
                 return (False, game, "Game no longer exists in database")
 
+            # Saves the slug and the IGDB row itself
             game.get_igdb_data()
-            game.save(update_fields=["slug", "description"])
             with self.lock:
                 self.processed_count += 1
             return (True, game, None)
@@ -381,9 +381,6 @@ class IGDBImportService:
                         game.get_igdb_data(
                             data=games_data[igdb_id], api_client=self.api_client
                         )
-
-                        # Save the updated game
-                        game.save(update_fields=["slug", "description"])
 
                         local_processed += 1
                         results.append((True, game, None))

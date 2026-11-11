@@ -533,6 +533,30 @@ class Series(models.Model):
         self.name_normalized = normalize_name(self.name)
         super().save(*args, **kwargs)
 
+    @classmethod
+    def from_igdb(cls, collection: dict) -> "Series":
+        """The series for an IGDB collection, made or brought up to date.
+
+        Name and slug are unique, but IGDB's collection names are not: two
+        collections called "Mario" were an IntegrityError, and the game that
+        named the second failed on every refresh. The later one takes its
+        IGDB id in both ("Mario (2)", "mario-2"). A renamed collection is
+        renamed here; it kept its first name for good.
+        """
+        igdb_id = collection["id"]
+        name = collection["name"]
+        slug = collection.get("slug") or slugify(name)
+        series = cls.objects.filter(igdb_id=igdb_id).first() or cls(igdb_id=igdb_id)
+        others = cls.objects.exclude(pk=series.pk) if series.pk else cls.objects.all()
+        if others.filter(name=name).exists():
+            name = f"{name} ({igdb_id})"
+        if others.filter(slug=slug).exists():
+            slug = f"{slug}-{igdb_id}"
+        if (series.name, series.slug) != (name, slug):
+            series.name, series.slug = name, slug
+            series.save()
+        return series
+
 
 class IGDBGameData(models.Model):
     """
@@ -1382,16 +1406,7 @@ class Game(RemembersLoaded, MediaItemBase):
         self.developers.set(devs)
 
         # Update series from IGDB collections
-        series_list = []
-        for s in game_data.get("series", []):
-            series_obj, _ = Series.objects.get_or_create(
-                igdb_id=s["id"],
-                defaults={
-                    "name": s["name"],
-                    "slug": s.get("slug") or slugify(s["name"]),
-                },
-            )
-            series_list.append(series_obj)
+        series_list = [Series.from_igdb(s) for s in game_data.get("series", [])]
         self.series.set(series_list)
 
     def update_igdb_relationships(self, api_client=None) -> bool:

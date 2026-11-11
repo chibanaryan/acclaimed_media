@@ -10,11 +10,11 @@ Every drop here waits for the commit and is folded into one
 command queues for itself, so an import, which saves and deletes rows by the
 thousand, pays one drop at its commit for being heard.
 
-An album's year or genres changed there count too (the year counts and the
-landing lists), as do a tracking row given to another reader and an album
-deleted with rows on it (the readers' id sets). A changed year or reader is
-seen without a query, from what the row held when it was read
-(`core.loaded_values`).
+A genre renamed or deleted there counts, as do an album's year or genres
+changed there (the year counts and the landing lists), a tracking row given
+to another reader and an album deleted with rows on it (the readers' id
+sets). A changed year or reader is seen without a query, from what the row
+held when it was read (`core.loaded_values`).
 """
 
 from django.db.models.signals import m2m_changed, post_delete, post_save, pre_delete
@@ -27,6 +27,7 @@ from music.models import (
     AlbumCredit,
     Artist,
     ListenedAlbum,
+    MusicGenre,
     MusicList,
     MusicPublication,
     WantToListenAlbum,
@@ -106,3 +107,13 @@ def drop_counts_on_genre_change(sender, action, **kwargs):
     """
     if action in ("post_add", "post_remove", "post_clear"):
         caching.invalidate_music_caches_on_commit()
+
+
+@receiver([post_save, post_delete], sender=MusicGenre)
+def drop_counts_on_genre_edit(sender, instance, **kwargs):
+    """The genre filter and the landing lists follow a genre's name and
+    existence. Any save, not only a new row: a rename is the edit that
+    matters, and genres are saved rarely - the corpus-wide rebuild saves
+    them in one transaction, which folds its drops into one at its commit.
+    """
+    caching.invalidate_music_caches_on_commit()

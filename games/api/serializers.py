@@ -119,7 +119,10 @@ class DeveloperSerializer(serializers.ModelSerializer):
 
 class ListSerializer(serializers.ModelSerializer):
 
-    publication = serializers.CharField(source="publisher.name")
+    # Null for a list made in the admin with no publisher, which was a 500
+    publication = serializers.CharField(
+        source="publisher.name", allow_null=True, default=None
+    )
 
     class Meta:
         model = models.List

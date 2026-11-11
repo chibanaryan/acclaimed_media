@@ -942,3 +942,22 @@ class ImportGamesDataCommandTests(TestCase):
         defaults = vars(parser.parse_args([]))
         for key in self.FILES:
             self.assertTrue(Path(defaults[key]).is_file(), defaults[key])
+
+
+class GetIgdbCheckpointTests(TestCase):
+    """`--batch-size` was printed and never read: the checkpoint was 50."""
+
+    def test_the_checkpoint_follows_batch_size(self):
+        import time
+        from io import StringIO
+
+        from games.management.commands.get_igdb import Command
+
+        out = StringIO()
+        command = Command(stdout=out)
+        command.checkpoint_size = 2
+        command.start_time = time.time()
+        command._handle_progress_event({"current": 1, "game_name": "A"}, 4)
+        self.assertNotIn("Checkpoint", out.getvalue())
+        command._handle_progress_event({"current": 2, "game_name": "B"}, 4)
+        self.assertIn("Checkpoint: 2/4", out.getvalue())

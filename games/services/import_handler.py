@@ -22,7 +22,7 @@ from django.db.models import Q
 from core.services.background import start_background_thread
 from core.services.post_import import BUSY, RUN_ON_A_THREAD, LogStream
 from games.platform_years import years_for
-from games import config, constants, models
+from games import cache as game_cache, config, constants, models
 from games.services import post_import
 from games.services.genre_normalizer import (
     canonicalize_genre_payload,
@@ -895,6 +895,9 @@ def _run_batch(
             # transaction, so a batch rolled back leaves it.
             if result.games_imported:
                 models.SiteMetadata.stamp_update()
+            # Dropped at the commit, and only if there is one
+            if result.messages:
+                game_cache.invalidate_release_caches()
     except _BatchFailed as failed:
         result.failed_file = failed.file
         result.error = failed.message

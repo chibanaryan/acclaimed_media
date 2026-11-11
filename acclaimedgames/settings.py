@@ -491,6 +491,15 @@ LOGGING = {
             }
             for app in ("games", "music", "core", "books")
         },
+        # A request's unhandled exception, with its traceback, in `heroku
+        # logs`: Django prints it only under DEBUG, and there are no ADMINS
+        # to mail, so a 500 was in Sentry alone - lost if it was down or
+        # over quota
+        "django.request": {
+            "handlers": ["console"],
+            "level": "CRITICAL" if TEST_MODE else "ERROR",
+            "propagate": False,
+        },
         "games.igdb": {"level": "ERROR" if TEST_MODE else "WARNING"},
         "games.management.commands.get_igdb": {
             "level": "CRITICAL" if TEST_MODE else "INFO"

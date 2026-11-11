@@ -21,7 +21,6 @@ python3 manage.py get_igdb
 |--------|-------------|
 | `--concurrency N` | Number of concurrent requests (1-8, default: 8) |
 | `--batch-games N` | Games per API request (0-500; default: 50 on the free tier, 500 on Pro; 0 turns batching off) |
-| `--delay SECONDS` | Additional delay between games (default: 0.0) |
 | `--batch-size N` | Progress checkpoint interval (default: 50) |
 | `--pro` | Use IGDB Pro tier (or set IGDB_USE_PRO_TIER=True in .env) |
 | `--force` | Force refresh even if game already has IGDB data |

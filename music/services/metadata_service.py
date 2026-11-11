@@ -121,6 +121,10 @@ class AlbumMetadataService:
         # Opened only if the cover pass needs the release-level fallback or
         # the Discogs pass needs a master Wikidata cannot give.
         self._musicbrainz_client = None
+        # Bytes `_cover_downloads` fetched to check a cover, by URL, for
+        # `_download_sizes` to store rather than fetch again. Cleared per
+        # album, so the candidates a release walk rejected do not pile up.
+        self._checked_covers: Dict[str, Any] = {}
 
     # ----------------------------------------------------------------- utils
 
@@ -138,6 +142,25 @@ class AlbumMetadataService:
             record.save(update_fields=["is_primary"])
         setattr(album, field_name, record)
         album.save(update_fields=[field_name])
+
+    def _for_one_album(self, pass_key, album, result, step, *args) -> None:
+        """Run ``step(album, *args)``, keeping its failure to the album.
+
+        In a savepoint, so a database error leaves the connection usable,
+        and logged and counted as that album's error: one bad row used to
+        end the cover, Discogs and MusicBrainz passes, and escape the
+        command before its genre rebuild, release dates, slugs and cache
+        drop. The Wikidata pass has always worked this way.
+        """
+        try:
+            with transaction.atomic():
+                step(album, *args)
+        except Exception as exc:  # one album must not stop the run
+            logger.exception("%s pass failed for %s", result.name, album.name)
+            result.errors.append(f"{album.name}: {exc}")
+            self._notify(
+                "error", {"pass": pass_key, "name": album.name, "message": str(exc)}
+            )
 
     # -------------------------------------------------------- wikidata pass
 
@@ -158,18 +181,15 @@ class AlbumMetadataService:
             for qid in album.wikidata_qids:
                 qid_to_albums.setdefault(qid, []).append(album)
 
-        if not qid_to_albums:
-            # Nothing to look up is not a failure, here as for one album in
-            # the loop below: reported as an error, it failed the weekly
-            # command's "the pass landed nothing" check for a selection
-            # that had nothing to land
-            result.skipped = len(albums)
-            return result
-
         self._notify("start", {"pass": "wikidata", "total": len(albums)})
 
         with WikidataClient() as client:
-            metadata = client.fetch_album_metadata(qid_to_albums)
+            # No album to look up still leaves the artists, whose ids come
+            # off their own entities: `--slug` on a QID-less album returned
+            # before them
+            metadata = (
+                client.fetch_album_metadata(qid_to_albums) if qid_to_albums else {}
+            )
 
             # Resolve every entity the albums pointed at, in batched requests
             # rather than one per album. The artists are ours, from
@@ -305,11 +325,11 @@ class AlbumMetadataService:
         for artist in models.Artist.objects.filter(wikidata_id__in=list(artists)):
             fetched = artists[artist.wikidata_id]
             changed = []
-            if (
-                fetched.musicbrainz_id
-                and artist.musicbrainz_id != fetched.musicbrainz_id
-            ):
-                artist.musicbrainz_id = fetched.musicbrainz_id
+            # Fitted, as the title is: an overlong value was a DataError on
+            # Postgres, outside any album's guard, which ended the pass
+            mbid = fit(models.Artist, "musicbrainz_id", fetched.musicbrainz_id)
+            if mbid and artist.musicbrainz_id != mbid:
+                artist.musicbrainz_id = mbid
                 changed.append("musicbrainz_id")
             title = fit(models.Artist, "wikipedia_title", fetched.wikipedia_title)
             if artist.wikipedia_title != title:
@@ -338,67 +358,82 @@ class AlbumMetadataService:
 
         self._notify("start", {"pass": "covers", "total": len(albums)})
 
+        total = len(albums)
         with CoverArtArchiveClient() as client:
             for index, album in enumerate(albums, start=1):
-                record, adopted = self._musicbrainz_record(album)
-
-                if not self.force and record.cover_art_image_id:
-                    if record.cover_art_stored:
-                        if adopted:
-                            result.adopted += 1
-                        else:
-                            result.skipped += 1
-                        continue
-                    # The image is identified but its bytes are not stored
-                    # yet, which is all a re-run after an upgrade needs. No
-                    # listing request: the ids are already known.
-                    if self._store_known_cover(album, record, client):
-                        if adopted:
-                            result.adopted += 1
-                        else:
-                            result.processed += 1
-                        continue
-
-                adopted = self._adopt_cover_orphan(album, record)
-                if adopted:
-                    result.adopted += 1
-                    continue
-
-                art = self._find_downloadable_cover(album, client)
-                if art is None:
-                    result.errors.append(f"{album.name}: no front cover")
-                    self._notify(
-                        "error",
-                        {
-                            "pass": "covers",
-                            "name": album.name,
-                            "message": "no front cover",
-                        },
-                    )
-                    continue
-
-                record.cover_art_release_mbid = art.release_mbid
-                record.cover_art_image_id = art.image_id
-                record.cover_art_stored = self._store_cover_bytes(album, art, client)
-                record.save()
-                if not record.cover_art_stored:
-                    result.errors.append(f"{album.name}: cover art would not download")
-                self._apply_cover(album, record)
-                result.processed += 1
-                self._notify(
-                    "progress",
-                    {
-                        "pass": "covers",
-                        "current": index,
-                        "total": len(albums),
-                        "name": album.name,
-                    },
+                self._for_one_album(
+                    "covers",
+                    album,
+                    result,
+                    self._cover_one,
+                    client,
+                    result,
+                    index,
+                    total,
                 )
 
         self._close_musicbrainz()
 
         self._notify("complete", {"pass": "covers", "processed": result.processed})
         return result
+
+    def _cover_one(self, album, client, result, index, total) -> None:
+        """The cover pass for one album."""
+        self._checked_covers.clear()
+        record, adopted = self._musicbrainz_record(album)
+
+        if not self.force and record.cover_art_image_id:
+            if record.cover_art_stored:
+                if adopted:
+                    result.adopted += 1
+                else:
+                    result.skipped += 1
+                return
+            # The image is identified but its bytes are not stored
+            # yet, which is all a re-run after an upgrade needs. No
+            # listing request: the ids are already known.
+            if self._store_known_cover(album, record, client):
+                if adopted:
+                    result.adopted += 1
+                else:
+                    result.processed += 1
+                return
+
+        adopted = self._adopt_cover_orphan(album, record)
+        if adopted:
+            result.adopted += 1
+            return
+
+        art = self._find_downloadable_cover(album, client)
+        if art is None:
+            result.errors.append(f"{album.name}: no front cover")
+            self._notify(
+                "error",
+                {
+                    "pass": "covers",
+                    "name": album.name,
+                    "message": "no front cover",
+                },
+            )
+            return
+
+        record.cover_art_release_mbid = art.release_mbid
+        record.cover_art_image_id = art.image_id
+        record.cover_art_stored = self._store_cover_bytes(album, art, client)
+        record.save()
+        if not record.cover_art_stored:
+            result.errors.append(f"{album.name}: cover art would not download")
+        self._apply_cover(album, record)
+        result.processed += 1
+        self._notify(
+            "progress",
+            {
+                "pass": "covers",
+                "current": index,
+                "total": total,
+                "name": album.name,
+            },
+        )
 
     def _resolve_missing_mbid(self, album, result) -> None:
         """Search MusicBrainz for a release group this album has no ID for."""
@@ -412,7 +447,13 @@ class AlbumMetadataService:
             album.name, credit, album.year_released
         )
         if not mbid:
-            result.errors.append(f"{album.name}: no MusicBrainz release group")
+            # 'Old Nobody' has no QID, so nothing knows its group: the search
+            # is its only chance, and its failing every week is not news, as
+            # the Discogs pass already treats it
+            if album.wikidata_qids:
+                result.errors.append(f"{album.name}: no MusicBrainz release group")
+            else:
+                result.skipped += 1
             return
         album.musicbrainz_release_group_id = mbid
         album.save(update_fields=["musicbrainz_release_group_id"])
@@ -450,11 +491,12 @@ class AlbumMetadataService:
             size=models.AlbumCover.ROW_SIZE,
         ).exists():
             return True
-        url = (
-            f"{config.COVER_ART_ARCHIVE_URL}/release/"
-            f"{art.release_mbid}/{art.image_id}-{models.AlbumCover.ROW_SIZE}.jpg"
-        )
-        return client.get_bytes(url) is not None
+        url = self._cover_url(art, models.AlbumCover.ROW_SIZE)
+        downloaded = client.get_bytes(url)
+        if downloaded is None:
+            return False
+        self._checked_covers[url] = downloaded
+        return True
 
     def _front_cover_via_releases(self, album, cover_client, best=None):
         """Look for a clean cover on the group's individual releases.
@@ -589,16 +631,25 @@ class AlbumMetadataService:
         Pure network, no database: the rows are written by the caller on the
         calling thread, so no Django connection is ever touched from a worker.
         """
+        downloads = {}
+        for size in sizes:
+            checked = self._checked_covers.pop(self._cover_url(art, size), None)
+            if checked is not None:
+                downloads[size] = checked
+        sizes = [size for size in sizes if size not in downloads]
         if len(sizes) == 1:
             size = sizes[0]
-            return {size: client.get_bytes(self._cover_url(art, size))}
-
-        with ThreadPoolExecutor(max_workers=len(sizes)) as pool:
-            futures = {
-                pool.submit(client.get_bytes, self._cover_url(art, size)): size
-                for size in sizes
-            }
-            return {futures[future]: future.result() for future in futures}
+            downloads[size] = client.get_bytes(self._cover_url(art, size))
+        elif sizes:
+            with ThreadPoolExecutor(max_workers=len(sizes)) as pool:
+                futures = {
+                    pool.submit(client.get_bytes, self._cover_url(art, size)): size
+                    for size in sizes
+                }
+                downloads.update(
+                    {futures[future]: future.result() for future in futures}
+                )
+        return downloads
 
     def _adopt_cover_orphan(self, album, record) -> bool:
         """Copy cover ids off an orphaned row for the same release group."""
@@ -713,66 +764,72 @@ class AlbumMetadataService:
 
         self._notify("start", {"pass": "discogs", "total": len(albums)})
 
+        total = len(albums)
         try:
             with DiscogsClient() as client:
                 for index, album in enumerate(albums, start=1):
-                    had_stored_master = bool(album.discogs_master_id)
-                    master_id = album.discogs_master_id or self._musicbrainz_master(
-                        album
+                    self._for_one_album(
+                        "discogs",
+                        album,
+                        result,
+                        self._discogs_one,
+                        client,
+                        result,
+                        index,
+                        total,
                     )
-                    if not master_id:
-                        # The release gives 'Old Nobody' no QID, so no source
-                        # knows it; reporting it would fail every run.
-                        if album.wikidata_qids:
-                            result.errors.append(f"{album.name}: no Discogs master ID")
-                        else:
-                            result.skipped += 1
-                        continue
-
-                    outcome = self._store_discogs(album, master_id, client)
-                    # Only a 404 means the master is gone: a throttle or a 5xx
-                    # keeps it, to be tried again next run. Wikidata puts a
-                    # dead id back every week, so one costs a 404 and a
-                    # MusicBrainz request per run until Wikidata is corrected,
-                    # and then it mends itself.
-                    if (
-                        outcome is None
-                        and had_stored_master
-                        and client.last_status == 404
-                    ):
-                        replacement = self._musicbrainz_master(album)
-                        if replacement and replacement != master_id:
-                            outcome = self._store_discogs(album, replacement, client)
-                    if outcome is None:
-                        result.errors.append(
-                            f"{album.name}: Discogs master {master_id} not found"
-                        )
-                        self._notify(
-                            "error",
-                            {
-                                "pass": "discogs",
-                                "name": album.name,
-                                "message": "master not found",
-                            },
-                        )
-                        continue
-
-                    setattr(result, outcome, getattr(result, outcome) + 1)
-                    if outcome == "processed":
-                        self._notify(
-                            "progress",
-                            {
-                                "pass": "discogs",
-                                "current": index,
-                                "total": len(albums),
-                                "name": album.name,
-                            },
-                        )
         finally:
             self._close_musicbrainz()
 
         self._notify("complete", {"pass": "discogs", "processed": result.processed})
         return result
+
+    def _discogs_one(self, album, client, result, index, total) -> None:
+        """The Discogs pass for one album."""
+        had_stored_master = bool(album.discogs_master_id)
+        master_id = album.discogs_master_id or self._musicbrainz_master(album)
+        if not master_id:
+            # The release gives 'Old Nobody' no QID, so no source
+            # knows it; reporting it would fail every run.
+            if album.wikidata_qids:
+                result.errors.append(f"{album.name}: no Discogs master ID")
+            else:
+                result.skipped += 1
+            return
+
+        outcome = self._store_discogs(album, master_id, client)
+        # Only a 404 means the master is gone: a throttle or a 5xx
+        # keeps it, to be tried again next run. Wikidata puts a
+        # dead id back every week, so one costs a 404 and a
+        # MusicBrainz request per run until Wikidata is corrected,
+        # and then it mends itself.
+        if outcome is None and had_stored_master and client.last_status == 404:
+            replacement = self._musicbrainz_master(album)
+            if replacement and replacement != master_id:
+                outcome = self._store_discogs(album, replacement, client)
+        if outcome is None:
+            result.errors.append(f"{album.name}: Discogs master {master_id} not found")
+            self._notify(
+                "error",
+                {
+                    "pass": "discogs",
+                    "name": album.name,
+                    "message": "master not found",
+                },
+            )
+            return
+
+        setattr(result, outcome, getattr(result, outcome) + 1)
+        if outcome == "processed":
+            self._notify(
+                "progress",
+                {
+                    "pass": "discogs",
+                    "current": index,
+                    "total": total,
+                    "name": album.name,
+                },
+            )
 
     def _store_discogs(self, album, master_id, client) -> Optional[str]:
         """Link, adopt or fetch master ``master_id`` for this album.
@@ -846,53 +903,67 @@ class AlbumMetadataService:
 
         self._notify("start", {"pass": "musicbrainz", "total": len(albums)})
         stale = self._stalest_musicbrainz(albums)
+        total = len(albums)
 
         with MusicBrainzClient() as client:
             for index, album in enumerate(albums, start=1):
-                record, adopted = self._musicbrainz_record(album)
-                refreshing = album.pk in stale
-
-                if not self.force and record.title and not refreshing:
-                    if adopted:
-                        result.adopted += 1
-                    else:
-                        result.skipped += 1
-                    continue
-
-                group = client.fetch_release_group(album.musicbrainz_release_group_id)
-                if group is None:
-                    result.errors.append(f"{album.name}: release group not found")
-                    continue
-
-                model = models.MusicBrainzAlbumData
-                record.title = fit(model, "title", group.title)
-                record.primary_type = fit(model, "primary_type", group.primary_type)
-                record.secondary_types = group.secondary_types
-                record.first_release_date = fit(
-                    model, "first_release_date", group.first_release_date
+                self._for_one_album(
+                    "musicbrainz",
+                    album,
+                    result,
+                    self._musicbrainz_one,
+                    client,
+                    result,
+                    stale,
+                    index,
+                    total,
                 )
-                record.rating = group.rating
-                record.rating_votes = group.rating_votes
-                record.all_genres = ", ".join(group.genres) or None
-                record.save()
-
-                self._set_primary(album, record, "primary_musicbrainz_album_data")
-                if refreshing:
-                    result.refreshed += 1
-                else:
-                    result.processed += 1
-                self._notify(
-                    "progress",
-                    {
-                        "pass": "musicbrainz",
-                        "current": index,
-                        "total": len(albums),
-                        "name": album.name,
-                    },
-                )
-
         self._notify("complete", {"pass": "musicbrainz", "processed": result.processed})
         return result
+
+    def _musicbrainz_one(self, album, client, result, stale, index, total) -> None:
+        """The MusicBrainz pass for one album."""
+        record, adopted = self._musicbrainz_record(album)
+        refreshing = album.pk in stale
+
+        if not self.force and record.title and not refreshing:
+            if adopted:
+                result.adopted += 1
+            else:
+                result.skipped += 1
+            return
+
+        group = client.fetch_release_group(album.musicbrainz_release_group_id)
+        if group is None:
+            result.errors.append(f"{album.name}: release group not found")
+            return
+
+        model = models.MusicBrainzAlbumData
+        record.title = fit(model, "title", group.title)
+        record.primary_type = fit(model, "primary_type", group.primary_type)
+        record.secondary_types = group.secondary_types
+        record.first_release_date = fit(
+            model, "first_release_date", group.first_release_date
+        )
+        record.rating = group.rating
+        record.rating_votes = group.rating_votes
+        record.all_genres = ", ".join(group.genres) or None
+        record.save()
+
+        self._set_primary(album, record, "primary_musicbrainz_album_data")
+        if refreshing:
+            result.refreshed += 1
+        else:
+            result.processed += 1
+        self._notify(
+            "progress",
+            {
+                "pass": "musicbrainz",
+                "current": index,
+                "total": total,
+                "name": album.name,
+            },
+        )
 
     def _stalest_musicbrainz(self, albums) -> set:
         """The ``refresh_stale`` albums whose MusicBrainz data is oldest.

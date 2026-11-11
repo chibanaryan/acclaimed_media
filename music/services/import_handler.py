@@ -214,9 +214,12 @@ class ArtistRow(NamedTuple):
     wikidata_ids: List[str]
 
 
-def _parse_qids(cell: str, row_number: int) -> List[str]:
-    """Column 2 of the artists file as ``Q``-prefixed ids, first primary."""
+def _parse_qids(cell: str, row_number: int, *, where: str = "") -> List[str]:
+    """A cell of comma-separated Wikidata ids as ``Q``-prefixed ids, first
+    primary: column 2 of the artists file, or ``where`` names the place."""
     if not _ARTIST_QIDS.match(cell):
+        if where:
+            raise ValueError(f"{where} should be Wikidata ids, not {cell!r}")
         raise ValueError(
             f"Artists row {row_number}: column 2 should be Wikidata ids, not "
             f"{cell!r} (is this a pre-2026-10-28 release file, with the name "
@@ -502,6 +505,7 @@ def parse_albums_file(file_obj) -> List[AlbumRow]:
     checked by :func:`import_albums`, since that needs the database.
     """
     parsed = []
+    row_by_rank: Dict[int, int] = {}
     for index, row in enumerate(_rows(file_obj), start=1):
         if len(row) < 4:
             raise ValueError(
@@ -511,17 +515,41 @@ def parse_albums_file(file_obj) -> List[AlbumRow]:
         rank, name, credits_raw, year = (cell.strip() for cell in row[:4])
         wikidata_raw = row[4].strip() if len(row) > 4 else ""
         credits, various_artists = _parse_credits(credits_raw, index)
+        rank_number = _parse_int(rank, f"Albums row {index}: the rank")
+        if rank_number in row_by_rank:
+            # Positions are attached by rank, so the later row's album lost
+            # its list appearances
+            raise ValueError(
+                f"Albums rows {row_by_rank[rank_number]} and {index} both "
+                f"have rank {rank_number}"
+            )
+        row_by_rank[rank_number] = index
         parsed.append(
             AlbumRow(
-                rank=int(rank),
+                rank=rank_number,
                 name=name,
                 credits=credits,
                 various_artists=various_artists,
-                year=int(year) if year else None,
-                wikidata_ids=[x.strip() for x in wikidata_raw.split(",") if x.strip()],
+                year=(
+                    _parse_int(year, f"Albums row {index}: the year") if year else None
+                ),
+                # Read as the artists file's are: an id Wikidata cannot
+                # parse made it refuse the whole batch of fifty it was in
+                wikidata_ids=_parse_qids(
+                    wikidata_raw,
+                    index,
+                    where=f"Albums row {index}: column 5",
+                ),
             )
         )
     return parsed
+
+
+def _parse_int(cell: str, what: str) -> int:
+    try:
+        return int(cell)
+    except ValueError:
+        raise ValueError(f"{what} is not a number: {cell!r}") from None
 
 
 def match_albums(rows: List[AlbumRow], existing) -> AlbumMatch:

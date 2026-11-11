@@ -89,6 +89,25 @@ class ReconnectTrackingRecordsTests(TestCase):
         self.assertEqual(played.igdb_id, 12345)
         self.assertEqual(stats["played_reconnected"], 1)
 
+    def test_merge_when_the_earliest_holds_a_secondary_id(self):
+        """The keeper was saved onto the primary id before the newer row
+        holding that id was deleted: (user, igdb_id) is unique, so the save
+        raised and took the whole import's transaction with it."""
+        game = Game.objects.create(
+            name="Test Game", rank=1, igdb_id=12345, all_igdb_ids=[12345, 67890]
+        )
+        earliest = PlayedGame.objects.create(user=self.user, game=None, igdb_id=67890)
+        time.sleep(0.01)
+        PlayedGame.objects.create(user=self.user, game=None, igdb_id=12345)
+
+        stats = reconnect_tracking_records(
+            game=game, igdb_ids=[12345, 67890], primary_igdb_id=12345
+        )
+
+        surviving = PlayedGame.objects.get(user=self.user, game=game)
+        self.assertEqual((surviving.id, surviving.igdb_id), (earliest.id, 12345))
+        self.assertEqual(stats["played_merged"], 1)
+
     def test_merge_duplicates_keeps_earliest(self):
         """Test that merging duplicates keeps the earliest record."""
         game = Game.objects.create(

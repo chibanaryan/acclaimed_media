@@ -273,10 +273,22 @@ class WikidataPassTests(ServiceTestCase):
     def test_an_album_with_no_wikidata_id_at_all_is_skipped(self):
         self.album.wikidata_id = None
         self.album.save()
-        result = self.service.run_wikidata([self.album])
+        result = self.run_pass(metadata={})
         # Skipped, not failed: there was nothing to look up
         self.assertEqual(result.errors, [])
         self.assertEqual(result.skipped, 1)
+
+    def test_the_artist_half_runs_when_no_album_has_a_qid(self):
+        """The artists' MusicBrainz ids come off their own entities, not the
+        albums selected: `--slug` on a QID-less album returned before them."""
+        self.album.wikidata_id = None
+        self.album.save()
+        artist = models.Artist.objects.create(
+            name="The Beatles", source_id=1, wikidata_id="Q1299"
+        )
+        self.run_pass(metadata={})
+        artist.refresh_from_db()
+        self.assertEqual(artist.musicbrainz_id, "b10bbbfc")
 
     def test_an_album_without_a_qid_is_skipped_beside_the_others(self):
         """The release gives 'Old Nobody' no QID, and the weekly run is not a
@@ -612,6 +624,25 @@ class CoverPassTests(ServiceTestCase):
         self.assertEqual(result.adopted, 0)
         self.assertEqual(result.processed, 1)
 
+    def test_a_new_cover_is_downloaded_once_per_size(self):
+        """The check that a cover downloads fetched its row size and threw
+        the bytes away, and storing it fetched them again."""
+        client = self.build_client(front=self.art)
+        self.run_pass(client)
+        self.assertEqual(client.get_bytes.call_count, len(models.AlbumCover.SIZES))
+
+    def test_a_failed_search_for_an_album_with_no_qid_is_not_an_error(self):
+        """'Old Nobody' has no QID, so nothing knows its release group; the
+        search runs, but its failing every week is not news."""
+        self.album.musicbrainz_release_group_id = None
+        self.album.wikidata_id = None
+        self.album.save()
+        with mock.patch.object(self.service, "_musicbrainz") as mb:
+            mb.return_value.search_release_group.return_value = None
+            result = self.run_pass(self.build_client())
+        self.assertEqual(result.errors, [])
+        self.assertEqual(result.skipped, 1)
+
     def test_a_single_size_download_takes_the_serial_path(self):
         models.AlbumCover.objects.create(
             release_mbid=RELEASE_MBID, image_id="123", size=250, data=b"x"
@@ -868,13 +899,14 @@ class DiscogsMusicBrainzFallbackTests(ServiceTestCase):
         self.mb_client.close.assert_called_once()
 
     def test_the_musicbrainz_client_is_closed_when_the_pass_fails(self):
+        """An album's own error is kept to it, so this is the pass itself
+        failing: the Discogs session breaking after MusicBrainz was opened."""
         self.album.discogs_master_id = None
         self.album.save()
-        with mock.patch.object(
-            self.service, "_store_discogs", side_effect=RuntimeError("db")
-        ):
-            with self.assertRaises(RuntimeError):
-                self.run_pass(self.build_client())
+        client = self.build_client(master=self.live_master())
+        client.__exit__.side_effect = RuntimeError("session")
+        with self.assertRaises(RuntimeError):
+            self.run_pass(client)
         self.mb_client.close.assert_called_once()
 
 
@@ -1216,12 +1248,9 @@ class PartialCoverDownloadTests(ServiceTestCase):
         client.__enter__.return_value = client
         client.__exit__.return_value = False
         client.fetch_front_cover.return_value = self.art
-        # Verification download succeeds, then one of the two sizes fails.
-        client.get_bytes.side_effect = [
-            (b"img", "image/jpeg"),
-            (b"img", "image/jpeg"),
-            None,
-        ]
+        # Verification download of the row size succeeds, and is kept; the
+        # other size then fails.
+        client.get_bytes.side_effect = [(b"img", "image/jpeg"), None]
         with mock.patch(
             "music.services.metadata_service.CoverArtArchiveClient",
             return_value=client,
@@ -1420,3 +1449,98 @@ class ExternalTextLengthTests(ServiceTestCase):
                     if isinstance(value, str):
                         with self.subTest(model=model.__name__, field=field.name):
                             self.assertLessEqual(len(value), max_length)
+
+
+class OneAlbumsErrorTests(ServiceTestCase):
+    """An error on one album is that album's: the pass goes on to the rest,
+    as the Wikidata pass always did. In the cover, Discogs and MusicBrainz
+    passes one database error ended the pass and escaped the command, so
+    the genre rebuild, release dates, slugs and cache drop were all skipped.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.album.musicbrainz_release_group_id = RG_MBID
+        self.album.discogs_master_id = 24047
+        self.album.save()
+        self.other = models.Album.objects.create(
+            name="Revolver",
+            rank=3,
+            year_released=1966,
+            wikidata_id="Q215359",
+            musicbrainz_release_group_id="22222222-2222-2222-2222-222222222222",
+            discogs_master_id=45284,
+        )
+
+    def _failing_first(self, real):
+        def step(album, *args, **kwargs):
+            if album.pk == self.album.pk:
+                raise RuntimeError("boom")
+            return real(album, *args, **kwargs)
+
+        return step
+
+    def test_the_cover_pass_goes_on(self):
+        client = mock.MagicMock()
+        client.__enter__.return_value = client
+        client.fetch_front_cover.return_value = CoverArt(
+            release_mbid=RELEASE_MBID, image_id="123"
+        )
+        client.get_bytes.return_value = (b"img", "image/jpeg")
+        real = self.service._musicbrainz_record
+        with mock.patch(
+            "music.services.metadata_service.CoverArtArchiveClient",
+            return_value=client,
+        ), mock.patch.object(
+            self.service, "_musicbrainz_record", side_effect=self._failing_first(real)
+        ):
+            result = self.service.run_covers([self.album, self.other])
+        self.assertEqual(result.processed, 1)
+        self.assertEqual(result.errors, ["Abbey Road: boom"])
+
+    def test_the_discogs_pass_goes_on(self):
+        client = mock.MagicMock()
+        client.__enter__.return_value = client
+        client.fetch_master.return_value = DiscogsMaster(
+            master_id=45284, title="Revolver", year=1966, genres=["Rock"], styles=[]
+        )
+        real = self.service._store_discogs
+        with mock.patch(
+            "music.services.metadata_service.DiscogsClient", return_value=client
+        ), mock.patch.object(
+            self.service, "_store_discogs", side_effect=self._failing_first(real)
+        ):
+            result = self.service.run_discogs([self.album, self.other])
+        self.assertEqual(result.processed, 1)
+        self.assertEqual(result.errors, ["Abbey Road: boom"])
+
+    def test_the_musicbrainz_pass_goes_on(self):
+        client = mock.MagicMock()
+        client.__enter__.return_value = client
+        client.fetch_release_group.return_value = ReleaseGroup(
+            mbid=RG_MBID, title="Revolver"
+        )
+        real = self.service._musicbrainz_record
+        with mock.patch(
+            "music.services.metadata_service.MusicBrainzClient", return_value=client
+        ), mock.patch.object(
+            self.service, "_musicbrainz_record", side_effect=self._failing_first(real)
+        ):
+            result = self.service.run_musicbrainz([self.album, self.other])
+        self.assertEqual(result.processed, 1)
+        self.assertEqual(result.errors, ["Abbey Road: boom"])
+
+    def test_an_overlong_artist_mbid_does_not_end_the_wikidata_pass(self):
+        """P434 was stored unfitted; on Postgres one malformed value was a
+        DataError outside the per-album guard, which ended the pass."""
+        from music.wikidata import ArtistMetadata
+
+        artist = models.Artist.objects.create(
+            name="The Beatles", source_id=1, wikidata_id="Q1299"
+        )
+        self.service._save_artist_ids(
+            {"Q1299": ArtistMetadata(wikidata_id="Q1299", musicbrainz_id="x" * 80)}
+        )
+        artist.refresh_from_db()
+        field = models.Artist._meta.get_field("musicbrainz_id")
+        self.assertLessEqual(len(artist.musicbrainz_id), field.max_length)

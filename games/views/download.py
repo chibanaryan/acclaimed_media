@@ -8,7 +8,8 @@ from django.utils.text import slugify
 
 from core.services import render_budget
 from core.services.query_params import parse_id_list
-from games import config, models, utils
+from games import models, utils
+from games.cache import CSV_GENRES_CACHE_KEY
 from games.services import playtime
 from games.services.query_filters import resolve_year_range
 from games.services.game_filters import (
@@ -73,7 +74,7 @@ def download_games_csv(request):
     # Build filename based on filters
     min_year, max_year = _get_year_bounds()
     genres_lookup = utils.get_or_set_cache(
-        f"search_genres_list_with_counts:{config.CACHE_VERSION}",
+        CSV_GENRES_CACHE_KEY,
         models.WikipediaGenre.objects.annotate(
             game_count=Count("games_with_wikipedia_genre")
         ),

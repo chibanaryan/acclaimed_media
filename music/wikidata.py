@@ -272,14 +272,22 @@ class WikidataClient(RateLimitedClient):
 
     @staticmethod
     def _coerce_master_id(value: Any) -> Optional[int]:
-        """Discogs master ids arrive as strings; keep only clean integers."""
+        """Discogs master ids arrive as strings; keep only positive integers.
+
+        Zero or a negative id (a bad edit) was an IntegrityError on the
+        PositiveIntegerField it is stored in.
+        """
         if value is None:
             return None
         try:
-            return int(str(value))
+            master_id = int(str(value))
         except ValueError:
             logger.warning("Discogs master id is not a number: %r", value)
             return None
+        if master_id <= 0:
+            logger.warning("Discogs master id is not positive: %r", value)
+            return None
+        return master_id
 
     def fetch_labels(self, qids: Iterable[str]) -> Dict[str, str]:
         """Map QIDs to their labels (see ``_label``), skipping any that have none.

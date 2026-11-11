@@ -1113,6 +1113,31 @@ class SeriesModelTests(TestCase):
         self.assertEqual(mario_kart.igdb_id, 101)
         self.assertEqual(mario_kart.slug, "mario-kart")
 
+    def test_two_igdb_collections_with_one_name_both_land(self):
+        """Name and slug are unique: the second "Mario" was an
+        IntegrityError, and its game failed on every refresh."""
+        from games.models import Series
+
+        first = Series.from_igdb({"id": 1, "name": "Mario", "slug": "mario"})
+        second = Series.from_igdb({"id": 2, "name": "Mario", "slug": "mario"})
+        self.assertNotEqual(first.pk, second.pk)
+        self.assertEqual((first.name, first.slug), ("Mario", "mario"))
+        self.assertEqual((second.name, second.slug), ("Mario (2)", "mario-2"))
+
+    def test_a_renamed_collection_is_renamed(self):
+        from games.models import Series
+
+        Series.from_igdb({"id": 7, "name": "Old Name", "slug": "old-name"})
+        renamed = Series.from_igdb({"id": 7, "name": "New Name", "slug": "new-name"})
+        self.assertEqual((renamed.name, renamed.slug), ("New Name", "new-name"))
+        self.assertEqual(Series.objects.count(), 1)
+
+    def test_a_collection_without_a_slug_takes_one_from_its_name(self):
+        from games.models import Series
+
+        made = Series.from_igdb({"id": 9, "name": "Kirby's Dream"})
+        self.assertEqual(made.slug, "kirbys-dream")
+
 
 class DeveloperModelTests(TestCase):
     """Tests for Developer model methods."""

@@ -68,22 +68,12 @@ class Command(BaseCommand):
         parser.add_argument(
             "--output",
             type=str,
-            help="Output CSV file path (default: hltb_data_TIMESTAMP.csv)",
-        )
-        parser.add_argument(
-            "--no-output",
-            action="store_true",
-            help="Skip CSV output (console only)",
+            help="Also write a CSV, to this path (none is written without it)",
         )
         parser.add_argument(
             "--save",
             action="store_true",
             help="Save results to database (default: CSV only)",
-        )
-        parser.add_argument(
-            "--skip-existing",
-            action="store_true",
-            help="Skip games that already have HLTB data",
         )
         parser.add_argument(
             "--force",
@@ -483,11 +473,8 @@ class Command(BaseCommand):
         # All games with filtering
         games = Game.objects.all().order_by("rank")
 
-        # Skip existing (unless force)
-        if options.get("skip_existing") and not options.get("force"):
-            games = games.filter(primary_hltb_game_data__isnull=True)
-        elif not options.get("force"):
-            # Default: only process games without HLTB data
+        # Only games without HLTB data, unless forced
+        if not options.get("force"):
             games = games.filter(primary_hltb_game_data__isnull=True)
 
         # Apply offset

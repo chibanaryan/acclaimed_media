@@ -23,6 +23,10 @@ YEAR_COUNTS_CACHE_KEY = f"{config.CACHE_VERSION}:game_year_counts"
 GENERATION_HERO = "games_generation:hero"
 GENERATION_TRACKING = "games_generation:tracking"
 GENERATION_DEVELOPERS = "games_generation:developers"
+GENERATION_RELEASE = "games_generation:release"
+
+# The genre list, with counts, that the CSV download names its file by
+CSV_GENRES_CACHE_KEY = f"search_genres_list_with_counts:{config.CACHE_VERSION}"
 
 
 def played_ids_cache_key(user_id):
@@ -74,4 +78,30 @@ def invalidate_developer_detail(developer_id):
     cache_helpers.drop_on_commit(
         developer_detail_cache_key(developer_id),
         generation_key=GENERATION_DEVELOPERS,
+    )
+
+
+def release_cache_keys():
+    """The day-long caches a games release changes and nothing else drops.
+
+    Not keyed on the data version, as the sidebar's genre and series lists
+    are: the year bounds, the platform list, the landing pages' lists and
+    the CSV's genre list. A release adding a year left the year grid ending
+    a year early, and that year's landing page a 404, for a day.
+    """
+    from games.services import landing_pages
+    from games.services.game_filters import PLATFORMS_CACHE_KEY
+
+    return [
+        config.CACHE_KEY_YEAR_STATS,
+        PLATFORMS_CACHE_KEY,
+        CSV_GENRES_CACHE_KEY,
+        *landing_pages.cache_keys(),
+    ]
+
+
+def invalidate_release_caches():
+    """Drop `release_cache_keys` once the import's transaction commits."""
+    cache_helpers.drop_on_commit(
+        *release_cache_keys(), generation_key=GENERATION_RELEASE
     )

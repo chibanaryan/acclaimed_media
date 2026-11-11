@@ -744,6 +744,57 @@ class IgbdApiTests(SimpleTestCase):
             self.api._get_release_statuses()
         self.assertEqual(self.api.release_date_statuses, {})
 
+    def test_an_involved_company_without_every_flag_is_read(self):
+        """The single-game lookup read the flags by key, and raised on a
+        company IGDB sent without one; the batch lookup used `.get`."""
+        game = {
+            "id": 7,
+            "slug": "seven",
+            "involved_companies": [{"company": 11, "developer": True}],
+        }
+        responses = [
+            DummyResponse(200, [game]),
+            DummyResponse(200, [{"id": 11, "name": "Studio", "slug": "studio"}]),
+        ]
+        with mock.patch.object(
+            self.api, "_make_request_with_retry", side_effect=responses
+        ):
+            data = self.api.get_game_info_by_id(7, cache_results=False)
+        self.assertEqual([d["name"] for d in data["developers"]], ["Studio"])
+
+    def test_companies_are_asked_for_a_page_at_a_time(self):
+        """One request capped at `limit 500` dropped the rest."""
+        ids = list(range(1, 1202))
+        answered = []
+
+        def respond(url, data):
+            chunk = data.split("(")[1].split(")")[0].split(",")
+            answered.append(len(chunk))
+            return DummyResponse(200, [{"id": int(i), "name": i} for i in chunk])
+
+        with mock.patch.object(
+            self.api, "_make_request_with_retry", side_effect=respond
+        ):
+            result = self.api.get_companies_by_ids(ids, cache_results=False)
+        self.assertEqual(answered, [500, 500, 201])
+        self.assertEqual(len(result), 1201)
+
+    def test_a_parent_igdb_does_not_return_is_asked_for_once(self):
+        calls = []
+
+        def respond(url, data):
+            calls.append(data)
+            if "(1)" in data:
+                return DummyResponse(200, [{"id": 1, "name": "Child", "parent": 2}])
+            return DummyResponse(200, [])
+
+        with mock.patch.object(
+            self.api, "_make_request_with_retry", side_effect=respond
+        ):
+            companies = self.api._company_tree([1], cache_results=False)
+        self.assertEqual(list(companies), [1])
+        self.assertEqual(len(calls), 2)
+
     def test_get_companies_by_ids_returns_when_request_returns_none(self):
         """Test get_companies_by_ids when request returns None."""
         # Pre-cache one company
