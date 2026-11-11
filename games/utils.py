@@ -147,6 +147,7 @@ def _post_notification_email(post, user):
     from django.conf import settings
     from django.core.mail import EmailMultiAlternatives
     from django.utils.dateformat import format as format_date
+    from django.utils.html import escape
 
     site_url = settings.SITE_URL
     unsubscribe_url = f"{site_url}/unsubscribe/{user.unsubscribe_token}/"
@@ -202,7 +203,7 @@ Acclaimed Media
     <p style="{header_style}">
         <a href="{site_url}" style="{header_link_style}">Acclaimed Media</a>
     </p>
-    <h2 style="margin-top: 0; margin-bottom: 4px;">{title}</h2>
+    <h2 style="margin-top: 0; margin-bottom: 4px;">{escape(title)}</h2>
     <p style="font-size: 14px; color: #666; margin-top: 0; margin-bottom: 20px;">
         {date_text}
     </p>

@@ -1,5 +1,6 @@
 from allauth.account.adapter import DefaultAccountAdapter
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
+from django.contrib.auth import get_user_model
 
 from core.services.client_ip import get_client_ip
 
@@ -20,9 +21,39 @@ class ModalAccountAdapter(DefaultAccountAdapter):
         return get_client_ip(request)
 
     def populate_username(self, request, user):
-        """Set username from form input, or default to email if not provided."""
-        custom_username = request.POST.get("username", "").strip() if request else ""
-        user.username = custom_username if custom_username else user.email
+        """The posted username if it is one, else the email.
+
+        The modal checks a username before it saves, but allauth's own
+        forms reach this without it (the social signup page, and its signup
+        page until that was closed), so the rules are applied again here:
+        a name that breaks them gives way to the email. Until 2026-11-10
+        any posted text was taken, another person's email included, which
+        then held the name that person's signup defaults to.
+
+        A name some row already holds, verified or not, cannot be taken:
+        the column is unique. The modal has freed an abandoned one by now,
+        so what is left is a real collision, and allauth generates a name
+        from the email, as it would with no adapter.
+        """
+        User = get_user_model()
+
+        def held(name):
+            return User.objects.filter(username__iexact=name).exists()
+
+        posted = request.POST.get("username", "").strip() if request else ""
+        email = user.email or ""
+        username = email
+        if (
+            posted
+            and posted.lower() != email.lower()
+            and User.username_error(posted) is None
+            and not held(posted)
+        ):
+            username = posted
+        if held(username):
+            user.username = ""
+            return super().populate_username(request, user)
+        user.username = username
 
     def get_login_redirect_url(self, request):
         """Return modal-friendly redirect for HTMX requests."""

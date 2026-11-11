@@ -153,14 +153,6 @@ class TogglePlayedGameView(LoginRequiredMixin, View):
         key = {"user": request.user, "igdb_id": igdb_id}
 
         target = request.GET.get("status")
-        if target not in ("none", "want", "played"):
-            # Legacy cycle behavior: none → want → played → none
-            if models.PlayedGame.objects.filter(**key).exists():
-                target = "none"
-            elif models.WantToPlayGame.objects.filter(**key).exists():
-                target = "played"
-            else:
-                target = "want"
 
         # One transaction, and update_or_create on the unique_together, as
         # music's toggle does: the delete-then-create this replaced let a
@@ -172,6 +164,17 @@ class TogglePlayedGameView(LoginRequiredMixin, View):
             # the other table before the other's insert is visible, and both
             # rows survive.
             User.objects.select_for_update().filter(pk=request.user.pk).first()
+            if target not in ("none", "want", "played"):
+                # No status named: cycle none → want → played → none. Read
+                # under the lock; read before it, two requests could both
+                # act on the state neither had changed yet. Every script
+                # of ours names a status.
+                if models.PlayedGame.objects.filter(**key).exists():
+                    target = "none"
+                elif models.WantToPlayGame.objects.filter(**key).exists():
+                    target = "played"
+                else:
+                    target = "want"
             if target == "played":
                 models.WantToPlayGame.objects.filter(**key).delete()
                 models.PlayedGame.objects.update_or_create(

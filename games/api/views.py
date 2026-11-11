@@ -1,4 +1,5 @@
 import functools
+import hashlib
 from collections import defaultdict
 from datetime import datetime
 
@@ -8,11 +9,10 @@ from django.db import connection
 from django.db.models import Count, Q
 from django.db.models.functions import Lower
 from django.shortcuts import get_object_or_404
-from django.http import HttpResponse
-from django.utils.cache import patch_response_headers
+from django.http import Http404, HttpResponse
+from django.utils.cache import patch_response_headers, patch_vary_headers
 from django.utils.decorators import method_decorator
 from django.conf import settings
-from django.views.decorators.cache import cache_page as django_cache_page
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.generics import ListAPIView, RetrieveAPIView
@@ -21,6 +21,7 @@ from rest_framework.renderers import JSONRenderer
 from rest_framework.views import APIView, Response
 
 
+from core import sites
 from core.services import search_ranking
 from core.services.genre_tree import descendants_by_id
 from core.services.query_params import parse_id_list, parse_limit
@@ -31,11 +32,35 @@ from .. import config, models, utils
 from . import serializers
 
 
-def cache_page(timeout):
-    """Django's ``cache_page``, keyed on the Heroku release and the data.
+def _json_response(body, max_age):
+    """Stored JSON, as a response a browser may keep for ``max_age``."""
+    response = HttpResponse(body, content_type="application/json")
+    patch_response_headers(response, max_age)
+    return response
 
-    These responses sit in the shared cache, which outlives a deploy, so a
-    new release must not be served the old code's output; see
+
+def _asks_for_plain_json(request):
+    """Whether DRF would answer ``request`` with JSON, whatever is asked.
+
+    No `Accept`, or only `application/json` and `*/*` with no parameters.
+    It need only be sufficient: anything else is left to DRF's own content
+    negotiation and is not kept, the browsable API (`text/html`) and
+    `application/json; indent=4` among them.
+    """
+    accept = request.META.get("HTTP_ACCEPT")
+    if not accept:
+        return True
+    return all(
+        item.strip() in ("application/json", "*/*") for item in accept.split(",")
+    )
+
+
+def cache_page(timeout):
+    """Keep a view's JSON in the shared cache, under nothing a caller writes.
+
+    The key is the Heroku release, the game data version, the host and the
+    path. These responses sit in the shared cache, which outlives a deploy,
+    so a new release must not be served the old code's output; see
     ``core.cache_config.release_cache_prefix``. And an import must not be
     served the rows from before it, ``/games/None/`` slugs and all, until
     the timeout lapses, so the game data version is read on every request:
@@ -43,23 +68,57 @@ def cache_page(timeout):
     across an import's commit is stored under the version before it, which
     no request asks for again.
 
-    Only a bare path is kept. The keys are then as many as the paths, which
-    the data bounds; `Accept` still varies a key, which nothing bounds.
+    This was Django's ``cache_page`` until 2026-11-10, whose key also
+    hashes the `Vary` headers (`Accept`, here) and the whole address, port
+    included: each is the caller's to write, and each distinct value was
+    two more rows in a table of 5,000 that culls a quarter when full. So
+    the keys are now as many as the paths, which the data bounds:
+
+    - A query string is rendered, and throttled as any uncached API
+      request is. A few thousand `?q=` values once culled the generation
+      keys and the metadata fetch's lock.
+    - An `Accept` that is not plainly JSON is rendered too, by DRF.
+    - The host is spelt one way (``sites.host_key``), and only an answer
+      rendered for that spelling is kept: a list's `next` link is
+      absolute, so a kept answer for `Host: ...:8443` would hand every
+      caller that port.
+    - Only a 200 is kept, and only from a GET; HEAD reads the GET's entry.
     """
 
     def decorator(view):
         @functools.wraps(view)
         def cached_view(request, *args, **kwargs):
-            if request.META.get("QUERY_STRING"):
-                # A query string is the caller's to write, and each one
-                # was two more rows in the shared cache: a few thousand
-                # `?q=` values culled the generation keys and the
-                # metadata fetch's lock. Rendered, and throttled as any
-                # uncached API request is.
+            if (
+                request.method not in ("GET", "HEAD")
+                or request.META.get("QUERY_STRING")
+                or not _asks_for_plain_json(request)
+            ):
                 return view(request, *args, **kwargs)
-            prefix = f"{settings.RELEASE_CACHE_PREFIX}:{compute_game_data_version()}"
-            cached = django_cache_page(timeout, key_prefix=prefix)(view)
-            return cached(request, *args, **kwargs)
+            host = sites.host_key(request)
+            # Hashed: a path is as long as its slug, and a key has 250
+            # characters
+            address = hashlib.md5(
+                f"{host}{request.path}".encode(), usedforsecurity=False
+            ).hexdigest()
+            version = compute_game_data_version()
+            key = f"games_api:{settings.RELEASE_CACHE_PREFIX}:{version}:{address}"
+            body = cache.get(key)
+            if body is None:
+                response = view(request, *args, **kwargs)
+                keep = (
+                    request.method == "GET"
+                    and response.status_code == 200
+                    and request.get_host() == host
+                    and getattr(response, "accepted_media_type", None)
+                    == "application/json"
+                )
+                if not keep:
+                    return response
+                body = response.render().content
+                cache.set(key, body, timeout)
+            response = _json_response(body, timeout)
+            patch_vary_headers(response, ["Accept"])
+            return response
 
         return cached_view
 
@@ -320,7 +379,10 @@ class PageDetailView(RetrieveAPIView):
 
     def get_object(self):
         url = self.kwargs.get("url")
-        page = get_object_or_404(FlatPage, url=f"/{url}/")
+        # `first()`, as the page's own view: the URL is not unique
+        page = FlatPage.objects.filter(url=f"/{url}/").order_by("pk").first()
+        if page is None:
+            raise Http404("No such page")
         return page
 
 
@@ -663,9 +725,7 @@ class GameAllDataView(APIView):
         key = f"games_all_data:{settings.RELEASE_CACHE_PREFIX}:{version}"
         body = cache.get(key)
         if body is not None:
-            response = HttpResponse(body, content_type="application/json")
-            patch_response_headers(response, config.CACHE_TIMEOUT_1_HOUR)
-            return response
+            return _json_response(body, config.CACHE_TIMEOUT_1_HOUR)
         payload = self._payload(version)
         # An import that committed while the rows were read leaves them of
         # either version, so they are labelled with none, which no page

@@ -262,6 +262,29 @@ class AnonymousResponseCacheAliasTests(TestCase):
         )
         self.assertEqual(self._get().content, b"from the cache")
 
+    def _head(self):
+        request = self.factory.head("/anything/")
+        request.user = AnonymousUser()
+        return CachedPage.as_view()(request)
+
+    def test_a_head_request_is_answered_from_the_cache(self):
+        """Without rendering, and without the body a server drops anyway."""
+        self._get()
+        with mock.patch.object(CachedPage, "get") as rendered:
+            response = self._head()
+        rendered.assert_not_called()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"")
+        self.assertEqual(response["Content-Type"], self._get()["Content-Type"])
+
+    def test_a_head_request_on_a_cold_cache_stores_the_page(self):
+        response = self._head()
+        self.assertEqual(response.content, b"")
+        self.assertEqual(self._get().content, b"rendered")
+        with mock.patch.object(CachedPage, "get") as rendered:
+            self._get()
+        rendered.assert_not_called()
+
     def test_the_stored_body_is_deflated(self):
         # Uncompressed, ~50 cacheable URLs at ~1.4 MB each would be 60-70 MB
         # in every worker.

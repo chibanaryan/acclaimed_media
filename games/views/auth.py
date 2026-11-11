@@ -165,17 +165,7 @@ class AuthModalSignupView(View):
 
         # Validate username if provided (skip if it matches email - that's the default)
         if username and username.lower() != email.lower():
-            if len(username) < 3:
-                username_error = "Username must be at least 3 characters."
-            elif len(username) > 30:
-                username_error = "Username must be 30 characters or fewer."
-            elif not username.replace("_", "").replace("-", "").isalnum():
-                username_error = (
-                    "Username can only contain letters, numbers, "
-                    "underscores, and hyphens."
-                )
-            elif User.username_claimed(username):
-                username_error = "This username is already taken."
+            username_error = User.username_error(username)
 
         if form.is_valid() and not username_error:
             # Reclaim the username/email from any abandoned, never-verified
@@ -284,12 +274,13 @@ class AuthModalResendVerificationView(View):
         email = request.POST.get("email", "").strip()
 
         if email:
-            try:
-                email_address = EmailAddress.objects.get(email__iexact=email)
-                if not email_address.verified:
-                    _send_confirmation(request, email_address, signup=False)
-            except EmailAddress.DoesNotExist:
-                pass  # Don't reveal if email exists
+            # `first()`, as the other lookups here: allauth keeps an address
+            # unique only once verified, so two unverified rows can share
+            # one, and `get()` was a 500 on them. Nothing is said either way
+            # about whether the address exists.
+            email_address = EmailAddress.objects.filter(email__iexact=email).first()
+            if email_address and not email_address.verified:
+                _send_confirmation(request, email_address, signup=False)
 
         # Always show success (prevents email enumeration)
         response = TemplateResponse(
@@ -388,26 +379,18 @@ class AuthModalProfileView(View):
 
         # Validate username (if changed, skip validation if it matches user's email)
         username_error = None
+        renamed = False
         if (
             new_username
             and new_username != user.username
             and new_username.lower() != user.email.lower()
         ):
-            if len(new_username) < 3:
-                username_error = "Username must be at least 3 characters."
-            elif len(new_username) > 30:
-                username_error = "Username must be 30 characters or fewer."
-            elif not new_username.replace("_", "").replace("-", "").isalnum():
-                username_error = (
-                    "Username can only contain letters, numbers, "
-                    "underscores, and hyphens."
-                )
-            elif User.username_claimed(new_username, exclude_pk=user.pk):
-                username_error = "This username is already taken."
-
+            username_error = User.username_error(new_username, exclude_pk=user.pk)
             if username_error:
-                # Re-render with full context including stats
-                return render(
+                # Re-render with full context including stats. Not an
+                # address: without the header HTMXPushURLMiddleware pushed
+                # the modal's own URL into the address bar.
+                response = render(
                     request,
                     self.template_name,
                     {
@@ -415,9 +398,10 @@ class AuthModalProfileView(View):
                         **_profile_stats(user),
                     },
                 )
-            # Free the name from any abandoned, never-verified account first.
-            User.reclaim_username(new_username)
+                response["HX-Push-Url"] = "false"
+                return response
             user.username = new_username
+            renamed = True
 
         email_subscribed = request.POST.get("email_subscribed") == "on"
 
@@ -426,13 +410,16 @@ class AuthModalProfileView(View):
             user.email_subscribed = True
             user.generate_unsubscribe_token()
             if not user.date_subscribed:
-                from django.utils import timezone
-
                 user.date_subscribed = timezone.now()
         elif not email_subscribed:
             user.email_subscribed = False
 
-        user.save()
+        # One transaction, as signup's is: the name is freed from any
+        # abandoned, never-verified account and taken together, or neither.
+        with transaction.atomic():
+            if renamed:
+                User.reclaim_username(new_username, exclude_pk=user.pk)
+            user.save()
 
         # Refresh page to show updated name in sidebar
         response = HttpResponse()

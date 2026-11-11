@@ -9,7 +9,7 @@ from django.views import View
 from django.views.generic import ListView, DetailView
 
 from core.mixins import HTMXPartialMixin, RobustPaginationMixin
-from core.services.query_params import parse_int
+from core.services.query_params import parse_direction, parse_int
 from core.cache_helpers import current_generation, set_if_current
 from games import config, models
 from games.cache import GENERATION_DEVELOPERS, developer_detail_cache_key
@@ -38,6 +38,12 @@ class DeveloperListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
         return super().get_template_names()
 
     SORTS = ("games", "studios", "rank", "name")
+    # A name reads A-Z and a rank from the top; a count reads biggest first.
+    # The page's `directionFor` picks the same way, as the other entity
+    # lists do (games/views/lists.py, music/views.py). Until 2026-11-10
+    # every sort started at "asc", and the counts ran backwards to match:
+    # "Asc" listed the most games first.
+    ASCENDING_SORTS = frozenset({"name", "rank"})
 
     def get_paginate_by(self, queryset):
         # Pagination is manual, in get_context_data, for every sort: it has
@@ -49,6 +55,38 @@ class DeveloperListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
     def _sort(self):
         sort = self.request.GET.get("sort", "games")
         return sort if sort in self.SORTS else "games"
+
+    def _direction(self, sort):
+        """`?dir=` if it names a direction, else the sort's own."""
+        default = "asc" if sort in self.ASCENDING_SORTS else "desc"
+        return parse_direction(self.request.GET.get("dir"), default)
+
+    @staticmethod
+    def _attach_top_games(developers, hierarchy):
+        """Give each developer its best-ranked game, in one query."""
+        top_game_ids = {
+            dev.id: hierarchy["top_game_id"].get(dev.id) for dev in developers
+        }
+        wanted = [game_id for game_id in top_game_ids.values() if game_id is not None]
+        if not wanted:
+            return
+        top_games = {
+            g.id: g
+            for g in models.Game.objects.filter(id__in=wanted)
+            .select_related("primary_igdb_game_data")
+            .only(
+                "id",
+                "name",
+                "slug",
+                "rank",
+                "year_of_release",
+                "primary_igdb_game_data",
+            )
+        }
+        for dev in developers:
+            game = top_games.get(top_game_ids[dev.id])
+            if game is not None:
+                dev.top_game = game
 
     def get_queryset(self):
         qs = (
@@ -71,7 +109,7 @@ class DeveloperListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         sort = self._sort()
-        direction = self.request.GET.get("dir", "asc")
+        direction = self._direction(sort)
         context["sort"] = sort
         context["sort_options"] = config.DEVELOPER_SORT_OPTIONS
 
@@ -104,72 +142,36 @@ class DeveloperListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
             root_id = hierarchy["root_developer_id"].get(dev.id, dev.id)
             dev._prefetched_root = root_devs.get(root_id, dev)
 
-        # For rank sorting, fetch top games using cached top_game_id
+        # The rank sort orders by each developer's best game, so it needs
+        # them all; the other sorts fetch only the page's, below
         if sort == "rank":
-            top_game_ids = [
-                hierarchy["top_game_id"].get(dev.id)
-                for dev in developers
-                if hierarchy["top_game_id"].get(dev.id) is not None
-            ]
-            if top_game_ids:
-                top_games = {
-                    g.id: g
-                    for g in models.Game.objects.filter(id__in=top_game_ids)
-                    .select_related("primary_igdb_game_data")
-                    .only(
-                        "id",
-                        "name",
-                        "slug",
-                        "rank",
-                        "year_of_release",
-                        "primary_igdb_game_data",
-                    )
-                }
-                for dev in developers:
-                    top_game_id = hierarchy["top_game_id"].get(dev.id)
-                    if top_game_id and top_game_id in top_games:
-                        dev.top_game = top_games[top_game_id]
+            self._attach_top_games(developers, hierarchy)
 
-        # Sort by cached counts (with direction support)
         is_desc = direction == "desc"
         if sort == "name":
             developers.sort(key=lambda d: d.name.lower(), reverse=is_desc)
-        elif sort == "games":
-            developers.sort(
-                key=lambda d: (
-                    (
-                        -d.recursive_games_count
-                        if not is_desc
-                        else d.recursive_games_count
-                    ),
-                    d.name.lower(),
-                )
+        elif sort in ("games", "studios"):
+            attribute = (
+                "recursive_games_count"
+                if sort == "games"
+                else "recursive_studios_count"
             )
-        elif sort == "studios":
-            developers.sort(
-                key=lambda d: (
-                    (
-                        -d.recursive_studios_count
-                        if not is_desc
-                        else d.recursive_studios_count
-                    ),
-                    d.name.lower(),
-                )
-            )
+
+            def by_count(dev):
+                # A tie reads A-Z in either direction
+                count = getattr(dev, attribute)
+                return (-count if is_desc else count, dev.name.lower())
+
+            developers.sort(key=by_count)
         else:  # rank
-            developers.sort(
-                key=lambda d: (
-                    getattr(d, "top_game", None) is None,  # No game = always last
-                    (
-                        (getattr(getattr(d, "top_game", None), "rank", 9999) or 9999)
-                        if not is_desc
-                        else -(
-                            getattr(getattr(d, "top_game", None), "rank", 9999) or 9999
-                        )
-                    ),
-                    d.name.lower(),
-                )
-            )
+
+            def by_rank(dev):
+                game = getattr(dev, "top_game", None)
+                rank = (game.rank if game else None) or 9999
+                # No game is last in either direction
+                return (game is None, -rank if is_desc else rank, dev.name.lower())
+
+            developers.sort(key=by_rank)
 
         # Manual pagination; past the end means the last page, as
         # RobustPaginationMixin answers
@@ -190,36 +192,9 @@ class DeveloperListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
         context["loaded_count"] = min(end_idx, total_count)
         context["remaining_count"] = max(0, total_count - end_idx)
 
-        # Fetch top game for each developer on the current page (if not already set)
-        page_developers = context.get("developers", [])
-        devs_needing_top_game = [
-            dev for dev in page_developers if not hasattr(dev, "top_game")
-        ]
-
-        if devs_needing_top_game:
-            top_game_ids = [
-                hierarchy["top_game_id"].get(dev.id)
-                for dev in devs_needing_top_game
-                if hierarchy["top_game_id"].get(dev.id) is not None
-            ]
-            if top_game_ids:
-                top_games = {
-                    g.id: g
-                    for g in models.Game.objects.filter(id__in=top_game_ids)
-                    .select_related("primary_igdb_game_data")
-                    .only(
-                        "id",
-                        "name",
-                        "slug",
-                        "rank",
-                        "year_of_release",
-                        "primary_igdb_game_data",
-                    )
-                }
-                for dev in devs_needing_top_game:
-                    top_game_id = hierarchy["top_game_id"].get(dev.id)
-                    if top_game_id and top_game_id in top_games:
-                        dev.top_game = top_games[top_game_id]
+        # The page's top games, for the sorts that have not fetched them
+        if sort != "rank":
+            self._attach_top_games(context["developers"], hierarchy)
 
         return context
 
@@ -796,4 +771,7 @@ class DeveloperRedirectView(View):
     def get(self, request, id):
         developer = get_object_or_404(models.Developer, id=id)
         root = developer.root_developer
+        if not root.slug:
+            # A slug comes from IGDB; a root without one has no page
+            raise Http404("This developer has no page")
         return redirect("developer-detail", slug=root.slug, permanent=True)

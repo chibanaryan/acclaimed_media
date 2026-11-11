@@ -7,7 +7,7 @@ Each abstract model captures common patterns that can be extended by concrete mo
 
 import secrets
 from functools import cached_property
-from typing import Any
+from typing import Any, Optional
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
@@ -77,6 +77,35 @@ class User(AbstractUser):
             user=self, email__iexact=self.email, verified=True
         ).exists()
 
+    USERNAME_MIN_LENGTH = 3
+    USERNAME_MAX_LENGTH = 30
+
+    @classmethod
+    def username_error(cls, username: str, exclude_pk: Any = None) -> Optional[str]:
+        """Why ``username`` cannot be chosen, in the form's words, or None.
+
+        The one statement of the rules: the sign-up and profile forms show
+        the message, and the allauth adapter, which allauth's own forms
+        reach without either, falls back to the email on one. Each form had
+        its own copy until 2026-11-10 and the adapter had none, so a POST
+        to allauth's signup page took any name at all.
+
+        An email address is not a username by these rules. The forms skip
+        the check for the account's own address, the default name.
+        """
+        if len(username) < cls.USERNAME_MIN_LENGTH:
+            return f"Username must be at least {cls.USERNAME_MIN_LENGTH} characters."
+        if len(username) > cls.USERNAME_MAX_LENGTH:
+            return f"Username must be {cls.USERNAME_MAX_LENGTH} characters or fewer."
+        if not username.replace("_", "").replace("-", "").isalnum():
+            return (
+                "Username can only contain letters, numbers, "
+                "underscores, and hyphens."
+            )
+        if cls.username_claimed(username, exclude_pk=exclude_pk):
+            return "This username is already taken."
+        return None
+
     @classmethod
     def username_claimed(cls, username: str, exclude_pk: Any = None) -> bool:
         """Return True if the username is held by a verified account.
@@ -104,12 +133,14 @@ class User(AbstractUser):
         ).exists()
 
     @classmethod
-    def reclaim_username(cls, username: str) -> int:
+    def reclaim_username(cls, username: str, exclude_pk: Any = None) -> int:
         """Delete abandoned, never-verified accounts holding ``username``.
 
         Frees the username (which has a unique constraint) so a real account
-        can claim it. Staff and superuser accounts are never deleted. Returns
-        the number of accounts removed.
+        can claim it. Staff and superuser accounts are never deleted, nor is
+        ``exclude_pk``, the account taking the name: one made in the admin
+        has no verified address, and changing its name's case alone matched
+        itself. Returns the number of accounts removed.
         """
         from allauth.account.models import EmailAddress
 
@@ -121,6 +152,8 @@ class User(AbstractUser):
             .exclude(id__in=verified_user_ids)
             .filter(is_staff=False, is_superuser=False)
         )
+        if exclude_pk is not None:
+            stale = stale.exclude(pk=exclude_pk)
         count = stale.count()
         stale.delete()
         return count

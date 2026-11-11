@@ -14,6 +14,7 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.contrib.sitemaps.views import sitemap
 from django.urls import include, path
+from django.views.generic import RedirectView
 
 from core import views as core_views
 from games import views
@@ -36,6 +37,14 @@ def common_urlpatterns(sitemaps):
             "accounts/confirm-email/<str:key>/",
             views.EmailConfirmationView.as_view(),
             name="account_confirm_email",
+        ),
+        # Sign-up is the modal's, which checks a username first; allauth's
+        # own page took any (also before the include, and under its name,
+        # which allauth's flows reverse).
+        path(
+            "accounts/signup/",
+            RedirectView.as_view(url="/"),
+            name="account_signup",
         ),
         path("accounts/", include("allauth.urls")),
         # Auth modal partials (HTMX)

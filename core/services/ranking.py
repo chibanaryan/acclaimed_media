@@ -7,7 +7,7 @@ position implied by that global rank.
 
 import math
 
-from collections import defaultdict
+from collections import Counter
 from typing import Tuple
 
 from django.db import connection, transaction
@@ -25,8 +25,8 @@ def update_year_decade_ranks(model, table: str, year_field: str) -> Tuple[int, i
     derived from the global ``rank`` column, so the ordering is whatever the
     import file specified.
 
-    On PostgreSQL this is two window-function UPDATEs. SQLite has no such
-    support in an UPDATE, so it falls back to chunked Python processing.
+    On PostgreSQL this is two window-function UPDATEs. Elsewhere (SQLite, in
+    development and the tests) the positions are counted in Python.
 
     Args:
         model: The concrete media model (e.g. ``games.models.Game``).
@@ -38,7 +38,7 @@ def update_year_decade_ranks(model, table: str, year_field: str) -> Tuple[int, i
     """
     if connection.vendor == "postgresql":
         return _update_postgres(model, table, year_field)
-    return _update_chunked(model, year_field)
+    return _update_in_python(model, year_field)
 
 
 def _update_postgres(model, table: str, year_field: str) -> Tuple[int, int]:
@@ -78,45 +78,27 @@ def _update_postgres(model, table: str, year_field: str) -> Tuple[int, int]:
     return (rows_updated, years_count)
 
 
-def _update_chunked(model, year_field: str) -> Tuple[int, int]:
-    """SQLite path: collect ids per year and per decade, then update in bulk."""
-    year_items = defaultdict(list)
-    decade_items = defaultdict(list)
-    years = set()
+def _update_in_python(model, year_field: str) -> Tuple[int, int]:
+    """Any other database: one read in rank order, counted here, one bulk
+    update.
 
-    chunk_size = 1000
-    total = model.objects.count()
-
-    # First pass: items by year, already ordered for year_rank.
-    for offset in range(0, total, chunk_size):
-        chunk = model.objects.order_by(year_field, "rank")[offset : offset + chunk_size]
-        for item in chunk:
-            year = getattr(item, year_field)
-            year_items[year].append(item.id)
-            years.add(year)
-
-    # Second pass: items by decade, ordered by global rank.
-    for offset in range(0, total, chunk_size):
-        chunk = model.objects.order_by("rank")[offset : offset + chunk_size]
-        for item in chunk:
-            year = getattr(item, year_field)
-            # A missing year forms its own group, matching how PostgreSQL
-            # partitions NULLs together on the window-function path.
-            decade = None if year is None else year_to_decade(year)
-            decade_items[decade].append(item.id)
-
-    items_updated = 0
-    with transaction.atomic():
-        for _, item_ids in year_items.items():
-            for rank_position, item_id in enumerate(item_ids, 1):
-                model.objects.filter(id=item_id).update(year_rank=rank_position)
-                items_updated += 1
-
-        for _, item_ids in decade_items.items():
-            for rank_position, item_id in enumerate(item_ids, 1):
-                model.objects.filter(id=item_id).update(decade_rank=rank_position)
-
-    return (items_updated, len(years))
+    A missing year forms its own group, as PostgreSQL partitions NULLs
+    together. Until 2026-11-10 this paged with OFFSET over `(year, rank)`,
+    which no rule made a total order, and wrote a statement a row.
+    """
+    rows = model.objects.order_by("rank", "id").values_list("id", year_field)
+    in_year = Counter()
+    in_decade = Counter()
+    ranked = []
+    for item_id, year in rows:
+        decade = None if year is None else year_to_decade(year)
+        in_year[year] += 1
+        in_decade[decade] += 1
+        ranked.append(
+            model(id=item_id, year_rank=in_year[year], decade_rank=in_decade[decade])
+        )
+    model.objects.bulk_update(ranked, ["year_rank", "decade_rank"], batch_size=500)
+    return (len(ranked), len(in_year))
 
 
 def rank_distribution(ranks, max_rank, bin_count):

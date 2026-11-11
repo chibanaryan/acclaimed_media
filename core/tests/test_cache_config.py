@@ -106,13 +106,16 @@ class BuildCachesTests(SimpleTestCase):
         view = mock.Mock()
         with (
             override_settings(RELEASE_CACHE_PREFIX="v00000412"),
-            mock.patch.object(api_views, "django_cache_page") as django_cache_page,
+            mock.patch.object(api_views, "cache") as cache,
             mock.patch.object(
                 api_views, "compute_game_data_version", return_value="abc123"
             ),
         ):
+            cache.get.return_value = b"{}"
             api_views.cache_page(60)(view)(RequestFactory().get("/"))
-        django_cache_page.assert_called_once_with(60, key_prefix="v00000412:abc123")
+        (key,) = cache.get.call_args.args
+        self.assertTrue(key.startswith("games_api:v00000412:abc123:"), key)
+        view.assert_not_called()
 
     def test_the_per_process_aliases_are_always_per_process(self):
         # Whole-page HTML and the rate-limit counters live here, so neither

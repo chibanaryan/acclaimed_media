@@ -1728,21 +1728,41 @@ class DeveloperListViewTest(TestCase):
         self.assertEqual(response.context["sort"], "games")
         self.assertEqual(list(response.context["developers"]), [self.dev1])
 
-    def test_sort_by_games_lists_the_most_first_and_dir_desc_the_fewest(self):
-        """Counted through subsidiaries: Atlus 3, Nintendo 2, its studio 1."""
+    def test_sort_by_games_lists_the_most_first_which_is_descending(self):
+        """Counted through subsidiaries: Atlus 3, Nintendo 2, its studio 1.
+        Until 2026-11-10 "asc" listed the most first and "desc" the fewest."""
         atlus, nintendo, studio = self._three_developers()
-        self.assertEqual(self._listed("?sort=games"), [atlus, nintendo, studio])
-        self.assertEqual(
-            self._listed("?sort=games&dir=desc"), [studio, nintendo, atlus]
-        )
+        most_first = [atlus, nintendo, studio]
+        self.assertEqual(self._listed("?sort=games"), most_first)
+        self.assertEqual(self._listed("?sort=games&dir=desc"), most_first)
+        self.assertEqual(self._listed("?sort=games&dir=asc"), most_first[::-1])
 
-    def test_sort_by_studios_lists_the_most_first_and_dir_desc_the_fewest(self):
+    def test_sort_by_studios_lists_the_most_first_which_is_descending(self):
         """Nintendo has the one studio; a tie is in name order either way."""
         atlus, nintendo, studio = self._three_developers()
         self.assertEqual(self._listed("?sort=studios"), [nintendo, atlus, studio])
         self.assertEqual(
-            self._listed("?sort=studios&dir=desc"), [atlus, studio, nintendo]
+            self._listed("?sort=studios&dir=desc"), [nintendo, atlus, studio]
         )
+        self.assertEqual(
+            self._listed("?sort=studios&dir=asc"), [atlus, studio, nintendo]
+        )
+
+    def test_each_sort_starts_in_its_own_direction(self):
+        """A name A-Z, a rank from the top, a count biggest first; a
+        direction that is not one is the sort's own."""
+        self._three_developers()
+        for sort, expected in (
+            ("games", "desc"),
+            ("studios", "desc"),
+            ("rank", "asc"),
+            ("name", "asc"),
+        ):
+            for query in (f"?sort={sort}", f"?sort={sort}&dir=sideways"):
+                with self.subTest(query=query):
+                    self.assertEqual(
+                        self._listed(query), self._listed(f"{query}&dir={expected}")
+                    )
 
     def test_sort_by_rank_descending(self):
         """By each developer's best game: Nintendo #1, Atlus #2, the studio #4."""
@@ -2232,6 +2252,17 @@ class DeveloperAliasRedirectViewTest(TestCase):
             reverse("developer-alias-redirect", kwargs={"id": 99999})
         )
         self.assertEqual(response.status_code, 404)
+
+    def test_a_root_with_no_slug_has_no_page_to_go_to(self):
+        """A slug comes from IGDB, so a root can be without one, NULL or
+        blank; reversing its page was a NoReverseMatch, a 500."""
+        for slug in (None, ""):
+            with self.subTest(slug=slug):
+                root = Developer.objects.create(name=f"Slugless {slug!r}", slug=slug)
+                response = self.client.get(
+                    reverse("developer-alias-redirect", kwargs={"id": root.id})
+                )
+                self.assertEqual(response.status_code, 404)
 
 
 class ListListViewTest(TestCase):
@@ -2748,6 +2779,15 @@ class PageDetailViewTest(TestCase):
         response = self.client.get(reverse("page-detail", kwargs={"slug": "about"}))
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "pages/page_detail.html")
+
+    def test_two_pages_with_one_url_are_not_an_error(self):
+        """A flat page's URL is unique per site, not in the table, and
+        `get()` on two rows was a 500, here and in the API."""
+        FlatPage.objects.create(url="/about/", title="About, again", content="x")
+        response = self.client.get(reverse("page-detail", kwargs={"slug": "about"}))
+        self.assertEqual(response.context["flatpage"].title, "About Us")
+        self.assertEqual(self.client.get("/api/pages/about/").status_code, 200)
+        self.assertEqual(self.client.get("/api/pages/missing/").status_code, 404)
 
     def test_context_contains_flatpage(self):
         """Test that context includes the flatpage."""

@@ -7,8 +7,10 @@ authentication flow.
 
 from unittest.mock import Mock
 
+from allauth.account.models import EmailAddress
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
+from django.urls import reverse
 
 from games.adapters import ModalAccountAdapter, ModalSocialAccountAdapter
 
@@ -36,6 +38,41 @@ class ModalAccountAdapterTest(TestCase):
         self.adapter.populate_username(request, user)
 
         self.assertEqual(user.username, "newuser@example.com")
+
+    def _populated(self, posted, email="newuser@example.com"):
+        user = User(email=email)
+        request = self.factory.post("/", {"username": posted})
+        self.adapter.populate_username(request, user)
+        return user.username
+
+    def test_a_posted_username_that_breaks_the_rules_gives_way_to_the_email(self):
+        """The modal checks a username before it saves, but the adapter is
+        also reached by allauth's own forms, which do not."""
+        for posted in ("ab", "x" * 31, "not a name!", "<script>"):
+            with self.subTest(posted=posted):
+                self.assertEqual(self._populated(posted), "newuser@example.com")
+
+    def test_a_posted_username_within_the_rules_is_kept(self):
+        self.assertEqual(self._populated("new_user-1"), "new_user-1")
+
+    def test_another_persons_email_is_not_a_username(self):
+        """It would hold the name that person's own signup defaults to."""
+        self.assertEqual(self._populated("victim@example.com"), "newuser@example.com")
+
+    def test_a_username_someone_holds_is_not_taken_twice(self):
+        """Unverified holders included: the column is unique whoever holds
+        it, and a second row was an IntegrityError."""
+        User.objects.create_user(username="held", email="held@example.com")
+        self.assertEqual(self._populated("held"), "newuser@example.com")
+
+    def test_an_email_someone_holds_as_a_username_gets_a_generated_one(self):
+        User.objects.create_user(
+            username="newuser@example.com", email="other@example.com"
+        )
+        username = self._populated("")
+        self.assertNotEqual(username, "newuser@example.com")
+        self.assertTrue(username)
+        self.assertFalse(User.objects.filter(username__iexact=username).exists())
 
     def test_get_login_redirect_url_htmx_returns_root(self):
         """Test that HTMX login requests redirect to root."""
@@ -101,3 +138,91 @@ class LegacyAdapterAliasTest(TestCase):
         from games.adapters import EmailAsUsernameAdapter
 
         self.assertIs(EmailAsUsernameAdapter, ModalAccountAdapter)
+
+
+class AllauthSignupIsClosedTests(TestCase):
+    """Sign-up is the modal's. allauth's own page, still mounted until
+    2026-11-10, took any posted username: none of the modal's rules, and a
+    name equal to someone's email, which their own signup then collided with.
+    """
+
+    def test_a_post_to_allauths_signup_creates_no_account(self):
+        response = self.client.post(
+            reverse("account_signup"),
+            {
+                "email": "squatter@example.com",
+                "username": "victim@example.com",
+                "password1": "a-long-passphrase-1",
+                "password2": "a-long-passphrase-1",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/")
+        self.assertFalse(User.objects.filter(email="squatter@example.com").exists())
+
+    def test_the_page_redirects_home(self):
+        response = self.client.get(reverse("account_signup"))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/")
+
+    def test_signing_up_with_an_email_someone_holds_as_a_username(self):
+        """Through the modal: the default username is the email, and a
+        verified account already named that was a 500."""
+        squatter = User.objects.create_user(
+            username="victim@example.com", email="squatter@example.com"
+        )
+        EmailAddress.objects.create(
+            user=squatter, email=squatter.email, verified=True, primary=True
+        )
+        response = self.client.post(
+            reverse("auth-modal-signup"),
+            {
+                "email": "victim@example.com",
+                "password1": "a-long-passphrase-1",
+                "password2": "a-long-passphrase-1",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        created = User.objects.get(email="victim@example.com")
+        self.assertNotEqual(created.username, "victim@example.com")
+
+
+class AuthModalEdgeTests(TestCase):
+    def test_resending_to_an_address_two_unverified_accounts_share(self):
+        """allauth keeps an address unique only once it is verified; `get()`
+        on two rows was a 500."""
+        for name in ("first", "second"):
+            user = User.objects.create_user(username=name, email="shared@example.com")
+            EmailAddress.objects.create(
+                user=user, email="shared@example.com", verified=False, primary=True
+            )
+        response = self.client.post(
+            reverse("auth-modal-resend-verification"), {"email": "shared@example.com"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Email Sent")
+
+    def test_a_refused_username_does_not_push_the_modals_address(self):
+        User.objects.create_user(
+            username="profileuser", email="profile@example.com", password="pw-12345"
+        )
+        self.client.login(username="profileuser", password="pw-12345")
+        response = self.client.post(
+            reverse("auth-modal-profile"), {"username": "ab"}, HTTP_HX_REQUEST="true"
+        )
+        self.assertContains(response, "at least 3 characters")
+        self.assertEqual(response["HX-Push-Url"], "false")
+
+    def test_changing_only_the_case_of_a_name_keeps_the_account(self):
+        """An account made in the admin has no verified address, so freeing
+        the name from "abandoned" holders matched the account itself."""
+        user = User.objects.create_user(
+            username="Casey", email="casey@example.com", password="pw-12345"
+        )
+        self.client.login(username="Casey", password="pw-12345")
+        response = self.client.post(
+            reverse("auth-modal-profile"), {"username": "casey"}
+        )
+        self.assertEqual(response["HX-Refresh"], "true")
+        user.refresh_from_db()
+        self.assertEqual(user.username, "casey")

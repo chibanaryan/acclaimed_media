@@ -163,6 +163,38 @@ class OnlyUncacheableAnonymousPagesSpendTests(TestCase):
         ]
         self.assertEqual(statuses, [200] * 4)
 
+    def test_a_head_request_spends_as_the_get_it_is_served_by(self):
+        """Django answers HEAD with `get()`. Sent round the cache and the
+        budget, it was the whole render, for a body the server drops."""
+        statuses = []
+        for _ in range(2):
+            request = self.factory.head("/?q=x")
+            request.user = AnonymousUser()
+            statuses.append(BudgetedPage.as_view()(request).status_code)
+        self.assertEqual(statuses, [200, 429])
+
+    def test_a_fragment_asked_for_by_its_address_alone_spends(self):
+        """`?partial=true` and `?append=true` are the client's to write, and
+        took a request round the cache and the budget both. Every script of
+        ours sends a header with them, which is what is left uncounted."""
+        for query in ("q=x&partial=true", "append=true", "partial=true"):
+            with self.subTest(query=query):
+                render_budget.reset(clock=FakeClock())
+                statuses = [self._get(f"/?{query}").status_code for _ in range(2)]
+                self.assertEqual(statuses, [200, 429])
+                self.assertIsNone(caches["local"].get("testserver:budgeted_page:"))
+
+    def test_a_fragment_asked_for_with_a_header_never_spends(self):
+        for header in (
+            {"HTTP_HX_REQUEST": "true"},
+            {"HTTP_X_REQUESTED_WITH": "XMLHttpRequest"},
+        ):
+            with self.subTest(header=header):
+                statuses = [
+                    self._get("/?append=true", **header).status_code for _ in range(4)
+                ]
+                self.assertEqual(statuses, [200] * 4)
+
     def test_a_signed_in_reader_never_spends(self):
         user = User.objects.create_user(username="reader", password="pw")
         statuses = [self._get("/?q=x", user=user).status_code for _ in range(4)]

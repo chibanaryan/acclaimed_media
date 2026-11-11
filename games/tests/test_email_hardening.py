@@ -86,6 +86,17 @@ class PostNotificationTests(TestCase):
         self.assertEqual(results, [False, True])
         self.assertEqual(mail.outbox[0].to, [second.email])
 
+    def test_the_title_is_text_in_the_html_part(self):
+        """The post's body is rendered markdown, HTML by design; the title
+        is a line of text, and went into the page as written."""
+        post = Post.objects.create(title="Q&A <2026>", text="Body")
+        self.assertTrue(utils.send_post_notification_email(post, self.subscriber()))
+        message = mail.outbox[0]
+        html_part = message.alternatives[0][0]
+        self.assertIn("Q&amp;A &lt;2026&gt;</h2>", html_part)
+        self.assertIn("Q&A <2026>", message.body)
+        self.assertEqual(message.subject, "Q&A <2026>")
+
     def test_the_email_carries_a_one_click_unsubscribe(self):
         """A mail client's own control, which POSTs: the link itself only
         asks, since a scanner follows every link in a message."""

@@ -4,8 +4,8 @@ import html
 import logging
 
 from django.contrib.flatpages.models import FlatPage
-from django.http import HttpResponse, HttpResponseGone
-from django.shortcuts import redirect, get_object_or_404
+from django.http import Http404, HttpResponse, HttpResponseGone
+from django.shortcuts import redirect
 from django.utils.html import strip_tags
 from django.utils.text import Truncator
 from django.urls import reverse_lazy
@@ -109,12 +109,16 @@ class PageDetailView(ApexCanonicalMixin, TemplateView):
         import markdown
 
         slug = kwargs.get("slug")
-        # Try /page/{slug}/ first (for consistency with URL pattern), then /{slug}/
-        try:
-            flatpage = FlatPage.objects.get(url=f"/page/{slug}/")
-        except FlatPage.DoesNotExist:
-            # Fall back to /{slug}/ format (matches existing database entries)
-            flatpage = get_object_or_404(FlatPage, url=f"/{slug}/")
+        # /page/{slug}/ first (the URL pattern's own form), then /{slug}/,
+        # which the stored pages use. `first()`: a flat page's URL is
+        # unique per site, not in the table, and `get()` on two was a 500.
+        flatpage = None
+        for url in (f"/page/{slug}/", f"/{slug}/"):
+            flatpage = FlatPage.objects.filter(url=url).order_by("pk").first()
+            if flatpage is not None:
+                break
+        if flatpage is None:
+            raise Http404("No such page")
 
         # Convert markdown to HTML (matching API serializer behavior)
         if flatpage.content:

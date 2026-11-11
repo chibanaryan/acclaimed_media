@@ -52,6 +52,35 @@ class RankingUtilsTests(TestCase):
         self.assertEqual(g3.decade_rank, 3)  # Rank 3 overall (3rd in decade)
         self.assertEqual(g4.decade_rank, 4)  # Rank 5 overall (4th in decade)
 
+    def test_no_year_is_a_group_of_its_own(self):
+        """As PostgreSQL's window functions partition NULLs together."""
+        dated = models.Game.objects.create(
+            name="Dated", rank=7, igdb_id=7, year_of_release=1990
+        )
+        undated = [
+            models.Game.objects.create(name=f"Undated {rank}", rank=rank, igdb_id=rank)
+            for rank in (9, 8)
+        ]
+
+        games_updated, years_processed = utils.update_year_decade_ranks()
+
+        self.assertEqual((games_updated, years_processed), (3, 2))
+        for game in (dated, *undated):
+            game.refresh_from_db()
+        self.assertEqual((dated.year_rank, dated.decade_rank), (1, 1))
+        self.assertEqual([game.year_rank for game in undated], [2, 1])
+        self.assertEqual([game.decade_rank for game in undated], [2, 1])
+
+    def test_the_positions_are_written_in_bulk(self):
+        """One read and one statement a batch; it was two a game."""
+        for rank in range(1, 41):
+            models.Game.objects.create(
+                name=f"Game {rank}", rank=rank, igdb_id=rank, year_of_release=2000
+            )
+        with CaptureQueriesContext(connection) as queries:
+            utils.update_year_decade_ranks()
+        self.assertLess(len(queries), 10)
+
     def test_update_year_decade_ranks_empty_database(self):
         """Test that update_year_decade_ranks() handles empty database."""
         games_updated, years_processed = utils.update_year_decade_ranks()

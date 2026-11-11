@@ -21,7 +21,16 @@
 <div class="mb-6" x-data="{
     q: '{{ request.GET.q|default:''|escapejs }}',
     sort: new URLSearchParams(window.location.search).get('sort') || 'games',
-    sortDirection: new URLSearchParams(window.location.search).get('dir') || 'asc',
+    sortDirection: 'desc',
+    // A name reads A-Z and a rank from the top; a count reads biggest first.
+    // DeveloperListView.ASCENDING_SORTS agrees
+    directionFor(sort) {
+        return sort === 'name' || sort === 'rank' ? 'asc' : 'desc';
+    },
+    init() {
+        const dir = new URLSearchParams(window.location.search).get('dir');
+        this.sortDirection = dir === 'asc' || dir === 'desc' ? dir : this.directionFor(this.sort);
+    },
     updateUrl(event) {
         // Tidies the entry htmx has just pushed for this request (with the
         // middleware's address) rather than pushing a second beside it
@@ -35,12 +44,15 @@
         }
         url.searchParams.delete('page');
         // htmx's address carries the sort and direction even at their defaults
-        if (url.searchParams.get('sort') === 'games') url.searchParams.delete('sort');
-        if (url.searchParams.get('dir') === 'asc') url.searchParams.delete('dir');
+        const sort = url.searchParams.get('sort') || 'games';
+        if (url.searchParams.get('dir') === this.directionFor(sort)) url.searchParams.delete('dir');
+        if (sort === 'games') url.searchParams.delete('sort');
         window.history.replaceState(window.history.state, '', url);
     },
     updateSort(newSort) {
+        if (newSort === this.sort) return;
         this.sort = newSort;
+        this.sortDirection = this.directionFor(newSort);
         // The search box's request carries it, and updateUrl tidies its address
         // Wait for Alpine to update hx-vals before triggering HTMX
         this.$nextTick(() => {

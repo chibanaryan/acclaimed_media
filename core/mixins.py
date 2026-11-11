@@ -242,15 +242,28 @@ class AnonymousResponseCacheMixin:
             )
 
     def dispatch(self, request, *args, **kwargs):
-        is_htmx = (
+        # A script's request says so in a header, and follows a page that
+        # was already let through.
+        by_script = (
             request.headers.get("HX-Request")
             or request.headers.get("X-Requested-With") == "XMLHttpRequest"
-            or request.GET.get("partial") == "true"
-            or request.GET.get("append") == "true"
         )
-
-        if request.user.is_authenticated or is_htmx or request.method != "GET":
+        # HEAD is served by `get()`, so it is the same render. Until
+        # 2026-11-10 it went round the cache and the budget both, for a body
+        # the server then drops.
+        is_head = request.method == "HEAD"
+        if (
+            request.user.is_authenticated
+            or by_script
+            or request.method not in ("GET", "HEAD")
+        ):
             return super().dispatch(request, *args, **kwargs)
+
+        if request.GET.get("partial") == "true" or request.GET.get("append") == "true":
+            # A fragment, asked for by its address alone: never kept, since
+            # it is rows and not a page, and counted, since the address is
+            # the caller's to write and every script of ours sends a header.
+            return self._dispatch_unkept(request, *args, **kwargs)
 
         cache_key = self.get_page_cache_key()
         if cache_key is None:
@@ -276,12 +289,17 @@ class AnonymousResponseCacheMixin:
                 # stores over it
                 cached_payload = None
             elif isinstance(cached_payload, dict) and "body" in cached_payload:
-                content = self._restore_csp_nonce(
-                    request,
-                    self._restore_csrf_token(
-                        request, zlib.decompress(cached_payload["body"])
-                    ),
-                )
+                if is_head:
+                    # No body to send, so nothing to inflate and no token
+                    # to mint (which would also set a cookie)
+                    content = b""
+                else:
+                    content = self._restore_csp_nonce(
+                        request,
+                        self._restore_csrf_token(
+                            request, zlib.decompress(cached_payload["body"])
+                        ),
+                    )
                 status = cached_payload.get("status", 200)
                 content_type = cached_payload.get("content_type")
                 response = HttpResponse(
@@ -323,6 +341,8 @@ class AnonymousResponseCacheMixin:
                 },
                 self.page_cache_timeout,
             )
+            if is_head:
+                response.content = b""
 
         return response
 
