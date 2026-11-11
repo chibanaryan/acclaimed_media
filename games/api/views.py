@@ -27,6 +27,7 @@ from core.services.genre_tree import descendants_by_id
 from core.services.query_params import parse_id_list, parse_limit
 from core.services.request_body import SavedFilterJSONParser, read_saved_filter
 from games.services.data_version import compute_game_data_version
+from games.services.developer_service import get_developer_hierarchy
 
 from .. import config, models, utils
 from . import serializers
@@ -516,13 +517,17 @@ class GameSearchAPIView(APIView):
 SEARCH_GROUPS = ("games", "series", "developers")
 
 
-def _best_first(q, matches, limit):
+def _best_first(q, matches, limit, counts=None):
     """A creator-like group's rows, best match first, then most games.
 
     ``matches`` is annotated with ``games_count``. Exact names come first in
     the database (``search_ranking.exact_first``), so the bounded read of
     ``search_ranking.CANDIDATES`` rows cannot leave one out. Each row is
     ``(score, -games, name, id, games)``.
+
+    ``counts``, by id, replaces the annotation where a row's games are not
+    only its own (a developer's subsidiaries'); a row it counts at none is
+    left out.
     """
     candidates = search_ranking.exact_first(
         matches,
@@ -531,6 +536,15 @@ def _best_first(q, matches, limit):
         name=q,
         name_normalized=models.normalize_name(q),
     ).values_list("id", "name", "name_normalized", "games_count")
+    rows = (
+        (
+            row_id,
+            name,
+            normalized,
+            counts.get(row_id, 0) if counts is not None else count,
+        )
+        for row_id, name, normalized, count in candidates[: search_ranking.CANDIDATES]
+    )
     return sorted(
         (
             search_ranking.quality_or(q, (name, normalized), search_ranking.SUBSTRING),
@@ -539,7 +553,8 @@ def _best_first(q, matches, limit):
             row_id,
             count,
         )
-        for row_id, name, normalized, count in candidates[: search_ranking.CANDIDATES]
+        for row_id, name, normalized, count in rows
+        if count > 0
     )[:limit]
 
 
@@ -572,14 +587,16 @@ class UnifiedSearchView(APIView):
         # Each group is scored in Python on a bounded read of its matches
         # (search_ranking.CANDIDATES), and only the rows shown are fetched
         # whole.
+        # Counted through subsidiaries, as the developers list counts: by
+        # direct games, a parent whose games are all its studios' was not
+        # found, and one that was showed fewer than its page
         developer_rows = _best_first(
             q,
             models.Developer.objects.filter(
                 Q(name__icontains=q) | Q(name_normalized__contains=q_normalized)
-            )
-            .annotate(games_count=Count("developed_games"))
-            .filter(games_count__gt=0),
+            ).annotate(games_count=Count("developed_games")),
             developer_limit,
+            counts=get_developer_hierarchy()["recursive_game_counts"],
         )
         # root_developer walks the parent chain; join it instead
         developers_by_id = models.Developer.objects.select_related(

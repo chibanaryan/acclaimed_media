@@ -1094,6 +1094,56 @@ class ChangelistQueryGrowthTests(TestCase):
 
         self.assert_no_growth("/admin/games/wikipediagenre/", add_rows)
 
+    def test_the_series_and_developer_lists(self):
+        """`getattr(obj, "_game_count", obj.games.count())` evaluates its
+        default first, so the annotation saved nothing: a count a row."""
+
+        def add_rows(batch):
+            for n in range(3):
+                key = batch * 10 + n
+                game = models.Game.objects.create(name=f"SD {key}", rank=3000 + key)
+                series = models.Series.objects.create(
+                    name=f"Series {key}", slug=f"series-{key}", igdb_id=5000 + key
+                )
+                developer = models.Developer.objects.create(
+                    name=f"Dev {key}", igdb_id=6000 + key
+                )
+                game.series.add(series)
+                game.developers.add(developer)
+
+        for url in ("/admin/games/series/", "/admin/games/developer/"):
+            with self.subTest(url=url):
+                models.Game.objects.all().delete()
+                models.Series.objects.all().delete()
+                models.Developer.objects.all().delete()
+                self.assert_no_growth(url, add_rows)
+
+    def test_the_user_list(self):
+        """Its "Email Verified" column queried allauth's table a row."""
+        from allauth.account.models import EmailAddress
+
+        def add_rows(batch):
+            for n in range(3):
+                user = User.objects.create_user(
+                    username=f"grow{batch}-{n}", email=f"grow{batch}-{n}@example.com"
+                )
+                EmailAddress.objects.create(
+                    user=user, email=user.email, verified=bool(n % 2), primary=True
+                )
+
+        self.assert_no_growth("/admin/core/user/", add_rows)
+
+    def test_the_user_list_says_whose_address_is_verified(self):
+        from allauth.account.models import EmailAddress
+
+        user = User.objects.create_user(username="verifiedone", email="v@example.com")
+        EmailAddress.objects.create(
+            user=user, email="V@example.com", verified=True, primary=True
+        )
+        response = self.client.get("/admin/core/user/?q=verifiedone")
+        self.assertContains(response, 'field-email_verified_display"><img')
+        self.assertContains(response, 'alt="True"')
+
     def test_the_genre_list_shows_each_genres_count(self):
         genre = models.WikipediaGenre.objects.create(name="Counted", slug="counted")
         for rank in (1, 2):

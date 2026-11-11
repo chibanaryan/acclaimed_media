@@ -1,8 +1,10 @@
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from allauth.account.models import EmailAddress
 from django.db.models import (
     BooleanField,
     Count,
+    Exists,
     ExpressionWrapper,
     IntegerField,
     OuterRef,
@@ -75,7 +77,9 @@ class SeriesAdmin(admin.ModelAdmin):
 
     @admin.display(description="Games", ordering="_game_count")
     def game_count(self, obj):
-        return getattr(obj, "_game_count", obj.games.count())
+        # Not getattr's default, which runs its count first: a query a row
+        count = getattr(obj, "_game_count", None)
+        return obj.games.count() if count is None else count
 
 
 @admin.register(models.Developer)
@@ -94,7 +98,8 @@ class DeveloperAdmin(admin.ModelAdmin):
 
     @admin.display(description="Games", ordering="_game_count")
     def game_count(self, obj):
-        return getattr(obj, "_game_count", obj.developed_games.count())
+        count = getattr(obj, "_game_count", None)
+        return obj.developed_games.count() if count is None else count
 
 
 @admin.register(models.Game)
@@ -768,12 +773,20 @@ class UserAdmin(BaseUserAdmin):
                 music_models.ListenedAlbum, owned=False
             ),
             _want_to_listen_count=_tracking_count(music_models.WantToListenAlbum),
+            # `User.email_verified`'s question, asked once for the page
+            # rather than once a row
+            _email_verified=Exists(
+                EmailAddress.objects.filter(
+                    user=OuterRef("pk"), email__iexact=OuterRef("email"), verified=True
+                )
+            ),
         )
 
     @admin.display(description="Email Verified", boolean=True)
     def email_verified_display(self, obj):
         """Show email verification status from allauth EmailAddress."""
-        return obj.email_verified
+        verified = getattr(obj, "_email_verified", None)
+        return obj.email_verified if verified is None else verified
 
     @admin.display(description="Played", ordering="_played_games_count")
     def played_games_count(self, obj):

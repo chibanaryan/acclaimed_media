@@ -2373,6 +2373,31 @@ class MusicQueryBudgetTests(MusicDataMixin, TestCase):
         after = self._capture(artist.get_absolute_url())
         self.assertEqual(len(after), len(before))
 
+    def test_a_load_more_page_counts_no_facets(self):
+        """Its partial renders the rows and the button alone, but it counted
+        every facet, the genre tree and the rank chart for the page."""
+        clear_all_caches()
+        sqls = self._capture(reverse("music:home") + "?page=1&append=true")
+        self.assertEqual(self._matching(sqls, 'MAX("music_album"."rank")'), [])
+        self.assertEqual(self._matching(sqls, '"games_sitemetadata"'), [])
+
+    def test_the_album_page_joins_its_metadata(self):
+        """`album.image` and the properties table read the MusicBrainz and
+        Wikipedia rows, which arrived a query each."""
+        album = self.rust
+        album.primary_musicbrainz_album_data = (
+            models.MusicBrainzAlbumData.objects.create(
+                album=album, release_group_mbid="rg-rust", is_primary=True
+            )
+        )
+        album.primary_wikipedia_album_data = models.WikipediaAlbumData.objects.create(
+            album=album, wikidata_id="Q1", page_title="Rust", is_primary=True
+        )
+        album.save()
+        sqls = self._capture(album.get_absolute_url())
+        self.assertEqual(self._matching(sqls, self.METADATA_LAZY_LOAD), [])
+        self.assertEqual(self._matching(sqls, 'music_wikipediaalbumdata"."id" ='), [])
+
     def test_the_album_page_cost_does_not_grow_with_more_by(self):
         url = self.rust.get_absolute_url()
         # One related album first: with none the "More by" query never runs.

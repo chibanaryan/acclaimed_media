@@ -401,6 +401,23 @@ class UnifiedSearchViewTests(TestCase):
         self.assertIn("developers", data)
         self.assertIn("games", data)
 
+    def test_a_parent_whose_games_are_its_studios_is_found_with_their_count(self):
+        """The dropdown counted direct games only, so Nintendo, all of whose
+        games are credited to Nintendo EAD, was missing from it; the
+        developers list counts through subsidiaries."""
+        clear_all_caches()
+        data = self.client.get("/api/unified-search/", {"q": "nintendo"}).json()
+        by_name = {dev["name"]: dev["games_count"] for dev in data["developers"]}
+        self.assertEqual(by_name.get("Nintendo"), 2)
+        self.assertEqual(by_name.get("Nintendo EAD"), 2)
+        # The parent comes first: the better match, then the same count
+        self.assertEqual(data["developers"][0]["name"], "Nintendo")
+
+    def test_a_developer_with_no_games_anywhere_is_left_out(self):
+        clear_all_caches()
+        data = self.client.get("/api/unified-search/", {"q": "indie"}).json()
+        self.assertEqual(data["developers"], [])
+
     def test_unified_search_developer_results_have_correct_fields(self):
         """Test that developer results contain expected fields."""
         response = self.client.get("/api/unified-search/", {"q": "nintendo"})
@@ -643,7 +660,8 @@ class UnifiedSearchViewTests(TestCase):
         ]
         self.assertEqual(
             [(dev["name"], dev["games_count"]) for dev in developers],
-            [("Capcom", 1), ("Capcom Production Studio 4", 3)],
+            # Capcom counts its studio's games, as the developers list does
+            [("Capcom", 4), ("Capcom Production Studio 4", 3)],
         )
 
     def test_an_exact_title_is_found_past_the_bounded_read(self):

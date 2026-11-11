@@ -827,6 +827,14 @@ class AlbumHomePageView(MusicPageCacheMixin, RobustPaginationMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        self._add_paging(context)
+        if self.request.GET.get("append") == "true":
+            # A Load More page is rows and the next button: no facet, genre
+            # option, chart or heading, which it counted and threw away
+            context["show_rank"] = "filtered" if self._is_filtered() else "alltime"
+            context["highlight"] = parse_int(self.request.GET.get("highlight"))
+            context["query_string"] = self._filter_query_string()
+            return context
 
         min_year, max_year = _get_year_bounds()
         context["min_year"] = min_year
@@ -900,17 +908,6 @@ class AlbumHomePageView(MusicPageCacheMixin, RobustPaginationMixin, ListView):
         )
         context["rank_distribution_bin_count"] = config.RANK_DISTRIBUTION_BIN_COUNT
 
-        page_obj = context.get("page_obj")
-        total_count = page_obj.paginator.count if page_obj else 0
-        loaded_count = page_obj.end_index() if page_obj and total_count else 0
-        context["total_count"] = total_count
-        context["loaded_count"] = loaded_count
-        context["remaining_count"] = total_count - loaded_count
-        context["has_more"] = bool(page_obj and page_obj.has_next())
-        context["next_page"] = (
-            page_obj.next_page_number() if context["has_more"] else None
-        )
-
         # Echo the filter state back so the controls stay in sync after a swap.
         context["current_q"] = self.request.GET.get("q", "")
         context["current_start"] = self.request.GET.get("start", "")
@@ -927,12 +924,7 @@ class AlbumHomePageView(MusicPageCacheMixin, RobustPaginationMixin, ListView):
         # cannot come to state different ceilings.
         context["max_saved_filters"] = config.MAX_SAVED_FILTERS
         context["current_sort"], context["current_dir"] = self._sort_state()
-        # The artists as parsed, so a value that names nothing a slug could
-        # does not leave a page "filtered" that the client calls all-time.
-        context["is_filtered"] = bool(context["current_artists"]) or any(
-            self.request.GET.get(param)
-            for param in ("q", "start", "end", "genres", "listened")
-        )
+        context["is_filtered"] = self._is_filtered()
         context["filter_title"] = _filter_title(
             self.request.GET,
             min_year=min_year,
@@ -1004,6 +996,29 @@ class AlbumHomePageView(MusicPageCacheMixin, RobustPaginationMixin, ListView):
         ).last_full_update
 
         return context
+
+    @staticmethod
+    def _add_paging(context):
+        """The counts the results line and the Load More button read."""
+        page_obj = context.get("page_obj")
+        total_count = page_obj.paginator.count if page_obj else 0
+        loaded_count = page_obj.end_index() if page_obj and total_count else 0
+        context["total_count"] = total_count
+        context["loaded_count"] = loaded_count
+        context["remaining_count"] = total_count - loaded_count
+        context["has_more"] = bool(page_obj and page_obj.has_next())
+        context["next_page"] = (
+            page_obj.next_page_number() if context["has_more"] else None
+        )
+
+    def _is_filtered(self):
+        """Whether any filter narrows the list. The artists as parsed, so a
+        value that names nothing a slug could does not leave a page
+        "filtered" that the client calls all-time."""
+        return bool(parse_artist_param(self.request.GET.get("artists"))) or any(
+            self.request.GET.get(param)
+            for param in ("q", "start", "end", "genres", "listened")
+        )
 
     def _filter_query_string(self):
         """The current filter params, minus page, for load-more links."""
@@ -1312,7 +1327,10 @@ class AlbumDetailView(DetailView):
     slug_url_kwarg = "slug"
 
     def get_queryset(self):
-        return models.Album.objects.prefetch_related(
+        # Joined: the cover and the properties table read both, a query each
+        return models.Album.objects.select_related(
+            "primary_musicbrainz_album_data", "primary_wikipedia_album_data"
+        ).prefetch_related(
             # The credit line, and the properties row naming the artists
             # behind a credited name.
             models.credits_prefetch(),

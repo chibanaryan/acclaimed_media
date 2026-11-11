@@ -5574,9 +5574,20 @@ class FilteredPagesAreCachedWhateverTheHighlightTests(TestCase):
         response = self.client.get("/?start=1994&end=1994", HTTP_HX_REQUEST="true")
         self.assertNotEqual(response.content, b"CACHED MARKER")
 
-    def test_a_landing_page_still_declines_a_query_string(self):
+    def test_a_landing_page_is_kept_whatever_the_highlight(self):
+        """As the home page is: the highlight is the browser's, so the page
+        holds nothing of it, and `/games/1990s/?highlight=` is the page."""
+        response = self.client.get(f"/games/1990s/?highlight={self.games[0].id}")
+        self.assertNotIn("highlight", response.context)
+        self.assertIsNotNone(
+            caches["local"].get(
+                f"testserver:landing_page:{config.CACHE_VERSION}:/games/1990s/"
+            )
+        )
+
+    def test_a_landing_page_still_declines_a_filter_in_its_query(self):
         with mock.patch.object(caches["local"], "set") as stored:
-            self.client.get(f"/games/1990s/?highlight={self.games[0].id}")
+            self.client.get("/games/1990s/?platforms=1")
         stored.assert_not_called()
 
     def test_the_landing_script_reads_the_address(self):

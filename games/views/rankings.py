@@ -789,7 +789,10 @@ class SeoRankingPageView(HomePageView):
     page_cache_timeout = config.CACHE_TIMEOUT_LANDING_PAGE
 
     def get_page_cache_key(self):
-        if self.request.META.get("QUERY_STRING", ""):
+        # A shared link's tracking tags, and `highlight`, are not the page's:
+        # it is the same page with them (`page_query`), as the home page's
+        # cache already read it, where it was rendered each time
+        if page_query(self.request.META.get("QUERY_STRING", "")):
             return None
         return f"landing_page:{config.CACHE_VERSION}:{self.request.path}"
 
@@ -886,7 +889,10 @@ class BrowseIndexView(AnonymousResponseCacheMixin, TemplateView):
     page_cache_timeout = config.CACHE_TIMEOUT_LANDING_PAGE
 
     def get_page_cache_key(self):
-        if self.request.META.get("QUERY_STRING", ""):
+        # A shared link's tracking tags, and `highlight`, are not the page's:
+        # it is the same page with them (`page_query`), as the home page's
+        # cache already read it, where it was rendered each time
+        if page_query(self.request.META.get("QUERY_STRING", "")):
             return None
         return f"landing_page:{config.CACHE_VERSION}:{self.request.path}"
 

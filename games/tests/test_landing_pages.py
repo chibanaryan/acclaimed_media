@@ -262,7 +262,7 @@ class LandingPageViewTests(LandingPageDataMixin, TestCase):
         self.assertIsNone(caches["local"].get(cache_key))
 
     def test_query_strings_bypass_the_cache(self):
-        response = self.client.get("/games/action/?utm_source=x")
+        response = self.client.get(f"/games/action/?genres={self.rpg.id}")
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(
             caches["local"].get(
@@ -270,19 +270,39 @@ class LandingPageViewTests(LandingPageDataMixin, TestCase):
             )
         )
 
+    def test_a_shared_links_tracking_tags_are_the_page_itself(self):
+        """`/games/1998/?fbclid=...` is the page, as the home page's own
+        cache already reads it (`page_query`): it was rendered every time."""
+        for query in ("utm_source=x&utm_medium=y", "fbclid=abc", "highlight=5"):
+            with self.subTest(query=query):
+                clear_all_caches()
+                response = self.client.get(f"/games/action/?{query}")
+                self.assertEqual(response.status_code, 200)
+                self.assertIsNotNone(
+                    caches["local"].get(
+                        f"testserver:landing_page:{config.CACHE_VERSION}"
+                        ":/games/action/"
+                    )
+                )
+
     def test_top_index_is_cached_for_anonymous_users(self):
         self.client.get("/games/browse/")
         cache_key = f"testserver:landing_page:{config.CACHE_VERSION}:/games/browse/"
         self.assertIsNotNone(caches["local"].get(cache_key))
 
     def test_top_index_query_strings_bypass_the_cache(self):
-        response = self.client.get("/games/browse/?utm_source=x")
+        response = self.client.get("/games/browse/?page=2")
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(
             caches["local"].get(
                 f"testserver:landing_page:{config.CACHE_VERSION}:/games/browse/"
             )
         )
+
+    def test_top_index_with_a_tracking_tag_is_cached(self):
+        self.client.get("/games/browse/?fbclid=abc")
+        cache_key = f"testserver:landing_page:{config.CACHE_VERSION}:/games/browse/"
+        self.assertIsNotNone(caches["local"].get(cache_key))
 
     def test_seo_url_map_is_embedded_for_client_side_filtering(self):
         response = self.client.get("/")

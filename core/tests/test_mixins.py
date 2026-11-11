@@ -314,3 +314,17 @@ class AnonymousResponseCacheAliasTests(TestCase):
             caches["local"].get("games.acclaimedmedia.org:example_page")
         )
         self.assertIsNotNone(caches["local"].get(STORED_KEY))
+
+
+class PartialsVaryOnHtmxTests(TestCase):
+    """A page that answers htmx with a fragment at its own address says so
+    in `Vary`, as the two rankings pages do: else a browser's cache can
+    hand the fragment back as the page, on Back from another site."""
+
+    def test_the_entity_pages_vary_on_hx_request(self):
+        for url in ("/developers/", "/lists/", "/blog/"):
+            with self.subTest(url=url):
+                for headers in ({}, {"HTTP_HX_REQUEST": "true"}):
+                    response = self.client.get(url, **headers)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertIn("HX-Request", response.get("Vary", ""))

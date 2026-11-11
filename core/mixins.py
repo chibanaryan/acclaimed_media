@@ -10,6 +10,7 @@ from django.core.paginator import EmptyPage, Paginator
 from django.http import Http404, HttpResponse
 from django.middleware.csp import get_nonce as get_csp_nonce
 from django.middleware.csrf import get_token
+from django.utils.cache import patch_vary_headers
 
 from core import sites
 from core.services import render_budget
@@ -349,6 +350,15 @@ class HTMXPartialMixin:
     """
 
     htmx_partial_template = None
+
+    def dispatch(self, request, *args, **kwargs):
+        """One address, two bodies, so the answer varies on the header: else
+        a browser's cache could hand back the fragment as the page, on Back
+        from another site. The rankings pages say it with `vary_on_headers`.
+        """
+        response = super().dispatch(request, *args, **kwargs)
+        patch_vary_headers(response, ("HX-Request",))
+        return response
 
     def get_template_names(self):
         """Return partial template for HTMX requests, full template otherwise."""
