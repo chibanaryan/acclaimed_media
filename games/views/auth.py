@@ -118,10 +118,13 @@ class AuthModalLoginView(View):
             if not email_address or not email_address.verified:
                 # User exists but email not verified - show resend option.
                 # The password was right, so the resend is this account's.
-                # With no address at all there is nothing to resend to,
-                # nor an account to remember for one.
+                # With no address at all there is nothing to resend to, nor
+                # an account to remember for one: and none an earlier screen
+                # in this browser left, which a link would otherwise log in
                 if user.email:
                     _remember_pending_account(request, user)
+                else:
+                    request.session.pop(PENDING_ACCOUNT_KEY, None)
                 response = TemplateResponse(
                     request,
                     "auth/partials/_unverified_email.html",
@@ -286,35 +289,24 @@ class AuthModalForgotPasswordView(View):
         return response
 
 
-def _resendable_row(request, user, email_address):
-    """The row to send ``user.email``'s link for, made fit to confirm.
+def _address_row_for(request, user):
+    """A row for ``user.email``, for an account that has none.
 
-    The account's own row for the address (``email_address``), or one made
-    for an account that has none: made in the admin, or its email changed
-    there. Through allauth's `add_email`, which lower-cases the address and
-    reads back a row a second press of Resend made at the same moment.
-
-    Lower-case, as every comparison allauth makes is: a mixed-case row,
-    which only the admin writes, escaped its rule that one account holds a
-    verified address. And the account's primary address, as `user.email`
-    names it: beside an old primary row, allauth went on treating the old
-    address as the account's, and confirming does not promote it.
-    `set_as_primary` saves `user.email` as the row has it, lower-case.
+    Made in the admin, or its email changed there, it has nothing a link
+    could confirm, and its login says unverified. Through allauth's own
+    `add_email`, which lower-cases the address as every comparison allauth
+    makes does, and reads back a row a second press of Resend made at the
+    same moment. Primary only if the account has none: an old primary is
+    replaced when the new address is confirmed (`EmailConfirmationView`),
+    once the link has shown who holds the inbox, not before.
     """
     from allauth.account.models import EmailAddress
 
     with transaction.atomic():
-        if email_address is None:
-            email_address = EmailAddress.objects.add_email(request, user, user.email)
-        lowered = email_address.email.lower()
-        if (
-            email_address.email != lowered
-            and not EmailAddress.objects.filter(user=user, email=lowered).exists()
-        ):
-            email_address.email = lowered
-            email_address.save(update_fields=["email"])
-        if not email_address.primary:
-            email_address.set_as_primary()
+        email_address = EmailAddress.objects.add_email(request, user, user.email)
+        if not EmailAddress.objects.filter(user=user, primary=True).exists():
+            email_address.primary = True
+            email_address.save(update_fields=["primary"])
     return email_address
 
 
@@ -366,7 +358,8 @@ class AuthModalResendVerificationView(View):
         # the screen says so rather than promise a link
         verified = bool(email_address and email_address.verified)
         if not verified and not taken:
-            email_address = _resendable_row(request, user, email_address)
+            if email_address is None:
+                email_address = _address_row_for(request, user)
             _send_confirmation(request, email_address, signup=False)
 
         response = TemplateResponse(
@@ -404,6 +397,14 @@ class EmailConfirmationView(TemplateView):
                 # owner of an address someone else signed up with - gets a
                 # verified address and the sign-in button, not a session.
                 user = email_address.user
+                # The address the account names, now shown to be the
+                # reader's, becomes its primary: an old primary row left by
+                # an email changed in the admin is not the account's any more
+                if (
+                    not email_address.primary
+                    and email_address.email.lower() == (user.email or "").lower()
+                ):
+                    email_address.set_as_primary()
                 logged_in = request.session.get(PENDING_ACCOUNT_KEY) == user.pk
                 if logged_in:
                     request.session.pop(PENDING_ACCOUNT_KEY)

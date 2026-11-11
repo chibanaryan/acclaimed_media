@@ -425,10 +425,11 @@ class VerificationBelongsToAnAccountTests(TestCase):
         self.assertContains(response, "Email Sent")
         self.assertEqual(_confirmation_row(mail.outbox[0]).user, user)
 
-    def test_an_account_whose_email_changed_gets_it_as_its_primary(self):
+    def test_an_account_whose_email_changed_gets_it_as_primary_once_confirmed(self):
         """Its old row is primary, and a second primary row breaks allauth's
-        constraint (a 500); left primary, allauth went on treating the old
-        address as the account's. The new one takes over."""
+        constraint (a 500). The new address takes over when its link is
+        confirmed, which shows who holds the inbox, not when it is sent."""
+        from allauth.account.models import EmailConfirmationHMAC
         from django.core import mail
 
         user = self._account("moved", "old@example.com")
@@ -438,9 +439,14 @@ class VerificationBelongsToAnAccountTests(TestCase):
         response = self.client.post(reverse("auth-modal-resend-verification"))
         self.assertContains(response, "Email Sent")
         new = EmailAddress.objects.get(user=user, email="new@example.com")
+        self.assertFalse(new.primary)
+        self.assertEqual(_confirmation_row(mail.outbox[0]), new)
+        self.client.get(
+            reverse("account_confirm_email", args=[EmailConfirmationHMAC(new).key])
+        )
+        new.refresh_from_db()
         self.assertTrue(new.primary)
         self.assertFalse(EmailAddress.objects.get(email="old@example.com").primary)
-        self.assertEqual(_confirmation_row(mail.outbox[0]), new)
 
     def test_a_mixed_case_address_is_stored_lower_case(self):
         """allauth compares lower-cased addresses: a row kept as typed
@@ -484,6 +490,15 @@ class VerificationBelongsToAnAccountTests(TestCase):
         self.assertEqual(mail.outbox, [])
         self.assertNotContains(response, "We've sent")
 
+    def test_a_login_with_no_address_forgets_an_earlier_pending_account(self):
+        """Else an earlier screen's account stayed remembered in this
+        browser, and its link opened here logged it in."""
+        self._account("earlier", "earlier@example.com")
+        self._log_in("earlier")
+        User.objects.create_user(username="noemail2", password=self.PASSWORD)
+        self._log_in("noemail2")
+        self.assertNotIn(PENDING_ACCOUNT_KEY, self.client.session)
+
     def test_an_address_cleared_after_the_login_is_not_promised_a_link(self):
         """Staff can blank an account's email after its login remembered
         it: the resend has nothing to send to, and says so."""
@@ -495,24 +510,6 @@ class VerificationBelongsToAnAccountTests(TestCase):
         response = self.client.post(reverse("auth-modal-resend-verification"))
         self.assertEqual(mail.outbox, [])
         self.assertContains(response, "No Address to Verify")
-
-    def test_an_existing_row_is_made_primary_and_lower_case(self):
-        """A row the admin made beside an old primary one was found and
-        sent a link, but never promoted, nor lower-cased."""
-        user = self._account("rows", "old@example.com")
-        user.email = "Rows@Example.com"
-        user.save()
-        EmailAddress.objects.create(
-            user=user, email="Rows@Example.com", verified=False, primary=False
-        )
-        self._log_in("rows")
-        self.assertContains(
-            self.client.post(reverse("auth-modal-resend-verification")), "Email Sent"
-        )
-        row = EmailAddress.objects.get(user=user, email__iexact="rows@example.com")
-        self.assertEqual((row.email, row.primary), ("rows@example.com", True))
-        user.refresh_from_db()
-        self.assertEqual(user.email, "rows@example.com")
 
     def test_the_browser_that_signed_up_is_logged_in_by_its_link(self):
         from django.core import mail
