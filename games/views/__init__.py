@@ -77,6 +77,7 @@ from .auth import (
     EmailConfirmationView,
     AuthModalProfileView,
     AuthLogoutView,
+    SignupRedirectView,
 )
 
 __all__ = [
@@ -132,4 +133,5 @@ __all__ = [
     "EmailConfirmationView",
     "AuthModalProfileView",
     "AuthLogoutView",
+    "SignupRedirectView",
 ]

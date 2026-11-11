@@ -5,8 +5,9 @@
 - **Sign-up is the modal's.** allauth's own `/accounts/signup/` was still
   mounted and took any posted username: none of the modal's rules, and a
   name equal to another person's email, which that person's signup then
-  collided with. The page redirects home, the rules are one function the
-  forms and the adapter share, and a taken name is no longer a 500
+  collided with. The page opens the modal's sign-up screen, the rules are
+  one function the forms and the adapter share, and a taken name is no
+  longer a 500
 - **`HEAD` and the games API go through their caches honestly.** An
   anonymous `HEAD` was a whole render, round the page cache and the render
   budget; `?partial=true` on its own went round both too. The games API's

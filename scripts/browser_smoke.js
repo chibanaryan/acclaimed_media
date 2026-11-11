@@ -1302,6 +1302,11 @@ async function checkSearchBoxByKeyboard(page, site, query) {
     await again.type(query);
     for (let tries = 0; tries < 60 && !(await state()).options; tries += 1) await sleep(100);
     await page.keyboard.press('ArrowDown');
+    // Typing forgets the active option at once: left to the search's 300 ms
+    // debounce, Enter straight after a key followed the last query's option
+    await page.keyboard.type('x');
+    if ((await state()).active) return `${site}: an option stayed active while the query was being typed`;
+    await page.keyboard.press('Backspace');
     await page.keyboard.press('Escape');
     now = await state();
     if (now.active || now.expanded !== 'false') return `${site}: Escape left the results open or an option active`;
@@ -1312,6 +1317,37 @@ async function checkSearchBoxByKeyboard(page, site, query) {
     const searched = new URL(page.url());
     return searched.searchParams.get('q') === query
         ? null : `${site}: Enter with no active option went to ${page.url()}`;
+}
+
+/**
+ * allauth's own sign-up page is closed (it took any username), and its
+ * route lands on the home page with the modal open on its sign-up screen:
+ * allauth's login page links there, and a bare redirect home was a dead
+ * end. Answers as above.
+ */
+async function checkSignupRouteOpensTheModal(page, site) {
+    await page.setViewport({ width: 1440, height: 900 });
+    await page.goto(site + '/accounts/signup/', { waitUntil: 'load' });
+    for (let tries = 0; tries < 80; tries += 1) {
+        const open = await page.evaluate(() => {
+            const modal = document.getElementById('authModal');
+            return Boolean(modal && modal.open &&
+                modal.querySelector('input[name="password2"]'));
+        });
+        if (open) break;
+        await sleep(100);
+    }
+    const state = await page.evaluate(() => {
+        const modal = document.getElementById('authModal');
+        return {
+            path: location.pathname + location.search + location.hash,
+            open: Boolean(modal && modal.open),
+            form: Boolean(modal && modal.querySelector('input[name="password2"]')),
+        };
+    });
+    if (state.path !== '/') return `${site}: /accounts/signup/ ended at ${state.path}`;
+    if (!state.open) return `${site}: the sign-in modal did not open`;
+    return state.form ? null : `${site}: the modal did not show the sign-up form`;
 }
 
 /**
@@ -2661,6 +2697,8 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     }
     await report('games failed Back without the engine', checkGamesFailedBackWithoutTheEngine);
     await report('games failed Back, then the engine', checkGamesFailedBackThenTheEngine);
+    await report('games sign-up route opens the modal', page => checkSignupRouteOpensTheModal(page, games));
+    await report('music sign-up route opens the modal', page => checkSignupRouteOpensTheModal(page, music));
     await report('games search box by keyboard', page => checkSearchBoxByKeyboard(page, games, 'smoke'));
     await report('music search box by keyboard', page => checkSearchBoxByKeyboard(page, music, 'smoke'));
     await report('games failed search keeps the typing', checkGamesFailedSearchKeepsTheTyping);

@@ -105,6 +105,20 @@ class LiveRegionTests(TestCase):
         self.assertEqual(html.count(marker), 1)
         self.assertLess(html.index(marker), html.index('id="main-content"'))
 
+    def test_every_server_render_of_the_games_list_announces_its_count(self):
+        """Which is also what makes the counts live regions. The partial
+        render goes through `updateDomElements`; the whole-content one
+        (Enter in the search box before the engine) writes `#content`
+        itself, and left its counts with no role for the page's life."""
+        source = (BASE / "games/static/games/js/filter-component.js").read_text(
+            encoding="utf-8"
+        )
+        written = source.index("contentEl.innerHTML = html;")
+        self.assertIn(
+            "announceResultCount(contentEl);", source[written : written + 600]
+        )
+        self.assertEqual(source.count("contentEl.innerHTML = html;"), 1)
+
     def test_the_entity_lists_say_their_new_count(self):
         """Their heading is rewritten by script, in no live region."""
         developers = (

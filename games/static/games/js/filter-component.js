@@ -1285,6 +1285,11 @@ document.addEventListener('alpine:init', () => {
                     const contentEl = document.getElementById('content');
                     if (contentEl) {
                         contentEl.innerHTML = html;
+                        // Said, and made live regions, as every other
+                        // server render's counts are (utils-base.js): left
+                        // out here, they carried no role, and the engine's
+                        // later rewrites of them were never read out
+                        announceResultCount(contentEl);
                         if (typeof window.initRankDistributionCharts === 'function') {
                             window.initRankDistributionCharts();
                         } else {

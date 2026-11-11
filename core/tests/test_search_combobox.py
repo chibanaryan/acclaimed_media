@@ -135,6 +135,10 @@ class SearchComboboxMarkupTests(SimpleTestCase):
                     '@keydown.up.prevent="showMenu = true; moveOption(-1)"', field
                 )
                 self.assertIn("@keydown.escape=", field)
+                # Typing forgets the active option at once. Left to the
+                # debounced search, Enter within 300 ms of the last key
+                # followed the option of the query before
+                self.assertIn('@input="showMenu = true; clearActiveOption()"', field)
                 # Enter with nothing active is still the full search
                 self.assertRegex(
                     field,

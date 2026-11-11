@@ -278,9 +278,16 @@ class AuthModalResendVerificationView(View):
             # unique only once verified, so two unverified rows can share
             # one, and `get()` was a 500 on them. Nothing is said either way
             # about whether the address exists.
-            email_address = EmailAddress.objects.filter(email__iexact=email).first()
-            if email_address and not email_address.verified:
-                _send_confirmation(request, email_address, signup=False)
+            # Nothing for an address some account has verified: allauth
+            # keeps a verified address to one account, so another account's
+            # unverified row can never be confirmed, and its link would be
+            # an "Invalid Link" in the owner's inbox. Else the oldest
+            # unverified row.
+            rows = EmailAddress.objects.filter(email__iexact=email)
+            if not rows.filter(verified=True).exists():
+                email_address = rows.order_by("pk").first()
+                if email_address:
+                    _send_confirmation(request, email_address, signup=False)
 
         # Always show success (prevents email enumeration)
         response = TemplateResponse(
@@ -425,6 +432,19 @@ class AuthModalProfileView(View):
         response = HttpResponse()
         response["HX-Refresh"] = "true"
         return response
+
+
+class SignupRedirectView(View):
+    """allauth's sign-up route, which the modal replaces.
+
+    A signed-out visitor goes to the home page with the modal open on its
+    sign-up screen (`/#signup`, read by modal-handlers.js); a signed-in one
+    goes home, as allauth's own view sends them away. Any method: a POST is
+    not a sign-up here.
+    """
+
+    def dispatch(self, request, *args, **kwargs):
+        return redirect("/" if request.user.is_authenticated else "/#signup")
 
 
 class AuthLogoutView(View):

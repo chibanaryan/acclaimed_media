@@ -270,11 +270,13 @@ class WikidataPassTests(ServiceTestCase):
         self.assertEqual(result.processed, 0)
         self.assertEqual(result.errors, [])
 
-    def test_an_album_with_no_wikidata_id_at_all_is_reported(self):
+    def test_an_album_with_no_wikidata_id_at_all_is_skipped(self):
         self.album.wikidata_id = None
         self.album.save()
         result = self.service.run_wikidata([self.album])
-        self.assertEqual(result.errors, ["No album carries a Wikidata ID"])
+        # Skipped, not failed: there was nothing to look up
+        self.assertEqual(result.errors, [])
+        self.assertEqual(result.skipped, 1)
 
     def test_an_album_without_a_qid_is_skipped_beside_the_others(self):
         """The release gives 'Old Nobody' no QID, and the weekly run is not a

@@ -17,14 +17,22 @@
     if (window._modalHandlersInitialized) return;
     window._modalHandlersInitialized = true;
 
-    // Auth modal trigger - re-query elements inside handler for robustness
+    var SIGNUP_SCREEN = '/auth/modal/signup/?direct=1';
+
+    // Opens the auth modal on the screen at `url`. Elements are re-queried
+    // each time, for robustness. Answers whether there was a modal to open.
+    function openAuthModal(url) {
+        var authModal = document.getElementById('authModal');
+        if (!authModal) return false;
+        htmx.ajax('GET', url, {target: '#auth-modal-content', swap: 'innerHTML'});
+        authModal.showModal();
+        return true;
+    }
+
+    // Auth modal trigger
     document.addEventListener('click', function(e) {
         var trigger = e.target.closest('.auth-modal-trigger');
         if (trigger) {
-            var authModal = document.getElementById('authModal');
-            if (!authModal) return;
-
-            e.preventDefault();
             // Check for specific screen to load
             var screen = trigger.dataset.authScreen;
             var url = '/auth/modal/login/';
@@ -32,12 +40,58 @@
                 // Add cache-buster to ensure fresh data every time
                 url = '/auth/modal/profile/?_=' + Date.now();
             } else if (screen === 'signup') {
-                url = '/auth/modal/signup/?direct=1';
+                url = SIGNUP_SCREEN;
             }
-            htmx.ajax('GET', url, {target: '#auth-modal-content', swap: 'innerHTML'});
-            authModal.showModal();
+            if (openAuthModal(url)) e.preventDefault();
         }
     });
+
+    // `/#signup` opens the modal on its sign-up screen: where
+    // /accounts/signup/ redirects a signed-out visitor, so that allauth's
+    // own pages, which link there, lead to the one sign-up form there is.
+    //
+    // - Not for a signed-in visitor, whom the server's redirect sends home
+    //   without the fragment: a link that carries it anyway opens nothing.
+    //   Nor over a screen the visitor opened while this waited.
+    // - The fragment is dropped once the form has arrived, so a reload or
+    //   Back does not open it again. A request that fails closes the
+    //   dialog, rather than leave it open and empty, and leaves the
+    //   fragment for a reload to try again.
+    var signupOpened = false;
+    function openSignupFromFragment() {
+        if (signupOpened || window.location.hash !== '#signup') return;
+        var authModal = document.getElementById('authModal');
+        if (!authModal || authModal.dataset.signedIn === 'true' || authModal.open) return;
+        if (typeof htmx === 'undefined') return;
+        signupOpened = true;
+        document.body.addEventListener('htmx:afterRequest', function settle(e) {
+            if (!e.detail.target || e.detail.target.id !== 'auth-modal-content') return;
+            document.body.removeEventListener('htmx:afterRequest', settle);
+            if (!e.detail.successful) {
+                if (authModal.open) authModal.close();
+                return;
+            }
+            if (window.location.hash !== '#signup') return;
+            window.history.replaceState(
+                window.history.state, '', window.location.pathname + window.location.search
+            );
+        });
+        openAuthModal(SIGNUP_SCREEN);
+    }
+    // Once htmx has started. This script is injected from an idle callback,
+    // which can come before htmx, a deferred script, has run, or between
+    // its running and its start: htmx reads its config and the page on
+    // DOMContentLoaded. So after that event's listeners, if it is still to
+    // come (the timeout lets htmx's own go first, whichever registered
+    // first), and on `load` if it has gone by; the opener runs once.
+    if (document.readyState === 'complete') {
+        openSignupFromFragment();
+    } else {
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(openSignupFromFragment, 0);
+        }, { once: true });
+        window.addEventListener('load', openSignupFromFragment, { once: true });
+    }
 
     // Ensure HTMX processes content after swaps into auth modal
     document.body.addEventListener('htmx:afterSwap', function(e) {

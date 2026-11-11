@@ -14,7 +14,6 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.contrib.sitemaps.views import sitemap
 from django.urls import include, path
-from django.views.generic import RedirectView
 
 from core import views as core_views
 from games import views
@@ -40,10 +39,13 @@ def common_urlpatterns(sitemaps):
         ),
         # Sign-up is the modal's, which checks a username first; allauth's
         # own page took any (also before the include, and under its name,
-        # which allauth's flows reverse).
+        # which allauth's flows reverse). To the home page with the modal
+        # open on its sign-up screen (modal-handlers.js reads the fragment):
+        # allauth's login page, where LOGIN_URL sends a signed-out toggle,
+        # links here, and a bare redirect home was a dead end.
         path(
             "accounts/signup/",
-            RedirectView.as_view(url="/"),
+            views.SignupRedirectView.as_view(),
             name="account_signup",
         ),
         path("accounts/", include("allauth.urls")),

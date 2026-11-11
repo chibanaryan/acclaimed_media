@@ -136,6 +136,10 @@ most of the small leftovers; `DEVLOG.md`). Left, or found by it:
     - The three progress streams in `games/services/import_handler.py`
       (IGDB, Wikipedia, the batch) each carry a copy of the queue and the
       drain loop with its keepalives. The batch's import loop is one now.
+    - The four search boxes (two in `_sidebar.html`, two in
+      `_nav_mobile.html`) each carry a copy of the combobox's attributes
+      and roles, as they each carried a copy of the box before. One include,
+      in the style of `core/includes/_search_box.html`, would hold it once.
     - Music's takeover runs in `csf.init().then(...)` with no `catch`. One
       that only logged would turn an uncaught error, which the smoke test
       fails on, into a console line it does not see; one that did more
@@ -229,7 +233,7 @@ one 6.9 MiB reading, so it stays.
     changed shape (`games_api:...`); the rows Django's `cache_page` wrote
     (`views.decorators.cache...`) are never read again and expire within a
     day. Nothing to clear.
-19. **`/accounts/signup/` redirects home.** Check production once for
+19. **`/accounts/signup/` redirects to the modal's sign-up screen.** Check production once for
     accounts whose username contains `@` and is not their own email
     (`User.objects.filter(username__contains="@").exclude(username=F("email"))`):
     each is a name taken through the old page, and may be squatting

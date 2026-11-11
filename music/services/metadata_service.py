@@ -159,7 +159,11 @@ class AlbumMetadataService:
                 qid_to_albums.setdefault(qid, []).append(album)
 
         if not qid_to_albums:
-            result.errors.append("No album carries a Wikidata ID")
+            # Nothing to look up is not a failure, here as for one album in
+            # the loop below: reported as an error, it failed the weekly
+            # command's "the pass landed nothing" check for a selection
+            # that had nothing to land
+            result.skipped = len(albums)
             return result
 
         self._notify("start", {"pass": "wikidata", "total": len(albums)})

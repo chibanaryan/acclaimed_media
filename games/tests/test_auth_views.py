@@ -5,13 +5,16 @@ ModalSocialAccountAdapter) and their integration with the modal-based
 authentication flow.
 """
 
+from pathlib import Path
 from unittest.mock import Mock
 
 from allauth.account.models import EmailAddress
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
+from core.tests.utils import clear_all_caches
 from games.adapters import ModalAccountAdapter, ModalSocialAccountAdapter
 
 User = get_user_model()
@@ -147,13 +150,53 @@ class AllauthSignupIsClosedTests(TestCase):
             },
         )
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response["Location"], "/")
+        self.assertEqual(response["Location"], "/#signup")
         self.assertFalse(User.objects.filter(email="squatter@example.com").exists())
+
+    def test_the_redirect_lands_on_the_modals_sign_up_screen(self):
+        """allauth's login page, where a signed-out toggle is sent, links to
+        this route: a bare redirect home left that link a dead end."""
+        source = (
+            Path(settings.BASE_DIR) / "games/static/games/js/modal-handlers.js"
+        ).read_text()
+        self.assertIn("window.location.hash !== '#signup'", source)
+        self.assertIn("openAuthModal(SIGNUP_SCREEN)", source)
+        # The script is injected from an idle callback, which can come
+        # before htmx has started: it waits for DOMContentLoaded's
+        # listeners, or `load` if that event has gone by
+        self.assertIn("setTimeout(openSignupFromFragment, 0);", source)
+        self.assertIn(
+            "window.addEventListener('load', openSignupFromFragment, { once: true })",
+            source,
+        )
+        # Never for a signed-in visitor, whatever link carried it, nor over
+        # a screen the visitor opened meanwhile
+        self.assertIn("authModal.dataset.signedIn === 'true' || authModal.open", source)
+        # A request that fails leaves no open, empty dialog
+        self.assertIn("if (authModal.open) authModal.close();", source)
+        login = self.client.get(reverse("account_login"))
+        self.assertContains(login, reverse("account_signup"))
+
+    def test_the_modal_says_whether_the_visitor_is_signed_in(self):
+        """Which is what keeps `/#signup`, followed as a link, from opening
+        the sign-up form for someone who has an account open."""
+        self.assertContains(self.client.get("/"), 'id="authModal"')
+        self.assertContains(self.client.get("/"), 'data-signed-in="false"')
+        self.client.force_login(User.objects.create_user(username="reader"))
+        self.assertContains(self.client.get("/"), 'data-signed-in="true"')
+
+    def test_a_signed_in_visitor_is_sent_home_with_no_form(self):
+        """As allauth's own view sends them away: the modal's sign-up screen
+        would let them make a second account while signed in as the first."""
+        user = User.objects.create_user(username="reader", password="pw-12345")
+        self.client.force_login(user)
+        response = self.client.get(reverse("account_signup"))
+        self.assertEqual((response.status_code, response["Location"]), (302, "/"))
 
     def test_the_page_redirects_home(self):
         response = self.client.get(reverse("account_signup"))
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response["Location"], "/")
+        self.assertEqual(response["Location"], "/#signup")
 
     def test_signing_up_with_an_email_someone_holds_as_a_username(self):
         """Through the modal: the default username is the email, and a
@@ -178,6 +221,13 @@ class AllauthSignupIsClosedTests(TestCase):
 
 
 class AuthModalEdgeTests(TestCase):
+    def setUp(self):
+        # allauth limits confirmation mails per address, in the cache, which
+        # only pytest's conftest clears between tests: under Django's runner
+        # an earlier test's mail to the same address spent this one's
+        clear_all_caches()
+        self.addCleanup(clear_all_caches)
+
     def test_resending_to_an_address_two_unverified_accounts_share(self):
         """allauth keeps an address unique only once it is verified; `get()`
         on two rows was a 500."""
@@ -191,6 +241,40 @@ class AuthModalEdgeTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Email Sent")
+
+    def test_nothing_is_resent_for_an_address_another_account_has_verified(self):
+        """allauth keeps a verified address to one account, so the other's
+        row can never be confirmed: a mail for it is a dead link in the
+        owner's inbox, which anyone could ask for."""
+        from django.core import mail
+
+        verified = User.objects.create_user(username="first", email="both@example.com")
+        EmailAddress.objects.create(
+            user=verified, email="both@example.com", verified=True, primary=True
+        )
+        waiting = User.objects.create_user(username="second", email="both@example.com")
+        EmailAddress.objects.create(
+            user=waiting, email="both@example.com", verified=False, primary=True
+        )
+        response = self.client.post(
+            reverse("auth-modal-resend-verification"), {"email": "both@example.com"}
+        )
+        # The same answer either way: whether the address exists is not said
+        self.assertContains(response, "Email Sent")
+        self.assertEqual(mail.outbox, [])
+
+    def test_resending_to_two_unverified_accounts_mails_the_oldest_once(self):
+        from django.core import mail
+
+        for name in ("first", "second"):
+            user = User.objects.create_user(username=name, email="pair@example.com")
+            EmailAddress.objects.create(
+                user=user, email="pair@example.com", verified=False, primary=True
+            )
+        self.client.post(
+            reverse("auth-modal-resend-verification"), {"email": "pair@example.com"}
+        )
+        self.assertEqual(len(mail.outbox), 1)
 
     def test_a_refused_username_does_not_push_the_modals_address(self):
         User.objects.create_user(

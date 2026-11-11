@@ -187,6 +187,9 @@ class Command(BaseCommand):
             results.append(result)
             if (
                 name in self.ATTEMPTS_EVERY_ALBUM
+                # Several albums: one that lands nothing, picked with
+                # `--slug`, is that album's QID gone from Wikidata
+                and len(fresh) > 1
                 and result.errors
                 and not result.processed
             ):

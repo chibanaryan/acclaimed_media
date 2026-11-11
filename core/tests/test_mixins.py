@@ -10,6 +10,7 @@ from django.core.cache import caches
 from django.http import Http404, HttpResponse
 from django.middleware.csrf import _does_token_match, get_token
 from django.test import RequestFactory, TestCase
+from django.urls import reverse
 from django.views.generic import View
 
 from core.mixins import AnonymousResponseCacheMixin, StaffOnlyMixin
@@ -268,22 +269,33 @@ class AnonymousResponseCacheAliasTests(TestCase):
         return CachedPage.as_view()(request)
 
     def test_a_head_request_is_answered_from_the_cache(self):
-        """Without rendering, and without the body a server drops anyway."""
-        self._get()
+        """Without rendering, and as the GET is: the server drops the body,
+        and a Content-Length that is not the GET's is one RFC 9110 forbids."""
+        got = self._get()
         with mock.patch.object(CachedPage, "get") as rendered:
             response = self._head()
         rendered.assert_not_called()
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.content, b"")
-        self.assertEqual(response["Content-Type"], self._get()["Content-Type"])
+        self.assertEqual(response.content, got.content)
+        self.assertEqual(response["Content-Type"], got["Content-Type"])
 
     def test_a_head_request_on_a_cold_cache_stores_the_page(self):
         response = self._head()
-        self.assertEqual(response.content, b"")
-        self.assertEqual(self._get().content, b"rendered")
+        self.assertEqual(response.content, b"rendered")
         with mock.patch.object(CachedPage, "get") as rendered:
-            self._get()
+            self.assertEqual(self._get().content, b"rendered")
         rendered.assert_not_called()
+
+    def test_head_and_get_report_one_length(self):
+        """Through the middleware, which stamps Content-Length: a cached
+        HEAD answered with an emptied body said 0."""
+        clear_all_caches()
+        url = reverse("home")
+        got = self.client.get(url)
+        head = self.client.head(url)
+        self.assertEqual(head.status_code, 200)
+        self.assertEqual(head["Content-Length"], got["Content-Length"])
+        self.assertGreater(int(head["Content-Length"]), 1000)
 
     def test_the_stored_body_is_deflated(self):
         # Uncompressed, ~50 cacheable URLs at ~1.4 MB each would be 60-70 MB

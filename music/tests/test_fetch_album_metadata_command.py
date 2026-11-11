@@ -133,9 +133,14 @@ class AnOutageFailsTheCommandTests(NoHeartbeatMixin, TestCase):
     which Sentry's cron monitor read as a good Sunday."""
 
     def setUp(self):
-        models.Album.objects.create(name="Pet Sounds", rank=1, slug="pet-sounds")
+        self.album = models.Album.objects.create(
+            name="Pet Sounds", rank=1, slug="pet-sounds", wikidata_id="Q212863"
+        )
+        models.Album.objects.create(
+            name="Revolver", rank=2, slug="revolver", wikidata_id="Q161045"
+        )
 
-    def run_with(self, weekly=False, **results):
+    def run_with(self, weekly=False, select=None, **results):
         out = StringIO()
         with mock.patch(f"{COMMAND}.AlbumMetadataService") as service:
             for name, result in results.items():
@@ -144,6 +149,7 @@ class AnOutageFailsTheCommandTests(NoHeartbeatMixin, TestCase):
                 "fetch_album_metadata",
                 stdout=out,
                 weekly=weekly,
+                **(select or {}),
                 **{f"{name}_only": True for name in results},
             )
         return out.getvalue()
@@ -152,6 +158,29 @@ class AnOutageFailsTheCommandTests(NoHeartbeatMixin, TestCase):
         down = PassResult(name="Wikidata", errors=["Pet Sounds: nothing returned"])
         with self.assertRaisesMessage(CommandError, "failed outright for: Wikidata"):
             self.run_with(wikidata=down)
+
+    def test_albums_with_no_qid_to_look_up_are_not_an_outage(self):
+        """`--slug` on an album the release gives no QID: the pass skips
+        it, here unmocked, and the command exits normally."""
+        models.Album.objects.update(wikidata_id=None)
+        out = StringIO()
+        call_command("fetch_album_metadata", stdout=out, wikidata_only=True)
+        self.assertIn("2 skipped", out.getvalue())
+        self.assertNotIn("failed", out.getvalue())
+
+    def test_one_album_picked_by_hand_landing_nothing_is_not_an_outage(self):
+        """Its QID has gone from Wikidata, say. The check is for a run over
+        the whole corpus, the weekly job's and an import's."""
+        gone = PassResult(name="Wikidata", errors=["Pet Sounds: nothing returned"])
+        for select in ({"slug": "pet-sounds"}, {"limit": 1}, {"id": self.album.pk}):
+            with self.subTest(select=select):
+                self.assertIn("1 failed", self.run_with(select=select, wikidata=gone))
+
+    def test_several_albums_picked_by_hand_landing_nothing_are(self):
+        """A chunked run with Wikidata down fails as the whole one does."""
+        down = PassResult(name="Wikidata", errors=["nothing returned"] * 2)
+        with self.assertRaisesMessage(CommandError, "failed outright for: Wikidata"):
+            self.run_with(select={"limit": 2}, wikidata=down)
 
     def test_errors_on_some_albums_do_not(self):
         some = PassResult(name="Wikidata", processed=9, errors=["One album: gone"])

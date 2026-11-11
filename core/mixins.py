@@ -248,10 +248,11 @@ class AnonymousResponseCacheMixin:
             request.headers.get("HX-Request")
             or request.headers.get("X-Requested-With") == "XMLHttpRequest"
         )
-        # HEAD is served by `get()`, so it is the same render. Until
-        # 2026-11-10 it went round the cache and the budget both, for a body
-        # the server then drops.
-        is_head = request.method == "HEAD"
+        # HEAD is served by `get()`, so it is the same render, and is
+        # answered here exactly as GET is, body and all: the server drops
+        # the body, and the headers (Content-Length among them, which must
+        # be the GET's) come out the same. Until 2026-11-10 it went round
+        # the cache and the budget both.
         if (
             request.user.is_authenticated
             or by_script
@@ -289,17 +290,12 @@ class AnonymousResponseCacheMixin:
                 # stores over it
                 cached_payload = None
             elif isinstance(cached_payload, dict) and "body" in cached_payload:
-                if is_head:
-                    # No body to send, so nothing to inflate and no token
-                    # to mint (which would also set a cookie)
-                    content = b""
-                else:
-                    content = self._restore_csp_nonce(
-                        request,
-                        self._restore_csrf_token(
-                            request, zlib.decompress(cached_payload["body"])
-                        ),
-                    )
+                content = self._restore_csp_nonce(
+                    request,
+                    self._restore_csrf_token(
+                        request, zlib.decompress(cached_payload["body"])
+                    ),
+                )
                 status = cached_payload.get("status", 200)
                 content_type = cached_payload.get("content_type")
                 response = HttpResponse(
@@ -341,8 +337,6 @@ class AnonymousResponseCacheMixin:
                 },
                 self.page_cache_timeout,
             )
-            if is_head:
-                response.content = b""
 
         return response
 

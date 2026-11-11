@@ -1619,7 +1619,10 @@ The command fails (`CommandError`) when the Wikidata pass lands nothing,
 inside the cron check-in and after the lock is let go, as games' job does:
 that pass attempts every album on every run, so one that lands none could
 not run. Until 2026-11-10 it exited 0 with Wikidata down and every album
-failed. The other passes attempt only what is missing, and a week's only
+failed. One album picked with `--slug` that lands nothing is that album's
+QID gone, and fails nothing; several that all land nothing are an outage.
+With no QID among the albums selected there was nothing to attempt, and the
+pass reports them skipped. The other passes attempt only what is missing, and a week's only
 cover work can be the two albums with no cover anywhere, so errors on some
 albums fail nothing.
 
@@ -1938,8 +1941,13 @@ URL whatever the request is uses `sites.site_reverse()` (music's
   forms reach without either. allauth's `/accounts/signup/` was still
   mounted and the adapter took any posted username: none of the rules, and
   a name equal to another person's email, which then held the name that
-  person's signup defaults to. The page now redirects home (its route name
-  stays, since allauth's flows reverse it), a name that breaks the rules
+  person's signup defaults to. The page now redirects a signed-out visitor to
+  `/#signup`, where `modal-handlers.js` opens the modal on its sign-up
+  screen (once htmx has started, never for a signed-in visitor, whom
+  `#authModal[data-signed-in]` names, and closing the dialog again if the
+  form's request fails), and a signed-in one home (its route name
+  stays, since allauth's flows reverse it, and its login page links to it),
+  a name that breaks the rules
   gives way to the email, and an email someone already holds as a username
   gets allauth's generated name where it was an `IntegrityError`.
 - **The old apex paths redirect.** Everything the apex served before is in
@@ -2175,8 +2183,10 @@ in a week. What changed:
   sends the header. The apex answers an old filter
   link in `dispatch`, ahead of the cache and the budget.
 - **`HEAD` is the `GET` it is served by** (2026-11-10): answered from the
-  kept page with no body, and rendered and kept on a miss. It went round
-  the cache and the budget, a whole render for a body the server drops.
+  kept page exactly as `GET` is, and rendered and kept on a miss. It went
+  round the cache and the budget, a whole render for a body the server
+  drops. The body is still built, since the headers must be the `GET`'s:
+  emptied, the page said `Content-Length: 0`.
 
 That is ~200 more keys in `local` at ~60 KB deflated, ~12 MB a worker.
 `scripts/browser_smoke.js` pins the landing ("games highlight ..."), which
@@ -2981,9 +2991,10 @@ Alpine and the bundles), each because the bare form failed for someone
   field names with `aria-activedescendant`, Enter follows it, and Enter
   with none is the full search, as it was. The results are `role="option"`
   links in a `role="group"` per kind inside a `role="listbox"`; the hints
-  are a list of their own, since a listbox owns options alone. A new query
-  or the clear button forgets the active option, because a keyed loop
-  reuses elements. Checked against Chrome's accessibility tree, not yet on
+  are a list of their own, since a listbox owns options alone. A keystroke,
+  a new query or the clear button forgets the active option: a keyed loop
+  reuses elements, and Enter within the search's 300 ms debounce would
+  otherwise follow the last query's option. Checked against Chrome's accessibility tree, not yet on
   a screen reader (`docs/ASSISTIVE_TECH_CHECKLIST.md`).
 - **A search box aborts the request it overtakes** (`FetchManager`), in
   `createUnifiedSearchData` and `core/js/media-search.js`: a slow answer

@@ -1,7 +1,8 @@
 {# Auth Modal - modal-based authentication flow #}
 {# Named by the heading of whichever partial is loaded, each of which carries #}
 {# id="authModalTitle"; aria-label names it until the first one arrives. #}
-<dialog id="authModal" class="modal" aria-labelledby="authModalTitle" aria-label="Account">
+{# data-signed-in: modal-handlers.js opens the sign-up screen for `/#signup` only for a signed-out visitor. A page kept whole is an anonymous one, so the value is right in a cached copy too #}
+<dialog id="authModal" class="modal" aria-labelledby="authModalTitle" aria-label="Account" data-signed-in="{{ user.is_authenticated|yesno:'true,false' }}">
     <div class="modal-box bg-base-200 max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <button type="button"
                 class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
