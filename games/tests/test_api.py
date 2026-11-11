@@ -346,6 +346,11 @@ class UnifiedSearchViewTests(TestCase):
     """Test the UnifiedSearchView for unified navbar search."""
 
     def setUp(self):
+        # The developer counts come from the cached hierarchy, which a
+        # `TestCase` never commits a drop of: under Django's runner, which
+        # keeps caches between tests, an earlier test's hierarchy answered
+        clear_all_caches()
+        self.addCleanup(clear_all_caches)
         self.client = APIClient()
 
         # Create test developers (root developers with subsidiaries)
@@ -405,7 +410,6 @@ class UnifiedSearchViewTests(TestCase):
         """The dropdown counted direct games only, so Nintendo, all of whose
         games are credited to Nintendo EAD, was missing from it; the
         developers list counts through subsidiaries."""
-        clear_all_caches()
         data = self.client.get("/api/unified-search/", {"q": "nintendo"}).json()
         by_name = {dev["name"]: dev["games_count"] for dev in data["developers"]}
         self.assertEqual(by_name.get("Nintendo"), 2)
@@ -414,7 +418,6 @@ class UnifiedSearchViewTests(TestCase):
         self.assertEqual(data["developers"][0]["name"], "Nintendo")
 
     def test_a_developer_with_no_games_anywhere_is_left_out(self):
-        clear_all_caches()
         data = self.client.get("/api/unified-search/", {"q": "indie"}).json()
         self.assertEqual(data["developers"], [])
 

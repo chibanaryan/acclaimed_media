@@ -1,5 +1,52 @@
 # Developer Log
 
+## 2026-11-11 (fourth improvement pass)
+
+- **A verification belongs to the account that asked for it.** The
+  confirmation link logged in whoever opened it, so a mail scanner, or the
+  owner of an address someone else had signed up with, was signed in to an
+  account whose password that person knew. It now logs in only the browser
+  that signed up or logged in as the account; anyone else gets the address
+  verified and a Log In button. The resend is for the account the session
+  just logged in to, never the posted address (ROADMAP 8), and signing up
+  on an address another account waits on points to logging in or a reset
+- **Sentry no longer receives sign-up passwords.** Its scrubber matches
+  whole key names, and allauth's `password1`, `password2` and
+  `oldpassword` are not `password`
+- **One album's error stays its own in every metadata pass.** The cover,
+  Discogs and MusicBrainz passes ended at the first database error, and
+  the weekly job skipped its genre rebuild, dates, slugs and cache drop
+  with them. A games import no longer aborts merging a reader's tracking
+  rows, and two IGDB collections with one name both land
+- **A release's caches go with it.** A games import left the year bounds,
+  platform list, landing lists and CSV genres for a day (a new year's page
+  was a 404); a music genre edited in the admin left the filter for a day
+- **The music import checks its albums file as it checks the artists'**:
+  malformed Wikidata ids, ranks and years, and a repeated rank, by row
+- **Pages that were slow for no reason**: the Series, Developer and User
+  changelists ran a query a row; music's Load More counted every facet it
+  threw away; album detail loaded its metadata a query each; a shared
+  landing-page link with `fbclid` was rendered every time
+- **Frontend**: a status change no longer leaves two icons on the row's
+  other half; the playtime counts follow a server render; the developer
+  page's studio links work on change and on phones; an IndexedDB failure
+  falls back to the network instead of stopping the games engine; a failed
+  search says so; a highlight landing stops polling once the engine has
+  failed; entity Load More rows no longer blink
+- **Keyboard and screen readers**: focus comes back to the button after a
+  status choice and after Load More; the games status menu takes the arrow
+  keys and Tab; coverless album links are named; "1 album", not "1 albums"
+- Smaller: flat pages marked registration-required are; saved-filter
+  bodies are capped; CSV cells starting `= + - @` are text; the search
+  dropdown counts a developer's games through its studios; music's
+  `/api/?genres=` includes the styles under a genre; companies are asked
+  of IGDB 500 at a time; a request's traceback reaches `heroku logs`
+- Removed what nothing used (music's album search view, genre option
+  groups and badge filter; the recursive subsidiary walks; the grid
+  card's server branch; the Load More icon randomiser) and folded three
+  CSRF readers, two `joinNames`, two IGDB parsers and seven spellings of
+  the desktop breakpoint into one each
+
 ## 2026-11-10 (third improvement pass)
 
 - **Sign-up is the modal's.** allauth's own `/accounts/signup/` was still

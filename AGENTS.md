@@ -271,7 +271,9 @@ Core Django models include:
     never be refreshed again, is moved to `<slug>-<its IGDB id>`
 - **Platform** - Gaming platforms (PC, PS5, etc.)
 - **WikipediaGenre** - Game genres, hierarchical (`parent`, `level`, `path`)
-- **Series** - Game series, from IGDB's collections
+- **Series** - Game series, from IGDB's collections, made or updated by
+  `Series.from_igdb`: name and slug are unique, IGDB's names are not, so a
+  second collection of a name takes its IGDB id in both
 - **IGDBGameData / WikipediaGameData / HLTBGameData** - Fetched metadata, each
   with a `primary_...` pointer on `Game`. They outlive an import, which
   recreates every `Game` and reattaches them
@@ -370,7 +372,8 @@ Books API endpoints (behind `BOOKS_ENABLED` feature flag):
 
 Music API endpoints, on `music.acclaimedmedia.org` (at `/api/` on the
 apex until 2026-10-30, which now redirects):
-- `/api/` - List and filter albums
+- `/api/` - List and filter albums; `?genres=` includes the styles under a
+  genre, as the page's filter does (2026-11-11)
 - `/api/<slug>/` - Album details with list appearances
 - `/api/search/` - Album search
 - `/api/artists/` and `/api/artists/<slug>/` - Artists
@@ -841,8 +844,11 @@ expose exactly those names, which is what makes the migration a template
 change. The whole feature is inert unless the page passes a
 `savedFiltersUrl`, so a section that has not opted in renders no button.
 
-Both sites' write views read the body through
-`core.services.request_body.read_saved_filter`, which never raises: a name
+Both sites' write views parse the body with
+`core.services.request_body.SavedFilterJSONParser`, which refuses one over
+16 KB before parsing it: DRF reads the stream itself, so Django's
+`DATA_UPLOAD_MAX_MEMORY_SIZE` never applied. They read it through
+`read_saved_filter`, which never raises: a name
 of `null` or a body that is an array was a 500 on games, and music saved
 `null` as a filter called "None". A number is taken as its digits; anything
 else is the "name is required" 400, and filters that are not an object are
@@ -1085,6 +1091,11 @@ rules follow, both since 2026-11-02 and both run by `scripts/browser_smoke.js`
   address rewrites htmx's entry in place:
   `history.replaceState(history.state, '', url)`, on its `htmx:afterRequest`
   or after `htmx.ajax(...)` resolves, since htmx pushes before either.
+
+Each view on `core.mixins.HTMXPartialMixin` sends `Vary: HX-Request`, as
+the rankings pages do with `vary_on_headers`: one address answers with a
+fragment or the page, and a browser's cache could otherwise hand back the
+fragment on Back from another site.
 
 The developers, games source-lists and authors pages share one Load More,
 `core/js/entity-load-more.js`, configured by its button's data attributes
@@ -1596,6 +1607,11 @@ the Discogs pass then pays one 404 and one MusicBrainz request for each, and
 relinks the stored row. The Wikidata pass skips an album the release gives
 no QID ('Old Nobody') rather than failing on it.
 
+Each pass keeps an album's failure to that album, in a savepoint
+(`AlbumMetadataService._for_one_album`): until 2026-11-11 only the Wikidata
+pass did, and one database error ended the cover, Discogs or MusicBrainz
+pass and skipped the command's genre rebuild, dates, slugs and cache drop.
+
 Four passes, selectable, because their costs differ by two orders of magnitude:
 Wikidata is ~25 batched requests (seconds), cover art ~1000 downloads (~18 min),
 Discogs ~500 requests at 25/min anonymous (~23 min), and MusicBrainz ~500 at its
@@ -1950,6 +1966,15 @@ URL whatever the request is uses `sites.site_reverse()` (music's
   a name that breaks the rules
   gives way to the email, and an email someone already holds as a username
   gets allauth's generated name where it was an `IntegrityError`.
+- **A verification belongs to the account that asked for it** (2026-11-11).
+  The modal remembers the account it showed "verification sent" or "Email
+  Not Verified" for, in the session (`auth.PENDING_ACCOUNT_KEY`), where
+  the password was just given. The confirmation link logs in only that
+  browser; anyone else who opens it (a mail scanner, the owner of an
+  address someone else signed up with) gets the address verified and a
+  Log In button. Resend sends for that account, never the address posted,
+  and says so when another account has verified the address; signing up on
+  an address another account waits on points to logging in or a reset.
 - **The old apex paths redirect.** Everything the apex served before is in
   links and search indexes, so `urls_root`'s catch-all
   (`core.views.redirect_to_site`) sends `/music/<rest>` to
@@ -2145,8 +2170,9 @@ in a week. What changed:
 
 - **The key is made from the parsed query** (`rankings.cacheable_facet`):
   with `highlight` and the tracking tags left out (`page_query`: `utm_*`,
-  `fbclid`, ..., so a shared link's `/?fbclid=...` is the home page it is),
-  nothing (the home page's own key), one year or
+  `fbclid`, ..., so a shared link's `/?fbclid=...` is the home page it is,
+  as `/games/1998/?fbclid=...` and `/games/browse/?...` are their pages
+  since 2026-11-11), nothing (the home page's own key), one year or
   whole decade, one platform id or one genre id, each parameter once, in any
   order, since the scraper replays a list it re-serialises. A year is bounded
   statically, which keeps a shared-cache read off the hit path; a platform or
@@ -2192,6 +2218,12 @@ That is ~200 more keys in `local` at ~60 KB deflated, ~12 MB a worker.
 `scripts/browser_smoke.js` pins the landing ("games highlight ..."), which
 nothing did before, and `FilteredPagesAreCachedWhateverTheHighlightTests` the
 rule.
+
+**A games import drops the day-long caches a release changes**
+(`games.cache.release_cache_keys`: the year bounds, the platform list, the
+landing pages' lists and the CSV's genre list), at its commit. Nothing
+dropped them until 2026-11-11, so a release adding a year left the year
+grid a year short, and that year's landing page a 404, for a day.
 
 Music's cache keys all live in `music/config.py` as `CACHE_KEYS`, which
 `caching.invalidate_music_caches()` iterates - add a cached value there or it
@@ -2295,6 +2327,11 @@ to a quote before Alpine evaluates it, so a request value there is script
 injection. Validate it in the view against the values the page knows, and
 write it with `|escapejs`. Until 2026-11-03 `?dir=` and `?sort=` reached four
 pages' expressions unchecked (`SortParametersStayDataTests`).
+
+**A CSV cell is text, never a formula.** Both downloads write through
+`core.services.spreadsheet.SafeWriter`, which prefixes a cell starting
+`=`, `+`, `-` or `@` with an apostrophe: names come from the release files,
+IGDB and Wikidata, and Ed Sheeran's "+" and "=" are real albums.
 
 **`tojson` is marked safe, so it escapes.** It writes `<`, `>`, `&` and `'`
 as their JSON escapes, as Django's `json_script` does: its output goes into
@@ -2575,6 +2612,11 @@ manage.py ...`. `.env.example` lists them all.
   "Caching"
 - `SENTRY_ENVIRONMENT` - Sentry's environment tag. Defaults to `production`
   when `DYNO` is set (any Heroku dyno) and `development` everywhere else.
+  `core.sentry.event_scrubber` adds allauth's `password1`, `password2`
+  and `oldpassword` to the default denylist, which matches whole key names
+  and let them through until 2026-11-11. A request's unhandled exception is
+  also logged to the console (`django.request`), so it is in `heroku logs`
+  when Sentry is down or over quota.
   `development` sends nothing, neither errors nor CSP reports, even with
   `SENTRY_DSN` in the local `.env`; set any other value to opt a machine in.
   `manage.py shell` never reports, on a dyno either: whoever ran it reads the
@@ -2996,6 +3038,18 @@ Alpine and the bundles), each because the bare form failed for someone
   reuses elements, and Enter within the search's 300 ms debounce would
   otherwise follow the last query's option. Checked against Chrome's accessibility tree, not yet on
   a screen reader (`docs/ASSISTIVE_TECH_CHECKLIST.md`).
+- **A script's POST reads the CSRF token through `readCsrfToken()`**, and
+  a script asking whether the page is at desktop width through
+  `isDesktopWidth()` (2026-11-11): three cookie readers had drifted (one
+  cached the token, one did not decode it) and the breakpoint was spelt
+  seven times.
+- **An engine's Load More replaces its button through
+  `replaceKeepingFocus`**, which puts a keyboard reader's focus on the new
+  button, or the "all loaded" line, rather than at the top of the page.
+  Choosing a status does the same for the item's new button
+  (`media-tracking.js`, `played-menu.js`).
+- **A failed search says "Search failed"** (`failed` on both search
+  components), where it read as "No results found".
 - **A search box aborts the request it overtakes** (`FetchManager`), in
   `createUnifiedSearchData` and `core/js/media-search.js`: a slow answer
   for "be" replaced the results for "beatles".

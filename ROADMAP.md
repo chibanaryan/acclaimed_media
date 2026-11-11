@@ -124,42 +124,12 @@ most of the small leftovers; `DEVLOG.md`). Left, or found by it:
    Dynablaster" (1230, 2.4 h; 1244, which is Bomberman II, 2.0 h). The
    last is a wrong match by name. Giving each its HLTB id on Wikidata
    (P2816) settles it for good, since an id is looked up before any name.
-8. **Resending a verification is keyed on the address alone.** Found by
-   the 2026-11-11 review, and older than it. Two accounts can hold one
-   address unverified (allauth keeps an address to one account only once
-   verified), and `AuthModalResendVerificationView` takes just the email:
-   - It mails the oldest unverified row, which need not be the account the
-     requester just signed up as or tried to log in to. Following the link
-     verifies that row and logs them in to it: someone who signed up first
-     with another person's address and their own password is then the one
-     who knows that account's password.
-   - The "Email Not Verified" screens (sign-up on a taken address, login)
-     offer Resend by `.first()` over every row for the address, a different
-     rule from the resend's own. Where another account has verified the
-     address, Resend answers "Email Sent" and, rightly, sends nothing, so
-     the reader waits for a link that cannot come.
-
-   The fix is to resend for an account, not an address: carry the account
-   the screen was shown for (signed, or in the session) and send only to it.
-9. **Small leftovers.**
-    - `/accounts/signup/` drops the `?next=` allauth's login page puts on
-      its sign-up link, so a reader sent to log in from a game's page ends
-      on the home page with the sign-up form. A validated `next` path plus
-      `#signup` would keep them where they were: the modal is on every page.
-    - `run_wikidata` returns early for a selection with no QID, before the
-      artist half of the pass, which does not depend on the albums selected.
-      Only `--slug` on a QID-less album reaches it.
-    - `modal-handlers.js` opens a dialog from the address's fragment two
-      ways: `#contact` after a 100 ms timeout, `#signup` once htmx has
-      started. One helper would hold the pattern.
+8. **Small leftovers.**
     - `populate_platform_years` has no caller; `games/platform_years.py`
       keeps it "for re-applying the whole table after editing it".
     - The games import's "Load Test Data" is hidden without `DEBUG` but
       accepted by the server. It loads the checked-in release, as
       `import_games_data` does, so it was left.
-    - The shared venv has no `fonttools`, which the dev lock pins: run
-      `pip install -r requirements-dev.txt` in the main checkout before
-      rebuilding the icon font.
     - The three progress streams in `games/services/import_handler.py`
       (IGDB, Wikipedia, the batch) each carry a copy of the queue and the
       drain loop with its keepalives. The batch's import loop is one now.
@@ -171,8 +141,6 @@ most of the small leftovers; `DEVLOG.md`). Left, or found by it:
       that only logged would turn an uncaught error, which the smoke test
       fails on, into a console line it does not see; one that did more
       would have to decide what a half-finished takeover leaves.
-    - `HTMXPushURLMiddleware` reads the `HX-Request` header two ways in one
-      expression (`META` and `headers`), which are the same value.
     - Staff-written markdown (flat pages, articles, posts) is rendered and
       marked safe unsanitized. Fine while only staff write it.
     - `PlayedGame`, `WantToPlayGame` and `SavedFilterSet` re-declare the
@@ -185,13 +153,51 @@ most of the small leftovers; `DEVLOG.md`). Left, or found by it:
       `import_handler.py` modules, about 7,700 lines: the scheduled jobs
       and the import pipelines. Each has tests; none of it is measured.
 
+## Open bugs (found 2026-11-11)
+
+The fourth pass (`DEVLOG.md`) fixed resending a verification (bug 8 as was)
+and four of the small leftovers. Found by its audits and left:
+
+9. **Nothing stores IGDB's summary.** Every fetch asks IGDB for `summary`
+   and `storyline` and drops them, so a game page's meta description and
+   JSON-LD use one stock sentence for every game. A `summary` field on
+   `IGDBGameData`, filled by the fetch and read by the page, would give
+   each its own; it needs a migration and a forced IGDB pass to fill.
+10. **The platform group ids (`mfr-nintendo`, `ff-handheld`) are reachable
+    only by hand.** No script writes one, but the server filters by them:
+    the heading then names the raw id ("Most Acclaimed mfr-nintendo
+    Games"), the engine does not know them, and the CSV's file name
+    expands them where the heading does not. Remove them, or make all three
+    agree (`games/services/game_filters.py`).
+11. **The source-lists total ignores the search in one of its two modes**
+    (`games/views/lists.py`): grouped by publication, "of Y lists" counts
+    every list; grouped by type it counts the matches.
+12. **A reversed year range** (`?start=2000&end=1990`, hand-written) lists
+    nothing, on both sides, under a heading reading "2000-1990". Swapping
+    it would have to happen in the server's filter and the engine's alike.
+13. **Smaller, found and left.**
+    - Music's server Load More (before the engine) replaces its button out
+      of band, and focus falls to the top of the page; the engine's keeps
+      it since this pass (`replaceKeepingFocus`).
+    - `ALLOWED_HOSTS` keeps `localhost` and `127.0.0.1` in production;
+      nothing exploitable was found.
+    - `USE_TZ = False`: every datetime is naive, correct only because
+      `TIME_ZONE` is UTC. Turning it on is a migration project.
+    - The music rate-limited client paces itself by the wall clock and
+      backs off a fixed 1 s / 2 s on a 429 or 503, ignoring `Retry-After`.
+    - Recursive genre helpers (`MusicGenre.get_descendants`,
+      `WikipediaGenre.get_ancestors`, ...) are kept for one-off use and are
+      a query a node; nothing on a request path calls them.
+    - The four search boxes still carry a copy each of the combobox markup
+      (bug 8's list).
+
 ## Music: after launch
 
 The section is public at `music.acclaimedmedia.org`, beside the games site and
 a landing page at the apex (2026-10-30; AGENTS.md, "Domain"). The pages keep a
 "Beta" badge while `music.config.MUSIC_BETA` is on.
 
-10. **New brand artwork.** The favicons still read "Acclaimed Video Games"
+14. **New brand artwork.** The favicons still read "Acclaimed Video Games"
    (`games/static/games/brand/`), and a page without artwork of its own has
    no `og:image` since the old one was removed; every page title already
    says Acclaimed Media. A new default goes in `base.html`'s `og_image` block,
@@ -201,7 +207,7 @@ a landing page at the apex (2026-10-30; AGENTS.md, "Domain"). The pages keep a
 ## Production: after the 2026-11-09 and 2026-11-10 passes ship
 
 The third 2026-11-10 pass adds no migration. It shipped on 2026-11-11 (v921), after four
-review rounds. Items 18 to 21 below are what to check now that it has.
+review rounds. Items 22 to 25 below are what to check now that it has.
 
 The rankings page is 690 KB anonymous and 833 KB logged in, and the dyno
 runs gthread with three threads per worker (AGENTS.md, "Production memory
@@ -209,13 +215,13 @@ budget"). `--threads 3` was checked on 2026-11-09: over 72 hours the two
 workers peaked at 333 MiB RSS of the 512 MiB quota and swap was 0 but for
 one 6.9 MiB reading, so it stays.
 
-11. **Watch the two burst windows after the deploy.** A scraper asks for
+15. **Watch the two burst windows after the deploy.** A scraper asks for
    3,500-4,800 filtered pages in five minutes at about 04:00 and 21:00 UTC,
    and Sentry's uptime check timed out 11 times in the week to 2026-11-09
    (AGENTS.md, "Caching"). After the deploy, read the uptime monitor across
    the next two windows, `/`'s p50 inside them, and `heroku logs` for
    "Autorestarting worker" during one.
-12. **Read a week of render-budget reports, then decide on
+16. **Read a week of render-budget reports, then decide on
     `ANON_RENDER_BUDGET_ENFORCE`.** The budget only logs: "Anonymous renders
     over budget", at 10 in a burst (WARNING, the logs) and 100 and 1,000
     (ERROR, Sentry). If the only bursts are the scraper's windows, turn it
@@ -224,31 +230,31 @@ one 6.9 MiB reading, so it stays.
     it is a script's (`HX-Request`) is not counted, so a scraper that learnt
     to send the header would pass it; `?partial=true` on its own no longer
     does.
-13. **Check memory under `--max-requests 2000`.** It was 500 until
+17. **Check memory under `--max-requests 2000`.** It was 500 until
     2026-11-09, and memory was measured flat only to 1,000 renders. The page
     cache also holds ~200 more pages, ~12 MB a worker. After a few days read
     `memory.rss.bytes.max` and `memory.swap.bytes.max` from the metrics API;
     back to 1,000 if the peak climbs towards the quota. An import's metadata
     fetch spends ~85 MB in one worker while it runs, so read a week that
     held one.
-14. **Merge the Dependabot queue.** #32 is Django 6.1.3, a security release;
+18. **Merge the Dependabot queue.** #32 is Django 6.1.3, a security release;
     #31 and #30 wait with it. #32 and #31 were green on 2026-11-10
     (`/upgrade-deps`).
-15. **The next deploy applies two migrations**, `games.0124` and
+19. **The next deploy applies two migrations**, `games.0124` and
     `music.0015`: unique constraints on game, developer and album slugs
     and on game and developer IGDB ids. Production had no duplicates on
     2026-11-10; if a release imported since then has one, the release
     phase fails on it and names the constraint. `/deploy` backs up first.
-16. **The first Sunday after the deploy, read the weekly games job.**
+20. **The first Sunday after the deploy, read the weekly games job.**
     `refresh_all_metadata` now fails when a phase could not run at all, so
     Sentry's cron monitor will alert on a phase that has been failing
     quietly. The job's output names the phase.
-17. **Check one notification email's headers** once a post goes out: Gmail
+21. **Check one notification email's headers** once a post goes out: Gmail
     and Apple Mail should show their own Unsubscribe control
     (`List-Unsubscribe-Post`), and the footer link should ask before it
     unsubscribes.
 
-18. **The first Sunday after it ships, read both weekly jobs.**
+22. **The first Sunday after it ships, read both weekly jobs.**
     `fetch_album_metadata` now fails when its Wikidata pass lands nothing,
     so Sentry's cron monitor will alert on an outage it has been reading as
     a good Sunday. Games' Wikipedia phase now sends the credentials it paces
@@ -256,18 +262,28 @@ one 6.9 MiB reading, so it stays.
     and its timeout is 30 seconds, so a stalled page is a logged failure,
     not a five-minute wait. The HLTB phase will move Wordle and the three
     games in bug 7.
-19. **The games API's old cache rows lapse by themselves.** Its keys
+23. **The games API's old cache rows lapse by themselves.** Its keys
     changed shape (`games_api:...`); the rows Django's `cache_page` wrote
     (`views.decorators.cache...`) are never read again and expire within a
     day. Nothing to clear.
-20. **`/accounts/signup/` redirects to the modal's sign-up screen.** Check production once for
+24. **`/accounts/signup/` redirects to the modal's sign-up screen.** Check production once for
     accounts whose username contains `@` and is not their own email
     (`User.objects.filter(username__contains="@").exclude(username=F("email"))`):
     each is a name taken through the old page, and may be squatting
     another person's address.
-21. **Run the search rows of the assistive-tech checklist** (bug 1) on the
+25. **Run the search rows of the assistive-tech checklist** (bug 1) on the
     deployed site, since production is where a screen reader is easiest to
     point.
+
+26. **After the fourth pass ships, check one sign-up end to end.** The
+    confirmation link now logs in only the browser that signed up: sign up
+    in one browser, open the link there (logged in), and in another
+    (verified, with a Log In button). Then read one Sentry event from a
+    form post and confirm `password1` is filtered.
+27. **The first Sunday after it, read the music job's errors.** An album's
+    failure in the cover, Discogs or MusicBrainz pass is now an error line
+    and the pass goes on, where it ended the run; a pass that logs many is
+    a source down, not many bad albums.
 
 ## Music: not worth doing as parity
 
