@@ -193,7 +193,7 @@ Acclaimed Media
     header_link_style = "color: #666; text-decoration: none;"
     # fmt: on
     html_body = f"""<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">

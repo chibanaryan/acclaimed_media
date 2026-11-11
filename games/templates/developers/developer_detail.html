@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load game_filters %}
+{% load game_filters core_filters %}
 {% load static %}
 
 {% block title %}{{ developer.name }} | Acclaimed Media{% endblock %}
@@ -18,14 +18,17 @@
     window.DEVELOPER_CHILD_MAP = {{ developer_child_map_json|safe }};
     window.GAME_RANK_MAP = {{ game_rank_map_json|safe }};
     window.GAME_DATA_MAP = {{ game_data_map_json|safe }};
+    // Each value through `tojson`, which quotes and escapes it for a script
+    // body. The URLs come from IGDB and were written between quotes as they
+    // stood, autoescaped for HTML: a backslash or a newline ended the script.
     window.DEVELOPER_NAME_MAP = {
-        {% for dev in developers_flat %}{{ dev.id }}: "{{ dev.name|escapejs }}"{% if not forloop.last %}, {% endif %}{% endfor %}
+        {% for dev in developers_flat %}{{ dev.id }}: {{ dev.name|tojson }}, {% endfor %}
     };
     window.DEVELOPER_IGDB_URL_MAP = {
-        {% for dev in developers_flat %}{% if dev.igdb_url %}{{ dev.id }}: "{{ dev.igdb_url }}"{% if not forloop.last %}, {% endif %}{% endif %}{% endfor %}
+        {% for dev in developers_flat %}{% if dev.igdb_url %}{{ dev.id }}: {{ dev.igdb_url|tojson }}, {% endif %}{% endfor %}
     };
-    window.ROOT_DEVELOPER_NAME = "{{ developer.name|escapejs }}";
-    window.ROOT_DEVELOPER_IGDB_URL = "{{ developer.igdb_url|default:'' }}";
+    window.ROOT_DEVELOPER_NAME = {{ developer.name|tojson }};
+    window.ROOT_DEVELOPER_IGDB_URL = {{ developer.igdb_url|default:''|tojson }};
     window.RANK_DISTRIBUTION_MAX_RANK = {{ max_rank|default:0 }};
     window.RANK_DISTRIBUTION_BIN_COUNT = {{ rank_distribution_bin_count|default:10 }};
 </script>
@@ -53,7 +56,7 @@
                 </p>
                 {% endif %}
                 <p class="mt-1" x-show="getIgdbUrl()" x-cloak>
-                    <a :href="getIgdbUrl()" target="_blank" class="link link-accent text-sm inline-flex items-center gap-1">
+                    <a :href="getIgdbUrl()" target="_blank" rel="noopener" class="link link-accent text-sm inline-flex items-center gap-1">
                         <span x-text="`${getIgdbDeveloperName()} on IGDB`"></span><span class="mdi mdi-open-in-new text-xs" aria-hidden="true"></span>
                     </a>
                 </p>

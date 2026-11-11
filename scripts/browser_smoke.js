@@ -1232,6 +1232,87 @@ async function checkGamesFailedBackWithoutTheEngine(page) {
 }
 
 /**
+ * A Back whose render failed leaves the list it left under the address it
+ * went to, and the engine, arriving then, found the filters equal to the
+ * address's and took the rows for that address's list: it left the 1990s on
+ * the unfiltered page, and Load More continued them with the whole ranking's
+ * second page. It renders the address's list as it takes over, and writes no
+ * history: the address is already right. Answers as above.
+ */
+async function checkGamesFailedBackThenTheEngine(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    let failing = false;
+    let data = null;
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+        const url = request.url();
+        const render = url.startsWith(games + '/?') &&
+            ['xhr', 'fetch'].includes(request.resourceType());
+        if (url.startsWith(games + '/api/games/all/') && !url.includes('smoke=1')) {
+            data = request;
+        } else if (render && failing) {
+            request.respond({ status: 500, contentType: 'text/plain', body: 'boom' });
+        } else {
+            request.continue();
+        }
+    });
+    await page.goto(games + '/', { waitUntil: 'load' });
+    const rows = '#game-list-container .game-row-wrapper';
+    const names = () => page.$$eval(rows + ' .game-row.desktop [data-slot="name"]',
+        found => found.map(name => name.textContent.trim()));
+    const every = await names();
+    const decade = await page.waitForSelector('.year-grid-decade[title^="1990s:"]');
+    await sleep(1000);
+    await decade.click();
+    for (let tries = 0; tries < 60 && new URL(page.url()).pathname === '/'; tries += 1) {
+        await sleep(100);
+    }
+    if (new URL(page.url()).pathname === '/') return 'the server never rendered the 1990s';
+    const nineties = await names();
+    if (nineties.join() === every.join()) return 'the 1990s list is the whole ranking: nothing to tell apart';
+    const entries = await page.evaluate(() => history.length);
+    failing = true;
+    await page.goBack();
+    await sleep(1500);
+    if (new URL(page.url()).pathname !== '/' || new URL(page.url()).search) {
+        return `Back went to ${page.url()}`;
+    }
+    if ((await names()).join() !== nineties.join()) return 'the failed Back changed the list';
+    for (let tries = 0; !data && tries < 100; tries += 1) await sleep(50);
+    if (!data) return 'the engine never asked for its data';
+    failing = false;
+    const body = await page.evaluate(
+        url => fetch(url + '?smoke=1').then(response => response.text()),
+        games + '/api/games/all/'
+    );
+    await data.respond({ status: 200, contentType: 'application/json', body });
+    await page.waitForFunction(element => Alpine.$data(element).clientFilterReady, {}, decade);
+    await sleep(800);
+    const shown = await names();
+    if (shown.join() !== every.join()) {
+        return `the engine took over on "${shown[0]}", not the unfiltered list's "${every[0]}"`;
+    }
+    if (new URL(page.url()).pathname !== '/' || new URL(page.url()).search) {
+        return `the takeover moved the address to ${page.url()}`;
+    }
+    const now = await page.evaluate(() => history.length);
+    if (now !== entries) return `the takeover left ${now} history entries, not ${entries}`;
+    await page.click('.load-more-button');
+    await sleep(800);
+    const more = await names();
+    if (more.length !== Math.min(200, every.length * 2) && more.length <= every.length) {
+        return `Load More left ${more.length} rows`;
+    }
+    if (more.slice(0, every.length).join() !== every.join()) {
+        return 'Load More did not continue the unfiltered list';
+    }
+    await page.goForward();
+    await sleep(800);
+    return new URL(page.url()).pathname === '/' && !new URL(page.url()).search
+        ? 'Forward no longer reaches the 1990s' : null;
+}
+
+/**
  * And a search still being typed is left in its box when its request fails:
  * the roll-back emptied it, and the next keystrokes searched for the tail
  * of the word. Answers as above.
@@ -2496,6 +2577,7 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
             page => checkGamesFailedRequestWithoutTheEngine(page, engineFirst));
     }
     await report('games failed Back without the engine', checkGamesFailedBackWithoutTheEngine);
+    await report('games failed Back, then the engine', checkGamesFailedBackThenTheEngine);
     await report('games failed search keeps the typing', checkGamesFailedSearchKeepsTheTyping);
     for (const engineFirst of [true, false]) {
         await report(`music a row genre failing before Alpine, engine failed ${engineFirst ? 'first' : 'after'}`,

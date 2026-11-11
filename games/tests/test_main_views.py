@@ -522,6 +522,22 @@ class ContactThankYouViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "contact_thank_you.html")
 
+    def test_a_page_that_is_one_visitors_alone_says_noindex(self):
+        """The unsubscribe page's address carries the reader's token, and
+        base.html had no block to say it with."""
+        noindex = '<meta name="robots" content="noindex">'
+        user = User.objects.create_user(username="reader", email="r@example.com")
+        user.generate_unsubscribe_token()
+        user.save()
+        for url in (
+            reverse("contact_thank_you"),
+            reverse("unsubscribe", args=[user.unsubscribe_token]),
+        ):
+            with self.subTest(url=url):
+                self.assertContains(self.client.get(url), noindex)
+        clear_all_caches()
+        self.assertNotContains(self.client.get(reverse("home")), 'name="robots"')
+
 
 class GameListViewTest(TestCase):
     """Test the game list view (HomePageView with legacy param support)."""
@@ -1800,6 +1816,27 @@ class DeveloperDetailViewTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "developers/developer_detail.html")
+
+    def test_values_from_igdb_are_data_in_the_pages_script(self):
+        """The IGDB URLs were written between quotes as they stood: a
+        backslash or a newline in one ended the script, and `</script>`
+        the block."""
+        Developer.objects.filter(pk=self.dev.pk).update(
+            name='Nin"tendo </script>', igdb_url="https://igdb.test/a\\b\n</script>"
+        )
+        clear_all_caches()
+        html = self.client.get(
+            reverse("developer-detail", kwargs={"slug": self.dev.slug})
+        ).content.decode()
+        block = html[html.index("window.DEVELOPER_NAME_MAP") :]
+        block = block[: block.index("</script>")]
+        url = r'"https://igdb.test/a\\b\n\u003c/script\u003e"'
+        self.assertIn(f"window.ROOT_DEVELOPER_IGDB_URL = {url};", block)
+        self.assertIn(
+            r'window.ROOT_DEVELOPER_NAME = "Nin\"tendo \u003c/script\u003e";', block
+        )
+        # Past the values: nothing in them ended the script early
+        self.assertIn("window.RANK_DISTRIBUTION_MAX_RANK", block)
 
     def test_context_contains_developer(self):
         """Test that context includes the developer."""

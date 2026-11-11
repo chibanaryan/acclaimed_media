@@ -86,9 +86,9 @@
         </div>
         {% endif %}
     </div>
-    {# Result count - middle #}
+    {# Result count - middle. A live region, but by script (markResultCountsLive in utils-base.js): a role in the markup made a count the server swaps in a region inserted with its text, which some readers read and then heard again from #live-announcer #}
     <div class="@container min-w-0">
-    <div role="status" class="result-count text-base-content/70 whitespace-nowrap text-center hidden @min-[9rem]:block" data-result-count="desktop">
+    <div class="result-count text-base-content/70 whitespace-nowrap text-center hidden @min-[9rem]:block" data-result-count="desktop">
         {% if total_count %}Showing <span id="loaded-count" class="loaded-count-value">{{ loaded_count|intcomma }}</span> of {{ total_count|intcomma }}{% else %}{{ empty_count_label|default_if_none:"" }}{% endif %}
     </div>
     </div>
@@ -167,7 +167,7 @@
         {% endif %}
     </div>
     {# Result count - middle, can shrink #}
-    <div role="status" class="result-count text-base-content/70 text-xs truncate min-w-0" data-result-count="mobile">
+    <div class="result-count text-base-content/70 text-xs truncate min-w-0" data-result-count="mobile">
         {% if total_count %}<span class="loaded-count-value">{{ loaded_count|intcomma }}</span> of {{ total_count|intcomma }}{% endif %}
     </div>
     {# Jump to rank - right #}

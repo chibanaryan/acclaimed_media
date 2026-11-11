@@ -1,5 +1,7 @@
 """Tests for the Article (Blog) feature."""
 
+import json
+
 from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 
@@ -220,3 +222,54 @@ class ArticleHTMXTest(TransactionTestCase):
         self.assertEqual(response.status_code, 200)
         # Should show pagination since we have 15 articles and paginate_by=10
         self.assertContains(response, "Page 1 of 2")
+
+
+class ArticleStructuredDataTests(TestCase):
+    """The Article JSON-LD is dumped, not written out in the template."""
+
+    def page_data(self, article, client=None):
+        html = (
+            (client or self.client)
+            .get(reverse("article-detail", kwargs={"slug": article.slug}))
+            .content.decode()
+        )
+        start = html.index('<script type="application/ld+json"')
+        body = html[html.index(">", start) + 1 : html.index("</script>", start)]
+        return json.loads(body)
+
+    def test_it_is_json_whatever_the_title_holds(self):
+        author = User.objects.create_user(
+            username="writer", first_name="Ada", last_name="O'Neil"
+        )
+        article = Article.objects.create(
+            title='"Best" of </script> & the rest\\',
+            slug="best-of",
+            content="Body",
+            excerpt="",
+            author=author,
+            status=Article.Status.PUBLISHED,
+        )
+        data = self.page_data(article)
+        self.assertEqual(data["@type"], "Article")
+        self.assertEqual(data["headline"], article.title)
+        self.assertEqual(data["description"], article.title)
+        self.assertEqual(data["author"], {"@type": "Person", "name": "Ada O'Neil"})
+        self.assertEqual(data["datePublished"], article.published_at.isoformat())
+        self.assertNotIn("image", data)
+        self.assertEqual(data["publisher"]["url"], "https://games.acclaimedmedia.org")
+
+    def test_a_draft_staff_preview_has_no_publication_date(self):
+        """The template wrote an empty one."""
+        staff = User.objects.create_user(username="staff", is_staff=True)
+        self.client.force_login(staff)
+        article = Article.objects.create(
+            title="Draft",
+            slug="draft",
+            content="Body",
+            featured_image="https://example.com/a.jpg",
+            status=Article.Status.DRAFT,
+        )
+        data = self.page_data(article)
+        self.assertNotIn("datePublished", data)
+        self.assertNotIn("author", data)
+        self.assertEqual(data["image"], "https://example.com/a.jpg")

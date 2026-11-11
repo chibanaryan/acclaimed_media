@@ -496,7 +496,9 @@ class AlbumListRenderer extends BaseMediaListRenderer {
         const credit = row.querySelector('[data-slot="artist-credit-inline"]');
         if (credit) credit.innerHTML = this._artistCreditHtml(album);
 
-        this._fillSlot(row, 'year', album.year === null ? '' : album.year);
+        // With its brackets, as the server's row writes it: outside the
+        // slot, an undated album showed "()"
+        this._fillSlot(row, 'year', album.year === null ? '' : `(${album.year})`);
         const yearLink = row.querySelector('[data-slot="year-link"]');
         if (yearLink && album.year !== null) {
             yearLink.href =
@@ -614,11 +616,20 @@ class AlbumListRenderer extends BaseMediaListRenderer {
      * @returns {string} HTML
      */
     _loadMoreMarkup(state) {
-        const { hasMore, remaining } = state;
-        if (!hasMore) return '';
+        const { hasMore, remaining, total } = state;
+        if (!hasMore) {
+            // The note _album_load_more.html prints in its place. The
+            // container was removed instead, so the end of a list read
+            // differently once the engine had the page.
+            return (
+                '<div class="text-base-content/65 text-sm">' +
+                '<span class="mdi mdi-check-circle-outline" aria-hidden="true"></span> ' +
+                '<span>All ' + total.toLocaleString() + ' results loaded</span></div>'
+            );
+        }
         return (
             '<button type="button" class="btn btn-ghost load-more-button">' +
-            '<span class="mdi mdi-album"></span>' +
+            '<span class="mdi mdi-album" aria-hidden="true"></span>' +
             '<span class="load-more-text">Load More (' +
             remaining.toLocaleString() + ' remaining)</span></button>'
         );

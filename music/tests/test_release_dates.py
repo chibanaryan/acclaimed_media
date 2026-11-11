@@ -332,4 +332,4 @@ class ArtistPageShowsReleaseDatesTests(ClearsCachesMixin, TestCase):
         self.assertContains(response, "May 16, 1966", count=2)  # both row halves
         self.assertContains(response, "June 1967", count=2)
         self.assertNotContains(response, "June 1, 1967")
-        self.assertContains(response, "(1968)", count=1)  # mobile half
+        self.assertContains(response, "(1968)", count=2)  # both row halves

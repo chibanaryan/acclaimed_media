@@ -1,5 +1,6 @@
 """Tests for the music views."""
 
+import json
 import re
 from unittest import mock
 
@@ -757,6 +758,19 @@ class AlbumDetailViewTests(MusicDataMixin, TestCase):
             '"url": "https://music.acclaimedmedia.org/artists/neil-young/"',
         )
 
+    def test_structured_data_is_json_whatever_the_names_hold(self):
+        """It was written out in the template; now it is dumped."""
+        self.revolver.name = "Rev\"olver </script> & \\ Co's"
+        self.revolver.save()
+        self.revolver.artists.set([self.beatles])
+        html = self.client.get(self.revolver.get_absolute_url()).content.decode()
+        start = html.index('<script type="application/ld+json"')
+        body = html[html.index(">", start) + 1 : html.index("</script>", start)]
+        data = json.loads(body)
+        self.assertEqual(data["@type"], "MusicAlbum")
+        self.assertEqual(data["name"], self.revolver.name)
+        self.assertEqual(data["byArtist"][0]["name"], self.beatles.name)
+
     def test_a_compilation_has_no_by_artist(self):
         self.kid_a.artist_credit = "Various Artists"
         self.kid_a.save()
@@ -1127,6 +1141,35 @@ class ArtistDetailViewTests(MusicDataMixin, TestCase):
         response = self.client.get(self.beatles.get_absolute_url())
         self.assertContains(response, "wikidata.org/wiki/Q1299")
         self.assertContains(response, "musicbrainz.org/artist/")
+
+
+class ArtistSharingImageTests(MusicDataMixin, TestCase):
+    """An artist's page shares its best album's artwork, as a developer's
+    shares its top game's. It had no image at all."""
+
+    def test_the_best_albums_cover_is_the_pages_image(self):
+        artist = models.Artist.objects.filter(album_credits__isnull=False).first()
+        with mock.patch.object(
+            models.Album,
+            "image_og",
+            new_callable=mock.PropertyMock,
+            return_value="https://music.acclaimedmedia.org/cover/x/1-500.jpg",
+        ):
+            response = self.client.get(artist.get_absolute_url())
+        self.assertContains(
+            response,
+            '<meta property="og:image" '
+            'content="https://music.acclaimedmedia.org/cover/x/1-500.jpg">',
+        )
+        self.assertContains(
+            response, '<meta name="twitter:card" content="summary_large_image">'
+        )
+
+    def test_no_cover_is_no_image(self):
+        artist = models.Artist.objects.filter(album_credits__isnull=False).first()
+        response = self.client.get(artist.get_absolute_url())
+        self.assertNotContains(response, 'property="og:image"')
+        self.assertContains(response, '<meta name="twitter:card" content="summary">')
 
 
 class ArtistDetailAlbumSortTests(MusicDataMixin, TestCase):

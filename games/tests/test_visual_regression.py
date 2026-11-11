@@ -336,6 +336,22 @@ class ServerRenderedOutputTests(TestCase):
         # Should contain year filter params
         self.assertIn("2023", href)
 
+    def test_an_undated_game_has_no_year_link(self):
+        """It went to ?start=None&end=None from the server, and
+        ?start=null&end=null from the renderer."""
+        models.Game.objects.filter(pk=self.game.pk).update(year_of_release=None)
+        clear_all_caches()
+        soup = BeautifulSoup(self.client.get(reverse("home")).content, "html.parser")
+        year_link = soup.select_one('.game-row [data-slot="year-link"]')
+        self.assertFalse(year_link.has_attr("href"))
+        self.assertEqual(year_link.get_text(strip=True), "(N/A)")
+        renderer = (
+            Path(settings.BASE_DIR) / "games/static/games/js/game-list-renderer.js"
+        ).read_text()
+        # Both client paths: the cloned row, and the string fallback
+        self.assertIn("yearLink.removeAttribute('href')", renderer)
+        self.assertIn('<a rel="nofollow"${game.y ? ` href="/?start=', renderer)
+
 
 class DataTransformationTests(TestCase):
     """

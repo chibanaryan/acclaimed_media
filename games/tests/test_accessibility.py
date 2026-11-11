@@ -84,9 +84,13 @@ class RankingsPageAccessibilityTests(TestCase):
         self.assertIn(":tabindex", decade.attrs)
 
     def test_the_result_count_is_announced(self):
+        """Made a live region by script once it is on the page
+        (markResultCountsLive), which finds it by this attribute: a role in
+        the markup had a count the server swaps in read out twice."""
         counts = self.soup.select(".result-count")
         self.assertTrue(counts)
-        self.assertTrue(all(c.get("role") == "status" for c in counts))
+        self.assertTrue(all(c.has_attr("data-result-count") for c in counts))
+        self.assertFalse(any(c.has_attr("role") for c in counts))
 
     def test_platform_links_in_rows_are_labelled_buttons(self):
         buttons = self.soup.select("button[data-add-platforms]")

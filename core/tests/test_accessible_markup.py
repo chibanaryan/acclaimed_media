@@ -380,6 +380,42 @@ class ReadableTextTests(SimpleTestCase):
             with self.subTest(path=path):
                 self.assertNotIn("text-base-content/50", read(path))
 
+    def test_text_a_reader_needs_is_not_at_forty_or_fifty_percent(self):
+        """The fine print, hints and empty states left at /50 and /40 after
+        2026-11-10's pass, and the icon-only expand buttons, whose glyph is
+        all there is to see. Not a disabled control, nor a decorative icon."""
+        faint = re.compile(r"text-base-content/(?:40|50)\b")
+        for path in (
+            "core/templates/core/includes/_mobile_filter_genres.html",
+            "core/templates/core/includes/_mobile_saved_filters.html",
+            "games/templates/games/includes/_mobile_filter_platforms.html",
+            "games/templates/games/includes/_mobile_filter_sheet.html",
+            "games/templates/auth/partials/_forgot_password_sent.html",
+            "games/templates/auth/partials/_unverified_email.html",
+            "games/templates/auth/partials/_verification_resent.html",
+            "games/templates/auth/partials/_verification_sent.html",
+            "games/templates/auth/partials/_profile_games_stats.html",
+            "games/templates/auth/partials/_signup_form.html",
+            "games/templates/developers/includes/_developer_row.html",
+            "games/templates/import.html",
+            "music/templates/music/home.html",
+        ):
+            with self.subTest(path=path):
+                self.assertIsNone(faint.search(read(path)))
+        # The one control left faint in each is disabled until a filter is on
+        for path in (
+            "games/templates/includes/_advanced_filters.html",
+            "core/templates/core/includes/_saved_filters_dropdown.html",
+        ):
+            with self.subTest(path=path):
+                lines = [line for line in read(path).splitlines() if faint.search(line)]
+                self.assertEqual(len(lines), 1)
+                self.assertIn("cursor-not-allowed", lines[0])
+        self.assertIn(
+            '<span class="text-xs mt-2 text-base-content/65">No cover art yet</span>',
+            read("music/templates/music/album_detail.html"),
+        )
+
 
 class ImportPageMessagesTests(SimpleTestCase):
     def test_no_message_is_interpolated_into_markup(self):

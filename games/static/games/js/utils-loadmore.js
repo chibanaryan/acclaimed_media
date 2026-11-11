@@ -110,7 +110,10 @@ function initJumpToRank() {
         }
     });
 
-    document.addEventListener('keypress', function(e) {
+    // keydown: `keypress` is deprecated. Not while an input method is
+    // composing, nor again while the key is held
+    document.addEventListener('keydown', function(e) {
+        if (e.isComposing || e.repeat) return;
         if (e.key === 'Enter' && e.target.classList.contains('jump-to-rank-input')) {
             requestClientFilteringBundle();
             e.preventDefault();

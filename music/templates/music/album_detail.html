@@ -13,20 +13,7 @@
 {% block og_image %}{% if album.image_og %}<meta property="og:image" content="{{ album.image_og }}">{% endif %}{% endblock %}
 {% block twitter_card %}{% if album.image_og %}summary_large_image{% else %}summary{% endif %}{% endblock %}
 
-{% block structured_data %}{
-    "@context": "https://schema.org",
-    "@type": "MusicAlbum",
-    "name": "{{ album.name|escapejs }}"{% if album.year_released %},
-    "datePublished": "{{ album.year_released }}"{% endif %}{% if album.image_og %},
-    "image": "{{ album.image_og }}"{% endif %}{% with credited=album.credited_artists %}{% if credited %},
-    "byArtist": [{% for artist in credited %}
-        {
-            "@type": "MusicGroup",
-            "name": "{{ artist.name|escapejs }}"{% if artist.slug %},
-            "url": "{{ canonical_origin }}{{ artist.get_absolute_url }}"{% endif %}
-        }{% if not forloop.last %},{% endif %}{% endfor %}
-    ]{% endif %}{% endwith %}
-}{% endblock %}
+{% block structured_data %}{{ structured_data_json|safe }}{% endblock %}
 
 {# These two sit out here, not in `content`: a block nested in another #}
 {# renders where it is written as well as in its slot, so the tracking #}
@@ -89,7 +76,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="rounded-lg shadow-lg bg-base-200 flex flex-col items-center justify-center w-[300px] max-w-full text-base-content/40"
              style="aspect-ratio: 1/1;">
             <span class="mdi mdi-album text-6xl" aria-hidden="true"></span>
-            <span class="text-xs mt-2">No cover art yet</span>
+            <span class="text-xs mt-2 text-base-content/65">No cover art yet</span>
         </div>
         {% endif %}
     </div>

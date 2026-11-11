@@ -445,12 +445,14 @@ class AlbumClientSideFiltering {
             '#album-results-container .load-more-container'
         );
 
-        if (!state.hasMore) {
+        // Nothing under an empty result's message; otherwise the button, or
+        // the "all loaded" note, as the server renders one or the other
+        const html = this.renderer.getLoadMoreHtml(state);
+        if (!html) {
             if (existing) existing.remove();
             return;
         }
 
-        const html = this.renderer.getLoadMoreHtml(state);
         const container = existing || document.createElement('div');
         container.id = 'load-more-container';
         container.className = 'load-more-container text-center my-6';

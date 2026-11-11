@@ -75,10 +75,29 @@ class AnnounceTests(SimpleTestCase):
         stayed where it was, and announces itself."""
         self.assertEqual(self.output["outOfBandElsewhere"], "kept")
 
+    def test_a_count_the_server_rendered_becomes_a_live_region_after_it_is_said(self):
+        """Carrying `role="status"` in its markup, a swapped-in count was a
+        region inserted with its text: a reader that reads those heard it
+        twice, there and from `#live-announcer`."""
+        self.assertEqual(
+            self.output["madeLive"],
+            {
+                "roles": [[0, "role", "status"], [1, "role", "status"]],
+                "said": "Showing 9 of 9",
+            },
+        )
+
 
 class LiveRegionTests(TestCase):
     def setUp(self):
         clear_all_caches()
+
+    def test_a_result_count_carries_no_role_in_its_markup(self):
+        html = self.client.get(reverse("home")).content.decode()
+        self.assertEqual(html.count("data-result-count="), 2)
+        self.assertNotIn('role="status"', html)
+        source = (BASE / "games/static/games/js/utils-base.js").read_text()
+        self.assertIn("markResultCountsLive(document)", source)
 
     def test_every_page_has_one_outside_the_swapped_containers(self):
         html = self.client.get(reverse("home")).content.decode()

@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
 
 {# Three states: `confirm` asks (the link in the email lands here), `done` #}
 {# says it happened, `invalid` names nobody. Only the form's POST, or a mail #}

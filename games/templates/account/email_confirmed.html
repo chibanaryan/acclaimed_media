@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
 
 {% block title %}{% if success %}Email Verified{% else %}Invalid Link{% endif %} | Acclaimed Media{% endblock %}
 

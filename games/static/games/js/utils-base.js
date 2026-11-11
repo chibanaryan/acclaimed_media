@@ -189,6 +189,10 @@ var _announceTimer = null;
  * A count the client renderer rewrites in place is in a region that stayed
  * put, and announces itself: do not call this for those.
  *
+ * "Usually": a reader that does read an inserted region heard a rankings
+ * count twice, there and here. So the count's markup carries no role, and
+ * `markResultCountsLive` gives it one once it is on the page.
+ *
  * @param {string} text - What to say; whitespace is collapsed
  */
 function announce(text) {
@@ -217,6 +221,30 @@ function announceResultCount(root) {
         root.querySelector('[data-result-count]') ||
         root.querySelector('#results-count');
     if (count) announce(count.textContent);
+    markResultCountsLive(root);
+}
+
+/**
+ * Makes the rankings' result counts under `root` live regions, now that
+ * they are on the page with their text in them: what the client renderer
+ * writes into them from here on is read out, and what the server put there
+ * was said once, by `announce`.
+ * @param {Element|Document} root
+ */
+function markResultCountsLive(root) {
+    if (!root || typeof root.querySelectorAll !== 'function') return;
+    root.querySelectorAll('[data-result-count]').forEach((count) => {
+        count.setAttribute('role', 'status');
+    });
+}
+
+// The page's own counts, as it loads: nothing is said of text already there
+if (typeof document.querySelectorAll === 'function') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => markResultCountsLive(document));
+    } else {
+        markResultCountsLive(document);
+    }
 }
 
 // An htmx swap that brings a count with it: music's server-side filter

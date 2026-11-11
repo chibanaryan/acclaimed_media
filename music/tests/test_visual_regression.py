@@ -181,6 +181,28 @@ class ServerRenderedRowTests(TestCase):
     def _page(self):
         return self.client.get(reverse("music:home")).content.decode()
 
+    def test_the_year_carries_its_own_brackets(self):
+        soup = BeautifulSoup(self._page(), "html.parser")
+        link = soup.select_one('.media-row.desktop [data-slot="year-link"]')
+        self.assertEqual(link.get_text(strip=True), "(1989)")
+        self.assertEqual(link.select_one('[data-slot="year"]').get_text(), "(1989)")
+
+    def test_an_undated_album_shows_no_empty_brackets(self):
+        """They sat outside the slot, so the row read "Doolittle ()"."""
+        models.Album.objects.filter(pk=self.album.pk).update(year_released=None)
+        soup = BeautifulSoup(self._page(), "html.parser")
+        link = soup.select_one('.media-row.desktop [data-slot="year-link"]')
+        self.assertEqual(link.get_text(strip=True), "")
+        self.assertFalse(link.has_attr("href"))
+        # The renderer writes the brackets too, and none for no year
+        renderer = (
+            Path(settings.BASE_DIR) / "music/static/music/js/album-list-renderer.js"
+        ).read_text()
+        self.assertIn(
+            "this._fillSlot(row, 'year', album.year === null ? '' : `(${album.year})`)",
+            renderer,
+        )
+
     def test_the_rendered_row_carries_the_same_slots(self):
         found = slots(self._page())
         self.assertEqual((DESKTOP_SLOTS | MOBILE_SLOTS) - found, set())

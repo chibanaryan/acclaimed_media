@@ -96,6 +96,11 @@ class PlatformMatchesTests(SimpleTestCase):
                 ("Mobile", ["iPhone"], True),
                 ("Super Nintendo", ["Super Nintendo Entertainment System"], True),
                 ("Dreamcast", ["Sega Dreamcast"], True),
+                ("Sega Mega Drive/Genesis", ["Sega Mega Drive / Genesis"], True),
+                ("Commodore VIC-20", ["VIC-20"], True),
+                ("FM-7", ["Fujitsu Micro 7"], True),
+                ("NEC PC-98", ["PC-9800"], True),
+                ("Mac", ["Apple Macintosh"], True),
             ]
         )
 

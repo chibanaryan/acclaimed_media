@@ -16,6 +16,7 @@ from django.views.generic import ListView, DetailView, TemplateView, FormView
 from core import sites
 from core.mixins import HTMXPartialMixin, RobustPaginationMixin
 from core.models import User
+from core.services import seo
 from core.services.client_ip import get_client_ip
 from games import models, utils
 from games.forms import ContactForm
@@ -182,6 +183,39 @@ class ArticleDetailView(DetailView):
         if self.request.user.is_staff:
             return qs
         return qs.filter(status=models.Article.Status.PUBLISHED)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["structured_data_json"] = _article_json_ld(context["article"])
+        return context
+
+
+def _article_json_ld(article):
+    """The Article JSON-LD for a blog post, as a dumped dict (it was
+    written out in the template; see ``music.views._album_json_ld``)."""
+    payload = {
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": article.title,
+        "description": article.excerpt or article.title,
+    }
+    if article.featured_image:
+        payload["image"] = article.featured_image
+    # A draft, which staff can preview, has no publication date yet
+    if article.published_at:
+        payload["datePublished"] = article.published_at.isoformat()
+    payload["dateModified"] = article.updated_at.isoformat()
+    if article.author:
+        payload["author"] = {
+            "@type": "Person",
+            "name": article.author.get_full_name() or article.author.username,
+        }
+    payload["publisher"] = {
+        "@type": "Organization",
+        "name": "Acclaimed Media",
+        "url": sites.canonical_origin(sites.GAMES),
+    }
+    return seo.json_ld(payload)
 
 
 class NotFoundView(TemplateView):

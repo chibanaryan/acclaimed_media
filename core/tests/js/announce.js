@@ -120,5 +120,16 @@ const region = () => byId['live-announcer'].textContent;
     await later();
     out.outOfBandElsewhere = region();
 
+    // A count becomes a live region once it is on the page, not before
+    const roles = [];
+    const counts = [0, 1].map(index => ({ setAttribute: (name, value) => roles.push([index, name, value]) }));
+    const list = element('', { '[data-result-count="desktop"]': element('Showing 9 of 9') });
+    list.querySelectorAll = selector => (selector === '[data-result-count]' ? counts : []);
+    announceResultCount(list);
+    await later();
+    out.madeLive = { roles, said: region() };
+    markResultCountsLive(null);
+    markResultCountsLive(element('', {}));
+
     process.stdout.write(JSON.stringify(out));
 })();

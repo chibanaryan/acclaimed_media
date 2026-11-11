@@ -14,6 +14,8 @@
     <meta name="htmx-config" content='{"inlineScriptNonce": "{{ csp_nonce }}", "historyCacheSize": 0, "refreshOnHistoryMiss": true}'>
     <meta name="description" content="{% block meta_description %}{% if site_key == 'music' %}Discover the most critically acclaimed albums of all time, ranked by aggregating critic lists from music publications worldwide.{% elif site_key == 'root' %}Rankings of the most critically acclaimed video games and albums of all time, built by aggregating hundreds of critic lists.{% else %}Discover the most critically acclaimed video games of all time, ranked by aggregating hundreds of critic lists from major gaming publications.{% endif %}{% endblock %}">
     <link rel="canonical" href="{% block canonical_url %}{% if page_canonical_url %}{{ page_canonical_url }}{% else %}{{ canonical_origin }}{{ request.path }}{% endif %}{% endblock %}">
+    {# A page that is one visitor's alone (an unsubscribe link, a thank-you, a confirmation) says noindex here #}
+    {% block robots %}{% endblock %}
     {# Content Security Policy is set via CSPMiddleware with nonce support #}
     {# Note: 'unsafe-eval' is required for Alpine.js x-data expressions #}
     <title>{% block title %}Acclaimed Media{% endblock %}</title>

@@ -10,24 +10,7 @@
 {% block og_image %}{% if article.featured_image %}<meta property="og:image" content="{{ article.featured_image }}">{% endif %}{% endblock %}
 {% block twitter_card %}{% if article.featured_image %}summary_large_image{% else %}summary{% endif %}{% endblock %}
 
-{% block structured_data %}{
-    "@context": "https://schema.org",
-    "@type": "Article",
-    "headline": "{{ article.title|escapejs }}",
-    "description": "{{ article.excerpt|default:article.title|escapejs }}",
-    {% if article.featured_image %}"image": "{{ article.featured_image }}",{% endif %}
-    "datePublished": "{{ article.published_at|date:'c' }}",
-    "dateModified": "{{ article.updated_at|date:'c' }}",
-    {% if article.author %}"author": {
-        "@type": "Person",
-        "name": "{{ article.author.get_full_name|default:article.author.username|escapejs }}"
-    },{% endif %}
-    "publisher": {
-        "@type": "Organization",
-        "name": "Acclaimed Media",
-        "url": "{{ canonical_origin }}"
-    }
-}{% endblock %}
+{% block structured_data %}{{ structured_data_json|safe }}{% endblock %}
 
 {% block content %}
 <article class="max-w-3xl mx-auto px-4 py-8">

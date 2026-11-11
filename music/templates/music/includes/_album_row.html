@@ -87,7 +87,8 @@
 {% block year_link %}
 <a rel="nofollow" {% if item and item.year_released %}href="{% url 'music:home' %}?start={{ item.year_released }}&end={{ item.year_released }}&highlight={{ item.id }}"{% endif %}
    class="text-base-content/80 ml-1.5" data-slot="year-link">
-    (<span data-slot="year">{% if item %}{% firstof year_text item.year %}{% endif %}</span>)
+    {# The brackets are the slot's, so an undated album shows nothing where it showed "()"; the renderer writes them too #}
+    <span data-slot="year">{% if item %}{% firstof year_text item.year as year_shown %}{% if year_shown %}({{ year_shown }}){% endif %}{% endif %}</span>
 </a>
 {% endblock %}
 

@@ -44,7 +44,10 @@ ARABIC_TO_ROMAN = {v: k for k, v in ROMAN_TO_ARABIC.items()}
 
 # HLTB's name for a platform (lowercased) to the names we hold for it: the
 # Platform table's own, and the short forms older data used. A name that is
-# the same on both sides needs no entry. The key is the whole of HLTB's
+# the same on both sides needs no entry. Checked on 2026-11-10 against the
+# 74 names HLTB gave across a search for every name-searched game: the ones
+# left matching nothing are platforms the table does not have (N-Gage,
+# Google Stadia, Sega 32X, WonderSwan, ...). The key is the whole of HLTB's
 # name: looked for anywhere in it, as it was, "playstation" answered for
 # PlayStation 4 and "nes" for SNES and Genesis.
 PLATFORM_ALIASES = {
@@ -78,6 +81,8 @@ PLATFORM_ALIASES = {
     "neo geo": ["SNK Neo Geo"],
     "3do": ["3DO Interactive Multiplayer"],
     "commodore 64": ["Commodore 64/128"],
+    "commodore vic-20": ["VIC-20"],
+    "fm-7": ["Fujitsu Micro 7"],
     "atari st": ["Atari ST/STE"],
     "atari 8-bit family": ["Atari 8-bit"],
     "turbografx-16": ["TurboGrafx-16 / PC Engine"],

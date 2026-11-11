@@ -514,8 +514,13 @@ class GameListRenderer extends BaseMediaListRenderer {
         this._fillSlot(row, 'year', game.y || 'N/A');
 
         const yearLink = row.querySelector('[data-slot="year-link"]');
-        // `/`, as the server's row writes it: `/games/?...` is a redirect to it
-        if (yearLink) yearLink.href = `/?start=${game.y}&end=${game.y}&highlight=${game.id}`;
+        // `/`, as the server's row writes it: `/games/?...` is a redirect to
+        // it. No link for an undated game, which went to ?start=null&end=null
+        if (yearLink && game.y) {
+            yearLink.href = `/?start=${game.y}&end=${game.y}&highlight=${game.id}`;
+        } else if (yearLink) {
+            yearLink.removeAttribute('href');
+        }
 
         // Fill global rank (under the main rank)
         const globalRankEl = row.querySelector('[data-slot="global-rank"]');
@@ -690,7 +695,7 @@ class GameListRenderer extends BaseMediaListRenderer {
         <div class="flex-1 min-w-0 px-4">
             <div class="truncate">
                 <a href="/game/${game.s}/" class="game-title text-lg font-bold link link-hover">${this._escapeHtml(game.n)}</a>
-                <a rel="nofollow" href="/?start=${game.y}&end=${game.y}&highlight=${game.id}" class="text-base-content/80 ml-1.5">(${game.y || 'N/A'})</a>
+                <a rel="nofollow"${game.y ? ` href="/?start=${game.y}&end=${game.y}&highlight=${game.id}"` : ''} class="text-base-content/80 ml-1.5">(${game.y || 'N/A'})</a>
             </div>
             <div class="game-row-details text-base-content/80 text-sm ml-4" data-slot="meta-row">${metaRowHtml}</div>
         </div>

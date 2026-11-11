@@ -426,6 +426,18 @@ document.addEventListener('alpine:init', () => {
                                 self.performClientUpdate({ historyMethod: 'pushState' });
                             } else if (self.hasActiveFilters()) {
                                 self.performClientUpdate({ historyMethod: 'replaceState' });
+                            } else if (self._listBehindAddress) {
+                                // A Back whose own render failed: the rows
+                                // are the list it left, under the address it
+                                // went to. Adopted as that address's list,
+                                // they stayed, and Load More continued them
+                                // with another list's next page. The address
+                                // is right already, so nothing is written.
+                                // Not by comparing the filters with the
+                                // list's echo: the playtime mode moves the
+                                // address with no render, so those differ
+                                // on a list that is the right one.
+                                self.performClientUpdate({ historyMethod: null });
                             } else if (!self._csf.followsPage()) {
                                 // The data is not the version the page was
                                 // rendered from, so its rows cannot continue

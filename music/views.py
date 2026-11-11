@@ -1274,6 +1274,34 @@ class ToggleListenedAlbumView(LoginRequiredMixin, View):
         return response
 
 
+def _album_json_ld(album):
+    """The MusicAlbum JSON-LD for an album's page, as a dumped dict.
+
+    It was written out in the template, each name through ``escapejs``:
+    valid JSON only for as long as that filter's escapes happen to be
+    JSON's, and a comma away from invalid on every edit. Games' detail
+    page has built its own this way since a name with an apostrophe broke.
+    """
+    payload = {
+        "@context": "https://schema.org",
+        "@type": "MusicAlbum",
+        "name": album.name,
+    }
+    if album.year_released:
+        payload["datePublished"] = str(album.year_released)
+    if album.image_og:
+        payload["image"] = album.image_og
+    by_artist = []
+    for artist in album.credited_artists:
+        entry = {"@type": "MusicGroup", "name": artist.name}
+        if artist.slug:
+            entry["url"] = sites.canonical_url(sites.MUSIC, artist.get_absolute_url())
+        by_artist.append(entry)
+    if by_artist:
+        payload["byArtist"] = by_artist
+    return seo.json_ld(payload)
+
+
 class AlbumDetailView(DetailView):
     """One album, with every list it appears on grouped by list type."""
 
@@ -1306,6 +1334,7 @@ class AlbumDetailView(DetailView):
         context = super().get_context_data(**kwargs)
         album = context["album"]
         context["grouped_lists"] = group_list_appearances(album.lists.all())
+        context["structured_data_json"] = _album_json_ld(album)
         context["list_appearance_count"] = len(album.lists.all())
 
         context["total_album_count"] = total_album_count()
