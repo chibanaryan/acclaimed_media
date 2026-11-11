@@ -194,6 +194,12 @@ and four of the small leftovers. Found by its audits and left:
       gives it: unlike an artist's (P434, since this pass), it is not
       checked to be a UUID, so a malformed one replaces a good one and the
       cover pass asks the archive for a group that does not exist.
+    - Changing an account's email in the admin leaves its old address rows
+      in place, and allauth's password reset matches any row: whoever holds
+      the old address can still reset the password. The resend makes the
+      new address primary since this pass, but nothing removes the old.
+      The admin's save should sync the rows (allauth's
+      `sync_user_email_addresses`, then drop the others), and staff told.
     - A metadata pass's per-album savepoint spans the album's network
       requests, so a cover pass walking a group's releases at 1 req/s holds
       a connection idle in a transaction, and the album's row lock, for tens

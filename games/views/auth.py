@@ -118,11 +118,12 @@ class AuthModalLoginView(View):
             if not email_address or not email_address.verified:
                 # User exists but email not verified - show resend option.
                 # The password was right, so the resend is this account's.
+                # With no address at all there is nothing to resend to.
                 _remember_pending_account(request, user)
                 response = TemplateResponse(
                     request,
                     "auth/partials/_unverified_email.html",
-                    {"email": user.email},
+                    {"email": user.email, "no_address": not user.email},
                 )
                 response["HX-Push-Url"] = "false"
                 return response
@@ -283,6 +284,26 @@ class AuthModalForgotPasswordView(View):
         return response
 
 
+def _address_row_for(request, user):
+    """The address row for an account that has none for ``user.email``.
+
+    Made in the admin, or its email changed there, it has nothing a link
+    could confirm, and its login says unverified. Through allauth's own
+    `add_email`, which lower-cases the address, as every comparison allauth
+    makes does (a mixed-case row escaped its one-verified-account rule), and
+    which a second press of Resend at the same moment reads back. Then made
+    the primary address, as `user.email` names it: left beside an old
+    primary row, allauth went on treating the old address as the account's.
+    """
+    from allauth.account.models import EmailAddress
+
+    with transaction.atomic():
+        email_address = EmailAddress.objects.add_email(request, user, user.email)
+        if not email_address.primary:
+            email_address.set_as_primary()
+    return email_address
+
+
 class AuthModalResendVerificationView(View):
     """Resend the verification email of the account the modal was showing.
 
@@ -303,6 +324,17 @@ class AuthModalResendVerificationView(View):
             response["HX-Push-Url"] = "false"
             return response
 
+        if not user.email:
+            # No address at all (an account made in the admin without one):
+            # nothing to send, and the screen says so. The login says it too.
+            response = TemplateResponse(
+                request,
+                "auth/partials/_verification_resent.html",
+                {"no_address": True},
+            )
+            response["HX-Push-Url"] = "false"
+            return response
+
         email_address = (
             EmailAddress.objects.filter(user=user, email__iexact=user.email)
             .order_by("pk")
@@ -316,22 +348,8 @@ class AuthModalResendVerificationView(View):
             .exclude(user=user)
             .exists()
         )
-        # An account with no row for its address (made in the admin, or its
-        # email changed there) has nothing a link could confirm, and its
-        # login says unverified: give it one. Primary only if it has none,
-        # which allauth keeps to one a user, and through `get_or_create`,
-        # which a second press of Resend at the same moment reads back.
-        if email_address is None and user.email and not taken:
-            email_address, _ = EmailAddress.objects.get_or_create(
-                user=user,
-                email=user.email,
-                defaults={
-                    "verified": False,
-                    "primary": not EmailAddress.objects.filter(
-                        user=user, primary=True
-                    ).exists(),
-                },
-            )
+        if email_address is None and not taken:
+            email_address = _address_row_for(request, user)
         # Verified already (in another browser, say): nothing to send, and
         # the screen says so rather than promise a link
         verified = bool(email_address and email_address.verified)
@@ -341,13 +359,7 @@ class AuthModalResendVerificationView(View):
         response = TemplateResponse(
             request,
             "auth/partials/_verification_resent.html",
-            {
-                "email": user.email,
-                "taken": taken,
-                "verified": verified,
-                # No address at all: nothing was sent, and none can be
-                "no_address": email_address is None and not taken,
-            },
+            {"email": user.email, "taken": taken, "verified": verified},
         )
         response["HX-Push-Url"] = "false"
         return response

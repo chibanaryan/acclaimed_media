@@ -1,4 +1,4 @@
-{# Shown at login, or at sign-up on an address an account waits on, when that address is not verified #}
+{# Shown at login, or at sign-up on an address an account waits on, when that address is not verified; no_address: an account with none #}
 {# account_unproven: the sign-up case. The reader has not given that account's password, so no resend is offered for it: they log in to it, or reset its password, which proves the inbox. #}
 
 <div class="text-center py-4">
@@ -6,7 +6,22 @@
     <span class="mdi mdi-email-alert text-6xl text-warning mb-4 block" aria-hidden="true"></span>
 
     <h3 id="authModalTitle" class="text-lg font-bold mb-2">Email Not Verified</h3>
-    {% if account_unproven %}
+    {% if no_address %}
+    {# An account made without an address: nothing a link could go to #}
+    <p class="text-sm text-base-content/70 mb-6">
+        This account has no email address to verify.
+        <a href="/#contact" class="link link-primary">Contact us</a> and we'll sort it out.
+    </p>
+
+    <button type="button"
+            class="btn btn-ghost btn-sm"
+            hx-get="{% url 'auth-modal-login' %}"
+            hx-target="#auth-modal-content"
+            hx-swap="innerHTML">
+        <span class="mdi mdi-arrow-left" aria-hidden="true"></span>
+        Back to Login
+    </button>
+    {% elif account_unproven %}
     <p class="text-sm text-base-content/70 mb-6">
         An account with <strong>{{ email }}</strong> is waiting for its address to be verified.
     </p>

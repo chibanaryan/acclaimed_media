@@ -424,9 +424,10 @@ class VerificationBelongsToAnAccountTests(TestCase):
         self.assertContains(response, "Email Sent")
         self.assertEqual(_confirmation_row(mail.outbox[0]).user, user)
 
-    def test_an_account_whose_email_changed_keeps_its_primary_row(self):
+    def test_an_account_whose_email_changed_gets_it_as_its_primary(self):
         """Its old row is primary, and a second primary row breaks allauth's
-        constraint: the resend was a 500."""
+        constraint (a 500); left primary, allauth went on treating the old
+        address as the account's. The new one takes over."""
         from django.core import mail
 
         user = self._account("moved", "old@example.com")
@@ -436,40 +437,47 @@ class VerificationBelongsToAnAccountTests(TestCase):
         response = self.client.post(reverse("auth-modal-resend-verification"))
         self.assertContains(response, "Email Sent")
         new = EmailAddress.objects.get(user=user, email="new@example.com")
-        self.assertFalse(new.primary)
+        self.assertTrue(new.primary)
+        self.assertFalse(EmailAddress.objects.get(email="old@example.com").primary)
         self.assertEqual(_confirmation_row(mail.outbox[0]), new)
 
-    def test_two_resends_at_once_make_one_row(self):
-        """Both found no row and both created one; the second was a 500."""
-        from unittest import mock
+    def test_a_mixed_case_address_is_stored_lower_case(self):
+        """allauth compares lower-cased addresses: a row kept as typed
+        escaped its rule that one account holds a verified address."""
+        user = User.objects.create_user(
+            username="cased", email="Cased@Example.com", password=self.PASSWORD
+        )
+        self._log_in("cased")
+        self.client.post(reverse("auth-modal-resend-verification"))
+        self.assertEqual(
+            list(
+                EmailAddress.objects.filter(user=user).values_list("email", flat=True)
+            ),
+            ["cased@example.com"],
+        )
 
+    def test_pressing_resend_twice_makes_one_row(self):
         user = User.objects.create_user(
             username="twice", email="twice@example.com", password=self.PASSWORD
         )
         self._log_in("twice")
-        EmailAddress.objects.create(user=user, email="twice@example.com")
-        real = EmailAddress.objects.filter
-
-        def misses_once(*args, **kwargs):
-            if kwargs.get("user") == user and not getattr(misses_once, "done", False):
-                misses_once.done = True
-                return EmailAddress.objects.none()
-            return real(*args, **kwargs)
-
-        with mock.patch.object(EmailAddress.objects, "filter", side_effect=misses_once):
+        for _ in range(2):
             response = self.client.post(reverse("auth-modal-resend-verification"))
-        self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.status_code, 200)
         self.assertEqual(EmailAddress.objects.filter(user=user).count(), 1)
 
-    def test_an_account_with_no_email_is_not_promised_a_link(self):
+    def test_an_account_with_no_email_is_told_so_at_login(self):
+        """Not offered a resend that can send nothing."""
         from django.core import mail
 
         User.objects.create_user(username="noemail", password=self.PASSWORD)
-        self.assertContains(self._log_in("noemail"), "Email Not Verified")
+        login = self._log_in("noemail")
+        self.assertContains(login, "no email address to verify")
+        self.assertNotContains(login, reverse("auth-modal-resend-verification"))
         response = self.client.post(reverse("auth-modal-resend-verification"))
         self.assertEqual(mail.outbox, [])
-        self.assertNotContains(response, "We've sent")
         self.assertContains(response, "No Address to Verify")
+        self.assertContains(response, 'href="/#contact"')
 
     def test_the_browser_that_signed_up_is_logged_in_by_its_link(self):
         from django.core import mail
