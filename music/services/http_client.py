@@ -202,6 +202,11 @@ class RateLimitedClient:
         ends up at archive.org after a 307. A body that is not an image
         (``config.COVER_CONTENT_TYPES``), or is larger than a cover is, is
         no usable data either.
+
+        The body is streamed, and given up on once it passes
+        ``config.COVER_MAX_BYTES``: read whole first, as it was until
+        2026-11-10, the ceiling bounded what was stored and not what a
+        download could cost the worker running it.
         """
         retry_delay = self.initial_retry_delay
 
@@ -210,7 +215,14 @@ class RateLimitedClient:
             last_attempt = attempt == self.max_retries - 1
 
             try:
-                response = self.session.get(url, timeout=self.timeout)
+                response = self.session.get(url, timeout=self.timeout, stream=True)
+                try:
+                    # Inside the `try`: a body is read from the network, and
+                    # can fail as the request can
+                    outcome = self._read_image(url, response)
+                finally:
+                    # What was not read is not kept waiting on the connection
+                    response.close()
             except self.RETRYABLE_ERRORS as exc:
                 if last_attempt:
                     logger.warning("%s failed to download: %s", url, exc)
@@ -222,39 +234,52 @@ class RateLimitedClient:
                 logger.warning("%s failed to download (non-retryable): %s", url, exc)
                 return None
 
-            if response.status_code in self.RETRYABLE_STATUSES:
-                if last_attempt:
-                    logger.warning(
-                        "%s still returning %s after %d attempts",
-                        url,
-                        response.status_code,
-                        self.max_retries,
-                    )
-                    return None
-                time.sleep(retry_delay)
-                retry_delay *= 2
-                continue
-
-            if response.status_code != 200 or not response.content:
-                logger.debug(
-                    "%s returned %s with %d bytes",
+            if outcome is not self._RETRY:
+                return outcome
+            if last_attempt:
+                logger.warning(
+                    "%s still returning %s after %d attempts",
                     url,
                     response.status_code,
-                    len(response.content or b""),
+                    self.max_retries,
                 )
                 return None
+            time.sleep(retry_delay)
+            retry_delay *= 2
 
-            content_type = response.headers.get("Content-Type", "image/jpeg")
-            content_type = content_type.split(";")[0].strip().lower()
-            # Only an image, and of a size a cover is: see the config
-            if content_type not in config.COVER_CONTENT_TYPES:
-                logger.warning("%s is %s, not an image", url, content_type[:60])
-                return None
-            if len(response.content) > config.COVER_MAX_BYTES:
+    #: What ``_read_image`` answers for a status worth another attempt.
+    _RETRY = object()
+
+    #: How much of a body is read at a time.
+    DOWNLOAD_CHUNK_BYTES = 64 * 1024
+
+    def _read_image(self, url: str, response):
+        """An open response's image as ``(body, content_type)``, None if it
+        has none to keep, or ``_RETRY``."""
+        if response.status_code in self.RETRYABLE_STATUSES:
+            return self._RETRY
+        if response.status_code != 200:
+            logger.debug("%s returned %s", url, response.status_code)
+            return None
+
+        content_type = response.headers.get("Content-Type", "image/jpeg")
+        content_type = content_type.split(";")[0].strip().lower()
+        # Only an image, and of a size a cover is: see the config
+        if content_type not in config.COVER_CONTENT_TYPES:
+            logger.warning("%s is %s, not an image", url, content_type[:60])
+            return None
+
+        body = bytearray()
+        for chunk in response.iter_content(self.DOWNLOAD_CHUNK_BYTES):
+            body.extend(chunk)
+            if len(body) > config.COVER_MAX_BYTES:
                 logger.warning(
-                    "%s is %d bytes, too large for a cover",
+                    "%s is over %d bytes, too large for a cover",
                     url,
-                    len(response.content),
+                    config.COVER_MAX_BYTES,
                 )
                 return None
-            return response.content, content_type
+        if not body:
+            logger.debug("%s returned an empty body", url)
+            return None
+        return bytes(body), content_type

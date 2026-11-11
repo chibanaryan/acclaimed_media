@@ -2,7 +2,7 @@
 
 import logging
 from contextlib import nullcontext
-from datetime import datetime
+from datetime import datetime, timezone
 from io import StringIO
 import threading
 from unittest import mock
@@ -12,7 +12,7 @@ from django.core.management import call_command
 from django.db import DatabaseError
 from django.test import SimpleTestCase, TestCase, override_settings
 
-from core.services.monitoring import weekly_job_monitor
+from core.services.monitoring import skips_today, weekly_job_monitor
 from games.config import RATE_LIMIT_CACHE_PREFIX
 
 LOCMEM = {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}
@@ -68,11 +68,30 @@ class WeeklyJobMonitorTests(SimpleTestCase):
         self.assertEqual(config["max_runtime"], 60)
 
 
+class WeeklyGateTests(SimpleTestCase):
+    def test_the_day_is_utcs(self):
+        """A dyno's clock is UTC; said, not assumed, a laptop west of
+        Greenwich does not run Sunday's job on what is Monday there."""
+        command = mock.Mock()
+        with mock.patch("core.services.monitoring.datetime") as clock:
+            clock.now.return_value = datetime(2026, 10, 25, tzinfo=timezone.utc)
+            self.assertFalse(skips_today(command))
+            clock.now.assert_called_once_with(timezone.utc)
+        command.stdout.write.assert_not_called()
+
+    def test_any_other_day_is_skipped_and_said(self):
+        command = mock.Mock()
+        with mock.patch("core.services.monitoring.datetime") as clock:
+            clock.now.return_value = datetime(2026, 10, 26, tzinfo=timezone.utc)
+            self.assertTrue(skips_today(command))
+        self.assertIn("Today is Monday", command.stdout.write.call_args.args[0])
+
+
 class ScheduledJobsCheckInTests(SimpleTestCase):
     """Both jobs run their work inside the check-in, only past the gate."""
 
     def _run(self, command, module, weekday_date, **options):
-        with mock.patch(f"{module}.datetime") as dt, mock.patch(
+        with mock.patch("core.services.monitoring.datetime") as dt, mock.patch(
             f"{module}.weekly_job_monitor", return_value=nullcontext()
         ) as monitor, mock.patch(f"{module}.Command._run") as run:
             dt.now.return_value = weekday_date

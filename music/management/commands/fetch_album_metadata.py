@@ -33,12 +33,11 @@ albums in the year sort, are re-derived after any Wikidata or MusicBrainz pass.
 
 import logging
 import time
-from datetime import datetime
 
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
-from core.services.monitoring import weekly_job_monitor
+from core.services.monitoring import skips_today, weekly_job_monitor
 from music.management.commands.rebuild_album_genres import write_report
 from music.models import Album
 from music.services import caching, post_import
@@ -118,12 +117,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        # 6 = Sunday in Python's weekday() (0=Monday, 6=Sunday)
-        if options["weekly"] and datetime.now().weekday() != 6:
-            self.stdout.write(
-                f"Skipping: Today is {datetime.now().strftime('%A')} "
-                "(weekly mode only runs on Sunday)"
-            )
+        if options["weekly"] and skips_today(self):
             return
 
         with weekly_job_monitor(
@@ -135,6 +129,27 @@ class Command(BaseCommand):
                 post_import.run_weekly(self, lambda: self._run(options))
             else:
                 self._run(options)
+
+            # A pass that could not run fails the command, as games' weekly
+            # job does: inside the cron check-in, which reports a run only
+            # if it raises, and after the lock is let go. Until 2026-11-10
+            # the job exited 0 with Wikidata down and every album failed,
+            # which Sentry's monitor read as a good Sunday.
+            if self.failed_passes:
+                raise CommandError(
+                    "Metadata fetch failed outright for: "
+                    + ", ".join(self.failed_passes)
+                )
+
+    # The pass that attempts every album on every run, so one that lands
+    # none is an outage. The others attempt only what is missing, and a
+    # routine week's only work can be the two albums with no cover
+    # anywhere: errors on some albums are not a failed run.
+    ATTEMPTS_EVERY_ALBUM = frozenset({"wikidata"})
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.failed_passes = []
 
     def _run(self, options):
         """Everything after the weekly gate, inside the cron check-in."""
@@ -170,6 +185,12 @@ class Command(BaseCommand):
             fresh = list(Album.objects.filter(pk__in=[a.pk for a in albums]))
             result = runners[name](fresh)
             results.append(result)
+            if (
+                name in self.ATTEMPTS_EVERY_ALBUM
+                and result.errors
+                and not result.processed
+            ):
+                self.failed_passes.append(result.name)
             self.stdout.write(f"  {result.summary()}")
             for message in result.errors[:10]:
                 self.stdout.write(self.style.ERROR(f"    {message}"))

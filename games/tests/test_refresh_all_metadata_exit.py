@@ -54,7 +54,7 @@ class FailedPhasesFailTheCommandTests(TestCase):
             events.append("lock released")
 
         with (
-            mock.patch(f"{COMMAND}.datetime") as clock,
+            mock.patch("core.services.monitoring.datetime") as clock,
             mock.patch(f"{COMMAND}.post_import.run_weekly", run_weekly),
             mock.patch(f"{COMMAND}.weekly_job_monitor") as monitor,
         ):
@@ -68,3 +68,19 @@ class FailedPhasesFailTheCommandTests(TestCase):
         # Inside the cron check-in, which reports only a run that raises
         exit_args = monitor.return_value.__exit__.call_args.args
         self.assertIs(exit_args[0], CommandError)
+
+
+class WikidataCredentialsTests(TestCase):
+    """The async Wikipedia refresh paced itself as authenticated for any
+    token, then sent none."""
+
+    def test_a_bot_password_is_a_login_and_a_password(self):
+        self.assertEqual(
+            refresh_all_metadata.wikidata_credentials("Site@bot:s3cret:with:colons"),
+            ("Site@bot", "s3cret:with:colons"),
+        )
+
+    def test_anything_else_is_no_credentials_and_the_slower_pace(self):
+        for token in (None, "", "no-colon", ":password", "login:"):
+            with self.subTest(token=token):
+                self.assertIsNone(refresh_all_metadata.wikidata_credentials(token))

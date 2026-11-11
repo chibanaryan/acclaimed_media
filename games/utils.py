@@ -32,7 +32,6 @@ from games.services.import_handler import (  # noqa: F401
     import_listmemberships,
     import_games,
     import_platforms,
-    import_developers,
     _validate_prerequisites,
 )
 

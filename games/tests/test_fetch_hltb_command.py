@@ -216,7 +216,7 @@ class FetchHltbDataCommandTests(TestCase):
                 completionist = 0.0
                 similarity = 1.0
                 release_world = None
-                profile_platform = None
+                profile_platforms = None
 
             mock_result = MockHLTBResult()
             mock_hltb.async_search_from_id = mock.AsyncMock(return_value=mock_result)

@@ -8,171 +8,15 @@ completion time estimates (main story, main+extras, completionist).
 import asyncio
 import csv
 import logging
-import re
 import time
 from datetime import datetime
-from decimal import Decimal
 
 from django.core.management.base import BaseCommand
 
-from games.models import Game, HLTBGameData
+from games.models import Game
+from games.services import hltb_matching
 
 logger = logging.getLogger(__name__)
-
-# Roman numeral conversion mappings
-ROMAN_TO_ARABIC = {
-    "I": "1",
-    "II": "2",
-    "III": "3",
-    "IV": "4",
-    "V": "5",
-    "VI": "6",
-    "VII": "7",
-    "VIII": "8",
-    "IX": "9",
-    "X": "10",
-    "XI": "11",
-    "XII": "12",
-    "XIII": "13",
-    "XIV": "14",
-    "XV": "15",
-    "XVI": "16",
-    "XVII": "17",
-    "XVIII": "18",
-    "XIX": "19",
-    "XX": "20",
-}
-
-ARABIC_TO_ROMAN = {v: k for k, v in ROMAN_TO_ARABIC.items()}
-
-# Platform name mappings for HLTB matching
-# Maps common HLTB platform names to our platform names
-PLATFORM_ALIASES = {
-    "pc": ["PC", "Windows", "Linux", "Mac"],
-    "playstation": ["PlayStation", "PS1", "PSX"],
-    "playstation 2": ["PlayStation 2", "PS2"],
-    "playstation 3": ["PlayStation 3", "PS3"],
-    "playstation 4": ["PlayStation 4", "PS4"],
-    "playstation 5": ["PlayStation 5", "PS5"],
-    "xbox": ["Xbox"],
-    "xbox 360": ["Xbox 360"],
-    "xbox one": ["Xbox One"],
-    "xbox series x/s": ["Xbox Series X/S", "Xbox Series X", "Xbox Series S"],
-    "nintendo switch": ["Nintendo Switch", "Switch"],
-    "wii": ["Wii"],
-    "wii u": ["Wii U"],
-    "nintendo 64": ["Nintendo 64", "N64"],
-    "gamecube": ["GameCube", "NGC"],
-    "game boy": ["Game Boy", "GB"],
-    "game boy advance": ["Game Boy Advance", "GBA"],
-    "nintendo ds": ["Nintendo DS", "DS"],
-    "nintendo 3ds": ["Nintendo 3DS", "3DS"],
-    "nes": ["NES", "Nintendo Entertainment System"],
-    "snes": ["SNES", "Super Nintendo Entertainment System", "Super Nintendo"],
-    "mobile": ["iOS", "Android", "Mobile"],
-}
-
-
-def platform_matches(hltb_platform, game_platforms):
-    """
-    Check if HLTB platform matches any of our game's platforms.
-
-    Args:
-        hltb_platform: Platform string from HLTB (e.g., "PlayStation 4")
-        game_platforms: List of platform names from our database
-
-    Returns:
-        True if there's a match, False otherwise
-    """
-    if not hltb_platform or not game_platforms:
-        return False
-
-    hltb_lower = hltb_platform.lower().strip()
-
-    # Check direct match
-    for platform in game_platforms:
-        if platform.lower() == hltb_lower:
-            return True
-
-    # Check aliases
-    for hltb_name, our_names in PLATFORM_ALIASES.items():
-        if hltb_name in hltb_lower:
-            for our_name in our_names:
-                if our_name in game_platforms:
-                    return True
-
-    return False
-
-
-def convert_numerals(name):
-    """
-    Generate alternate versions of a game name with Roman/Arabic numerals swapped.
-
-    Examples:
-        "Final Fantasy VII" -> ["Final Fantasy 7"]
-        "Street Fighter 2" -> ["Street Fighter II"]
-        "Grand Theft Auto V" -> ["Grand Theft Auto 5"]
-
-    Returns:
-        List of alternate name versions, or empty list if no conversions found.
-    """
-    alternates = []
-
-    # Pattern to match Roman numerals at word boundaries
-    # Must be surrounded by spaces, colon, or end of string
-    roman_pattern = r"\b(" + "|".join(ROMAN_TO_ARABIC.keys()) + r")\b"
-
-    # Try converting Roman to Arabic
-    def roman_to_arabic_replacer(match):
-        return ROMAN_TO_ARABIC[match.group(1)]
-
-    roman_converted = re.sub(roman_pattern, roman_to_arabic_replacer, name)
-    if roman_converted != name:
-        alternates.append(roman_converted)
-
-    # Try converting Arabic to Roman
-    # Pattern to match single/double digit numbers at word boundaries
-    arabic_pattern = r"\b(\d{1,2})\b"
-
-    def arabic_to_roman_replacer(match):
-        num = match.group(1)
-        return ARABIC_TO_ROMAN.get(num, num)  # Keep original if no mapping
-
-    arabic_converted = re.sub(arabic_pattern, arabic_to_roman_replacer, name)
-    if arabic_converted != name and arabic_converted not in alternates:
-        alternates.append(arabic_converted)
-
-    return alternates
-
-
-def _submission_count(raw):
-    try:
-        count = int(raw)
-    except (TypeError, ValueError):
-        return None
-    return count if count >= 0 else None
-
-
-def entry_profile(entry):
-    """
-    HLTB's description of an entry, as ``HLTBGameData`` field values: its
-    type, whether HLTB pools single-player and multiplayer times for it, and
-    how many submissions each average rests on. Read from the raw search
-    row: howlongtobeatpy maps neither submission count, and its
-    ``complexity_lvl_combine`` turns a missing flag into False, where we
-    keep None for "not reported".
-    """
-    raw = getattr(entry, "json_content", None)
-    if not isinstance(raw, dict):
-        return {}
-    combine = raw.get("comp_lvl_combine")
-    return {
-        "game_type": str(raw.get("game_type") or "")[:20],
-        "comp_lvl_combine": bool(combine) if combine is not None else None,
-        "main_story_count": _submission_count(raw.get("comp_main_count")),
-        "main_extra_count": _submission_count(raw.get("comp_plus_count")),
-        "completionist_count": _submission_count(raw.get("comp_100_count")),
-    }
 
 
 class Command(BaseCommand):
@@ -275,13 +119,15 @@ class Command(BaseCommand):
         # Prefetch platforms for better matching
         games_qs = games_qs.prefetch_related("platforms")
 
-        # Prefetch WikipediaGameData for all games
+        # WikipediaGameData for all games: every record, and the primary
         games_qs = games_qs.prefetch_related("wikipedia_game_data_set")
+        games_qs = games_qs.select_related("primary_wikipedia_game_data")
 
         # Convert to list with platform data and all Wikidata HLTB IDs
         games_list = []
         for game in games_qs:
-            platform_names = list(game.platforms.values_list("name", flat=True))
+            # From the prefetch: `values_list` here was a query a game
+            platform_names = [platform.name for platform in game.platforms.all()]
 
             # Collect HLTB IDs from ALL WikipediaGameData records (not just primary)
             # This allows fallback when primary record doesn't have an HLTB ID
@@ -480,83 +326,22 @@ class Command(BaseCommand):
                     # Fall back to name search if direct lookup failed
                     # (only if --use-name-search was specified)
                     if not best_match and use_name_search:
-                        # Build list of names to try: Wikipedia title first,
-                        # then local name. Also include Roman/Arabic numeral
-                        # conversions
-                        search_names = []
-                        if wiki_page_title and wiki_page_title != game_name:
-                            search_names.append(wiki_page_title)
-                            # Add numeral variants of Wikipedia title
-                            search_names.extend(convert_numerals(wiki_page_title))
-
-                        search_names.append(game_name)
-                        # Add numeral variants of local name
-                        search_names.extend(convert_numerals(game_name))
-
-                        # Remove duplicates while preserving order
-                        seen = set()
-                        search_names = [
-                            x for x in search_names if not (x in seen or seen.add(x))
-                        ]
-
-                        for search_name in search_names:
+                        # Wikipedia's title first, then ours, each with its
+                        # numeral variants; the first name with an entry
+                        # similar enough wins (games.services.hltb_matching)
+                        for search_name in hltb_matching.search_names(
+                            game_name, wiki_page_title
+                        ):
                             results = await hltb.async_search(search_name)
-
-                            if results:
-                                # Filter to matches that meet similarity threshold
-                                good_matches = [
-                                    r for r in results if r.similarity >= min_similarity
-                                ]
-
-                                if not good_matches:
-                                    continue
-
-                                # If we have a year and multiple matches,
-                                # prefer year match
-                                if game_year and len(good_matches) > 1:
-                                    year_matches = []
-                                    for result in good_matches:
-                                        if (
-                                            hasattr(result, "release_world")
-                                            and result.release_world
-                                        ):
-                                            try:
-                                                result_year = int(result.release_world)
-                                                # Accept exact match or within 1
-                                                # year (regional releases)
-                                                if abs(result_year - game_year) <= 1:
-                                                    year_matches.append(result)
-                                            except (ValueError, TypeError):
-                                                pass
-
-                                    # If we found year matches, only consider those
-                                    if year_matches:
-                                        good_matches = year_matches
-
-                                # If still multiple matches and we have platform
-                                # data, prefer platform match
-                                if game_platforms and len(good_matches) > 1:
-                                    platform_matches_list = []
-                                    for result in good_matches:
-                                        # HLTB results have profile_platform field
-                                        if hasattr(result, "profile_platform"):
-                                            hltb_platform = result.profile_platform
-                                            if platform_matches(
-                                                hltb_platform, game_platforms
-                                            ):
-                                                platform_matches_list.append(result)
-
-                                    # If we found platform matches, only consider those
-                                    if platform_matches_list:
-                                        good_matches = platform_matches_list
-
-                                # Pick the match with highest similarity from
-                                # remaining candidates
-                                best_match = max(
-                                    good_matches, key=lambda r: r.similarity
-                                )
+                            best_match = hltb_matching.choose_entry(
+                                results or [],
+                                min_similarity=min_similarity,
+                                game_year=game_year,
+                                game_platforms=game_platforms,
+                            )
+                            if best_match:
                                 fetch_method = "name_search"
-                                break  # Found a good match, stop trying
+                                break
 
                     if best_match:
                         async with counter_lock:
@@ -566,9 +351,11 @@ class Command(BaseCommand):
                         similarity = getattr(best_match, "similarity", 1.0)
 
                         # Extract playtime values
-                        main_story = self._get_hours(best_match, "main_story")
-                        main_extra = self._get_hours(best_match, "main_extra")
-                        completionist = self._get_hours(best_match, "completionist")
+                        main_story = hltb_matching.entry_hours(best_match, "main_story")
+                        main_extra = hltb_matching.entry_hours(best_match, "main_extra")
+                        completionist = hltb_matching.entry_hours(
+                            best_match, "completionist"
+                        )
 
                         # Only print match details if not from direct Wikidata lookup
                         if not all_wikidata_hltb_ids:
@@ -581,7 +368,7 @@ class Command(BaseCommand):
 
                         # Save to database if requested
                         if options.get("save"):
-                            await sync_to_async(self._save_hltb_data)(
+                            await sync_to_async(hltb_matching.save_entry)(
                                 game_id,
                                 game_igdb_id,
                                 hltb_id,
@@ -591,7 +378,7 @@ class Command(BaseCommand):
                                 main_story,
                                 main_extra,
                                 completionist,
-                                profile=entry_profile(best_match),
+                                profile=hltb_matching.entry_profile(best_match),
                             )
                     else:
                         async with counter_lock:
@@ -712,118 +499,6 @@ class Command(BaseCommand):
             games = games[: options["limit"]]
 
         return games
-
-    def _get_hours(self, result, field_name):
-        """Extract hours from HLTB result, handling various attribute names."""
-        # Try different attribute names the library might use
-        possible_attrs = [
-            field_name,
-            f"{field_name}_seconds",
-            f"gameplay_{field_name}",
-        ]
-
-        for attr in possible_attrs:
-            value = getattr(result, attr, None)
-            if value is not None and value > 0:
-                # If value is in seconds, convert to hours
-                if "seconds" in attr:
-                    return round(value / 3600, 1)
-                # If value is already in hours
-                return round(value, 1)
-
-        return None
-
-    def _save_hltb_data(
-        self,
-        game_id,
-        game_igdb_id,
-        hltb_id,
-        hltb_name,
-        fetch_method,
-        similarity,
-        main_story,
-        main_extra,
-        completionist,
-        profile=None,
-    ):
-        """Save HLTB data to database."""
-        game = Game.objects.get(id=game_id)
-
-        # First, check for orphaned record with same igdb_id
-        orphaned_record = HLTBGameData.objects.filter(
-            igdb_id=game_igdb_id,
-            game__isnull=True,
-            is_primary=True,
-        ).first()
-
-        if orphaned_record:
-            # Reconnect and update orphaned record
-            HLTBGameData.objects.filter(game=game, is_primary=True).update(
-                is_primary=False
-            )
-
-            orphaned_record.game = game
-            orphaned_record.hltb_id = hltb_id
-            orphaned_record.hltb_name = hltb_name
-            orphaned_record.fetch_method = fetch_method
-            orphaned_record.similarity = (
-                Decimal(str(similarity)) if similarity else None
-            )
-            orphaned_record.main_story_hours = (
-                Decimal(str(main_story)) if main_story else None
-            )
-            orphaned_record.main_extra_hours = (
-                Decimal(str(main_extra)) if main_extra else None
-            )
-            orphaned_record.completionist_hours = (
-                Decimal(str(completionist)) if completionist else None
-            )
-            for field, value in (profile or {}).items():
-                setattr(orphaned_record, field, value)
-            orphaned_record.save()
-            hltb_data = orphaned_record
-        else:
-            # No orphaned record, create or update. A new row (IGDB re-keyed
-            # the game) inherits the staff open-ended call of the one it replaces
-            previous_call = (
-                HLTBGameData.objects.filter(game=game, is_primary=True)
-                .values_list("open_ended_override", flat=True)
-                .first()
-            )
-            HLTBGameData.objects.filter(game=game, is_primary=True).update(
-                is_primary=False
-            )
-
-            hltb_data, created = HLTBGameData.objects.update_or_create(
-                game=game,
-                igdb_id=game_igdb_id,
-                defaults={
-                    "hltb_id": hltb_id,
-                    "hltb_name": hltb_name,
-                    "fetch_method": fetch_method,
-                    "similarity": (Decimal(str(similarity)) if similarity else None),
-                    "main_story_hours": (
-                        Decimal(str(main_story)) if main_story else None
-                    ),
-                    "main_extra_hours": (
-                        Decimal(str(main_extra)) if main_extra else None
-                    ),
-                    "completionist_hours": (
-                        Decimal(str(completionist)) if completionist else None
-                    ),
-                    "is_primary": True,
-                    **(profile or {}),
-                },
-            )
-            if created and previous_call is not None:
-                hltb_data.open_ended_override = previous_call
-                hltb_data.save(update_fields=["open_ended_override"])
-
-        # Set primary relationship
-        game.primary_hltb_game_data = hltb_data
-        game.save(update_fields=["primary_hltb_game_data"])
-
-        return hltb_data
 
     def _get_csv_path(self, output_path):
         """Get CSV output path (use provided or generate timestamp-based)."""

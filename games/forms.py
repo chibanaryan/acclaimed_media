@@ -111,10 +111,6 @@ class ImportForm(forms.Form):
     delete = forms.BooleanField(
         required=False, label="Delete existing data before importing"
     )
-    igdb = forms.BooleanField(
-        required=False,
-        label="Fetch IGDB data after import (cover art, descriptions, etc.)",
-    )
     seed_test_data = forms.BooleanField(
         required=False,
         label=(
@@ -243,7 +239,6 @@ class ImportForm(forms.Form):
         # Special operations don't require files
         if (
             cleaned_data.get("delete")
-            or cleaned_data.get("igdb")
             or cleaned_data.get("seed_test_data")
             or cleaned_data.get("clear_igdb_metadata")
             or cleaned_data.get("clear_wikipedia_metadata")

@@ -115,6 +115,23 @@ class RebuildArtistSlugsTests(TestCase):
         # So the bulk payload, keyed by slug, gets a new version.
         self.assertGreater(models.Album.objects.get(pk=album.pk).modified, before)
 
+    def test_slugs_do_not_move_without_their_redirects(self):
+        """One transaction: a failure keeping the history left new slugs
+        with nothing answering the old ones."""
+        models.Artist.objects.filter(pk=self.uk.pk).update(
+            wikipedia_title="Nirvana (British band)"
+        )
+        with (
+            mock.patch(
+                "music.services.artist_slugs.record_slug_changes",
+                side_effect=RuntimeError("history table locked"),
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            rebuild_artist_slugs()
+        self.uk.refresh_from_db()
+        self.assertEqual(self.uk.slug, "nirvana-2")
+
     def test_nothing_changed_reports_nothing(self):
         self.assertEqual(rebuild_artist_slugs(), [])
         self.assertFalse(models.ArtistSlugHistory.objects.exists())

@@ -20,6 +20,14 @@ def fake_response(status_code=200, json_body=None, content=b"", headers=None):
     response.status_code = status_code
     response.headers = headers or {}
     response.content = content
+
+    def iter_content(chunk_size=1):
+        return (
+            content[start : start + chunk_size]
+            for start in range(0, len(content), chunk_size)
+        )
+
+    response.iter_content.side_effect = iter_content
     if json_body is None:
         response.json.side_effect = ValueError("no json")
     else:
@@ -298,6 +306,51 @@ class GetBytesTests(ClientTestCase):
         )
         with self.assertLogs("music.services.http_client", level="WARNING"):
             self.assertIsNone(client.get_bytes("https://example.test/x.jpg"))
+
+    def test_a_body_is_given_up_on_once_it_is_too_large(self):
+        """Streamed: the ceiling bounds what a download costs, not only
+        what is stored. Read whole first, a 2 GB answer was 2 GB in memory."""
+        client, session = self.build()
+        response = fake_response(content=b"")
+        chunks_read = []
+
+        def endless(chunk_size=1):
+            while True:
+                chunks_read.append(chunk_size)
+                yield b"x" * chunk_size
+
+        response.iter_content.side_effect = endless
+        session.get.return_value = response
+        with self.assertLogs("music.services.http_client", level="WARNING"):
+            self.assertIsNone(client.get_bytes("https://example.test/x.jpg"))
+        self.assertLessEqual(
+            sum(chunks_read), config.COVER_MAX_BYTES + client.DOWNLOAD_CHUNK_BYTES
+        )
+        self.assertTrue(session.get.call_args.kwargs["stream"])
+        response.close.assert_called_once()
+
+    def test_a_body_that_is_not_an_image_is_not_read(self):
+        client, session = self.build()
+        response = fake_response(
+            content=b"<html>", headers={"Content-Type": "text/html"}
+        )
+        session.get.return_value = response
+        with self.assertLogs("music.services.http_client", level="WARNING"):
+            self.assertIsNone(client.get_bytes("https://example.test/x.jpg"))
+        response.iter_content.assert_not_called()
+        response.close.assert_called_once()
+
+    def test_a_connection_lost_mid_body_is_retried(self):
+        client, session = self.build()
+        broken = fake_response(content=b"")
+        broken.iter_content.side_effect = requests.exceptions.ChunkedEncodingError(
+            "cut off"
+        )
+        session.get.side_effect = [broken, fake_response(content=b"ok")]
+        self.assertEqual(
+            client.get_bytes("https://example.test/x.jpg"), (b"ok", "image/jpeg")
+        )
+        broken.close.assert_called_once()
 
     def test_an_empty_body_is_not_an_image(self):
         client, session = self.build()

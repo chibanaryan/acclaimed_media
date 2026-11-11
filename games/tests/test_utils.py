@@ -1,4 +1,4 @@
-from io import BytesIO, StringIO
+from io import StringIO
 from unittest import mock
 
 from django.conf import settings
@@ -36,26 +36,6 @@ class ImportDataRoutingTests(TestCase):
         batch_mock.assert_called_once()
         delete_mock.assert_not_called()
         self.assertEqual(result, (True, "Imported"))
-
-    def test_import_data_validates_type(self):
-        stream = BytesIO(b"")
-        success, message = utils.import_data({"file": stream, "type": "X"})
-        self.assertFalse(success)
-        self.assertIn("Unknown import type", message)
-
-    def test_import_data_wraps_handler_errors(self):
-        stream = BytesIO(b"")
-        with mock.patch(
-            "games.services.import_handler.import_games", side_effect=ValueError("boom")
-        ):
-            success, message = utils.import_data(
-                {
-                    "file": stream,
-                    "type": constants.TYPE_GAME,
-                }
-            )
-        self.assertFalse(success)
-        self.assertIn("Could not process uploaded file", message)
 
 
 class ImportHelpersTests(TestCase):
@@ -163,27 +143,6 @@ class ImportHelpersTests(TestCase):
         membership = models.ListMembership.objects.first()
         self.assertEqual(membership.list, lst)
         self.assertIn("1 created", message)
-
-    def test_import_developers_counts_updates(self):
-        models.Developer.objects.create(name="Canonical", slug="canonical")
-        stream = StringIO("Alias\tCanonical\r\n")
-        success, message = utils.import_developers(stream)
-        self.assertTrue(success)
-        self.assertIn("1 updated", message)
-
-    def test_import_developers_with_two_aliases(self):
-        stream = StringIO("Alias1\tCanonical\tAlias2\r\n")
-        success, message = utils.import_developers(stream)
-        self.assertTrue(success)
-        self.assertIn("1 created", message)
-        # Canonical is created as root, Alias1 and Alias2 as subsidiaries
-        root_devs = models.Developer.objects.filter(parent__isnull=True)
-        self.assertEqual(root_devs.count(), 1)
-        root_dev = root_devs.first()
-        self.assertEqual(root_dev.name, "Canonical")
-        subsidiary_names = list(root_dev.subsidiaries.values_list("name", flat=True))
-        self.assertIn("Alias1", subsidiary_names)
-        self.assertIn("Alias2", subsidiary_names)
 
 
 class FilterTests(TestCase):

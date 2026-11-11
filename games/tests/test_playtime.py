@@ -17,7 +17,7 @@ from django.urls import reverse
 from django.utils.text import slugify
 
 from core.tests.utils import clear_all_caches
-from games.management.commands import fetch_hltb_data, refresh_all_metadata
+from games.services import hltb_matching
 from core.models import User
 from games.models import Game, HLTBGameData, WantToPlayGame
 from games.services import playtime
@@ -96,7 +96,7 @@ class EntryProfileTests(TestCase):
             }
         )
         self.assertEqual(
-            fetch_hltb_data.entry_profile(entry),
+            hltb_matching.entry_profile(entry),
             {
                 "game_type": "multi",
                 "comp_lvl_combine": True,
@@ -111,7 +111,7 @@ class EntryProfileTests(TestCase):
             json_content={"game_type": "x" * 40, "comp_main_count": -1}
         )
         self.assertEqual(
-            fetch_hltb_data.entry_profile(entry),
+            hltb_matching.entry_profile(entry),
             {
                 "game_type": "x" * 20,
                 "comp_lvl_combine": None,
@@ -122,57 +122,51 @@ class EntryProfileTests(TestCase):
         )
 
     def test_entry_without_a_raw_row(self):
-        self.assertEqual(fetch_hltb_data.entry_profile(mock.MagicMock()), {})
-        self.assertEqual(fetch_hltb_data.entry_profile(object()), {})
+        self.assertEqual(hltb_matching.entry_profile(mock.MagicMock()), {})
+        self.assertEqual(hltb_matching.entry_profile(object()), {})
 
 
 class SaveProfileTests(TestCase):
-    """Both commands' save paths record the profile, new row or orphan."""
+    """The save both commands share records the profile, new row or orphan."""
 
     PROFILE = {"game_type": "multi", "comp_lvl_combine": True, "main_story_count": 9}
 
-    def _save(self, command_module, game):
-        return command_module.Command()._save_hltb_data(
+    def _save(self, game):
+        return hltb_matching.save_entry(
             game.id, game.igdb_id, "77", "Name", "wikidata", 1.0, 10, 20, 30,
             profile=self.PROFILE,
         )  # fmt: skip
 
     def test_new_row(self):
-        for rank, module in enumerate((fetch_hltb_data, refresh_all_metadata), 1):
-            game = Game.objects.create(name=f"G{rank}", rank=rank, igdb_id=rank)
-            data = self._save(module, game)
-            self.assertEqual(data.game_type, "multi")
-            self.assertEqual(data.main_story_count, 9)
-            self.assertTrue(data.is_open_ended)
+        game = Game.objects.create(name="G", rank=1, igdb_id=1)
+        data = self._save(game)
+        self.assertEqual(data.game_type, "multi")
+        self.assertEqual(data.main_story_count, 9)
+        self.assertTrue(data.is_open_ended)
 
     def test_reconnected_orphan(self):
-        for rank, module in enumerate((fetch_hltb_data, refresh_all_metadata), 1):
-            orphan = HLTBGameData.objects.create(
-                game=None, igdb_id=rank, hltb_id="77", is_primary=True
-            )
-            game = Game.objects.create(name=f"G{rank}", rank=rank, igdb_id=rank)
-            data = self._save(module, game)
-            self.assertEqual(data.pk, orphan.pk)
-            self.assertTrue(data.comp_lvl_combine)
-            self.assertTrue(data.is_open_ended)
+        orphan = HLTBGameData.objects.create(
+            game=None, igdb_id=1, hltb_id="77", is_primary=True
+        )
+        game = Game.objects.create(name="G", rank=1, igdb_id=1)
+        data = self._save(game)
+        self.assertEqual(data.pk, orphan.pk)
+        self.assertTrue(data.comp_lvl_combine)
+        self.assertTrue(data.is_open_ended)
 
     def test_a_rekeyed_game_keeps_its_staff_call(self):
         """IGDB re-keys a game: the new HLTB row inherits the call."""
-        for rank, module in enumerate((fetch_hltb_data, refresh_all_metadata), 1):
-            game = make_game(
-                f"G{rank}", rank, 0.8, 2.5, game_type="game", open_ended_override=True
-            )
-            old = game.primary_hltb_game_data
-            game.igdb_id = 1000 + rank
-            game.save()
-            command = module.Command()
-            data = command._save_hltb_data(
-                game.id, game.igdb_id, "77", "Name", "wikidata", 1.0, 1, 2, 3,
-                profile={"game_type": "game"},
-            )  # fmt: skip
-            self.assertNotEqual(data.pk, old.pk)
-            self.assertIs(data.open_ended_override, True)
-            self.assertTrue(data.is_open_ended)
+        game = make_game("G", 1, 0.8, 2.5, game_type="game", open_ended_override=True)
+        old = game.primary_hltb_game_data
+        game.igdb_id = 1001
+        game.save()
+        data = hltb_matching.save_entry(
+            game.id, game.igdb_id, "77", "Name", "wikidata", 1.0, 1, 2, 3,
+            profile={"game_type": "game"},
+        )  # fmt: skip
+        self.assertNotEqual(data.pk, old.pk)
+        self.assertIs(data.open_ended_override, True)
+        self.assertTrue(data.is_open_ended)
 
 
 class PlaytimeServiceTests(TestCase):

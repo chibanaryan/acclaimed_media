@@ -16,17 +16,16 @@ import asyncio
 import logging
 import time
 from datetime import datetime
-from decimal import Decimal
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Case, IntegerField, Value, When
 
-from core.services.monitoring import weekly_job_monitor
+from core.services.monitoring import skips_today, weekly_job_monitor
 from games import config
-from games.models import Game, HLTBGameData, WikipediaGameData
-from games.services import post_import
+from games.models import Game, WikipediaGameData
+from games.services import hltb_matching, post_import
 from games.services.genre_normalizer import (
     canonicalize_genre_payload,
     get_or_create_genre,
@@ -36,6 +35,27 @@ from games.services.wiki_genre_service import WikiGenreService
 from games.services.wiki_page_lookup_service import WikiPageLookupService
 
 logger = logging.getLogger(__name__)
+
+# One request to Wikidata or Wikipedia may take this long. aiohttp's own
+# default is five minutes, and one stalled page held a slot for all of it.
+WIKI_REQUEST_TIMEOUT = 30
+
+
+def wikidata_credentials(token):
+    """A Wikimedia BotPassword, ``user@bot:password``, as ``(login,
+    password)`` for HTTP basic auth, or None when there is none to send.
+
+    The async Wikipedia refresh paces itself by whether it is
+    authenticated. Until 2026-11-10 it took the faster pace for any token
+    and then sent none, so the weekly job ran at four times the
+    unauthenticated rate on unauthenticated requests.
+    """
+    if not token or ":" not in token:
+        return None
+    login, password = token.split(":", 1)
+    if not login or not password:
+        return None
+    return (login, password)
 
 
 class Command(BaseCommand):
@@ -119,15 +139,8 @@ class Command(BaseCommand):
         if sum(bool(f) for f in exclusive_flags) > 1:
             raise CommandError("Cannot use multiple --*-only flags together")
 
-        # Check if weekly flag is set and today is not Sunday
-        if options.get("weekly"):
-            # 6 = Sunday in Python's weekday() (0=Monday, 6=Sunday)
-            if datetime.now().weekday() != 6:
-                self.stdout.write(
-                    f"Skipping: Today is {datetime.now().strftime('%A')} "
-                    "(weekly mode only runs on Sunday)"
-                )
-                return
+        if options.get("weekly") and skips_today(self):
+            return
 
         with weekly_job_monitor(
             "refresh-all-metadata", enabled=options.get("weekly"), max_runtime=180
@@ -224,6 +237,7 @@ class Command(BaseCommand):
                 hltb_games_list = []
                 games_qs = (
                     Game.objects.prefetch_related("platforms")
+                    .select_related("primary_wikipedia_game_data")
                     .annotate(
                         has_metadata=Case(
                             When(primary_hltb_game_data__isnull=False, then=Value(1)),
@@ -237,7 +251,8 @@ class Command(BaseCommand):
                     games_qs = games_qs[: options["limit"]]
 
                 for game in games_qs:
-                    platform_names = list(game.platforms.values_list("name", flat=True))
+                    # From the prefetch: `values_list` here was a query a game
+                    platform_names = [p.name for p in game.platforms.all()]
                     hltb_games_list.append(
                         {
                             "id": game.id,
@@ -581,7 +596,9 @@ class Command(BaseCommand):
         # Rate limits: Auth=5000 req/hr (1.39/sec), Unauth=500 req/hr (0.14/sec)
         # Each game makes 2 requests (Wikidata + Wikipedia scrape)
         # Formula: concurrency / (http_time + delay) < rate_limit
-        if settings.WIKIDATA_ACCESS_TOKEN:
+        credentials = wikidata_credentials(settings.WIKIDATA_ACCESS_TOKEN)
+        wikidata_auth = aiohttp.BasicAuth(*credentials) if credentials else None
+        if wikidata_auth:
             delay = 1.5  # With 2 concurrent: 2/(0.5+1.5) = 1 req/sec < 1.39 limit
             concurrency = 2
             self.stdout.write(
@@ -634,7 +651,11 @@ class Command(BaseCommand):
 
             try:
                 url = config.WIKIDATA_API_URL
-                async with session.get(url, params=params) as response:
+                # The credentials go to Wikidata's API alone, never to the
+                # Wikipedia page scraped below
+                async with session.get(
+                    url, params=params, auth=wikidata_auth
+                ) as response:
                     if response.status != 200:
                         return None
                     data = await response.json()
@@ -838,7 +859,8 @@ class Command(BaseCommand):
 
         # Create aiohttp session with user agent
         headers = {"User-Agent": config.WIKI_USER_AGENT}
-        async with aiohttp.ClientSession(headers=headers) as session:
+        timeout = aiohttp.ClientTimeout(total=WIKI_REQUEST_TIMEOUT)
+        async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
             tasks = [
                 process_game(session, idx, game_data)
                 for idx, game_data in enumerate(games_list, start=1)
@@ -938,13 +960,6 @@ class Command(BaseCommand):
             )
             return
 
-        # Import HLTB fetching logic from fetch_hltb_data
-        from games.management.commands.fetch_hltb_data import (
-            convert_numerals,
-            entry_profile,
-            platform_matches,
-        )
-
         hltb = HowLongToBeat()
         # HLTB doesn't publish rate limits, but be respectful
         # 3 concurrent with 1.5s delay = ~2 req/sec
@@ -996,68 +1011,21 @@ class Command(BaseCommand):
                                 e,
                             )
 
-                    # Fall back to name search if direct lookup failed
+                    # Fall back to a name search: Wikipedia's title first,
+                    # then ours, each with its numeral variants
+                    # (games.services.hltb_matching)
                     if not best_match:
-                        search_names = []
-                        if wiki_page_title and wiki_page_title != game_name:
-                            search_names.append(wiki_page_title)
-                            search_names.extend(convert_numerals(wiki_page_title))
-
-                        search_names.append(game_name)
-                        search_names.extend(convert_numerals(game_name))
-
-                        # Remove duplicates while preserving order
-                        seen = set()
-                        search_names = [
-                            x for x in search_names if not (x in seen or seen.add(x))
-                        ]
-
-                        for search_name in search_names:
+                        for search_name in hltb_matching.search_names(
+                            game_name, wiki_page_title
+                        ):
                             results = await hltb.async_search(search_name)
-
-                            if results:
-                                good_matches = [
-                                    r for r in results if r.similarity >= min_similarity
-                                ]
-
-                                if not good_matches:
-                                    continue
-
-                                # Year filtering
-                                if game_year and len(good_matches) > 1:
-                                    year_matches = []
-                                    for result in good_matches:
-                                        if (
-                                            hasattr(result, "release_world")
-                                            and result.release_world
-                                        ):
-                                            try:
-                                                result_year = int(result.release_world)
-                                                if abs(result_year - game_year) <= 1:
-                                                    year_matches.append(result)
-                                            except (ValueError, TypeError):
-                                                pass
-
-                                    if year_matches:
-                                        good_matches = year_matches
-
-                                # Platform filtering
-                                if game_platforms and len(good_matches) > 1:
-                                    platform_matches_list = []
-                                    for result in good_matches:
-                                        if hasattr(result, "profile_platform"):
-                                            hltb_platform = result.profile_platform
-                                            if platform_matches(
-                                                hltb_platform, game_platforms
-                                            ):
-                                                platform_matches_list.append(result)
-
-                                    if platform_matches_list:
-                                        good_matches = platform_matches_list
-
-                                best_match = max(
-                                    good_matches, key=lambda r: r.similarity
-                                )
+                            best_match = hltb_matching.choose_entry(
+                                results or [],
+                                min_similarity=min_similarity,
+                                game_year=game_year,
+                                game_platforms=game_platforms,
+                            )
+                            if best_match:
                                 fetch_method = "name_search"
                                 break
 
@@ -1069,12 +1037,14 @@ class Command(BaseCommand):
                         similarity = getattr(best_match, "similarity", 1.0)
 
                         # Extract playtime values
-                        main_story = self._get_hours(best_match, "main_story")
-                        main_extra = self._get_hours(best_match, "main_extra")
-                        completionist = self._get_hours(best_match, "completionist")
+                        main_story = hltb_matching.entry_hours(best_match, "main_story")
+                        main_extra = hltb_matching.entry_hours(best_match, "main_extra")
+                        completionist = hltb_matching.entry_hours(
+                            best_match, "completionist"
+                        )
 
                         # Save to database
-                        await sync_to_async(self._save_hltb_data)(
+                        await sync_to_async(hltb_matching.save_entry)(
                             game_id,
                             game_igdb_id,
                             hltb_id,
@@ -1084,7 +1054,7 @@ class Command(BaseCommand):
                             main_story,
                             main_extra,
                             completionist,
-                            profile=entry_profile(best_match),
+                            profile=hltb_matching.entry_profile(best_match),
                         )
                     else:
                         async with counter_lock:
@@ -1121,115 +1091,6 @@ class Command(BaseCommand):
                 f"{self.hltb_not_found} not found in {elapsed:.0f}s"
             )
         )
-
-    def _get_hours(self, result, field_name):
-        """Extract hours from HLTB result, handling various attribute names."""
-        possible_attrs = [
-            field_name,
-            f"{field_name}_seconds",
-            f"gameplay_{field_name}",
-        ]
-
-        for attr in possible_attrs:
-            value = getattr(result, attr, None)
-            if value is not None and value > 0:
-                if "seconds" in attr:
-                    return round(value / 3600, 1)
-                return round(value, 1)
-
-        return None
-
-    def _save_hltb_data(
-        self,
-        game_id,
-        game_igdb_id,
-        hltb_id,
-        hltb_name,
-        fetch_method,
-        similarity,
-        main_story,
-        main_extra,
-        completionist,
-        profile=None,
-    ):
-        """Save HLTB data to database (sync version for this command)."""
-        game = Game.objects.get(id=game_id)
-
-        # First, check for orphaned record with same igdb_id
-        orphaned_record = HLTBGameData.objects.filter(
-            igdb_id=game_igdb_id,
-            game__isnull=True,
-            is_primary=True,
-        ).first()
-
-        if orphaned_record:
-            # Reconnect and update orphaned record
-            HLTBGameData.objects.filter(game=game, is_primary=True).update(
-                is_primary=False
-            )
-
-            orphaned_record.game = game
-            orphaned_record.hltb_id = hltb_id
-            orphaned_record.hltb_name = hltb_name
-            orphaned_record.fetch_method = fetch_method
-            orphaned_record.similarity = (
-                Decimal(str(similarity)) if similarity else None
-            )
-            orphaned_record.main_story_hours = (
-                Decimal(str(main_story)) if main_story else None
-            )
-            orphaned_record.main_extra_hours = (
-                Decimal(str(main_extra)) if main_extra else None
-            )
-            orphaned_record.completionist_hours = (
-                Decimal(str(completionist)) if completionist else None
-            )
-            for field, value in (profile or {}).items():
-                setattr(orphaned_record, field, value)
-            orphaned_record.save()
-            hltb_data = orphaned_record
-        else:
-            # No orphaned record, create or update. A new row (IGDB re-keyed
-            # the game) inherits the staff open-ended call of the one it replaces
-            previous_call = (
-                HLTBGameData.objects.filter(game=game, is_primary=True)
-                .values_list("open_ended_override", flat=True)
-                .first()
-            )
-            HLTBGameData.objects.filter(game=game, is_primary=True).update(
-                is_primary=False
-            )
-
-            hltb_data, created = HLTBGameData.objects.update_or_create(
-                game=game,
-                igdb_id=game_igdb_id,
-                defaults={
-                    "hltb_id": hltb_id,
-                    "hltb_name": hltb_name,
-                    "fetch_method": fetch_method,
-                    "similarity": Decimal(str(similarity)) if similarity else None,
-                    "main_story_hours": (
-                        Decimal(str(main_story)) if main_story else None
-                    ),
-                    "main_extra_hours": (
-                        Decimal(str(main_extra)) if main_extra else None
-                    ),
-                    "completionist_hours": (
-                        Decimal(str(completionist)) if completionist else None
-                    ),
-                    "is_primary": True,
-                    **(profile or {}),
-                },
-            )
-            if created and previous_call is not None:
-                hltb_data.open_ended_override = previous_call
-                hltb_data.save(update_fields=["open_ended_override"])
-
-        # Set primary relationship
-        game.primary_hltb_game_data = hltb_data
-        game.save(update_fields=["primary_hltb_game_data"])
-
-        return hltb_data
 
     def _print_summary(self):
         """Print final execution summary."""

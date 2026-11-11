@@ -1,8 +1,31 @@
-"""Sentry Crons check-ins for the scheduled jobs."""
+"""The weekly scheduled jobs: their Sunday gate and Sentry Crons check-ins."""
 
 from contextlib import nullcontext
+from datetime import datetime, timezone
 
 from sentry_sdk.crons import monitor
+
+# Sunday, in Python's Monday-first count
+WEEKLY_RUN_WEEKDAY = 6
+
+
+def skips_today(command):
+    """Whether a ``--weekly`` run stops here, having said so: any day but
+    Sunday.
+
+    Heroku Scheduler has no weekly frequency, so both metadata jobs are
+    scheduled daily and gate themselves. The day is UTC's, said rather than
+    left to the machine's clock: a dyno's is UTC, a laptop's is not. Each
+    command had its own copy of this until 2026-11-10.
+    """
+    today = datetime.now(timezone.utc)
+    if today.weekday() == WEEKLY_RUN_WEEKDAY:
+        return False
+    command.stdout.write(
+        f"Skipping: Today is {today.strftime('%A')} "
+        "(weekly mode only runs on Sunday)"
+    )
+    return True
 
 
 def weekly_job_monitor(slug, *, enabled, max_runtime):

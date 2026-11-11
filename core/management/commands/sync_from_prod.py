@@ -35,6 +35,16 @@ FIXTURES_DIR = os.path.join(
 )
 
 
+# Every failure has said why on stderr by the time this is raised; it is
+# what makes the command exit non-zero. It returned normally on each of
+# them until 2026-11-10, so `sync_from_prod && ...` carried on.
+SYNC_FAILED = "Sync failed; the local data is as it was."
+
+# The music dump carries the cover art, ~100 MB and a few minutes. A dyno
+# that never answers held the command for good.
+DUMP_TIMEOUT_SECONDS = 30 * 60
+
+
 def _database_vendor():
     """The configured database's engine. A function so the tests, which run
     on Postgres too, can stand in for a local SQLite one."""
@@ -132,7 +142,7 @@ class Command(BaseCommand):
         self.stdout.write("\n1. Dumping production data...")
         json_data = self._dump(app_name, self.GAMES_DUMP)
         if json_data is None:
-            return
+            raise CommandError(SYNC_FAILED)
 
         # Strip author references (FKs to users, which aren't synced)
         try:
@@ -143,18 +153,18 @@ class Command(BaseCommand):
             json_data = json.dumps(fixture_data, indent=2)
         except json.JSONDecodeError as e:
             self.stderr.write(self.style.ERROR(f"Invalid JSON from Heroku: {e}"))
-            return
+            raise CommandError(SYNC_FAILED)
 
         self.stdout.write("   Dumping music data, cover art included...")
         music_json = self._dump(app_name, self.MUSIC_DUMP)
         if music_json is None:
-            return
+            raise CommandError(SYNC_FAILED)
         # Too big to parse just to check. This catches a truncated dump before
         # the local data is cleared; anything else fails inside loaddata, and
         # the transaction around it keeps the local data
         if not music_json.rstrip().endswith("]"):
             self.stderr.write(self.style.ERROR("Music dump is incomplete"))
-            return
+            raise CommandError(SYNC_FAILED)
 
         # Step 2: Save to temporary fixture files
         fixtures_dir = FIXTURES_DIR
@@ -178,7 +188,7 @@ class Command(BaseCommand):
                         os.remove(path)
                 self.stdout.write("   Cleaned up fixture files")
         if not loaded:
-            return
+            raise CommandError(SYNC_FAILED)
 
         # Success message
         self.stdout.write(self.style.SUCCESS("\nSync complete!"))
@@ -242,7 +252,16 @@ class Command(BaseCommand):
                 capture_output=True,
                 encoding="utf-8",
                 check=True,
+                timeout=DUMP_TIMEOUT_SECONDS,
             )
+        except subprocess.TimeoutExpired:
+            self.stderr.write(
+                self.style.ERROR(
+                    "Heroku did not answer within "
+                    f"{DUMP_TIMEOUT_SECONDS // 60} minutes; gave up on the dump"
+                )
+            )
+            return None
         except subprocess.CalledProcessError as e:
             self.stderr.write(self.style.ERROR(f"Failed to dump production data: {e}"))
             self.stderr.write(e.stderr)

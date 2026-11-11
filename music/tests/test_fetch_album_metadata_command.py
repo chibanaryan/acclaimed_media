@@ -10,10 +10,12 @@ from io import StringIO
 from unittest import mock
 
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 
 from core.tests.utils import NoHeartbeatMixin
 from music import models
+from music.services.metadata_service import PassResult
 
 COMMAND = "music.management.commands.fetch_album_metadata"
 
@@ -56,14 +58,14 @@ class FetchAlbumMetadataCommandTests(NoHeartbeatMixin, TestCase):
         )
 
     @mock.patch(f"{COMMAND}.AlbumMetadataService")
-    @mock.patch(f"{COMMAND}.datetime")
+    @mock.patch("core.services.monitoring.datetime")
     def test_weekly_skips_on_any_day_but_sunday(self, mock_datetime, service):
         mock_datetime.now.return_value = datetime(2026, 10, 19)  # a Monday
         output = self._run(weekly=True)
         self.assertIn("Skipping: Today is Monday", output)
         service.assert_not_called()
 
-    @mock.patch(f"{COMMAND}.datetime")
+    @mock.patch("core.services.monitoring.datetime")
     def test_weekly_runs_under_the_fetch_lock(self, mock_datetime):
         """Never beside an import's fetch, which is this command."""
         mock_datetime.now.return_value = datetime(2026, 10, 18)  # a Sunday
@@ -71,7 +73,7 @@ class FetchAlbumMetadataCommandTests(NoHeartbeatMixin, TestCase):
             self._run(weekly=True, dry_run=True)
         run_weekly.assert_called_once()
 
-    @mock.patch(f"{COMMAND}.datetime")
+    @mock.patch("core.services.monitoring.datetime")
     def test_a_run_by_hand_takes_no_lock(self, mock_datetime):
         """The import's fetch runs this command while holding it."""
         with mock.patch(f"{COMMAND}.post_import.run_weekly") as run_weekly:
@@ -79,7 +81,7 @@ class FetchAlbumMetadataCommandTests(NoHeartbeatMixin, TestCase):
         run_weekly.assert_not_called()
         self.assertIn("Fetching metadata for 1 album(s)", output)
 
-    @mock.patch(f"{COMMAND}.datetime")
+    @mock.patch("core.services.monitoring.datetime")
     def test_weekly_runs_on_sunday(self, mock_datetime):
         mock_datetime.now.return_value = datetime(2026, 10, 18)  # a Sunday
         output = self._run(weekly=True, dry_run=True)
@@ -99,10 +101,13 @@ class FetchAlbumMetadataCommandTests(NoHeartbeatMixin, TestCase):
         service.return_value.run_musicbrainz.return_value = mock.MagicMock(
             errors=[], summary=lambda: "MusicBrainz: 0 processed"
         )
-        with mock.patch(f"{COMMAND}.rebuild_album_genres"), mock.patch(
-            f"{COMMAND}.write_report"
-        ), mock.patch(f"{COMMAND}.refresh_release_dates", return_value=0), mock.patch(
-            f"{COMMAND}.caching.invalidate_music_caches", return_value=False
+        with (
+            mock.patch(f"{COMMAND}.rebuild_album_genres"),
+            mock.patch(f"{COMMAND}.write_report"),
+            mock.patch(f"{COMMAND}.refresh_release_dates", return_value=0),
+            mock.patch(
+                f"{COMMAND}.caching.invalidate_music_caches", return_value=False
+            ),
         ):
             output = self._run(musicbrainz=True)
         self.assertIn("Caches not cleared", output)
@@ -113,8 +118,69 @@ class FetchAlbumMetadataCommandTests(NoHeartbeatMixin, TestCase):
         service.return_value.run_musicbrainz.return_value = mock.MagicMock(
             errors=[], summary=lambda: "MusicBrainz: 0 processed"
         )
-        with mock.patch(f"{COMMAND}.rebuild_album_genres"), mock.patch(
-            f"{COMMAND}.write_report"
-        ), mock.patch(f"{COMMAND}.refresh_release_dates", return_value=0):
+        with (
+            mock.patch(f"{COMMAND}.rebuild_album_genres"),
+            mock.patch(f"{COMMAND}.write_report"),
+            mock.patch(f"{COMMAND}.refresh_release_dates", return_value=0),
+        ):
             self._run(musicbrainz=True, refresh_stale=125)
         self.assertEqual(service.call_args.kwargs["refresh_stale"], 125)
+
+
+class AnOutageFailsTheCommandTests(NoHeartbeatMixin, TestCase):
+    """The Wikidata pass attempts every album on every run, so one that
+    lands none could not run. The command exited 0 on it until 2026-11-10,
+    which Sentry's cron monitor read as a good Sunday."""
+
+    def setUp(self):
+        models.Album.objects.create(name="Pet Sounds", rank=1, slug="pet-sounds")
+
+    def run_with(self, weekly=False, **results):
+        out = StringIO()
+        with mock.patch(f"{COMMAND}.AlbumMetadataService") as service:
+            for name, result in results.items():
+                getattr(service.return_value, f"run_{name}").return_value = result
+            call_command(
+                "fetch_album_metadata",
+                stdout=out,
+                weekly=weekly,
+                **{f"{name}_only": True for name in results},
+            )
+        return out.getvalue()
+
+    def test_a_wikidata_pass_that_lands_nothing_fails_the_command(self):
+        down = PassResult(name="Wikidata", errors=["Pet Sounds: nothing returned"])
+        with self.assertRaisesMessage(CommandError, "failed outright for: Wikidata"):
+            self.run_with(wikidata=down)
+
+    def test_errors_on_some_albums_do_not(self):
+        some = PassResult(name="Wikidata", processed=9, errors=["One album: gone"])
+        self.assertIn("1 failed", self.run_with(wikidata=some))
+
+    def test_a_pass_that_fills_only_what_is_missing_may_land_nothing(self):
+        """A week's only cover work can be the albums with no cover
+        anywhere: no outage."""
+        gaps = PassResult(name="Cover art", errors=["One album: no front cover"])
+        self.assertIn("1 failed", self.run_with(covers=gaps))
+
+    def test_the_weekly_run_fails_inside_the_check_in_after_the_lock(self):
+        down = PassResult(name="Wikidata", errors=["Pet Sounds: nothing returned"])
+        events = []
+
+        def run_weekly(command, work):
+            work()
+            events.append("lock released")
+
+        with (
+            mock.patch("core.services.monitoring.datetime") as clock,
+            mock.patch(f"{COMMAND}.post_import.run_weekly", run_weekly),
+            mock.patch(f"{COMMAND}.weekly_job_monitor") as monitor,
+        ):
+            clock.now.return_value = datetime(2026, 10, 18)  # a Sunday
+            try:
+                self.run_with(weekly=True, wikidata=down)
+            except CommandError:
+                events.append("command failed")
+        self.assertEqual(events, ["lock released", "command failed"])
+        exit_args = monitor.return_value.__exit__.call_args.args
+        self.assertIs(exit_args[0], CommandError)

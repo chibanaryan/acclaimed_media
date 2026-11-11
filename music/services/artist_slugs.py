@@ -19,6 +19,7 @@ always gives the same slugs.
 from collections import defaultdict
 from typing import Dict, Iterable, List, NamedTuple, Tuple
 
+from django.db import transaction
 from django.utils import timezone
 from django.utils.text import slugify
 from unidecode import unidecode
@@ -123,11 +124,17 @@ def rebuild_artist_slugs() -> List[Tuple[int, str, str]]:
             changed.append((artist, artist.slug, new))
             artist.slug = new
             updated.append(artist)
-    models.Artist.objects.bulk_update(updated, ["slug"])
-    record_slug_changes(changed)
-    if updated:
-        # `/api/music/all/` names artists by slug, and its version follows
-        # the albums' `modified`: without this a browser's stored copy would
-        # keep linking and filtering by the old slugs.
-        models.Album.objects.filter(artists__in=updated).update(modified=timezone.now())
+    # Together or not at all: slugs saved without their history are old
+    # links with no redirect, and without the albums' `modified` a browser's
+    # stored copy goes on naming them.
+    with transaction.atomic():
+        models.Artist.objects.bulk_update(updated, ["slug"])
+        record_slug_changes(changed)
+        if updated:
+            # `/api/music/all/` names artists by slug, and its version
+            # follows the albums' `modified`: without this a browser's
+            # stored copy would keep linking and filtering by the old slugs.
+            models.Album.objects.filter(artists__in=updated).update(
+                modified=timezone.now()
+            )
     return [(artist.source_id, old, new) for artist, old, new in changed]

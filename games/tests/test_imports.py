@@ -96,22 +96,18 @@ class ImportGamesTests(TestCase):
         )
         self.assertGreater(len(complete_events), 0)
 
-    def test_import_games_with_error_callback(self):
-        """Test import_games error handling with callback."""
+    def test_import_games_raises_and_leaves_the_error_to_its_caller(self):
+        """The batch names the file, once: the handler's own "Import
+        failed" beside it was a second row on the staff page."""
         callback_events = []
 
         def progress_callback(event_type, data):
             callback_events.append((event_type, data))
 
-        # Invalid data that will cause an error
-        data = "invalid\tdata\r\n"
-
         with self.assertRaises(Exception):
-            utils.import_games(StringIO(data), progress_callback)
+            utils.import_games(StringIO("invalid\tdata\r\n"), progress_callback)
 
-        # Should have received error event
-        error_events = [e for e in callback_events if e[0] == "error"]
-        self.assertGreater(len(error_events), 0)
+        self.assertEqual([e for e in callback_events if e[0] == "error"], [])
 
     def test_import_games_with_wikidata_id(self):
         """Test that Wikidata IDs are imported correctly."""
@@ -986,22 +982,18 @@ class ImportListsTests(TestCase):
         self.assertGreater(len(progress_events), 0)  # Should trigger at row 5 and 10
         self.assertGreater(len(complete_events), 0)
 
-    def test_import_lists_with_error_callback(self):
-        """Test import_lists error handling with callback."""
+    def test_import_lists_raises_and_leaves_the_error_to_its_caller(self):
+        """The batch names the file, once: the handler's own "Import
+        failed" beside it was a second row on the staff page."""
         callback_events = []
 
         def progress_callback(event_type, data):
             callback_events.append((event_type, data))
 
-        # Invalid data that will cause an error
-        data = "Invalid\tData\r\n"
-
         with self.assertRaises(Exception):
-            utils.import_lists(StringIO(data), progress_callback)
+            utils.import_lists(StringIO("Invalid\tData\r\n"), progress_callback)
 
-        # Should have received error event
-        error_events = [e for e in callback_events if e[0] == "error"]
-        self.assertGreater(len(error_events), 0)
+        self.assertEqual([e for e in callback_events if e[0] == "error"], [])
 
 
 class ImportListMembershipsTests(TestCase):
@@ -1062,22 +1054,20 @@ class ImportListMembershipsTests(TestCase):
         self.assertGreater(len(start_events), 0)
         self.assertGreater(len(complete_events), 0)
 
-    def test_import_listmemberships_with_error_callback(self):
-        """Test import_listmemberships error handling with callback."""
+    def test_import_listmemberships_raises_and_leaves_the_error_to_its_caller(self):
+        """The batch names the file, once: the handler's own "Import
+        failed" beside it was a second row on the staff page."""
         callback_events = []
 
         def progress_callback(event_type, data):
             callback_events.append((event_type, data))
 
-        # Invalid data that will cause an error
-        data = "invalid:format\r\n"
-
         with self.assertRaises(Exception):
-            utils.import_listmemberships(StringIO(data), progress_callback)
+            utils.import_listmemberships(
+                StringIO("invalid:format\r\n"), progress_callback
+            )
 
-        # Should have received error event
-        error_events = [e for e in callback_events if e[0] == "error"]
-        self.assertGreater(len(error_events), 0)
+        self.assertEqual([e for e in callback_events if e[0] == "error"], [])
 
     def test_import_listmemberships_batch_flush(self):
         """Test that listmemberships are flushed in batches.
@@ -1104,25 +1094,6 @@ class ImportListMembershipsTests(TestCase):
         # Should have created 1100 memberships
         self.assertEqual(models.ListMembership.objects.count(), 1100)
         self.assertIn("1100 created", message)
-
-
-class ImportDevelopersTests(TestCase):
-
-    def test_import_developers_creates_subsidiaries(self):
-        data = "Foo Studio\tFoo Studio\tFoo Devs\r\n" "Bar Alias\tBar Studio\r\n"
-        success, message = utils.import_developers(StringIO(data))
-
-        self.assertTrue(success)
-        self.assertEqual(message, "Developers: 2 created, 0 updated")
-        # 2 root developers (Foo Studio, Bar Studio)
-        # + 2 subsidiaries (Foo Devs, Bar Alias)
-        # Foo Studio alias skipped since it equals canonical name
-        root_devs = models.Developer.objects.filter(parent__isnull=True)
-        self.assertEqual(root_devs.count(), 2)
-        foo = models.Developer.objects.get(name="Foo Studio", parent__isnull=True)
-        self.assertEqual(
-            foo.subsidiaries.count(), 1
-        )  # Only Foo Devs (Foo Studio alias skipped)
 
 
 class ValidatePrerequisitesTests(TestCase):
@@ -1636,38 +1607,51 @@ class ImportDataTests(TestCase):
         self.assertTrue(success)
         self.assertEqual(models.Platform.objects.count(), 1)
 
-    def test_import_data_legacy_game_import_updates_metadata(self):
-        """Test that legacy game import updates SiteMetadata."""
-        from io import BytesIO
+    def test_a_form_that_asks_for_nothing_is_an_answer_not_none(self):
+        """`None` was unpacked by the view: a 500 for a hand-made POST."""
+        success, message = utils.import_data({})
+        self.assertFalse(success)
+        self.assertIn("Nothing was selected", message)
 
-        # Create required platform
+    def test_a_batch_with_the_games_file_stamps_the_updated_date(self):
         models.Platform.objects.create(code="PC", name="PC")
+        self.assertIsNone(models.SiteMetadata.get_instance().last_full_update)
 
-        # Create a game file in new format
-        game_data = b"1\tTest Game\t2024\tPC\t12345\tQ99999\r\n"
-        file_obj = BytesIO(game_data)
-
-        # Get metadata before import
-        metadata_before = models.SiteMetadata.get_instance()
-        last_update_before = metadata_before.last_full_update
-
-        # Use legacy import format with type=G
-        from .. import constants
-
-        data = {"file": file_obj, "type": constants.TYPE_GAME}
-        success, message = utils.import_data(data)
+        success, _ = utils.import_data(
+            {"games_file": SimpleUploadedFile("g", b"1\tGame\t2024\tPC\t1\tQ1\r\n")}
+        )
 
         self.assertTrue(success)
-        self.assertEqual(models.Game.objects.count(), 1)
+        self.assertIsNotNone(models.SiteMetadata.get_instance().last_full_update)
 
-        # Check that metadata was updated
-        metadata_after = models.SiteMetadata.get_instance()
-        self.assertIsNotNone(metadata_after.last_full_update)
-        # The timestamp should be different if it was None before, or newer
-        if last_update_before is None:
-            self.assertIsNotNone(metadata_after.last_full_update)
-        else:
-            self.assertGreaterEqual(metadata_after.last_full_update, last_update_before)
+    def test_a_batch_that_fails_leaves_the_updated_date(self):
+        models.Platform.objects.create(code="PC", name="PC")
+        success, _ = utils.import_batch(
+            {
+                "games_file": SimpleUploadedFile("g", b"1\tGame\t2024\tPC\t1\tQ1\r\n"),
+                "memberships_file": SimpleUploadedFile("m", b"0:1\r\n"),
+            }
+        )
+        self.assertFalse(success)
+        self.assertIsNone(models.SiteMetadata.get_instance().last_full_update)
+
+    def test_an_exceptions_text_stays_out_of_the_message_staff_read(self):
+        """It can carry SQL and paths; it goes to the log. The streamed
+        import always kept it out, and this one put it in."""
+        models.Platform.objects.create(code="PC", name="PC")
+        with (
+            mock.patch(
+                "games.services.import_handler.import_platforms",
+                side_effect=Exception("secret detail"),
+            ),
+            self.assertLogs("games.services.import_handler", "ERROR") as logs,
+        ):
+            success, message = utils.import_batch(
+                {"platforms_file": SimpleUploadedFile("p", b"PC\tPC\r\n")}
+            )
+        self.assertFalse(success)
+        self.assertEqual(message, "Platforms import failed; see the server logs.")
+        self.assertIn("secret detail", "\n".join(logs.output))
 
 
 class ImportIGDBWithProgressTests(NoHeartbeatMixin, InlineImportThreadMixin, TestCase):

@@ -32,9 +32,7 @@ class ImportView(StaffOnlyMixin, FormView):
 
     Supports:
     - Batch upload of multiple TSV files (platforms, lists, games, memberships)
-    - Single-file uploads (legacy support)
-    - Delete existing data
-    - IGDB data fetching
+    - Delete existing data, and clearing the stored IGDB or Wikipedia rows
 
     Files are imported in dependency order:
     1. Platforms (no dependencies)

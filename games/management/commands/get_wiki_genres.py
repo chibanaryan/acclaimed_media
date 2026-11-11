@@ -79,12 +79,12 @@ class Command(BaseCommand):
         parser.add_argument(
             "--save",
             action="store_true",
-            help="Save results to database (wikipedia_primary_genre field)",
+            help="Save results to the database, as the game's Wikipedia record",
         )
         parser.add_argument(
             "--skip-existing",
             action="store_true",
-            help="Skip games that already have wikipedia_primary_genre set",
+            help="Skip games that already have a Wikipedia record",
         )
 
     def handle(self, *args, **options):
@@ -143,7 +143,7 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.WARNING(
                     "No games to process. "
-                    "Use --skip-existing=False to reprocess games with existing data."
+                    "Leave --skip-existing out to reprocess games with existing data."
                 )
             )
             return

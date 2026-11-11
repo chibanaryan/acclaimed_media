@@ -325,6 +325,16 @@ class StreamedImportIsAllOrNothingTests(InlineImportThreadMixin, TestCase):
         self.assertEqual(rolled_back, (None, BATCH_ROLLED_BACK))
         self.assert_nothing_changed()
 
+    def test_a_failure_is_said_once_with_the_files_name(self):
+        """A real bad row, no handler mocked: the handler sent its own
+        "Import failed" before the batch named the file, three rows in all."""
+        events, _ = self.stream("1\tAlpha\t2000\tPC\t101\tQ1\r\n2\tShort row\r\n")
+
+        self.assertEqual(
+            self.errors(events), [("Games", IMPORT_FAILED), (None, BATCH_ROLLED_BACK)]
+        )
+        self.assert_nothing_changed()
+
     def test_a_lists_file_that_fails_keeps_the_games_file_out_too(self):
         """Committed alone, the new games had no list appearances at all."""
         with mock.patch(

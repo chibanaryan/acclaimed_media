@@ -30,7 +30,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--lists",
             default=str(DEFAULT_DIR / "ListData.txt"),
-            help="TSV of publisher/year/name/url, one published list per row",
+            help="TSV of publisher/year/type/name/url, one published list per row",
         )
         parser.add_argument(
             "--albums",
@@ -68,19 +68,16 @@ class Command(BaseCommand):
                 raise CommandError(f"--{key} file not found: {path}")
             paths[key] = path
 
-        if options["dry_run"]:
-            self._report_dry_run(paths)
-            return
-
-        with (
-            paths["artists"].open(encoding="utf-8-sig", newline="") as artists_file,
-            paths["lists"].open(encoding="utf-8-sig", newline="") as lists_file,
-            paths["albums"].open(encoding="utf-8-sig", newline="") as albums_file,
-            paths["positions"].open(encoding="utf-8-sig") as positions_file,
-        ):
-            message, warnings = import_handler.import_batch(
-                lists_file, albums_file, positions_file, artists_file
-            )
+        # A file the importer refuses is a ValueError written to be read, as
+        # the staff page shows it: the message, not a traceback. Only the
+        # lists file's was caught, and only in a dry run, until 2026-11-10.
+        try:
+            if options["dry_run"]:
+                self._report_dry_run(paths)
+                return
+            message, warnings = self._import(paths)
+        except ValueError as exc:
+            raise CommandError(str(exc)) from exc
 
         self._print_list_types()
         self.stdout.write(self.style.SUCCESS(message))
@@ -103,6 +100,17 @@ class Command(BaseCommand):
         # import is watching, and a one-off dyno has no requests to serve.
         if options["metadata"]:
             post_import.run_in_foreground(self)
+
+    def _import(self, paths):
+        with (
+            paths["artists"].open(encoding="utf-8-sig", newline="") as artists_file,
+            paths["lists"].open(encoding="utf-8-sig", newline="") as lists_file,
+            paths["albums"].open(encoding="utf-8-sig", newline="") as albums_file,
+            paths["positions"].open(encoding="utf-8-sig") as positions_file,
+        ):
+            return import_handler.import_batch(
+                lists_file, albums_file, positions_file, artists_file
+            )
 
     def _report_dry_run(self, paths):
         """Show what would be imported without touching the database."""
@@ -140,10 +148,7 @@ class Command(BaseCommand):
                 )
 
         with paths["lists"].open(encoding="utf-8-sig", newline="") as f:
-            try:
-                lists = import_handler.parse_lists_file(f)
-            except ValueError as exc:
-                raise CommandError(str(exc)) from exc
+            lists = import_handler.parse_lists_file(f)
         self.stdout.write(f"Lists file: {len(lists)} rows")
         for row in lists:
             label = core_constants.get_list_type_label(row.type)

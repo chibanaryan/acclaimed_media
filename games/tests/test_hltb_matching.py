@@ -1,14 +1,21 @@
-"""Which HowLongToBeat entry a name search keeps: `platform_matches` and
-`convert_numerals` in `fetch_hltb_data`, which `refresh_all_metadata` uses too.
+"""Which HowLongToBeat entry a name search keeps, and how it is stored:
+`games.services.hltb_matching`, which `fetch_hltb_data` and
+`refresh_all_metadata` both use.
 """
 
-import unittest
+from types import SimpleNamespace
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
-from games.management.commands.fetch_hltb_data import (
+from games.models import Game, HLTBGameData
+from games.services import hltb_matching
+from games.services.hltb_matching import (
+    choose_entry,
     convert_numerals,
+    entry_hours,
+    entry_platforms,
     platform_matches,
+    search_names,
 )
 
 
@@ -65,10 +72,9 @@ class PlatformMatchesTests(SimpleTestCase):
             ]
         )
 
-    @unittest.expectedFailure
     def test_a_platform_does_not_match_one_whose_name_contains_its_own(self):
-        # An alias key is looked for anywhere in HLTB's name, so "playstation"
-        # answers for PlayStation 4, and "nes" for SNES and Genesis.
+        # An alias key was looked for anywhere in HLTB's name, so "playstation"
+        # answered for PlayStation 4, and "nes" for SNES and Genesis.
         self.assert_table(
             [
                 ("PlayStation 4", ["PlayStation"], False),
@@ -80,9 +86,8 @@ class PlatformMatchesTests(SimpleTestCase):
             ]
         )
 
-    @unittest.expectedFailure
     def test_the_sites_own_platform_names_match_hltbs(self):
-        # The alias lists predate the names the Platform table holds now.
+        # The alias lists predated the names the Platform table holds now.
         self.assert_table(
             [
                 ("PC", ["Windows PC"], True),
@@ -171,3 +176,173 @@ class ConvertNumeralsTests(SimpleTestCase):
                 ("Mega Man X", ["Mega Man 10"]),
             ]
         )
+
+
+def entry(name, similarity, year=None, platforms=None, **extra):
+    return SimpleNamespace(
+        game_name=name,
+        similarity=similarity,
+        release_world=year,
+        profile_platforms=platforms,
+        **extra,
+    )
+
+
+class EntryPlatformsTests(SimpleTestCase):
+    def test_the_librarys_list_is_read_as_it_is(self):
+        self.assertEqual(
+            entry_platforms(entry("G", 1, platforms=["PC", " Nintendo Switch "])),
+            ["PC", "Nintendo Switch"],
+        )
+
+    def test_a_string_is_split(self):
+        self.assertEqual(
+            entry_platforms(entry("G", 1, platforms="PC, PlayStation 4")),
+            ["PC", "PlayStation 4"],
+        )
+
+    def test_nothing_usable_is_no_platforms(self):
+        for platforms in (None, 7, [], [None, ""]):
+            with self.subTest(platforms=platforms):
+                self.assertEqual(
+                    entry_platforms(entry("G", 1, platforms=platforms)), []
+                )
+        self.assertEqual(entry_platforms(object()), [])
+
+
+class SearchNamesTests(SimpleTestCase):
+    def test_wikipedias_title_first_then_ours_each_with_its_numerals(self):
+        self.assertEqual(
+            search_names("Final Fantasy 7", "Final Fantasy VII (1997 video game)"),
+            [
+                "Final Fantasy VII (1997 video game)",
+                "Final Fantasy 7 (1997 video game)",
+                "Final Fantasy 7",
+                "Final Fantasy VII",
+            ],
+        )
+
+    def test_no_name_is_searched_twice(self):
+        self.assertEqual(search_names("Portal", "Portal"), ["Portal"])
+        self.assertEqual(search_names("Portal"), ["Portal"])
+        self.assertEqual(search_names("Doom 2", "Doom II"), ["Doom II", "Doom 2"])
+
+
+class ChooseEntryTests(SimpleTestCase):
+    def choose(self, results, year=None, platforms=()):
+        chosen = choose_entry(
+            results, min_similarity=0.85, game_year=year, game_platforms=platforms
+        )
+        return chosen and chosen.game_name
+
+    def test_nothing_similar_enough_is_no_entry(self):
+        self.assertIsNone(self.choose([]))
+        self.assertIsNone(self.choose([entry("Other", 0.5)]))
+
+    def test_the_most_similar_entry_wins(self):
+        results = [entry("Near", 0.9), entry("Exact", 1.0), entry("Far", 0.4)]
+        self.assertEqual(self.choose(results), "Exact")
+
+    def test_the_year_narrows_several_entries(self):
+        """Within a year either way: regional releases straddle a new year."""
+        results = [entry("Remake", 1.0, year=2019), entry("Original", 0.9, year="1999")]
+        self.assertEqual(self.choose(results, year=1998), "Original")
+        self.assertEqual(self.choose(results, year=2019), "Remake")
+
+    def test_a_year_no_entry_has_narrows_nothing(self):
+        results = [entry("A", 1.0, year=2019), entry("B", 0.9, year="soon")]
+        self.assertEqual(self.choose(results, year=1980), "A")
+        self.assertEqual(
+            self.choose([entry("A", 1.0), entry("B", 0.9)], year=1980), "A"
+        )
+
+    def test_the_platform_narrows_what_the_year_left(self):
+        """It never ran: the code read `profile_platform`, and the library's
+        entry has `profile_platforms`, a list."""
+        results = [
+            entry("16-bit", 1.0, year=1991, platforms=["Sega Mega Drive/Genesis"]),
+            entry("8-bit", 0.95, year=1991, platforms=["Sega Master System"]),
+        ]
+        self.assertEqual(
+            self.choose(results, year=1991, platforms=["Sega Master System"]), "8-bit"
+        )
+        self.assertEqual(
+            self.choose(results, year=1991, platforms=["Sega Mega Drive / Genesis"]),
+            "16-bit",
+        )
+
+    def test_a_platform_no_entry_is_on_narrows_nothing(self):
+        results = [
+            entry("A", 1.0, platforms=["PC"]),
+            entry("B", 0.9, platforms=None),
+        ]
+        self.assertEqual(self.choose(results, platforms=["Arcade"]), "A")
+
+    def test_one_entry_is_kept_whatever_its_year_or_platform(self):
+        results = [entry("Only", 0.9, year=2001, platforms=["PC"])]
+        self.assertEqual(self.choose(results, year=1985, platforms=["Arcade"]), "Only")
+
+
+class EntryHoursTests(SimpleTestCase):
+    def test_hours_are_rounded_to_a_decimal_place(self):
+        self.assertEqual(
+            entry_hours(SimpleNamespace(main_story=12.34), "main_story"), 12.3
+        )
+
+    def test_seconds_become_hours(self):
+        self.assertEqual(
+            entry_hours(SimpleNamespace(main_story_seconds=5400), "main_story"), 1.5
+        )
+
+    def test_the_gameplay_prefix_is_read_too(self):
+        self.assertEqual(
+            entry_hours(SimpleNamespace(gameplay_main_story=2), "main_story"), 2
+        )
+
+    def test_nothing_or_zero_is_no_time(self):
+        self.assertIsNone(entry_hours(SimpleNamespace(main_story=0), "main_story"))
+        self.assertIsNone(entry_hours(SimpleNamespace(), "main_story"))
+
+
+class SaveEntryTests(TestCase):
+    def save(self, game, **changes):
+        values = {
+            "hltb_id": "77",
+            "hltb_name": "Name",
+            "fetch_method": "wikidata",
+            "similarity": 1.0,
+            "main_story": 10,
+            "main_extra": 0,
+            "completionist": 30.5,
+        }
+        values.update(changes)
+        return hltb_matching.save_entry(game.id, game.igdb_id, **values)
+
+    def test_a_new_row_becomes_the_games_primary_record(self):
+        game = Game.objects.create(name="G", rank=1, igdb_id=1)
+        data = self.save(game, profile={"game_type": "game"})
+        game.refresh_from_db()
+        self.assertEqual(game.primary_hltb_game_data, data)
+        self.assertTrue(data.is_primary)
+        self.assertEqual(
+            (data.main_story_hours, data.main_extra_hours, data.completionist_hours),
+            (10, None, 30.5),
+        )
+        self.assertEqual(data.game_type, "game")
+
+    def test_saving_again_updates_the_same_row(self):
+        game = Game.objects.create(name="G", rank=1, igdb_id=1)
+        first = self.save(game)
+        second = self.save(game, main_story=12, hltb_name="Renamed")
+        self.assertEqual(second.pk, first.pk)
+        self.assertEqual(second.main_story_hours, 12)
+        self.assertEqual(HLTBGameData.objects.filter(game=game).count(), 1)
+
+    def test_an_orphaned_record_is_reconnected(self):
+        orphan = HLTBGameData.objects.create(
+            game=None, igdb_id=1, hltb_id="old", is_primary=True
+        )
+        game = Game.objects.create(name="G", rank=1, igdb_id=1)
+        data = self.save(game)
+        self.assertEqual(data.pk, orphan.pk)
+        self.assertEqual((data.game, data.hltb_id), (game, "77"))

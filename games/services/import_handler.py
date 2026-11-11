@@ -6,15 +6,15 @@ Handles importing game data from TSV files including:
 - Source Lists
 - Games
 - List Memberships (game positions)
-- Developers
 
 Also provides IGDB data fetching with progress tracking.
 """
 
 import csv
 import logging
+import dataclasses
 from io import TextIOWrapper
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from django.db import connection, transaction
 from django.db.models import Q
@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 IGDB_FAILED = "IGDB import failed; see the server logs."
 WIKIPEDIA_FAILED = "Wikipedia lookup failed; see the server logs."
 IMPORT_FAILED = "Import failed; see the server logs."
+IMPORT_CANCELLED = "Import cancelled: the page that started it has gone."
 BATCH_ROLLED_BACK = (
     "Nothing was imported: a batch is all or nothing, so any file imported "
     "before this one was rolled back with it."
@@ -60,22 +61,19 @@ def _start_import_thread(target: Callable[[], None]):
     return start_background_thread(target)
 
 
-def import_data(data: Dict[str, Any]) -> Optional[Tuple[bool, str]]:
-    """
-    Route posted form data to the correct import helper.
-    Handles both legacy single-file imports and new batch imports.
+def import_data(data: Dict[str, Any]) -> Tuple[bool, str]:
+    """Route the staff import form's cleaned data to the right helper.
+
+    Always a ``(success, message)``. It answered ``None`` for a form that
+    asked for nothing it knows, which the view unpacked: a 500. Until
+    2026-11-10 it also took a single ``file`` with a ``type``, which no
+    form has sent since the batch import replaced it.
     """
 
     # Uploaded batch files replace ranking data in a single transaction and take
     # precedence over maintenance flags that may also be present in the POST body.
-    if any(
-        [
-            data.get(f)
-            for f in ["platforms_file", "lists_file", "games_file", "memberships_file"]
-        ]
-    ):
-        success, message = import_batch(data)
-        return (success, message)
+    if any(data.get(name) for name in BATCH_FILE_FIELDS):
+        return import_batch(data)
 
     if data.get("delete"):
         return delete_existing_data()
@@ -86,36 +84,7 @@ def import_data(data: Dict[str, Any]) -> Optional[Tuple[bool, str]]:
     if data.get("clear_wikipedia_metadata"):
         return clear_wikipedia_metadata()
 
-    # Legacy single-file import
-    if data.get("file"):
-        f = TextIOWrapper(data["file"], encoding="utf-8")
-        import_type = data["type"]
-
-        functions = {
-            constants.TYPE_GAME: import_games,
-            constants.TYPE_PLATFORM: import_platforms,
-            constants.TYPE_LIST: import_lists,
-            constants.TYPE_LIST_MEMBERSHIP: import_listmemberships,
-            constants.TYPE_DEVELOPER: import_developers,
-        }
-
-        handler = functions.get(import_type)
-        if not handler:
-            return (False, f'Unknown import type "{import_type}" provided.')
-
-        try:
-            result = handler(f)
-            # Update last_full_update if games were imported
-            if import_type == constants.TYPE_GAME and result[0]:
-                from django.utils import timezone
-
-                metadata = models.SiteMetadata.get_instance()
-                metadata.last_full_update = timezone.now()
-                metadata.save()
-
-            return result
-        except Exception as e:
-            return (False, f"Could not process uploaded file: {e}")
+    return (False, "Nothing was selected to import.")
 
 
 def _holding_the_fetch_lock(events):
@@ -802,18 +771,148 @@ def _validate_prerequisites(import_type: str) -> Optional[Tuple[bool, str]]:
     return None
 
 
-def import_batch_with_progress(data: Dict[str, Any]):
-    """
-    Import multiple files in the correct order with real-time progress tracking.
-    Yields JSON progress events for streaming to SSE client in real-time.
+BATCH_FILE_FIELDS = ("platforms_file", "lists_file", "games_file", "memberships_file")
 
-    Files are imported in this order:
+
+def _import_sequence():
+    """The batch's files, in the order they depend on each other.
+
     1. Platforms (no dependencies)
     2. Source Lists (Publications are auto-created)
     3. Games (depends on Platforms)
     4. Game Positions (depends on Lists and Games)
 
-    If any import fails, the entire transaction is rolled back.
+    Built at call time, so the handlers are the module's as it stands: a
+    test that patches one gets its patch.
+    """
+    return [
+        ("platforms_file", constants.TYPE_PLATFORM, "Platforms", import_platforms),
+        ("lists_file", constants.TYPE_LIST, "Source Lists", import_lists),
+        ("games_file", constants.TYPE_GAME, "Games", import_games),
+        (
+            "memberships_file",
+            constants.TYPE_LIST_MEMBERSHIP,
+            "Game Positions",
+            import_listmemberships,
+        ),
+    ]
+
+
+class _BatchFailed(Exception):
+    """Raised inside the batch's transaction to roll it back.
+
+    ``file`` is the failed file's display name, ``message`` what the
+    streamed page shows beside it, and ``summary`` the one line the
+    unstreamed page shows.
+    """
+
+    def __init__(self, file: Optional[str], message: str, summary: str):
+        super().__init__(summary)
+        self.file = file
+        self.message = message
+        self.summary = summary
+
+
+@dataclasses.dataclass
+class BatchResult:
+    """What a batch import did: each file's summary, or what stopped it."""
+
+    messages: List[str] = dataclasses.field(default_factory=list)
+    games_imported: bool = False
+    failed_file: Optional[str] = None
+    error: Optional[str] = None
+    summary: Optional[str] = None
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None
+
+
+def _run_batch(
+    data: Dict[str, Any],
+    progress: Optional[Callable[[str, Dict], None]] = None,
+    cancelled: Callable[[], bool] = lambda: False,
+) -> BatchResult:
+    """Import a batch's files in one transaction: all of them, or none.
+
+    The one loop behind the staff page's streamed import and
+    ``import_batch`` (the unstreamed form, the commands). They were two
+    copies until 2026-11-10 and had drifted three times: the stream compared
+    "GAMES" where the prerequisites check wants ``TYPE_GAME``, went on to
+    the next file after one failed and committed the rest, and left the
+    "Updated" date alone. The unstreamed copy put an exception's text in
+    the message staff read.
+
+    A failure rolls every file back. Staff are told which file and, for a
+    fault in the file itself (``ImportFileError``), why in its own words;
+    any other exception goes to the log, since its text can carry SQL. A
+    handler raises and says nothing itself: it is named here, once.
+
+    It never raises, and it does not start the metadata fetch: the callers
+    differ there (a thread for the staff page, the foreground for a
+    command), and each starts its own once this has committed.
+    """
+    result = BatchResult()
+    try:
+        with transaction.atomic():
+            for field_name, import_type, display_name, handler in _import_sequence():
+                # Best-effort cancellation between files, for a client that
+                # has gone
+                if cancelled():
+                    raise _BatchFailed(None, IMPORT_CANCELLED, IMPORT_CANCELLED)
+                file_obj = data.get(field_name)
+                if not file_obj:
+                    continue
+
+                refused = _validate_prerequisites(import_type)
+                if refused:
+                    raise _BatchFailed(display_name, refused[1], refused[1])
+
+                try:
+                    f = TextIOWrapper(file_obj, encoding="utf-8")
+                    _, message = handler(f, progress)
+                except ImportFileError as error:
+                    # The file's own fault, in words: no traceback, and the
+                    # message as written
+                    logger.warning("%s import refused: %s", display_name, error)
+                    raise _BatchFailed(
+                        display_name,
+                        str(error),
+                        f"{display_name} import failed: {error}",
+                    ) from error
+                except Exception as error:
+                    logger.exception("%s import failed", display_name)
+                    raise _BatchFailed(
+                        display_name,
+                        IMPORT_FAILED,
+                        f"{display_name} import failed; see the server logs.",
+                    ) from error
+                result.messages.append(message)
+                if field_name == "games_file":
+                    result.games_imported = True
+
+            # The rankings heading's "Updated:" date. Inside the
+            # transaction, so a batch rolled back leaves it.
+            if result.games_imported:
+                models.SiteMetadata.stamp_update()
+    except _BatchFailed as failed:
+        result.failed_file = failed.file
+        result.error = failed.message
+        result.summary = failed.summary
+    except Exception:
+        logger.exception("Batch import failed")
+        result.error = result.summary = IMPORT_FAILED
+    if not result.ok:
+        result.games_imported = False
+    return result
+
+
+def import_batch_with_progress(data: Dict[str, Any]):
+    """
+    Import a batch on a thread, streaming its progress.
+
+    Yields server-sent events as the import produces them; the import
+    itself is ``_run_batch``, all or nothing.
     """
     import json
     import queue
@@ -849,94 +948,36 @@ def import_batch_with_progress(data: Dict[str, Any]):
         # Queue the event for immediate streaming
         _queue_event(json.dumps(data))
 
-    import_sequence = [
-        ("platforms_file", constants.TYPE_PLATFORM, "Platforms", import_platforms),
-        ("lists_file", constants.TYPE_LIST, "Source Lists", import_lists),
-        ("games_file", constants.TYPE_GAME, "Games", import_games),
-        (
-            "memberships_file",
-            constants.TYPE_LIST_MEMBERSHIP,
-            "Game Positions",
-            import_listmemberships,
-        ),
-    ]
+    def error_event(message, file=None):
+        payload = {"event": "error", "message": message}
+        if file:
+            payload["file"] = file
+        _queue_event(json.dumps(payload))
 
     try:
 
         def run_import():
-            games_imported = False
-
-            def refuse(display_name, message):
-                """Say which file failed and why, then roll the batch back."""
-                _queue_event(
-                    json.dumps(
-                        {"event": "error", "file": display_name, "message": message}
-                    )
-                )
-                raise _BatchFailed((False, message))
-
             try:
-                # All or nothing, as `import_batch` is. The loop used to go
-                # on to the next file after one failed and commit the rest:
-                # lists replaced with no games to match, or positions
-                # attached by rank to the previous release's games.
-                with transaction.atomic():
-                    for (
-                        field_name,
-                        import_type,
-                        display_name,
-                        handler,
-                    ) in import_sequence:
-                        # Best-effort cancellation between files if client disconnects.
-                        if stop_event.is_set():
-                            raise RuntimeError("Import canceled: client disconnected")
-                        file_obj = data.get(field_name)
-                        if not file_obj:
-                            continue
-
-                        # Validate prerequisites
-                        validation_error = _validate_prerequisites(import_type)
-                        if validation_error:
-                            refuse(display_name, validation_error[1])
-
-                        try:
-                            f = TextIOWrapper(file_obj, encoding="utf-8")
-                            handler(f, progress_callback)
-                        except ImportFileError as error:
-                            # The file's own fault, in words: no traceback,
-                            # and the message as written
-                            logger.warning("%s import refused: %s", display_name, error)
-                            refuse(display_name, str(error))
-                        except Exception:
-                            logger.exception("%s import failed", display_name)
-                            refuse(display_name, IMPORT_FAILED)
-                        if field_name == "games_file":
-                            games_imported = True
-
-                    # The rankings heading's "Updated:" date, as
-                    # `import_batch` sets it: an import from the staff page
-                    # left the previous release's. Inside the transaction,
-                    # so a batch rolled back leaves it.
-                    if games_imported:
-                        models.SiteMetadata.stamp_update()
-
-                # Committed: the recreated games have no slugs until IGDB is
-                # fetched again, so start it, and tell the page.
-                if games_imported:
-                    note = post_import.schedule()
-                    if note:
-                        _queue_event(json.dumps({"event": "metadata", "message": note}))
-            except _BatchFailed:
-                # The file's own error has been sent; this says what became
-                # of the files before it
-                _queue_event(
-                    json.dumps({"event": "error", "message": BATCH_ROLLED_BACK})
-                )
+                result = _run_batch(data, progress_callback, stop_event.is_set)
+                if result.ok:
+                    # Committed: the recreated games have no slugs until IGDB
+                    # is fetched again, so start it, and tell the page.
+                    if result.games_imported:
+                        note = post_import.schedule()
+                        if note:
+                            _queue_event(
+                                json.dumps({"event": "metadata", "message": note})
+                            )
+                elif result.failed_file:
+                    # Which file and why, then what became of the files
+                    # before it
+                    error_event(result.error, result.failed_file)
+                    error_event(BATCH_ROLLED_BACK)
+                else:
+                    error_event(result.error)
             except Exception:
-                # A disconnect raises to roll back; that is no error to report
-                if not stop_event.is_set():
-                    logger.exception("Batch import failed")
-                _queue_event(json.dumps({"event": "error", "message": IMPORT_FAILED}))
+                logger.exception("Batch import failed")
+                error_event(IMPORT_FAILED)
             finally:
                 # Signal that we're done
                 _queue_event(None)
@@ -989,90 +1030,20 @@ def import_batch_with_progress(data: Dict[str, Any]):
         yield f"data: {json.dumps({'event': 'error', 'message': IMPORT_FAILED})}\n\n"
 
 
-class _BatchFailed(Exception):
-    """Raised inside import_batch's transaction to roll it back, carrying
-    the (success, message) result to return once it has."""
-
-    def __init__(self, result: Tuple[bool, str]):
-        super().__init__(result[1])
-        self.result = result
-
-
 def import_batch(data: Dict[str, Any]) -> Tuple[bool, str]:
     """
-    Import multiple files in the correct order with transaction safety.
-
-    Files are imported in this order:
-    1. Platforms (no dependencies)
-    2. Source Lists (Publications are auto-created)
-    3. Games (depends on Platforms)
-    4. Game Positions (depends on Lists and Games)
-
-    If any import fails, the entire transaction is rolled back.
+    Import a batch on the calling thread: all of its files, or none.
 
     Returns:
-        Tuple of (success, message)
+        Tuple of (success, message): each file's summary on its own line,
+        or the one line that says what stopped it.
     """
-    results = []
-    import_sequence = [
-        ("platforms_file", constants.TYPE_PLATFORM, "Platforms", import_platforms),
-        ("lists_file", constants.TYPE_LIST, "Source Lists", import_lists),
-        ("games_file", constants.TYPE_GAME, "Games", import_games),
-        (
-            "memberships_file",
-            constants.TYPE_LIST_MEMBERSHIP,
-            "Game Positions",
-            import_listmemberships,
-        ),
-    ]
-
-    try:
-        games_file_imported = False
-        with transaction.atomic():
-            for field_name, import_type, display_name, handler in import_sequence:
-                file_obj = data.get(field_name)
-                if not file_obj:
-                    continue
-
-                # Both failures raise rather than return: a return leaves the
-                # atomic block normally, which commits every file imported so
-                # far - and import_games deletes all the games before its
-                # first row, so a bad row lost them.
-                validation_error = _validate_prerequisites(import_type)
-                if validation_error:
-                    raise _BatchFailed(validation_error)
-
-                try:
-                    f = TextIOWrapper(file_obj, encoding="utf-8")
-                    success, message = handler(f)
-                    results.append(message)
-                    # Track if games file was imported
-                    if field_name == "games_file":
-                        games_file_imported = True
-                except Exception as e:
-                    raise _BatchFailed(
-                        (False, f"{display_name} import failed: {e}")
-                    ) from e
-
-        # If we get here, all imports succeeded
-        if not results:
-            return (False, "No files were selected for import.")
-
-        # Update last_full_update if games file was imported
-        if games_file_imported:
-            from django.utils import timezone
-
-            metadata = models.SiteMetadata.get_instance()
-            metadata.last_full_update = timezone.now()
-            metadata.save()
-
-        summary = "\n".join(results)
-        return (True, summary)
-
-    except _BatchFailed as failed:
-        return failed.result
-    except Exception as e:
-        return (False, f"Import transaction failed: {e}")
+    result = _run_batch(data)
+    if not result.ok:
+        return (False, result.summary)
+    if not result.messages:
+        return (False, "No files were selected for import.")
+    return (True, "\n".join(result.messages))
 
 
 def delete_existing_data() -> Tuple[bool, str]:
@@ -1235,69 +1206,61 @@ def import_lists(
     if progress_callback:
         progress_callback("start", {"total": total_rows, "file": "Source Lists"})
 
-    try:
-        # Delete all existing lists and publications before importing
-        lists_deleted = models.List.objects.count()
-        pubs_deleted = models.Publication.objects.count()
-        models.List.objects.all().delete()
-        models.Publication.objects.all().delete()
+    # Delete all existing lists and publications before importing
+    lists_deleted = models.List.objects.count()
+    pubs_deleted = models.Publication.objects.count()
+    models.List.objects.all().delete()
+    models.Publication.objects.all().delete()
 
-        for line_number, bits in enumerate(rows):
-            row_number += 1
-            publisher_name, year, type, name, url = bits
-            publisher, _ = models.Publication.objects.get_or_create(
-                name=publisher_name,
-            )
+    for line_number, bits in enumerate(rows):
+        row_number += 1
+        publisher_name, year, type, name, url = bits
+        publisher, _ = models.Publication.objects.get_or_create(
+            name=publisher_name,
+        )
 
-            models.List.objects.create(
-                publisher=publisher,
-                year=year,
-                name=name,
-                order=line_number + 1,
-                url=url,
-                type=type[0],
-            )
-            count += 1
+        models.List.objects.create(
+            publisher=publisher,
+            year=year,
+            name=name,
+            order=line_number + 1,
+            url=url,
+            type=type[0],
+        )
+        count += 1
 
-            # Report progress
-            if (
-                progress_callback
-                and row_number % config.IMPORT_PROGRESS_INTERVAL_LISTS == 0
-            ):
-                progress_callback(
-                    "progress",
-                    {
-                        "current": row_number,
-                        "total": total_rows,
-                        "list_name": name,
-                        "percentage": (
-                            int((row_number / total_rows) * 100)
-                            if total_rows > 0
-                            else 0
-                        ),
-                    },
-                )
-
-        if progress_callback:
+        # Report progress
+        if (
+            progress_callback
+            and row_number % config.IMPORT_PROGRESS_INTERVAL_LISTS == 0
+        ):
             progress_callback(
-                "complete",
+                "progress",
                 {
-                    "count": count,
-                    "lists_deleted": lists_deleted,
-                    "publications_deleted": pubs_deleted,
+                    "current": row_number,
+                    "total": total_rows,
+                    "list_name": name,
+                    "percentage": (
+                        int((row_number / total_rows) * 100) if total_rows > 0 else 0
+                    ),
                 },
             )
 
-        return (
-            True,
-            f"Lists: {count} created (deleted {lists_deleted} old); "
-            f"Publications: recreated (deleted {pubs_deleted} old)",
+    if progress_callback:
+        progress_callback(
+            "complete",
+            {
+                "count": count,
+                "lists_deleted": lists_deleted,
+                "publications_deleted": pubs_deleted,
+            },
         )
 
-    except Exception:
-        if progress_callback:
-            progress_callback("error", {"message": IMPORT_FAILED})
-        raise
+    return (
+        True,
+        f"Lists: {count} created (deleted {lists_deleted} old); "
+        f"Publications: recreated (deleted {pubs_deleted} old)",
+    )
 
 
 def import_listmemberships(
@@ -1330,62 +1293,54 @@ def import_listmemberships(
     if progress_callback:
         progress_callback("start", {"total": total_rows, "file": "Game Positions"})
 
-    try:
-        for line_number, line in enumerate(f):
-            row_number += 1
-            bits = line.strip().split("\t")
-            game = models.Game.objects.get(rank=line_number + 1)
-            for bit in bits:
-                list_id, position = [int(x) for x in bit.split(":")]
+    for line_number, line in enumerate(f):
+        row_number += 1
+        bits = line.strip().split("\t")
+        game = models.Game.objects.get(rank=line_number + 1)
+        for bit in bits:
+            list_id, position = [int(x) for x in bit.split(":")]
 
-                source_list = list_map.get(list_id + 1)
-                if not source_list:
-                    continue
+            source_list = list_map.get(list_id + 1)
+            if not source_list:
+                continue
 
-                memberships.append(
-                    models.ListMembership(list=source_list, game=game, rank=position)
-                )
+            memberships.append(
+                models.ListMembership(list=source_list, game=game, rank=position)
+            )
 
-            # Flush batch to database when it reaches batch_size
-            if len(memberships) >= batch_size:
-                created = models.ListMembership.objects.bulk_create(memberships)
-                total_created += len(created)
-                memberships.clear()
-
-            # Report progress
-            if (
-                progress_callback
-                and row_number % config.IMPORT_PROGRESS_INTERVAL_MEMBERSHIPS == 0
-            ):
-                progress_callback(
-                    "progress",
-                    {
-                        "current": row_number,
-                        "total": total_rows,
-                        "game_rank": line_number + 1,
-                        "percentage": (
-                            int((row_number / total_rows) * 100)
-                            if total_rows > 0
-                            else 0
-                        ),
-                    },
-                )
-
-        # Flush any remaining memberships
-        if memberships:
+        # Flush batch to database when it reaches batch_size
+        if len(memberships) >= batch_size:
             created = models.ListMembership.objects.bulk_create(memberships)
             total_created += len(created)
             memberships.clear()
 
-        if progress_callback:
-            progress_callback("complete", {"count": total_created})
+        # Report progress
+        if (
+            progress_callback
+            and row_number % config.IMPORT_PROGRESS_INTERVAL_MEMBERSHIPS == 0
+        ):
+            progress_callback(
+                "progress",
+                {
+                    "current": row_number,
+                    "total": total_rows,
+                    "game_rank": line_number + 1,
+                    "percentage": (
+                        int((row_number / total_rows) * 100) if total_rows > 0 else 0
+                    ),
+                },
+            )
 
-        return (True, f"List memberships: {total_created} created")
+    # Flush any remaining memberships
+    if memberships:
+        created = models.ListMembership.objects.bulk_create(memberships)
+        total_created += len(created)
+        memberships.clear()
 
-    except Exception:
-        if progress_callback:
-            progress_callback("error", {"message": IMPORT_FAILED})
-        raise
+    if progress_callback:
+        progress_callback("complete", {"count": total_created})
+
+    return (True, f"List memberships: {total_created} created")
 
 
 DeveloperLink = models.Game.developers.through
@@ -1452,234 +1407,220 @@ def import_games(
     if progress_callback:
         progress_callback("start", {"total": total_rows, "file": "Games"})
 
-    try:
-        # Delete all existing games first
-        # Orphan user tracking and metadata so they can be reconnected
-        deleted_count = models.Game.objects.count()
-        carried = _igdb_fields_by_record()
-        developer_links = []
-        series_links = []
-        primary_ids_seen = {}
-        models.PlayedGame.objects.all().update(game=None)
-        models.WantToPlayGame.objects.all().update(game=None)
-        # The IGDB ids a reader's row names, read once. Reconnecting was
-        # two locking queries for every game, some 2,800 an import, and
-        # most games have no reader's row to reconnect.
-        tracked_igdb_ids = set(
-            models.PlayedGame.objects.values_list("igdb_id", flat=True)
-        ) | set(models.WantToPlayGame.objects.values_list("igdb_id", flat=True))
-        models.WikipediaGameData.objects.all().update(game=None)
-        models.HLTBGameData.objects.all().update(game=None)
-        models.IGDBGameData.objects.all().update(game=None)
-        models.Game.objects.all().delete()
+    # Delete all existing games first
+    # Orphan user tracking and metadata so they can be reconnected
+    deleted_count = models.Game.objects.count()
+    carried = _igdb_fields_by_record()
+    developer_links = []
+    series_links = []
+    primary_ids_seen = {}
+    models.PlayedGame.objects.all().update(game=None)
+    models.WantToPlayGame.objects.all().update(game=None)
+    # The IGDB ids a reader's row names, read once. Reconnecting was
+    # two locking queries for every game, some 2,800 an import, and
+    # most games have no reader's row to reconnect.
+    tracked_igdb_ids = set(
+        models.PlayedGame.objects.values_list("igdb_id", flat=True)
+    ) | set(models.WantToPlayGame.objects.values_list("igdb_id", flat=True))
+    models.WikipediaGameData.objects.all().update(game=None)
+    models.HLTBGameData.objects.all().update(game=None)
+    models.IGDBGameData.objects.all().update(game=None)
+    models.Game.objects.all().delete()
 
-        for rank, game_name, year, platforms, igdb_id, wikidata_id in rows:
-            row_number += 1
-            platform_codes = platforms.split(",")
-            platform_objs = []
-            for code in platform_codes:
-                code = code.strip()
-                platform, _ = models.Platform.objects.get_or_create(
-                    code=code,
-                    defaults={"name": code, **years_for(code)},
-                )
-                platform_objs.append(platform)
-
-            # Parse comma-separated IGDB IDs (first is primary)
-            all_igdb_ids = []
-            if igdb_id and igdb_id.strip():
-                all_igdb_ids = [
-                    int(x.strip())
-                    for x in igdb_id.split(",")
-                    if x.strip() and x.strip().isdigit()
-                ]
-            primary_igdb_id = all_igdb_ids[0] if all_igdb_ids else None
-
-            # A game's first IGDB id is its own (`unique_game_igdb_id`): the
-            # played toggle and the readers' tracking rows find a game by
-            # it. Said here, with both rows, rather than left to the
-            # constraint, whose error names neither.
-            if primary_igdb_id is not None:
-                if primary_igdb_id in primary_ids_seen:
-                    first_row, first_name = primary_ids_seen[primary_igdb_id]
-                    raise ImportFileError(
-                        f"Games file: rows {first_row} ({first_name}) and "
-                        f"{row_number} ({game_name}) both start with the IGDB "
-                        f"id {primary_igdb_id}. A game's first IGDB id must be "
-                        "its own."
-                    )
-                primary_ids_seen[primary_igdb_id] = (row_number, game_name)
-
-            # Parse comma-separated Wikidata IDs (first is primary)
-            all_wikidata_ids = []
-            if wikidata_id and wikidata_id.strip():
-                all_wikidata_ids = [
-                    x.strip() for x in wikidata_id.split(",") if x.strip()
-                ]
-            primary_wikidata_id = all_wikidata_ids[0] if all_wikidata_ids else None
-
-            # Create game
-            game = models.Game.objects.create(
-                igdb_id=primary_igdb_id,
-                rank=int(rank),
-                name=game_name,
-                year_of_release=year,
-                wikidata_id=primary_wikidata_id,
-                all_igdb_ids=all_igdb_ids,
-                all_wikidata_ids=all_wikidata_ids,
+    for rank, game_name, year, platforms, igdb_id, wikidata_id in rows:
+        row_number += 1
+        platform_codes = platforms.split(",")
+        platform_objs = []
+        for code in platform_codes:
+            code = code.strip()
+            platform, _ = models.Platform.objects.get_or_create(
+                code=code,
+                defaults={"name": code, **years_for(code)},
             )
-            game.platforms.set(platform_objs)
-            count += 1
+            platform_objs.append(platform)
 
-            # Reconnect orphaned PlayedGame and WantToPlayGame records
-            # This also normalizes igdb_id to primary and handles duplicates
-            if tracked_igdb_ids.intersection(all_igdb_ids):
-                from games.services.user_tracking_service import (
-                    reconnect_tracking_records,
+        # Parse comma-separated IGDB IDs (first is primary)
+        all_igdb_ids = []
+        if igdb_id and igdb_id.strip():
+            all_igdb_ids = [
+                int(x.strip())
+                for x in igdb_id.split(",")
+                if x.strip() and x.strip().isdigit()
+            ]
+        primary_igdb_id = all_igdb_ids[0] if all_igdb_ids else None
+
+        # A game's first IGDB id is its own (`unique_game_igdb_id`): the
+        # played toggle and the readers' tracking rows find a game by
+        # it. Said here, with both rows, rather than left to the
+        # constraint, whose error names neither.
+        if primary_igdb_id is not None:
+            if primary_igdb_id in primary_ids_seen:
+                first_row, first_name = primary_ids_seen[primary_igdb_id]
+                raise ImportFileError(
+                    f"Games file: rows {first_row} ({first_name}) and "
+                    f"{row_number} ({game_name}) both start with the IGDB "
+                    f"id {primary_igdb_id}. A game's first IGDB id must be "
+                    "its own."
                 )
+            primary_ids_seen[primary_igdb_id] = (row_number, game_name)
 
-                reconnect_tracking_records(
-                    game=game,
-                    igdb_ids=all_igdb_ids,
-                    primary_igdb_id=primary_igdb_id,
-                )
+        # Parse comma-separated Wikidata IDs (first is primary)
+        all_wikidata_ids = []
+        if wikidata_id and wikidata_id.strip():
+            all_wikidata_ids = [x.strip() for x in wikidata_id.split(",") if x.strip()]
+        primary_wikidata_id = all_wikidata_ids[0] if all_wikidata_ids else None
 
-            # Reconnect to existing Wikipedia/HLTB metadata
-            update_fields = []
-            needs_save = False
+        # Create game
+        game = models.Game.objects.create(
+            igdb_id=primary_igdb_id,
+            rank=int(rank),
+            name=game_name,
+            year_of_release=year,
+            wikidata_id=primary_wikidata_id,
+            all_igdb_ids=all_igdb_ids,
+            all_wikidata_ids=all_wikidata_ids,
+        )
+        game.platforms.set(platform_objs)
+        count += 1
 
-            # Reconnect Wikipedia data - try all Wikidata IDs (primary first)
-            if all_wikidata_ids:
-                for wikidata_id_to_try in all_wikidata_ids:
-                    wiki_data = models.WikipediaGameData.objects.filter(
-                        wikidata_id=wikidata_id_to_try,
-                        is_primary=True,
-                        game__isnull=True,
-                    ).first()
-                    if wiki_data:
-                        wiki_data.game = game
-                        wiki_data.save(update_fields=["game"])
-                        game.primary_wikipedia_game_data = wiki_data
-                        update_fields.append("primary_wikipedia_game_data")
-                        needs_save = True
+        # Reconnect orphaned PlayedGame and WantToPlayGame records
+        # This also normalizes igdb_id to primary and handles duplicates
+        if tracked_igdb_ids.intersection(all_igdb_ids):
+            from games.services.user_tracking_service import (
+                reconnect_tracking_records,
+            )
 
-                        # Restore wikipedia_genres from stored all_genres
-                        if wiki_data.all_genres:
-                            genre_names = [
-                                g.strip() for g in wiki_data.all_genres.split(",")
-                            ]
-                            wikipedia_genres = []
-                            seen_genres = set()
-                            for genre_name in genre_names:
-                                normalized = normalize_genre(genre_name)
-                                if normalized is None or normalized in seen_genres:
-                                    continue
-                                seen_genres.add(normalized)
-                                genre = get_or_create_genre(normalized)
-                                wikipedia_genres.append(genre)
-                            if wikipedia_genres:
-                                game.wikipedia_genres.set(wikipedia_genres)
-                        break
+            reconnect_tracking_records(
+                game=game,
+                igdb_ids=all_igdb_ids,
+                primary_igdb_id=primary_igdb_id,
+            )
 
-            # Reconnect HLTB data - try all IGDB IDs
-            if all_igdb_ids:
-                for igdb_id_to_try in all_igdb_ids:
-                    hltb_data = models.HLTBGameData.objects.filter(
-                        igdb_id=igdb_id_to_try, is_primary=True, game__isnull=True
-                    ).first()
-                    if hltb_data:
-                        hltb_data.game = game
-                        hltb_data.save(update_fields=["game"])
-                        game.primary_hltb_game_data = hltb_data
-                        update_fields.append("primary_hltb_game_data")
-                        needs_save = True
-                        break
+        # Reconnect to existing Wikipedia/HLTB metadata
+        update_fields = []
+        needs_save = False
 
-            # Reconnect IGDB data - try all IGDB IDs (primary first)
-            if all_igdb_ids:
-                for igdb_id_to_try in all_igdb_ids:
-                    igdb_data = models.IGDBGameData.objects.filter(
-                        igdb_id=igdb_id_to_try, is_primary=True, game__isnull=True
-                    ).first()
-                    if igdb_data:
-                        igdb_data.game = game
-                        igdb_data.save(update_fields=["game"])
-                        game.primary_igdb_game_data = igdb_data
-                        update_fields.append("primary_igdb_game_data")
-                        needs_save = True
-                        # Only the primary id's own record: one found through
-                        # another id is another IGDB game's, whose fields
-                        # would stand until a refetch, which the slug skips.
-                        if igdb_data.igdb_id == primary_igdb_id:
-                            slug, developer_ids, series_ids = carried.get(
-                                igdb_data.pk, (None, (), ())
-                            )
-                        else:
-                            slug, developer_ids, series_ids = None, (), ()
-                        if slug:
-                            game.slug = slug
-                            update_fields.append("slug")
-                        developer_links += [
-                            DeveloperLink(game_id=game.pk, developer_id=pk)
-                            for pk in developer_ids
+        # Reconnect Wikipedia data - try all Wikidata IDs (primary first)
+        if all_wikidata_ids:
+            for wikidata_id_to_try in all_wikidata_ids:
+                wiki_data = models.WikipediaGameData.objects.filter(
+                    wikidata_id=wikidata_id_to_try,
+                    is_primary=True,
+                    game__isnull=True,
+                ).first()
+                if wiki_data:
+                    wiki_data.game = game
+                    wiki_data.save(update_fields=["game"])
+                    game.primary_wikipedia_game_data = wiki_data
+                    update_fields.append("primary_wikipedia_game_data")
+                    needs_save = True
+
+                    # Restore wikipedia_genres from stored all_genres
+                    if wiki_data.all_genres:
+                        genre_names = [
+                            g.strip() for g in wiki_data.all_genres.split(",")
                         ]
-                        series_links += [
-                            SeriesLink(game_id=game.pk, series_id=pk)
-                            for pk in series_ids
-                        ]
-                        break
+                        wikipedia_genres = []
+                        seen_genres = set()
+                        for genre_name in genre_names:
+                            normalized = normalize_genre(genre_name)
+                            if normalized is None or normalized in seen_genres:
+                                continue
+                            seen_genres.add(normalized)
+                            genre = get_or_create_genre(normalized)
+                            wikipedia_genres.append(genre)
+                        if wikipedia_genres:
+                            game.wikipedia_genres.set(wikipedia_genres)
+                    break
 
-            if needs_save:
-                game.save(update_fields=update_fields)
+        # Reconnect HLTB data - try all IGDB IDs
+        if all_igdb_ids:
+            for igdb_id_to_try in all_igdb_ids:
+                hltb_data = models.HLTBGameData.objects.filter(
+                    igdb_id=igdb_id_to_try, is_primary=True, game__isnull=True
+                ).first()
+                if hltb_data:
+                    hltb_data.game = game
+                    hltb_data.save(update_fields=["game"])
+                    game.primary_hltb_game_data = hltb_data
+                    update_fields.append("primary_hltb_game_data")
+                    needs_save = True
+                    break
 
-            # Report progress
-            if (
-                progress_callback
-                and row_number % config.IMPORT_PROGRESS_INTERVAL_GAMES == 0
-            ):
-                progress_callback(
-                    "progress",
-                    {
-                        "current": row_number,
-                        "total": total_rows,
-                        "game_name": game_name,
-                        "percentage": (
-                            int((row_number / total_rows) * 100)
-                            if total_rows > 0
-                            else 0
-                        ),
-                    },
-                )
+        # Reconnect IGDB data - try all IGDB IDs (primary first)
+        if all_igdb_ids:
+            for igdb_id_to_try in all_igdb_ids:
+                igdb_data = models.IGDBGameData.objects.filter(
+                    igdb_id=igdb_id_to_try, is_primary=True, game__isnull=True
+                ).first()
+                if igdb_data:
+                    igdb_data.game = game
+                    igdb_data.save(update_fields=["game"])
+                    game.primary_igdb_game_data = igdb_data
+                    update_fields.append("primary_igdb_game_data")
+                    needs_save = True
+                    # Only the primary id's own record: one found through
+                    # another id is another IGDB game's, whose fields
+                    # would stand until a refetch, which the slug skips.
+                    if igdb_data.igdb_id == primary_igdb_id:
+                        slug, developer_ids, series_ids = carried.get(
+                            igdb_data.pk, (None, (), ())
+                        )
+                    else:
+                        slug, developer_ids, series_ids = None, (), ()
+                    if slug:
+                        game.slug = slug
+                        update_fields.append("slug")
+                    developer_links += [
+                        DeveloperLink(game_id=game.pk, developer_id=pk)
+                        for pk in developer_ids
+                    ]
+                    series_links += [
+                        SeriesLink(game_id=game.pk, series_id=pk) for pk in series_ids
+                    ]
+                    break
 
-        DeveloperLink.objects.bulk_create(developer_links)
-        SeriesLink.objects.bulk_create(series_links)
+        if needs_save:
+            game.save(update_fields=update_fields)
 
-        # Update year and decade ranks for all games
-        games_ranked, years_processed = update_year_decade_ranks()
-
-        if progress_callback:
+        # Report progress
+        if (
+            progress_callback
+            and row_number % config.IMPORT_PROGRESS_INTERVAL_GAMES == 0
+        ):
             progress_callback(
-                "complete",
+                "progress",
                 {
-                    "count": count,
-                    "deleted": deleted_count,
-                    "ranks_updated": games_ranked,
+                    "current": row_number,
+                    "total": total_rows,
+                    "game_name": game_name,
+                    "percentage": (
+                        int((row_number / total_rows) * 100) if total_rows > 0 else 0
+                    ),
                 },
             )
 
-        return (
-            True,
-            f"Games: {count} created (deleted {deleted_count} old), "
-            f"{games_ranked} ranks calculated",
+    DeveloperLink.objects.bulk_create(developer_links)
+    SeriesLink.objects.bulk_create(series_links)
+
+    # Update year and decade ranks for all games
+    games_ranked, years_processed = update_year_decade_ranks()
+
+    if progress_callback:
+        progress_callback(
+            "complete",
+            {
+                "count": count,
+                "deleted": deleted_count,
+                "ranks_updated": games_ranked,
+            },
         )
 
-    except ImportFileError:
-        # The caller says it, once, with the file's name
-        raise
-    except Exception:
-        if progress_callback:
-            progress_callback("error", {"message": IMPORT_FAILED})
-        raise
+    return (
+        True,
+        f"Games: {count} created (deleted {deleted_count} old), "
+        f"{games_ranked} ranks calculated",
+    )
 
 
 def import_platforms(
@@ -1710,126 +1651,77 @@ def import_platforms(
     if progress_callback:
         progress_callback("start", {"total": total_rows, "file": "Platforms"})
 
-    try:
-        # Get existing platforms to preserve year_start/year_end
-        existing_platforms = {p.code: p for p in models.Platform.objects.all()}
-        imported_codes = set()
+    # Get existing platforms to preserve year_start/year_end
+    existing_platforms = {p.code: p for p in models.Platform.objects.all()}
+    imported_codes = set()
 
-        for code, name in rows:
-            row_number += 1
-            code = code.strip()
-            name = name.strip()
-            imported_codes.add(code)
+    for code, name in rows:
+        row_number += 1
+        code = code.strip()
+        name = name.strip()
+        imported_codes.add(code)
 
-            # Update or create platform, preserving year_start/year_end. A
-            # new platform, or one with no years yet, takes them from the
-            # table; years set by hand are never overwritten.
-            platform, created = models.Platform.objects.get_or_create(
-                code=code, defaults={"name": name, **years_for(code)}
-            )
-            changed = []
-            if not created and platform.name != name:
-                platform.name = name
-                changed.append("name")
-            if platform.year_start is None and years_for(code):
-                for field, value in years_for(code).items():
-                    setattr(platform, field, value)
-                changed += ["year_start", "year_end"]
-            if changed:
-                platform.save(update_fields=changed)
-            count += 1
+        # Update or create platform, preserving year_start/year_end. A
+        # new platform, or one with no years yet, takes them from the
+        # table; years set by hand are never overwritten.
+        platform, created = models.Platform.objects.get_or_create(
+            code=code, defaults={"name": name, **years_for(code)}
+        )
+        changed = []
+        if not created and platform.name != name:
+            platform.name = name
+            changed.append("name")
+        if platform.year_start is None and years_for(code):
+            for field, value in years_for(code).items():
+                setattr(platform, field, value)
+            changed += ["year_start", "year_end"]
+        if changed:
+            platform.save(update_fields=changed)
+        count += 1
 
-            # Report progress
-            if (
-                progress_callback
-                and row_number % config.IMPORT_PROGRESS_INTERVAL_PLATFORMS == 0
-            ):
-                progress_callback(
-                    "progress",
-                    {
-                        "current": row_number,
-                        "total": total_rows,
-                        "platform_name": name,
-                        "percentage": (
-                            int((row_number / total_rows) * 100)
-                            if total_rows > 0
-                            else 0
-                        ),
-                    },
-                )
-
-        # Delete platforms that are no longer in the import file
-        deleted_count = 0
-        for code, platform in existing_platforms.items():
-            if code not in imported_codes:
-                # Clear M2M relationships before deleting
-                platform.games.clear()
-                platform.delete()
-                deleted_count += 1
-
-        # Calculate statistics
-        created_count = count - (len(existing_platforms) - deleted_count)
-        updated_count = count - created_count
-
-        if progress_callback:
+        # Report progress
+        if (
+            progress_callback
+            and row_number % config.IMPORT_PROGRESS_INTERVAL_PLATFORMS == 0
+        ):
             progress_callback(
-                "complete",
+                "progress",
                 {
-                    "count": count,
-                    "created": created_count,
-                    "updated": updated_count,
-                    "deleted": deleted_count,
+                    "current": row_number,
+                    "total": total_rows,
+                    "platform_name": name,
+                    "percentage": (
+                        int((row_number / total_rows) * 100) if total_rows > 0 else 0
+                    ),
                 },
             )
 
-        return (
-            True,
-            f"Platforms: {created_count} created, {updated_count} updated "
-            f"(deleted {deleted_count} old)",
+    # Delete platforms that are no longer in the import file
+    deleted_count = 0
+    for code, platform in existing_platforms.items():
+        if code not in imported_codes:
+            # Clear M2M relationships before deleting
+            platform.games.clear()
+            platform.delete()
+            deleted_count += 1
+
+    # Calculate statistics
+    created_count = count - (len(existing_platforms) - deleted_count)
+    updated_count = count - created_count
+
+    if progress_callback:
+        progress_callback(
+            "complete",
+            {
+                "count": count,
+                "created": created_count,
+                "updated": updated_count,
+                "deleted": deleted_count,
+            },
         )
 
-    except Exception:
-        if progress_callback:
-            progress_callback("error", {"message": IMPORT_FAILED})
-        raise
-
-
-def import_developers(f: TextIOWrapper) -> Tuple[bool, str]:
-    """
-    Import developers and aliases from a TSV file with columns:
-    alias1, canonical[, alias2].
-    """
-    rows = csv.reader(f, delimiter="\t", lineterminator="\r\n")
-    count = 0
-    updated = 0
-
-    for bits in rows:
-        alias1 = bits[0]
-        canonical = bits[1]
-        alias2 = None
-        if len(bits) == 3:
-            alias2 = bits[2]
-
-        # Create root developer (canonical name)
-        root_dev, created = models.Developer.objects.get_or_create(
-            name=canonical,
-            parent__isnull=True,
-            defaults={"slug": None},  # Will be set via admin or IGDB
-        )
-
-        # Create alias developers as subsidiaries
-        for alias in [alias1, alias2]:
-            if not alias or alias == canonical:
-                continue
-
-            models.Developer.objects.get_or_create(
-                name=alias,
-                parent=root_dev,
-            )
-
-        if created:
-            count += 1
-        else:
-            updated += 1
-
-    return (True, f"Developers: {count} created, {updated} updated")
+    return (
+        True,
+        f"Platforms: {created_count} created, {updated_count} updated "
+        f"(deleted {deleted_count} old)",
+    )

@@ -519,7 +519,7 @@ class WeeklyRefreshTakesTheLockTests(TestCase):
         from datetime import datetime
 
         with (
-            mock.patch(f"{self.COMMAND}.datetime") as clock,
+            mock.patch("core.services.monitoring.datetime") as clock,
             mock.patch(f"{self.COMMAND}.post_import.run_weekly") as run_weekly,
         ):
             clock.now.return_value = datetime(2026, 10, 18)  # a Sunday

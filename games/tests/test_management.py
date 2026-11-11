@@ -8,7 +8,7 @@ from django.core.management.base import CommandError
 from django.test import TestCase
 
 from core.tests.utils import NoHeartbeatMixin
-from .. import models, utils
+from .. import models
 
 
 class GetIgdbCommandTests(TestCase):
@@ -431,17 +431,6 @@ class GetIgdbCommandTests(TestCase):
         self.assertIn("Please use --slug or --id", output)
 
 
-class ImportDataRoutingTests(TestCase):
-
-    def test_unknown_import_type_returns_error(self):
-        file_content = mock.Mock()
-        data = {"file": file_content, "type": "Z"}
-
-        success, message = utils.import_data(data)
-        self.assertFalse(success)
-        self.assertIn('Unknown import type "Z"', message)
-
-
 class RefreshAllMetadataCommandTests(NoHeartbeatMixin, TestCase):
     """Tests for refresh_all_metadata management command"""
 
@@ -573,7 +562,7 @@ class RefreshAllMetadataCommandTests(NoHeartbeatMixin, TestCase):
             )
 
     @mock.patch("games.management.commands.refresh_all_metadata.IGDBImportService")
-    @mock.patch("games.management.commands.refresh_all_metadata.datetime")
+    @mock.patch("core.services.monitoring.datetime")
     def test_weekly_flag_skips_on_any_day_but_sunday(
         self, mock_datetime, mock_igdb_service
     ):

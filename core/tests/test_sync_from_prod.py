@@ -9,6 +9,7 @@ from django.core.management.base import CommandError
 from django.db import connection
 from django.test import SimpleTestCase, TestCase
 
+from core.management.commands.sync_from_prod import SYNC_FAILED
 from games import models
 from music.models import Album, DiscogsAlbumData, MusicBrainzAlbumData
 
@@ -108,9 +109,24 @@ class SyncFromProdCommandTests(TestCase):
             mock.Mock(stdout="no json here", stderr=""),
         ]
         err = StringIO()
-        call_command("sync_from_prod", no_input=True, stdout=StringIO(), stderr=err)
+        with self.assertRaisesMessage(CommandError, SYNC_FAILED):
+            call_command("sync_from_prod", no_input=True, stdout=StringIO(), stderr=err)
 
         self.assertIn("No JSON data found", err.getvalue())
+        self.assertEqual(models.Game.objects.count(), 1)
+
+    @mock.patch("subprocess.run")
+    def test_a_dyno_that_never_answers_is_given_up_on(self, mock_subprocess):
+        import subprocess
+        from io import StringIO
+
+        mock_subprocess.side_effect = subprocess.TimeoutExpired("heroku", 1800)
+        err = StringIO()
+        with self.assertRaisesMessage(CommandError, SYNC_FAILED):
+            call_command("sync_from_prod", no_input=True, stdout=StringIO(), stderr=err)
+
+        self.assertIn("did not answer within 30 minutes", err.getvalue())
+        self.assertEqual(mock_subprocess.call_args.kwargs["timeout"], 1800)
         self.assertEqual(models.Game.objects.count(), 1)
 
     @mock.patch("subprocess.run")
@@ -122,7 +138,8 @@ class SyncFromProdCommandTests(TestCase):
 
         out = StringIO()
         err = StringIO()
-        call_command("sync_from_prod", no_input=True, stdout=out, stderr=err)
+        with self.assertRaisesMessage(CommandError, SYNC_FAILED):
+            call_command("sync_from_prod", no_input=True, stdout=out, stderr=err)
         error_output = err.getvalue()
 
         self.assertIn("Heroku CLI not found", error_output)
@@ -141,7 +158,8 @@ class SyncFromProdCommandTests(TestCase):
 
         out = StringIO()
         err = StringIO()
-        call_command("sync_from_prod", no_input=True, stdout=out, stderr=err)
+        with self.assertRaisesMessage(CommandError, SYNC_FAILED):
+            call_command("sync_from_prod", no_input=True, stdout=out, stderr=err)
         error_output = err.getvalue()
 
         self.assertIn("No JSON data found", error_output)
@@ -167,7 +185,8 @@ class SyncFromProdCommandTests(TestCase):
 
         out = StringIO()
         err = StringIO()
-        call_command("sync_from_prod", no_input=True, stdout=out, stderr=err)
+        with self.assertRaisesMessage(CommandError, SYNC_FAILED):
+            call_command("sync_from_prod", no_input=True, stdout=out, stderr=err)
         error_output = err.getvalue()
 
         self.assertIn("Failed to load data", error_output)
@@ -200,7 +219,10 @@ class SyncFromProdCommandTests(TestCase):
         with mock.patch.object(
             Command, "_clear_music_data", side_effect=Exception("protected")
         ):
-            call_command("sync_from_prod", no_input=True, stdout=StringIO(), stderr=err)
+            with self.assertRaisesMessage(CommandError, SYNC_FAILED):
+                call_command(
+                    "sync_from_prod", no_input=True, stdout=StringIO(), stderr=err
+                )
 
         self.assertIn("Failed to clear local data: protected", err.getvalue())
         self.assertEqual(models.Game.objects.count(), 1)
@@ -214,7 +236,8 @@ class SyncFromProdCommandTests(TestCase):
             mock.Mock(stdout='[{"model": "music.album", "pk": 1}, {"mod', stderr=""),
         ]
         err = StringIO()
-        call_command("sync_from_prod", no_input=True, stdout=StringIO(), stderr=err)
+        with self.assertRaisesMessage(CommandError, SYNC_FAILED):
+            call_command("sync_from_prod", no_input=True, stdout=StringIO(), stderr=err)
 
         self.assertIn("Music dump is incomplete", err.getvalue())
         self.assertEqual(models.Game.objects.count(), 1)
@@ -338,7 +361,8 @@ class SyncFromProdCommandTests(TestCase):
 
         out = StringIO()
         err = StringIO()
-        call_command("sync_from_prod", no_input=True, stdout=out, stderr=err)
+        with self.assertRaisesMessage(CommandError, SYNC_FAILED):
+            call_command("sync_from_prod", no_input=True, stdout=out, stderr=err)
         error_output = err.getvalue()
 
         self.assertIn("Failed to dump production data", error_output)
@@ -434,7 +458,10 @@ class SyncFromProdCommandTests(TestCase):
             "core.management.commands.sync_from_prod.connection.check_constraints",
             side_effect=IntegrityError("games_article row 1 has author_id 5"),
         ):
-            call_command("sync_from_prod", no_input=True, stdout=StringIO(), stderr=err)
+            with self.assertRaisesMessage(CommandError, SYNC_FAILED):
+                call_command(
+                    "sync_from_prod", no_input=True, stdout=StringIO(), stderr=err
+                )
 
         self.assertIn(
             "Failed to check loaded data: games_article row 1", err.getvalue()
@@ -454,7 +481,8 @@ class SyncFromProdCommandTests(TestCase):
 
         out = StringIO()
         err = StringIO()
-        call_command("sync_from_prod", no_input=True, stdout=out, stderr=err)
+        with self.assertRaisesMessage(CommandError, SYNC_FAILED):
+            call_command("sync_from_prod", no_input=True, stdout=out, stderr=err)
         error_output = err.getvalue()
 
         self.assertIn("Invalid JSON from Heroku", error_output)

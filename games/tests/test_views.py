@@ -84,19 +84,13 @@ class ImportViewIntegrationTests(TestCase):
         mock_import_batch.assert_called_once()
         mock_import_data.assert_not_called()
 
-    @mock.patch("games.utils.import_data", return_value=(True, "IGDB"))
-    def test_igdb_import_triggers_command(self, mock_import):
+    def test_a_post_that_asks_for_nothing_the_form_knows_is_not_an_error(self):
+        """The form had an `igdb` flag no page sent, which passed
+        validation and reached an import that answered `None`: a 500."""
         self.client.login(username="tester", password="pass")
-        response = self.client.post(
-            reverse("import"),
-            {
-                "igdb": True,
-            },
-        )
-        self.assertEqual(response.status_code, 302)
-        # Check session data instead of messages
-        self.assertEqual(response.wsgi_request.session.get("import_success"), "IGDB")
-        mock_import.assert_called_once()
+        response = self.client.post(reverse("import"), {"igdb": True})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["form"].errors)
 
     @mock.patch("games.utils.import_batch", return_value=(False, "Failed"))
     def test_failed_data_import_sets_error_message(self, mock_import):

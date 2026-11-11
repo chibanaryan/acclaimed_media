@@ -140,14 +140,6 @@ class ImportFormTests(TestCase):
         result = form.clean()
         self.assertEqual(result, form.cleaned_data)
 
-    def test_clean_with_igdb_operation(self):
-        """Test clean() with IGDB operation (no files required)."""
-        form = ImportForm()
-        form.cleaned_data = {"igdb": True}
-
-        result = form.clean()
-        self.assertEqual(result, form.cleaned_data)
-
     def test_clean_with_clear_igdb_metadata(self):
         """Test clean() with clear IGDB metadata operation (no files required)."""
         form = ImportForm()

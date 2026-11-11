@@ -1066,6 +1066,24 @@ class ImportMusicDataCommandTests(TestCase):
         with self.assertRaisesMessage(CommandError, "before list types"):
             self.run_command(dry_run=True)
 
+    def test_a_bad_artists_or_albums_file_is_named_without_a_traceback(self):
+        """Dry run or not: only the lists file's refusal was caught, and
+        only in a dry run."""
+        artists = self.dir / "ArtistInfo.txt"
+        good = artists.read_text(encoding="utf-8")
+        artists.write_text("not-a-number\t\tSomebody\n", encoding="utf-8")
+        for options in ({"dry_run": True}, {"metadata": False}):
+            with self.subTest(file="artists", **options):
+                with self.assertRaisesMessage(CommandError, "is not a number"):
+                    self.run_command(**options)
+        artists.write_text(good, encoding="utf-8")
+
+        (self.dir / "WebRankings.txt").write_text("1\tPet Sounds\n", encoding="utf-8")
+        for options in ({"dry_run": True}, {"metadata": False}):
+            with self.subTest(file="albums", **options):
+                with self.assertRaises(CommandError):
+                    self.run_command(**options)
+
     def test_a_dry_run_reports_kept_added_and_removed(self):
         before = list(models.Album.objects.values_list("pk", "name", "rank"))
         output = self.run_command(dry_run=True)
