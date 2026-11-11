@@ -15,10 +15,7 @@
         <strong>{{ email }}</strong> is verified. Log in to continue.
     </p>
     {% elif no_address %}
-    <p class="text-sm text-base-content/70 mb-6">
-        This account has no email address to send a link to.
-        <a href="/#contact" class="link link-primary">Contact us</a> and we'll sort it out.
-    </p>
+    {% include 'auth/partials/_no_address.html' %}
     {% elif no_account %}
     <p class="text-sm text-base-content/70 mb-6">
         Log in to the account to get a new verification link.

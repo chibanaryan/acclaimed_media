@@ -118,8 +118,10 @@ class AuthModalLoginView(View):
             if not email_address or not email_address.verified:
                 # User exists but email not verified - show resend option.
                 # The password was right, so the resend is this account's.
-                # With no address at all there is nothing to resend to.
-                _remember_pending_account(request, user)
+                # With no address at all there is nothing to resend to,
+                # nor an account to remember for one.
+                if user.email:
+                    _remember_pending_account(request, user)
                 response = TemplateResponse(
                     request,
                     "auth/partials/_unverified_email.html",
@@ -284,21 +286,33 @@ class AuthModalForgotPasswordView(View):
         return response
 
 
-def _address_row_for(request, user):
-    """The address row for an account that has none for ``user.email``.
+def _resendable_row(request, user, email_address):
+    """The row to send ``user.email``'s link for, made fit to confirm.
 
-    Made in the admin, or its email changed there, it has nothing a link
-    could confirm, and its login says unverified. Through allauth's own
-    `add_email`, which lower-cases the address, as every comparison allauth
-    makes does (a mixed-case row escaped its one-verified-account rule), and
-    which a second press of Resend at the same moment reads back. Then made
-    the primary address, as `user.email` names it: left beside an old
-    primary row, allauth went on treating the old address as the account's.
+    The account's own row for the address (``email_address``), or one made
+    for an account that has none: made in the admin, or its email changed
+    there. Through allauth's `add_email`, which lower-cases the address and
+    reads back a row a second press of Resend made at the same moment.
+
+    Lower-case, as every comparison allauth makes is: a mixed-case row,
+    which only the admin writes, escaped its rule that one account holds a
+    verified address. And the account's primary address, as `user.email`
+    names it: beside an old primary row, allauth went on treating the old
+    address as the account's, and confirming does not promote it.
+    `set_as_primary` saves `user.email` as the row has it, lower-case.
     """
     from allauth.account.models import EmailAddress
 
     with transaction.atomic():
-        email_address = EmailAddress.objects.add_email(request, user, user.email)
+        if email_address is None:
+            email_address = EmailAddress.objects.add_email(request, user, user.email)
+        lowered = email_address.email.lower()
+        if (
+            email_address.email != lowered
+            and not EmailAddress.objects.filter(user=user, email=lowered).exists()
+        ):
+            email_address.email = lowered
+            email_address.save(update_fields=["email"])
         if not email_address.primary:
             email_address.set_as_primary()
     return email_address
@@ -348,12 +362,11 @@ class AuthModalResendVerificationView(View):
             .exclude(user=user)
             .exists()
         )
-        if email_address is None and not taken:
-            email_address = _address_row_for(request, user)
         # Verified already (in another browser, say): nothing to send, and
         # the screen says so rather than promise a link
         verified = bool(email_address and email_address.verified)
-        if email_address and not verified and not taken:
+        if not verified and not taken:
+            email_address = _resendable_row(request, user, email_address)
             _send_confirmation(request, email_address, signup=False)
 
         response = TemplateResponse(

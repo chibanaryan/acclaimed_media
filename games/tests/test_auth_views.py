@@ -16,6 +16,7 @@ from django.urls import reverse
 
 from core.tests.utils import clear_all_caches
 from games.adapters import ModalAccountAdapter, ModalSocialAccountAdapter
+from games.views.auth import PENDING_ACCOUNT_KEY
 
 User = get_user_model()
 
@@ -467,17 +468,51 @@ class VerificationBelongsToAnAccountTests(TestCase):
         self.assertEqual(EmailAddress.objects.filter(user=user).count(), 1)
 
     def test_an_account_with_no_email_is_told_so_at_login(self):
-        """Not offered a resend that can send nothing."""
+        """Not offered a resend that can send nothing, and pointed at the
+        contact form, which opens in place (a `/#contact` link opened
+        nothing from the home page)."""
         from django.core import mail
 
         User.objects.create_user(username="noemail", password=self.PASSWORD)
         login = self._log_in("noemail")
-        self.assertContains(login, "no email address to verify")
+        self.assertContains(login, "No Address to Verify")
         self.assertNotContains(login, reverse("auth-modal-resend-verification"))
+        self.assertContains(login, "contact-modal-trigger")
+        self.assertContains(login, "data-close-dialog")
+        self.assertNotIn(PENDING_ACCOUNT_KEY, self.client.session)
+        response = self.client.post(reverse("auth-modal-resend-verification"))
+        self.assertEqual(mail.outbox, [])
+        self.assertNotContains(response, "We've sent")
+
+    def test_an_address_cleared_after_the_login_is_not_promised_a_link(self):
+        """Staff can blank an account's email after its login remembered
+        it: the resend has nothing to send to, and says so."""
+        from django.core import mail
+
+        user = self._account("cleared", "cleared@example.com")
+        self._log_in("cleared")
+        User.objects.filter(pk=user.pk).update(email="")
         response = self.client.post(reverse("auth-modal-resend-verification"))
         self.assertEqual(mail.outbox, [])
         self.assertContains(response, "No Address to Verify")
-        self.assertContains(response, 'href="/#contact"')
+
+    def test_an_existing_row_is_made_primary_and_lower_case(self):
+        """A row the admin made beside an old primary one was found and
+        sent a link, but never promoted, nor lower-cased."""
+        user = self._account("rows", "old@example.com")
+        user.email = "Rows@Example.com"
+        user.save()
+        EmailAddress.objects.create(
+            user=user, email="Rows@Example.com", verified=False, primary=False
+        )
+        self._log_in("rows")
+        self.assertContains(
+            self.client.post(reverse("auth-modal-resend-verification")), "Email Sent"
+        )
+        row = EmailAddress.objects.get(user=user, email__iexact="rows@example.com")
+        self.assertEqual((row.email, row.primary), ("rows@example.com", True))
+        user.refresh_from_db()
+        self.assertEqual(user.email, "rows@example.com")
 
     def test_the_browser_that_signed_up_is_logged_in_by_its_link(self):
         from django.core import mail

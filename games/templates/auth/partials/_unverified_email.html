@@ -5,13 +5,9 @@
     {# Warning icon #}
     <span class="mdi mdi-email-alert text-6xl text-warning mb-4 block" aria-hidden="true"></span>
 
-    <h3 id="authModalTitle" class="text-lg font-bold mb-2">Email Not Verified</h3>
+    <h3 id="authModalTitle" class="text-lg font-bold mb-2">{% if no_address %}No Address to Verify{% else %}Email Not Verified{% endif %}</h3>
     {% if no_address %}
-    {# An account made without an address: nothing a link could go to #}
-    <p class="text-sm text-base-content/70 mb-6">
-        This account has no email address to verify.
-        <a href="/#contact" class="link link-primary">Contact us</a> and we'll sort it out.
-    </p>
+    {% include 'auth/partials/_no_address.html' %}
 
     <button type="button"
             class="btn btn-ghost btn-sm"

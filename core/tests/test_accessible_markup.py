@@ -238,7 +238,9 @@ class FilterTreeMarkupTests(SimpleTestCase):
 class AuthModalHeadingTests(SimpleTestCase):
     def test_every_screen_carries_the_heading_the_dialog_is_named_by(self):
         partials = sorted((BASE / "games/templates/auth/partials").glob("*.html"))
-        screens = [p for p in partials if p.name != "_profile_games_stats.html"]
+        # Pieces included by a screen, not screens of their own
+        pieces = {"_profile_games_stats.html", "_no_address.html"}
+        screens = [p for p in partials if p.name not in pieces]
         self.assertEqual(len(screens), 8)
         for partial in screens:
             with self.subTest(partial=partial.name):
