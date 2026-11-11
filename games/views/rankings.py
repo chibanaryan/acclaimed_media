@@ -762,25 +762,17 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
 
 
 def _landing_itemlist_json(name, games):
-    """Build ItemList JSON-LD for a landing page's ranked games."""
-    payload = {
-        "@context": "https://schema.org",
-        "@type": "ItemList",
-        "name": name,
-        "numberOfItems": len(games),
-        "itemListElement": [
-            {
-                "@type": "ListItem",
-                "position": position,
-                "name": game.name,
-                "url": sites.canonical_url(
-                    sites.GAMES, reverse("game-detail", kwargs={"slug": game.slug})
-                ),
-            }
-            for position, game in enumerate(games, start=1)
-        ],
-    }
-    return seo.json_ld(payload)
+    """ItemList JSON-LD for a landing page's ranked games: the shared
+    builder (``core.services.seo``), which was lifted from this function
+    and which music's landing pages use."""
+    return seo.itemlist_json(
+        name,
+        (
+            (game.name, reverse("game-detail", kwargs={"slug": game.slug}))
+            for game in games
+        ),
+        sites.GAMES,
+    )
 
 
 class SeoRankingPageView(HomePageView):

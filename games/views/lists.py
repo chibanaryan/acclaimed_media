@@ -32,6 +32,41 @@ def _sort_state(params, group_by):
     return sort, parse_direction(params.get("dir"), default_direction(sort))
 
 
+def _facet_counts(year_value, type_code):
+    """The year and type filters' options with their counts, for either
+    grouping: ``(years, types)``.
+
+    Each is counted with its own filter left out, so an option never leads
+    to an empty page, and keeps the selected option even at a count of
+    none. Types come in importance order (All-time > Decade > Misc > EOY),
+    each with its slug. The two groupings each had a copy of this.
+    """
+    year_base_qs = models.List.objects.all()
+    if type_code:
+        year_base_qs = year_base_qs.filter(type=type_code)
+    list_year_counts = list(
+        year_base_qs.values("year").annotate(count=Count("id")).order_by("-year")
+    )
+    year_str = str(year_value) if year_value else None
+    years = [
+        y for y in list_year_counts if y["count"] > 0 or str(y["year"]) == year_str
+    ]
+
+    type_base_qs = models.List.objects.all()
+    if year_value:
+        type_base_qs = type_base_qs.filter(year=year_value)
+    type_counts_raw = list(
+        type_base_qs.values("type").annotate(count=Count("id")).order_by("type")
+    )
+    types = []
+    for t in type_counts_raw:
+        t["slug"] = constants.LIST_TYPE_SLUGS.get(t["type"], t["type"])
+        if t["count"] > 0 or t["type"] == type_code:
+            types.append(t)
+    types.sort(key=lambda t: constants.LIST_TYPE_PRIORITY.get(t["type"], 99))
+    return years, types
+
+
 def _clear_filters_query(sort, direction, search_query):
     """The query string of the Clear filters link, which drops the year and
     type and keeps the sort, its direction and the search. With no type the
@@ -176,39 +211,7 @@ class ListListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
                 }
             )
 
-        # --- FACETED COUNTS FOR FILTERS ---
-        # Year counts: filtered by type only (NOT year)
-        year_base_qs = models.List.objects.all()
-        if type_code:
-            year_base_qs = year_base_qs.filter(type=type_code)
-
-        list_year_counts = list(
-            year_base_qs.values("year").annotate(count=Count("id")).order_by("-year")
-        )
-
-        year_str = str(year_value) if year_value else None
-        filtered_years = [
-            y for y in list_year_counts if y["count"] > 0 or str(y["year"]) == year_str
-        ]
-
-        # Type counts: filtered by year only (NOT type)
-        type_base_qs = models.List.objects.all()
-        if year_value:
-            type_base_qs = type_base_qs.filter(year=year_value)
-
-        type_counts_raw = list(
-            type_base_qs.values("type").annotate(count=Count("id")).order_by("type")
-        )
-
-        filtered_types = []
-        for t in type_counts_raw:
-            t["slug"] = constants.LIST_TYPE_SLUGS.get(t["type"], t["type"])
-            if t["count"] > 0 or t["type"] == type_code:
-                filtered_types.append(t)
-
-        filtered_types.sort(
-            key=lambda t: constants.LIST_TYPE_PRIORITY.get(t["type"], 99)
-        )
+        filtered_years, filtered_types = _facet_counts(year_value, type_code)
 
         # Build context
         context["type_groups"] = type_groups
@@ -446,42 +449,7 @@ class ListListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
 
         context["publication_groups"] = publication_groups
 
-        # --- FACETED COUNTS FOR FILTERS ---
-        # Year counts: filtered by type only (NOT year)
-        year_base_qs = models.List.objects.all()
-        if type_code:
-            year_base_qs = year_base_qs.filter(type=type_code)
-
-        list_year_counts = list(
-            year_base_qs.values("year").annotate(count=Count("id")).order_by("-year")
-        )
-
-        # Filter years: include count > 0 OR currently selected
-        year_str = str(year_value) if year_value else None
-        filtered_years = [
-            y for y in list_year_counts if y["count"] > 0 or str(y["year"]) == year_str
-        ]
-
-        # Type counts: filtered by year only (NOT type)
-        type_base_qs = models.List.objects.all()
-        if year_value:
-            type_base_qs = type_base_qs.filter(year=year_value)
-
-        type_counts_raw = list(
-            type_base_qs.values("type").annotate(count=Count("id")).order_by("type")
-        )
-
-        # Add slug to each type and filter: include count > 0 OR currently selected
-        filtered_types = []
-        for t in type_counts_raw:
-            t["slug"] = constants.LIST_TYPE_SLUGS.get(t["type"], t["type"])
-            if t["count"] > 0 or t["type"] == type_code:
-                filtered_types.append(t)
-
-        # Sort by importance priority (All-time > Decade > Misc > EOY)
-        filtered_types.sort(
-            key=lambda t: constants.LIST_TYPE_PRIORITY.get(t["type"], 99)
-        )
+        filtered_years, filtered_types = _facet_counts(year_value, type_code)
 
         # Build context
         context["meta"] = {"lists": {"years": filtered_years}}

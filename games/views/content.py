@@ -3,6 +3,7 @@
 import html
 import logging
 
+from django.conf import settings
 from django.contrib.flatpages.models import FlatPage
 from django.http import Http404, HttpResponse, HttpResponseGone
 from django.shortcuts import redirect
@@ -71,7 +72,7 @@ class ContactFormView(ApexCanonicalMixin, FormView):
                 None,
                 "We're sorry, but there was an error sending your message. "
                 "Please try again later or email us directly at "
-                "contact@acclaimedvideogames.com",
+                f"{settings.CONTACT_EMAIL}",
             )
             return self.form_invalid(form)
 

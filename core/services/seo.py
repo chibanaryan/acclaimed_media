@@ -2,7 +2,7 @@
 Structured data shared by the sections' SEO ranking pages.
 
 Lifted from ``games.views._landing_itemlist_json`` for music's landing pages;
-games still carries its own copy and can move onto this one unchanged.
+games' landing pages build theirs through it too.
 """
 
 import json

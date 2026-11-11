@@ -105,8 +105,6 @@ class ImportView(StaffOnlyMixin, FormView):
             # Wikipedia: depends on authentication
             # Optimized to reuse page URLs from lookup (2 network requests per game)
             # Authenticated: ~1.0 games/sec, Unauthenticated: ~0.4 games/sec
-            from django.conf import settings
-
             has_wikidata_auth = bool(getattr(settings, "WIKIDATA_ACCESS_TOKEN", None))
             wiki_games_per_sec = 1.0 if has_wikidata_auth else 0.4
             wiki_estimate_seconds = (

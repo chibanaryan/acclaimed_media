@@ -9,6 +9,7 @@ from django.views import View
 from django.views.generic import ListView, DetailView
 
 from core.mixins import HTMXPartialMixin, RobustPaginationMixin
+from core.services import ranking
 from core.services.query_params import parse_direction, parse_int
 from core.cache_helpers import current_generation, set_if_current
 from games import config, models
@@ -711,21 +712,13 @@ class DeveloperDetailView(DetailView):
             or 0
         )
 
-        rank_bins = []
-        if max_rank > 0:
-            bin_count = config.RANK_DISTRIBUTION_BIN_COUNT
-            bin_size = math.ceil(max_rank / bin_count)
-            for i in range(bin_count):
-                bin_start = i * bin_size + 1
-                bin_end = min((i + 1) * bin_size, max_rank)
-                count = sum(
-                    1 for g in all_games if g.rank and bin_start <= g.rank <= bin_end
-                )
-                rank_bins.append(
-                    {"binStart": bin_start, "binEnd": bin_end, "count": count}
-                )
-
-        context["rank_distribution"] = rank_bins
+        # The shared binning, as the rankings pages use: this page had its
+        # own copy of the arithmetic
+        context["rank_distribution"] = ranking.rank_distribution(
+            (game.rank for game in all_games),
+            max_rank,
+            config.RANK_DISTRIBUTION_BIN_COUNT,
+        )
         context["max_rank"] = max_rank
         context["rank_distribution_bin_count"] = config.RANK_DISTRIBUTION_BIN_COUNT
 
@@ -746,7 +739,7 @@ class DeveloperDetailView(DetailView):
             "game_rank_map_json": context["game_rank_map_json"],
             "game_data_map_json": context["game_data_map_json"],
             "game_developer_map": game_developer_map,
-            "rank_distribution": rank_bins,
+            "rank_distribution": context["rank_distribution"],
             "max_rank": max_rank,
             "rank_distribution_bin_count": config.RANK_DISTRIBUTION_BIN_COUNT,
         }
