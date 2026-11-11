@@ -15,7 +15,6 @@ like one site.
 """
 
 from collections import defaultdict
-import csv
 import logging
 import math
 import re
@@ -59,6 +58,7 @@ from core.mixins import (
 )
 from core.models import User
 from core import sites
+from core.services.spreadsheet import SafeWriter
 from core.services import genre_tree, render_budget, seo
 from core.services.facets import count_by
 from core.services.query_params import parse_direction, parse_id_list, parse_int
@@ -1191,7 +1191,7 @@ class AlbumDownloadView(View):
         response = HttpResponse(content_type="text/csv")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
 
-        writer = csv.writer(response)
+        writer = SafeWriter(response)
         writer.writerow(
             [
                 "Filtered Rank",

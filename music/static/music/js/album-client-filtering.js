@@ -730,6 +730,9 @@ function initAlbumJumpToRank(csf) {
     });
 
     document.addEventListener('keydown', event => {
+        // Not while an input method is composing (Enter picks a candidate),
+        // nor again while the key is held, as games' box already did
+        if (event.isComposing || event.repeat) return;
         if (event.key !== 'Enter') return;
         if (!event.target.classList.contains('jump-to-rank-input')) return;
         event.preventDefault();

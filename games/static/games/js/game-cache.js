@@ -41,7 +41,16 @@ class GameDataCache {
                 reject(new Error('IndexedDB timeout'));
             }, 5000);
 
-            const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+            let request;
+            try {
+                request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+            } catch (err) {
+                // No IndexedDB here (a private window, a refused origin):
+                // said at once, not after the timeout
+                clearTimeout(timeout);
+                reject(err);
+                return;
+            }
 
             request.onerror = () => {
                 clearTimeout(timeout);
@@ -51,8 +60,15 @@ class GameDataCache {
 
             request.onsuccess = () => {
                 clearTimeout(timeout);
-                this._db = request.result;
-                resolve(this._db);
+                const db = request.result;
+                // Another tab's upgrade waits on this connection: let it go,
+                // and open a new one next time
+                db.onversionchange = () => {
+                    db.close();
+                    if (this._db === db) this._forget();
+                };
+                this._db = db;
+                resolve(db);
             };
 
             request.onupgradeneeded = (event) => {
@@ -77,20 +93,44 @@ class GameDataCache {
     }
 
     /**
+     * Drop the connection, so the next use opens a new one
+     * @private
+     */
+    _forget() {
+        this._db = null;
+        this._initPromise = null;
+    }
+
+    /**
+     * One request on the store, awaited, so its failure is caught where it
+     * is made. Returned unawaited from inside a `try`, a failed request
+     * escaped it: `getData` threw, and the engine, whose start is latched,
+     * never started, though the payload would have loaded. A connection
+     * that fails (Safari's "connection to IndexedDB lost") is forgotten.
+     * @private
+     */
+    async _request(mode, makeRequest) {
+        const db = await this._initDB();
+        try {
+            return await new Promise((resolve, reject) => {
+                const store = db.transaction(this.STORE_NAME, mode).objectStore(this.STORE_NAME);
+                const request = makeRequest(store);
+                request.onerror = () => reject(request.error);
+                request.onsuccess = () => resolve(request.result);
+            });
+        } catch (e) {
+            if (this._db === db) this._forget();
+            throw e;
+        }
+    }
+
+    /**
      * Get cached data from IndexedDB
      * @private
      */
     async _getCached() {
         try {
-            const db = await this._initDB();
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction(this.STORE_NAME, 'readonly');
-                const store = transaction.objectStore(this.STORE_NAME);
-                const request = store.get(this.CACHE_KEY);
-
-                request.onerror = () => reject(request.error);
-                request.onsuccess = () => resolve(request.result);
-            });
+            return await this._request('readonly', store => store.get(this.CACHE_KEY));
         } catch (e) {
             console.warn('IndexedDB read error:', e);
             return null;
@@ -103,20 +143,12 @@ class GameDataCache {
      */
     async _setCached(version, data) {
         try {
-            const db = await this._initDB();
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction(this.STORE_NAME, 'readwrite');
-                const store = transaction.objectStore(this.STORE_NAME);
-                const request = store.put({
-                    key: this.CACHE_KEY,
-                    version,
-                    data,
-                    timestamp: Date.now()
-                });
-
-                request.onerror = () => reject(request.error);
-                request.onsuccess = () => resolve();
-            });
+            await this._request('readwrite', store => store.put({
+                key: this.CACHE_KEY,
+                version,
+                data,
+                timestamp: Date.now()
+            }));
         } catch (e) {
             console.warn('IndexedDB write error:', e);
         }
@@ -200,15 +232,7 @@ class GameDataCache {
      */
     async clearCache() {
         try {
-            const db = await this._initDB();
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction(this.STORE_NAME, 'readwrite');
-                const store = transaction.objectStore(this.STORE_NAME);
-                const request = store.delete(this.CACHE_KEY);
-
-                request.onerror = () => reject(request.error);
-                request.onsuccess = () => resolve();
-            });
+            await this._request('readwrite', store => store.delete(this.CACHE_KEY));
         } catch (e) {
             console.warn('Cache clear error:', e);
         }

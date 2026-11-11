@@ -318,3 +318,12 @@ class SavedFilterBodySizeTests(TestCase):
             "/api/saved-filters/", data=body, content_type="application/json"
         )
         self.assertEqual(response.status_code, 201)
+
+
+class CsvFormulaTests(TestCase):
+    """A name a spreadsheet would run as a formula is written as text."""
+
+    def test_the_games_download_writes_a_formula_as_text(self):
+        models.Game.objects.create(name="=1+1", rank=1, year_of_release=2000)
+        body = self.client.get("/download/").content.decode()
+        self.assertIn("'=1+1", body)

@@ -41,6 +41,7 @@ from ..services.credits import (
     variant_names_of,
 )
 from ..services.data_version import compute_album_data_version
+from ..views import expand_genre_ids
 from . import serializers
 
 
@@ -338,9 +339,10 @@ class AlbumListView(MusicReadAPIMixin, ListAPIView):
 
         # Through the parsers that never raise: `str.isdigit()` takes "²",
         # which `int()` then refuses, and `?start=²` was a 500.
+        # A genre and the styles under it, as the page filters
         genre_ids = parse_id_list(params.get("genres"))
         if genre_ids:
-            qs = qs.filter(genres__id__in=genre_ids)
+            qs = qs.filter(genres__id__in=expand_genre_ids(genre_ids))
 
         for param, lookup in (("start", "gte"), ("end", "lte")):
             value = parse_int(params.get(param))

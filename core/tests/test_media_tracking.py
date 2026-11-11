@@ -73,3 +73,30 @@ class MediaTrackingSourceTests(SimpleTestCase):
         self.assertIn("setStatus === status", update)
         self.assertIn("ids.add(itemId)", update)
         self.assertIn("ids.delete(itemId)", update)
+
+
+class TwinsTakeTheWholeButtonTests(SimpleTestCase):
+    """A row the engine rendered holds one icon span per state, hidden but
+    one. Mirroring into the twin's first span lit the first state's icon
+    beside the old one: mark a filtered row on desktop, rotate a tablet
+    across the breakpoint, and the mobile half showed two icons."""
+
+    def test_music_copies_the_button_and_its_menu(self):
+        source = TRACKING_JS.read_text()
+        mirror = source.split("_mirrorTwins(scope", 1)[1]
+        self.assertNotIn("'.tracking-button span'", mirror)
+        self.assertIn("button.innerHTML = sourceButton.innerHTML", mirror)
+        self.assertIn("'data-tip', 'aria-label'", mirror)
+        self.assertIn("menu.innerHTML = sourceMenu.innerHTML", mirror)
+        # Its copied items post through htmx, which must see them
+        self.assertIn("window.htmx.process(menu)", mirror)
+
+    def test_games_copies_the_button(self):
+        partial = (
+            Path(settings.BASE_DIR)
+            / "games/templates/games/includes/_played_button.html"
+        ).read_text()
+        self.assertIn("otherBtn.innerHTML = btn.innerHTML", partial)
+        self.assertNotIn("btn.querySelector('span')", partial)
+        # Of the same size only, as music's twins are matched
+        self.assertIn("(otherWrapper.dataset.size || '') === size", partial)

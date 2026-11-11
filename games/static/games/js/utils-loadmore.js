@@ -831,16 +831,28 @@ function jumpToHighlightedGame(gameId) {
         return;
     }
 
-    // Game not loaded - wait for CSF, find position, use jumpToRankClientSide
+    // Game not loaded - wait for CSF, find position, use jumpToRankClientSide.
+    // Not for ever: once the engine has failed (its bundle or its data,
+    // `filterComponent._engineUnavailable`), or after a minute, it is not
+    // coming, and this asked ten times a second for as long as the page
+    // stayed open
+    var giveUpAt = Date.now() + 60000;
+    var waitForCSF = function() {
+        if (window.gameEngineUnavailable || Date.now() > giveUpAt) {
+            console.warn('[JumpToHighlight] No engine to find the game with:', gameId);
+            return;
+        }
+        setTimeout(checkCSF, 100);
+    };
     var checkCSF = function() {
         if (typeof getClientSideFiltering !== 'function') {
-            setTimeout(checkCSF, 100);
+            waitForCSF();
             return;
         }
 
         var csf = getClientSideFiltering();
         if (!csf || !csf.isReady()) {
-            setTimeout(checkCSF, 100);
+            waitForCSF();
             return;
         }
 

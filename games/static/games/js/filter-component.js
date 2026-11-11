@@ -494,6 +494,8 @@ document.addEventListener('alpine:init', () => {
         /** The engine will not answer: its bundle or its data failed. */
         _engineUnavailable() {
             this._clientFilterUnavailable = true;
+            // For a highlight landing waiting on the engine to find its row
+            window.gameEngineUnavailable = true;
             this._rollBackIfStranded();
         },
 
@@ -1242,45 +1244,10 @@ document.addEventListener('alpine:init', () => {
                         }, 300);
                     }
 
-                    const yearCountsEl = document.getElementById('year-counts-update');
-                    if (yearCountsEl) {
-                        try {
-                            const yearCounts = JSON.parse(yearCountsEl.textContent);
-                            window.dispatchEvent(new CustomEvent('year-counts-update', { detail: yearCounts }));
-                        } catch (e) {
-                            console.error('Error parsing year counts:', e);
-                        }
-                    }
-
-                    const genreCountsEl = document.getElementById('genre-counts-update');
-                    if (genreCountsEl) {
-                        try {
-                            const genreCounts = JSON.parse(genreCountsEl.textContent);
-                            window.dispatchEvent(new CustomEvent('genre-counts-update', { detail: genreCounts }));
-                        } catch (e) {
-                            console.error('Error parsing genre counts:', e);
-                        }
-                    }
-
-                    const platformCountsEl = document.getElementById('platform-counts-update');
-                    if (platformCountsEl) {
-                        try {
-                            const platformCounts = JSON.parse(platformCountsEl.textContent);
-                            window.dispatchEvent(new CustomEvent('platform-counts-update', { detail: platformCounts }));
-                        } catch (e) {
-                            console.error('Error parsing platform counts:', e);
-                        }
-                    }
-
-                    const rankDistEl = document.getElementById('rank-distribution-update');
-                    if (rankDistEl) {
-                        try {
-                            const rankDist = JSON.parse(rankDistEl.textContent);
-                            window.dispatchEvent(new CustomEvent('rank-distribution-update', { detail: rankDist }));
-                        } catch (e) {
-                            console.error('Error parsing rank distribution:', e);
-                        }
-                    }
+                    // Every count the partial carries, through the one reader:
+                    // a copy here left out the playtime presets and the series,
+                    // which kept the counts from the page's load
+                    this.dispatchInitialCounts();
                 } else {
                     const contentEl = document.getElementById('content');
                     if (contentEl) {

@@ -514,6 +514,15 @@ class BaseMediaListRenderer {
     }
 
     /**
+     * The desktop count line when nothing matched: the section's
+     * `empty_count_label`, which a subclass names
+     * @returns {string}
+     */
+    emptyCountLabel() {
+        return '';
+    }
+
+    /**
      * Generate result summary HTML
      * @param {number} loaded - Number of rows on the page
      * @param {number} total - Total count
@@ -522,6 +531,10 @@ class BaseMediaListRenderer {
      */
     getResultSummaryHtml(loaded, total, options = {}) {
         const { start = 0, compact = false } = options;
+        // As the server's count line reads when nothing matched
+        // (`empty_count_label` in _media_list_controls.html): the mobile line
+        // says nothing. "Showing 0 of 0" from the engine read differently.
+        if (!total) return compact ? '' : this.emptyCountLabel();
         // Once a jump has left rows above the window, a bare count would
         // read as "the first N", so name the range instead.
         const shown = start > 0

@@ -1,6 +1,6 @@
 """The rankings page as a CSV file, with the page's own filters and sort."""
 
-import csv
+from core.services.spreadsheet import SafeWriter
 
 from django.db.models import Count
 from django.http import HttpResponse
@@ -148,7 +148,7 @@ def download_games_csv(request):
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
 
-    writer = csv.writer(response)
+    writer = SafeWriter(response)
 
     # Build header row - include Played column for authenticated users
     header = [

@@ -62,8 +62,11 @@
                     <template x-if="!q || q.trim().length < 2">
                         <li class="disabled"><span class="text-base-content/85 text-sm">Enter 2+ characters</span></li>
                     </template>
-                    <template x-if="q && q.trim().length >= 2 && !loading && !hasResults()">
+                    <template x-if="q && q.trim().length >= 2 && !loading && !hasResults() && !failed">
                         <li class="disabled"><span class="text-base-content/85 text-sm">No results found</span></li>
+                    </template>
+                    <template x-if="q && q.trim().length >= 2 && !loading && failed">
+                        <li class="disabled"><span class="text-base-content/85 text-sm">Search failed. Try again.</span></li>
                     </template>
                 </ul>
                 <ul class="menu menu-sm p-0 w-full flex-nowrap [&>li>*]:w-full [&>li>*]:min-w-0" role="listbox" id="sidebar-search-results" x-ref="listbox" aria-label="Search results" x-show="hasResults()">
@@ -173,8 +176,11 @@
                     <template x-if="!q || q.trim().length < 2">
                         <li class="disabled"><span class="text-base-content/85 text-sm">Enter 2+ characters</span></li>
                     </template>
-                    <template x-if="q && q.trim().length >= 2 && !loading && !hasResults()">
+                    <template x-if="q && q.trim().length >= 2 && !loading && !hasResults() && !failed">
                         <li class="disabled"><span class="text-base-content/85 text-sm">No results found</span></li>
+                    </template>
+                    <template x-if="q && q.trim().length >= 2 && !loading && failed">
+                        <li class="disabled"><span class="text-base-content/85 text-sm">Search failed. Try again.</span></li>
                     </template>
                 </ul>
                 <ul class="menu menu-sm p-0 w-full flex-nowrap [&>li>*]:w-full [&>li>*]:min-w-0" role="listbox" id="sidebar-search-results" x-ref="listbox" aria-label="Search results" x-show="hasResults()">

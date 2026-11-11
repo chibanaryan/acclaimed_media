@@ -69,19 +69,18 @@
         window.wantToPlayGameIds?.delete(igdbId);
     }
 
-    // Sync other wrappers with same IGDB ID (desktop/mobile views)
+    // Sync other wrappers with same IGDB ID (desktop/mobile views), of the
+    // same size: a detail page's large icon does not belong in a row
+    var size = wrapper.dataset.size || '';
     document.querySelectorAll('.played-button-wrapper[data-igdb-id="' + igdbId + '"]').forEach(function(otherWrapper) {
-        if (otherWrapper !== wrapper) {
+        if (otherWrapper !== wrapper && (otherWrapper.dataset.size || '') === size) {
             var btn = wrapper.querySelector('.played-button');
             var otherBtn = otherWrapper.querySelector('.played-button');
             if (btn && otherBtn) {
-                // Copy the icon content (first child span of button)
-                var iconSpan = btn.querySelector('span');
-                var otherIconSpan = otherBtn.querySelector('span');
-                if (iconSpan && otherIconSpan) {
-                    otherIconSpan.innerHTML = iconSpan.innerHTML;
-                    otherIconSpan.className = iconSpan.className;
-                }
+                // The whole button's content, not its first span: a row the
+                // engine rendered holds one span per state, so copying the
+                // first left the old state's icon showing beside the new
+                otherBtn.innerHTML = btn.innerHTML;
                 otherBtn.dataset.tip = btn.dataset.tip;
                 otherBtn.setAttribute('aria-label', btn.getAttribute('aria-label'));
             }

@@ -373,7 +373,6 @@ function developerFilter() {
             // Assign new Set to trigger reactivity
             this.selectedDeveloperIds = newSelection;
             this.updateURL();
-            this.updateIndeterminateStates();
             this.dispatchRankDistribution();
         },
 
@@ -469,44 +468,73 @@ function developerFilter() {
         },
 
         /**
-         * Update indeterminate states for all checkboxes
-         * Note: With x-effect in the template, this is now handled reactively by Alpine.js
-         * Keeping this method for backwards compatibility but it's no longer needed
-         */
-        updateIndeterminateStates() {
-            // No-op: Alpine.js x-effect handles this now
-        },
-
-        /**
-         * Scroll to and highlight a game element
+         * Scroll to and highlight a game's row, at either width.
+         *
+         * The row's wrapper, not `#game-<id>`: that is the desktop half,
+         * hidden below 962px, so a phone scrolled nowhere. Highlighted as
+         * the rankings do (`flashHighlight`), both halves at once.
          */
         scrollToGame(gameId) {
             this.$nextTick(() => {
                 setTimeout(() => {
-                    const gameEl = document.getElementById(`game-${gameId}`);
-                    if (gameEl) {
-                        gameEl.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
-                        gameEl.classList.add('bg-primary/10', 'rounded-lg');
-                        // Remove highlight after 2 seconds
-                        setTimeout(() => {
-                            gameEl.classList.remove('bg-primary/10');
-                        }, 2000);
+                    const row = document.querySelector(
+                        `#games-container [data-game-id="${gameId}"]`
+                    );
+                    if (!row) return;
+                    const halves = [
+                        document.getElementById(`game-${gameId}`),
+                        document.getElementById(`game-${gameId}-mobile`)
+                    ];
+                    if (typeof flashHighlight === 'function') {
+                        flashHighlight(row, halves);
+                    } else {
+                        row.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
                     }
                 }, 100);
             });
         },
 
         /**
+         * Apply the address's fragment, on load and on every change of it.
+         *
+         * `#developers=1,5` selects; `#developer-3-game-9` (a row's link to
+         * a studio's game) selects the studio and its own, and goes to the
+         * game; `#game-9` goes to the game alone. The hashchange listener
+         * knew only the first, so following a studio link from a row on
+         * this page cleared the filter and went nowhere.
+         */
+        applyHash(hash) {
+            const studio = hash.match(/^#developer-(\d+)(?:-game-(\d+))?$/);
+            const gameOnly = hash.match(/^#game-(\d+)$/);
+            if (hash.startsWith('#developers=')) {
+                const ids = hash.slice(12).split(',').map(Number).filter(id => !isNaN(id));
+                this.selectedDeveloperIds = new Set(ids);
+            } else if (studio) {
+                const developerId = parseInt(studio[1]);
+                const newSelection = new Set([developerId]);
+                this.checkChildrenInSet(newSelection, this.developerChildMap[developerId] || []);
+                this.selectedDeveloperIds = newSelection;
+                if (studio[2]) this.scrollToGame(parseInt(studio[2]));
+            } else if (gameOnly) {
+                // Unfiltered, so the game is there to go to
+                this.selectedDeveloperIds = new Set();
+                this.scrollToGame(parseInt(gameOnly[1]));
+            } else {
+                this.selectedDeveloperIds = new Set();
+            }
+        },
+
+        /**
          * Update URL hash with current selection
          */
         updateURL() {
+            // Replaced, not pushed: a history entry per checkbox made Back
+            // step through every tick. The query string and the entry's
+            // state are kept, which clearing the selection dropped.
             const ids = Array.from(this.selectedDeveloperIds).sort((a, b) => a - b);
-            if (ids.length > 0) {
-                window.location.hash = `developers=${ids.join(',')}`;
-            } else {
-                // Clear hash
-                history.replaceState(null, '', window.location.pathname);
-            }
+            const base = window.location.pathname + window.location.search;
+            const url = ids.length > 0 ? `${base}#developers=${ids.join(',')}` : base;
+            history.replaceState(history.state, '', url);
         },
 
         /**
@@ -537,57 +565,13 @@ function developerFilter() {
             const gameDataMap = window.GAME_DATA_MAP || {};
             this.gameMap = new Map(Object.entries(gameDataMap).map(([id, data]) => [parseInt(id), data]));
 
-            // Parse URL hash for selection state
-            const hash = window.location.hash;
+            // The fragment's selection, and the game it goes to
+            this.applyHash(window.location.hash);
 
-            // New format: #developers=1,5,12
-            if (hash.startsWith('#developers=')) {
-                const ids = hash.slice(12).split(',').map(Number).filter(id => !isNaN(id));
-                const newSelection = new Set(ids);
-                this.selectedDeveloperIds = newSelection;
-            }
-
-            // Legacy format: #developer-123-game-456 or #developer-123
-            else if (hash.match(/^#developer-(\d+)/)) {
-                const match = hash.match(/^#developer-(\d+)(?:-game-(\d+))?$/);
-                if (match) {
-                    const developerId = parseInt(match[1]);
-                    const gameId = match[2] ? parseInt(match[2]) : null;
-
-                    // Select the developer and all its children (same as manual click)
-                    const newSelection = new Set([developerId]);
-                    const childIds = this.developerChildMap[developerId] || [];
-                    this.checkChildrenInSet(newSelection, childIds);
-                    this.selectedDeveloperIds = newSelection;
-
-                    // If game ID is present, scroll to and highlight it
-                    if (gameId) {
-                        this.scrollToGame(gameId);
-                    }
-                }
-            }
-
-            // Game-only format: #game-123 (highlight without filtering)
-            else if (hash.match(/^#game-(\d+)$/)) {
-                const match = hash.match(/^#game-(\d+)$/);
-                if (match) {
-                    const gameId = parseInt(match[1]);
-                    this.scrollToGame(gameId);
-                }
-            }
-
-            // Listen for hash changes (browser back/forward)
-            // Store reference for cleanup in destroy() to prevent memory leaks
+            // A fragment changed by a link or by hand. Stored for cleanup in
+            // destroy(), against a listener per swap.
             this._hashchangeListener = () => {
-                // Re-parse hash when it changes
-                const newHash = window.location.hash;
-                if (newHash.startsWith('#developers=')) {
-                    const ids = newHash.slice(12).split(',').map(Number).filter(id => !isNaN(id));
-                    this.selectedDeveloperIds = new Set(ids);
-                } else {
-                    this.selectedDeveloperIds = new Set();
-                }
-                this.updateIndeterminateStates();
+                this.applyHash(window.location.hash);
                 this.dispatchRankDistribution();
             };
             window.addEventListener('hashchange', this._hashchangeListener);
@@ -595,7 +579,6 @@ function developerFilter() {
             // Sort games on initial load and initialize chart
             this.$nextTick(() => {
                 this.sortGames();
-                this.updateIndeterminateStates();
                 // Always dispatch rank distribution to ensure chart is in sync
                 // (chart may have server-rendered data, but this ensures consistency)
                 this.dispatchRankDistribution();

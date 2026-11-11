@@ -73,6 +73,9 @@ class SearchRequestOrderTests(SimpleTestCase):
                     output["alone"], {"loadingWhileOut": True, "after": SHOWN}
                 )
                 self.assertEqual(output["failed"], EMPTY)
+                # Which the box says, where it read "No results found"
+                self.assertIs(output["failedFlag"], True)
+                self.assertIs(output["failedThenAnswered"], False)
 
     def test_two_boxes_on_a_page_do_not_abort_each_other(self):
         """The sidebar and the mobile bar each make their own component."""

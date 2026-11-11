@@ -93,6 +93,18 @@ class AlbumListAPITests(MusicAPITestMixin, TestCase):
         data = self.payload(reverse("music-api:album-list"), genres=str(self.genre.id))
         self.assertEqual([a["name"] for a in data["results"]], ["Kid A"])
 
+    def test_a_genre_includes_the_styles_under_it(self):
+        """As the page's filter does (`expand_genre_ids`): the API matched
+        ids literally, so a root matched only albums tagged with its bare
+        name."""
+        root = models.MusicGenre.objects.create(name="Rock Root", slug="rock-root")
+        style = models.MusicGenre.objects.create(
+            name="Art Rock Style", slug="art-rock-style", parent=root
+        )
+        self.ok_computer.genres.add(style)
+        data = self.payload(reverse("music-api:album-list"), genres=str(root.id))
+        self.assertEqual([a["name"] for a in data["results"]], ["OK Computer"])
+
     def test_a_non_numeric_genre_filter_is_ignored(self):
         data = self.payload(reverse("music-api:album-list"), genres="abc")
         self.assertEqual(len(data["results"]), 2)

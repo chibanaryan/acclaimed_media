@@ -861,8 +861,11 @@ tr.entity-row:hover {
   }
 }
 
+/* `both`: a staggered row waits out its delay at the first frame, unseen.
+   With `forwards` it sat at full opacity through the delay, then blinked
+   out and faded back in (entity-load-more.js staggers each row by 8ms). */
 .game-row-enter {
-  animation: game-row-enter 0.2s ease-out forwards;
+  animation: game-row-enter 0.2s ease-out both;
 }
 
 /* =============================================================================

@@ -132,15 +132,29 @@
             const wrappers = Array.from(document.querySelectorAll(selector));
 
             const fresh = wrappers.find((el) => el.dataset.status === status);
-            const source = fresh && fresh.querySelector('.tracking-button span');
 
+            const sourceButton = fresh && fresh.querySelector('.tracking-button');
+            const sourceMenu = fresh && fresh.querySelector('ul');
             wrappers.forEach((twin) => {
                 if (twin === fresh) return;
                 if (size && twin.dataset.size !== size) return;
-                const target = twin.querySelector('.tracking-button span');
-                if (source && target) {
-                    target.className = source.className;
-                    target.innerHTML = source.innerHTML;
+                // The whole button, not its first span: a row the engine
+                // rendered holds one span per state, so writing the first
+                // left the old state's icon showing beside the new one
+                const button = twin.querySelector('.tracking-button');
+                if (sourceButton && button) {
+                    button.innerHTML = sourceButton.innerHTML;
+                    ['data-tip', 'aria-label'].forEach((name) => {
+                        const value = sourceButton.getAttribute(name);
+                        if (value !== null) button.setAttribute(name, value);
+                    });
+                }
+                // And its menu, which offers only the states the item is
+                // not in. Its items carry no Alpine, only hx-post.
+                const menu = twin.querySelector('ul');
+                if (sourceMenu && menu) {
+                    menu.innerHTML = sourceMenu.innerHTML;
+                    if (window.htmx) window.htmx.process(menu);
                 }
                 twin.dataset.status = status;
             });

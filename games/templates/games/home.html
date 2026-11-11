@@ -230,11 +230,13 @@
     }
 
     // utils-loadmore.js is fetched in an idle moment and says nothing: ask
-    // until it is there, however long a slow phone takes over it
+    // until it is there, however long a slow phone takes over it - but not
+    // for ever, should it never load
+    var jumpReadyBy = Date.now() + 60000;
     function whenJumpReady(then) {
         if (typeof window.jumpToHighlightedGame === 'function') {
             then();
-        } else {
+        } else if (Date.now() < jumpReadyBy) {
             setTimeout(function() { whenJumpReady(then); }, 100);
         }
     }

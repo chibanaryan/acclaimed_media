@@ -599,18 +599,6 @@ class AlbumListRenderer extends BaseMediaListRenderer {
     }
 
     /**
-     * Result summary, worded exactly as the shared controls partial words it
-     * server-side - which is also how the games rankings page words it. The
-     * base class does the wording, the compact mobile form and the range a
-     * jump leaves; an empty result set shows nothing, as the partial does.
-     * @returns {string} HTML
-     */
-    getResultSummaryHtml(loaded, total, options = {}) {
-        if (!total) return '';
-        return super.getResultSummaryHtml(loaded, total, options);
-    }
-
-    /**
      * Load-more button, matching `_album_load_more.html` - and so the games
      * load-more - in both wording and classes.
      * @returns {string} HTML

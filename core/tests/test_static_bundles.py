@@ -2003,3 +2003,66 @@ class AlbumEngineTakesThePageOverCleanlyTests(SimpleTestCase):
         for path in (self.ENGINE, self.BUNDLE):
             with self.subTest(path=path):
                 self.assertIn("[data-awaits-engine]", self._source(path))
+
+
+class ServerRenderedCountsAreAllDispatchedTests(SimpleTestCase):
+    """A server-rendered filter change re-sent the year, genre and platform
+    counts from its own copy of the parsing, and left out the playtime
+    presets: before the engine loaded, or with its data failed, the Short,
+    Medium and Long counts kept the page's first numbers."""
+
+    def test_the_partial_path_uses_the_one_reader(self):
+        source = (
+            Path(settings.BASE_DIR) / "games/static/games/js/filter-component.js"
+        ).read_text()
+        partial = source.split("if (partial) {", 1)[1].split(
+            "const contentEl = document.getElementById('content');", 1
+        )[0]
+        self.assertIn("this.dispatchInitialCounts();", partial)
+        self.assertNotIn("year-counts-update", partial)
+        reader = source.split("dispatchInitialCounts(options = {}) {", 1)[1]
+        self.assertIn("'hltb-counts-update'", reader.split("\n        },", 1)[0])
+
+
+class DeveloperPageFragmentTests(SimpleTestCase):
+    """The developer page's fragment: one reader for load and change, a
+    scroll that works at both widths, and no history entry per checkbox."""
+
+    def setUp(self):
+        self.source = (
+            Path(settings.BASE_DIR) / "games/static/games/js/developer-filter.js"
+        ).read_text()
+
+    def test_a_studio_link_is_read_on_change_as_on_load(self):
+        """The hashchange listener knew only `#developers=`, so a row's
+        link to a studio's game on this page cleared the filter."""
+        listener = self.source.split("this._hashchangeListener = () => {", 1)[1]
+        self.assertIn("this.applyHash(window.location.hash);", listener[:200])
+        self.assertIn("#developer-(\\d+)(?:-game-(\\d+))?$", self.source)
+
+    def test_the_row_is_found_at_either_width(self):
+        """`#game-<id>` is the desktop half, hidden on a phone."""
+        scroll = self.source.split("scrollToGame(gameId) {", 1)[1][:900]
+        self.assertIn('[data-game-id="${gameId}"]', scroll)
+        self.assertIn("flashHighlight(row, halves)", scroll)
+
+    def test_a_tick_replaces_the_address(self):
+        update = self.source.split("updateURL() {", 1)[1][:700]
+        self.assertNotIn("location.hash =", update)
+        self.assertIn("history.replaceState(history.state, '', url)", update)
+        self.assertIn("window.location.search", update)
+
+
+class JumpBoxKeyGuardTests(SimpleTestCase):
+    """Enter in a jump box jumps once: not while an input method composes,
+    nor once per repeat of a held key. Games' box had the guard; music's
+    jumped again on every repeat."""
+
+    def test_both_boxes_guard_enter(self):
+        for path in (
+            "games/static/games/js/utils-loadmore.js",
+            "music/static/music/js/album-client-filtering.js",
+        ):
+            with self.subTest(path=path):
+                source = (Path(settings.BASE_DIR) / path).read_text()
+                self.assertRegex(source, r"\.isComposing \|\| \w+\.repeat\) return;")

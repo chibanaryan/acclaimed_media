@@ -45,6 +45,9 @@ function createMediaSearchData(apiUrl, limits) {
         showMenu: false,
         q: '',
         loading: false,
+        // The last search failed (an error status, or offline): said as
+        // such, where it read as "No results found"
+        failed: false,
         results: empty(),
         order: groups.slice(),
 
@@ -61,6 +64,7 @@ function createMediaSearchData(apiUrl, limits) {
             // The results are about to change under the active option
             this.clearActiveOption();
             const query = this.q.trim();
+            this.failed = false;
             if (query.length < 2) {
                 requests.abort();
                 this.results = empty();
@@ -97,6 +101,7 @@ function createMediaSearchData(apiUrl, limits) {
                 console.error('Search error:', e);
                 this.results = empty();
                 this.order = groups.slice();
+                this.failed = true;
             } finally {
                 // An aborted request leaves `loading` to whatever replaced it
                 if (!signal.aborted) this.loading = false;
@@ -109,6 +114,7 @@ function createMediaSearchData(apiUrl, limits) {
             this.showMenu = false;
             this.q = '';
             this.loading = false;
+            this.failed = false;
             this.results = empty();
             this.order = groups.slice();
         }

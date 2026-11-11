@@ -136,6 +136,13 @@ async function run({ make, body, names }) {
     request('beatles').fail();
     await asked;
     out.failed = state(box);
+    // Said as a failure, not as no results; the next keystroke starts over
+    out.failedFlag = box.failed;
+    box.q = 'beatle';
+    asked = box.loadResults();
+    request('beatle').answer(body('for beatle'));
+    await asked;
+    out.failedThenAnswered = box.failed;
 
     // Two boxes on one page (sidebar and mobile bar) do not abort each other
     const one = start();

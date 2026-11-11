@@ -35,6 +35,15 @@ class GameListRenderer extends BaseMediaListRenderer {
     }
 
     /**
+     * The count line's words when nothing matched, as the server's
+     * (`empty_count_label` in _game_list_results.html)
+     * @returns {string}
+     */
+    emptyCountLabel() {
+        return 'Advanced Search';
+    }
+
+    /**
      * Platform family mappings (must match game_filters.py PLATFORM_FAMILIES)
      * @private
      */

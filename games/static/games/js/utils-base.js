@@ -982,6 +982,9 @@ function createUnifiedSearchData(apiUrl, developerLimit = 3, gameLimit = 5, seri
         series: [],
         order: SEARCH_GROUPS_GAMES.slice(),
         loading: false,
+        // The last search failed (an error status, or offline): said as
+        // such, where it read as "No results found"
+        failed: false,
 
         hasResults() {
             return this.developers.length > 0 || this.games.length > 0 || this.series.length > 0;
@@ -1003,6 +1006,7 @@ function createUnifiedSearchData(apiUrl, developerLimit = 3, gameLimit = 5, seri
             // The results are about to change under the active option
             this.clearActiveOption();
             const trimmedQ = this.q.trim();
+            this.failed = false;
             if (trimmedQ.length < 2) {
                 requests.abort();
                 this.developers = [];
@@ -1031,6 +1035,7 @@ function createUnifiedSearchData(apiUrl, developerLimit = 3, gameLimit = 5, seri
                 this.games = [];
                 this.series = [];
                 this.order = SEARCH_GROUPS_GAMES.slice();
+                this.failed = true;
             } finally {
                 // An aborted request leaves `loading` to whatever replaced it
                 if (!signal.aborted) this.loading = false;
@@ -1047,6 +1052,7 @@ function createUnifiedSearchData(apiUrl, developerLimit = 3, gameLimit = 5, seri
             this.series = [];
             this.order = SEARCH_GROUPS_GAMES.slice();
             this.loading = false;
+            this.failed = false;
         }
     };
 }
