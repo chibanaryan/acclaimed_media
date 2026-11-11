@@ -280,11 +280,9 @@ class Filter:
             return qs
         if isinstance(param_val, int) and abs(param_val) > MAX_INT:
             return qs
-        if self.fields:
-            query = Q()
-            for field in self.fields:
-                query |= Q(**{field: param_val})
-
-        qs = qs.filter(query)
-
-        return qs
+        # Any field may match. A filter with none filters nothing: `query`
+        # was left unbound there, an UnboundLocalError
+        query = Q()
+        for field in self.fields:
+            query |= Q(**{field: param_val})
+        return qs.filter(query)

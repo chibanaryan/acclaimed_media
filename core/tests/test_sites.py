@@ -555,6 +555,9 @@ class CookieSettingsTests(SimpleTestCase):
         from pathlib import Path
 
         base = Path(settings.BASE_DIR)
+        # One reader, which the others call
+        reader = (base / "games/static/games/js/utils-base.js").read_text()
+        self.assertIn(f"{settings.CSRF_COOKIE_NAME}=", reader)
         for name in (
             "core/static/core/js/media-list-controls.js",
             "core/static/core/js/base-renderer.js",
@@ -562,8 +565,9 @@ class CookieSettingsTests(SimpleTestCase):
         ):
             with self.subTest(file=name):
                 source = (base / name).read_text()
-                self.assertIn(settings.CSRF_COOKIE_NAME, source)
+                self.assertIn("readCsrfToken()", source)
                 self.assertNotRegex(source, r"[^_]csrftoken=")
+                self.assertNotIn("document.cookie", source)
 
 
 class NoPathAssumesTheOldLayoutTests(SimpleTestCase):

@@ -594,7 +594,7 @@ class AlbumListRenderer extends BaseMediaListRenderer {
     _scrollToHighlight(albumId) {
         const desktop = document.getElementById(`music-${albumId}`);
         const mobile = document.getElementById(`music-${albumId}-mobile`);
-        const target = window.matchMedia('(min-width: 962px)').matches
+        const target = isDesktopWidth()
             ? desktop || mobile
             : mobile || desktop;
         if (!target) return;

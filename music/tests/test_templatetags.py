@@ -50,28 +50,6 @@ class ListTypeFilterTests(TestCase):
     def test_an_unknown_code_returns_itself(self):
         self.assertEqual(music_filters.get_list_type_label("Z"), "Z")
 
-    def test_badge_class_per_type_matches_the_games_page(self):
-        # Same colour per list type across the whole site.
-        self.assertEqual(
-            music_filters.get_list_type_badge_class(core_constants.LIST_ALLTIME),
-            "badge-info",
-        )
-        self.assertEqual(
-            music_filters.get_list_type_badge_class(core_constants.LIST_DECADE),
-            "badge-success",
-        )
-        self.assertEqual(
-            music_filters.get_list_type_badge_class(core_constants.LIST_MISC),
-            "badge-warning",
-        )
-        self.assertEqual(
-            music_filters.get_list_type_badge_class(core_constants.LIST_EOY),
-            "badge-error",
-        )
-
-    def test_an_unknown_code_gets_the_ghost_badge(self):
-        self.assertEqual(music_filters.get_list_type_badge_class("Z"), "badge-ghost")
-
 
 class MusicGenreIconTests(TestCase):
     def test_a_mapped_root_genre_gets_its_icon(self):

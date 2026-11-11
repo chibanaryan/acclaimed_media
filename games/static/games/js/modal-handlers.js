@@ -78,20 +78,24 @@
         });
         openAuthModal(SIGNUP_SCREEN);
     }
-    // Once htmx has started. This script is injected from an idle callback,
-    // which can come before htmx, a deferred script, has run, or between
-    // its running and its start: htmx reads its config and the page on
-    // DOMContentLoaded. So after that event's listeners, if it is still to
-    // come (the timeout lets htmx's own go first, whichever registered
-    // first), and on `load` if it has gone by; the opener runs once.
-    if (document.readyState === 'complete') {
-        openSignupFromFragment();
-    } else {
-        document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(openSignupFromFragment, 0);
-        }, { once: true });
-        window.addEventListener('load', openSignupFromFragment, { once: true });
+    // The one way a fragment opens a dialog, once htmx has started. This
+    // script is injected from an idle callback, which can come before htmx,
+    // a deferred script, has run, or between its running and its start:
+    // htmx reads its config and the page on DOMContentLoaded. So after that
+    // event's listeners, if it is still to come (the timeout lets htmx's own
+    // go first, whichever registered first), and on `load` if it has gone
+    // by. `then` may be called twice; each opener runs once.
+    function whenPageReady(then) {
+        if (document.readyState === 'complete') {
+            then();
+        } else {
+            document.addEventListener('DOMContentLoaded', function() {
+                setTimeout(then, 0);
+            }, { once: true });
+            window.addEventListener('load', then, { once: true });
+        }
     }
+    whenPageReady(openSignupFromFragment);
 
     // Ensure HTMX processes content after swaps into auth modal
     document.body.addEventListener('htmx:afterSwap', function(e) {
@@ -132,20 +136,18 @@
         }
     });
 
-    // Auto-open the contact modal (only if it exists at init)
-    var contactModal = document.getElementById('contactModal');
-
-    if (contactModal) {
-        // Auto-open if hash is #contact
-        if (window.location.hash === '#contact') {
-            setTimeout(function() {
-                contactModal.showModal();
-                // Without the #contact, and with the query the reader came
-                // with: this dropped it, and /?genres=1#contact lost its filter
-                history.replaceState(
-                    history.state, '', window.location.pathname + window.location.search
-                );
-            }, 100);
-        }
+    // `/#contact` opens the contact modal, then drops the fragment, keeping
+    // the query the reader came with (/?genres=1#contact kept its filter).
+    // Once the page is ready, the way `#signup` waits: a fixed 100 ms timeout
+    // before was a second way of saying the same thing.
+    function openContactFromFragment() {
+        if (window.location.hash !== '#contact') return;
+        var contactModal = document.getElementById('contactModal');
+        if (!contactModal || contactModal.open) return;
+        contactModal.showModal();
+        history.replaceState(
+            history.state, '', window.location.pathname + window.location.search
+        );
     }
+    whenPageReady(openContactFromFragment);
 })();

@@ -8,7 +8,6 @@ urlpatterns = [
     # Album rankings
     path("", views.AlbumHomePageView.as_view(), name="home"),
     # Album search (HTMX endpoint)
-    path("search/", views.AlbumSearchView.as_view(), name="search"),
     # The current filter state as a CSV, as the games sidebar offers
     path("download/", views.AlbumDownloadView.as_view(), name="download"),
     # Toggle an album's listen status (HTMX endpoint). Before <slug:slug>/

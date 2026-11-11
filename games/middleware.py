@@ -259,13 +259,8 @@ class HTMXPushURLMiddleware:
     def __call__(self, request):
         response = self.get_response(request)
 
-        # Check if this is an HTMX request
-        is_htmx_request = (
-            request.META.get("HTTP_HX_REQUEST") == "true"
-            or request.headers.get("HX-Request") == "true"
-        )
-
-        if is_htmx_request:
+        # An htmx request (`headers` reads the same META key)
+        if request.headers.get("HX-Request") == "true":
             # Check if HX-Push-URL is already set (case-insensitive check)
             # Django's HttpResponse headers are case-insensitive
             hx_push_url = response.get("HX-Push-URL")

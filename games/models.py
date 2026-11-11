@@ -1,6 +1,6 @@
 import logging
 from functools import cached_property
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import markdown
 from unidecode import unidecode
@@ -17,7 +17,7 @@ from core.models import (
     PublicationBase,
 )
 
-from . import constants, igdb
+from . import igdb
 
 logger = logging.getLogger(__name__)
 
@@ -253,7 +253,6 @@ class Developer(CreatorBase):
     - name, slug, parent (hierarchical self-FK)
     - is_root, is_subsidiary properties
     - root_creator, display_root_creator methods
-    - get_all_subsidiaries, get_all_subsidiary_ids methods
 
     In IGDB's data model, all developers are "company" records. This model
     represents both parent developers and subsidiary development teams using a
@@ -1564,46 +1563,6 @@ class Game(RemembersLoaded, MediaItemBase):
 
         cache[max_count] = cache[None][:max_count]
         return cache[max_count]
-
-    @property
-    def lists_grouped_by_type(self) -> Dict[str, list]:
-        """Get lists grouped by type label.
-
-        Returns:
-            Dictionary mapping type labels to lists of membership data
-        """
-        from collections import defaultdict
-
-        grouped = defaultdict(list)
-        # Use .all() to leverage prefetch_related from views when available
-        # GameDetailView prefetches with select_related("list__publisher")
-        for membership in self.lists.all():
-            list_type = membership.list.type
-            label = constants.get_list_type_label(list_type)
-            grouped[label].append(
-                {
-                    "id": membership.list.id,
-                    "name": membership.list.name,
-                    "publication": (
-                        membership.list.publisher.name
-                        if membership.list.publisher
-                        else ""
-                    ),
-                    "type": list_type,
-                    "type_name": label,
-                    "url": membership.list.url,
-                    "year": membership.list.year,
-                    "rank": membership.rank,
-                }
-            )
-
-        # Sort by predefined order
-        sorting_arr = ["All time", "Decade", "Miscellaneous", "End of year"]
-        result = {}
-        for key in sorting_arr:
-            if key in grouped:
-                result[key] = grouped[key]
-        return result
 
 
 class Publication(PublicationBase):

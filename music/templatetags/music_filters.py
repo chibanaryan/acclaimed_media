@@ -31,13 +31,6 @@ register.filter("markdown", markdown)
 
 # DaisyUI badge class per list type. These match the games source-lists page
 # exactly, so a type badge means the same colour across the whole site.
-LIST_TYPE_BADGE_CLASSES = {
-    core_constants.LIST_ALLTIME: "badge-info",
-    core_constants.LIST_DECADE: "badge-success",
-    core_constants.LIST_MISC: "badge-warning",
-    core_constants.LIST_EOY: "badge-error",
-}
-
 DEFAULT_GENRE_ICON = "mdi-music-note"
 
 # Root music genres mapped to a Material Design icon. These names are the
@@ -68,12 +61,6 @@ MUSIC_GENRE_CATEGORY_ICONS = {
 def get_list_type_label(type_code):
     """Human-readable label for a list type code (A/D/E/M)."""
     return core_constants.get_list_type_label(type_code)
-
-
-@register.filter
-def get_list_type_badge_class(type_code):
-    """DaisyUI badge modifier for a list type code."""
-    return LIST_TYPE_BADGE_CLASSES.get(type_code, "badge-ghost")
 
 
 @register.filter

@@ -43,6 +43,28 @@ async function fetchHtml(url, signal, targetId = 'content') {
 }
 
 /**
+ * Whether the page is at desktop width, where the rows show their desktop
+ * half: the stylesheet's `desktop:` breakpoint (`--breakpoint-desktop` in
+ * styles.css), named once for the scripts, which spelled it seven times.
+ * @returns {boolean}
+ */
+function isDesktopWidth() {
+    return window.matchMedia('(min-width: 962px)').matches;
+}
+
+/**
+ * The CSRF token, from the cookie (`settings.CSRF_COOKIE_NAME`), for a
+ * script's own POST. Read each time: the filter component, the renderers
+ * and the saved-filter controls had a copy each, one of which kept the
+ * first value it read and one of which did not decode it.
+ * @returns {string}
+ */
+function readCsrfToken() {
+    const match = document.cookie.match(/(?:^|;\s*)am_csrftoken=([^;]+)/);
+    return match ? decodeURIComponent(match[1]) : '';
+}
+
+/**
  * Replace a Load More container's markup without losing a keyboard
  * reader's place. Enter on Load More replaced the focused button, and focus
  * fell to the top of the page. If focus was inside, it goes to the new
@@ -1325,6 +1347,8 @@ function flashHighlight(scrollTarget, elements, options) {
 window.flashHighlight = flashHighlight;
 window.scrollBehavior = scrollBehavior;
 window.replaceKeepingFocus = replaceKeepingFocus;
+window.readCsrfToken = readCsrfToken;
+window.isDesktopWidth = isDesktopWidth;
 window.readStoredPreference = readStoredPreference;
 window.readStoredJson = readStoredJson;
 window.storePreference = storePreference;

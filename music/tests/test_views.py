@@ -1250,27 +1250,6 @@ class ArtistDetailAlbumSortTests(MusicDataMixin, TestCase):
             self.client.get(self.bowie.get_absolute_url() + "?sort=year")
 
 
-class AlbumSearchViewTests(MusicDataMixin, TestCase):
-    def test_returns_matching_albums(self):
-        response = self.client.get(reverse("music:search"), {"q": "revolver"})
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Revolver")
-
-    def test_matches_on_the_artist_credit(self):
-        response = self.client.get(reverse("music:search"), {"q": "radiohead"})
-        self.assertContains(response, "Kid A")
-
-    def test_matches_on_the_artist_credit_without_its_accents(self):
-        models.Album.objects.create(name="Homogenic", rank=4, artist_credit="Björk")
-        response = self.client.get(reverse("music:search"), {"q": "bjork"})
-        self.assertEqual([a.name for a in response.context["albums"]], ["Homogenic"])
-
-    def test_no_query_returns_nothing(self):
-        response = self.client.get(reverse("music:search"))
-        self.assertEqual(len(response.context["albums"]), 0)
-        self.assertContains(response, "No albums found")
-
-
 class MusicListListViewTests(MusicDataMixin, TestCase):
     def test_lists_every_source_in_order(self):
         response = self.client.get(reverse("music:list-list"))
@@ -1494,77 +1473,8 @@ class AlbumCoverViewTests(ClearsCachesMixin, TestCase):
         self.assertEqual(response.status_code, 200)
 
 
-class GenreGroupingTests(TestCase):
-    """The genre filter presents a two-level taxonomy, so it uses optgroups."""
-
-    def test_children_are_grouped_under_their_root(self):
-        rock = {
-            "id": 1,
-            "name": "Rock",
-            "level": 0,
-            "parent_id": None,
-            "albums_count": 10,
-        }
-        punk = {
-            "id": 2,
-            "name": "Punk",
-            "level": 0,
-            "parent_id": None,
-            "albums_count": 4,
-        }
-        post_punk = {
-            "id": 3,
-            "name": "Post-Punk",
-            "level": 1,
-            "parent_id": 2,
-            "albums_count": 3,
-        }
-        groups = views.group_genre_options([rock, punk, post_punk])
-        self.assertEqual([g["root"]["name"] for g in groups], ["Rock", "Punk"])
-        self.assertEqual(
-            [o["name"] for o in groups[1]["options"]], ["Punk", "Post-Punk"]
-        )
-
-    def test_a_root_is_selectable_as_well_as_a_label(self):
-        rock = {
-            "id": 1,
-            "name": "Rock",
-            "level": 0,
-            "parent_id": None,
-            "albums_count": 10,
-        }
-        groups = views.group_genre_options([rock])
-        self.assertEqual(groups[0]["options"], [rock])
-
-    def test_an_orphaned_child_becomes_its_own_group(self):
-        """A parent filtered out for having no albums must not lose its child."""
-        child = {
-            "id": 3,
-            "name": "Post-Punk",
-            "level": 1,
-            "parent_id": 99,
-            "albums_count": 3,
-        }
-        groups = views.group_genre_options([child])
-        self.assertEqual(groups[0]["root"]["name"], "Post-Punk")
-
-    def test_children_sort_after_their_root_then_by_name(self):
-        rock = {
-            "id": 1,
-            "name": "Rock",
-            "level": 0,
-            "parent_id": None,
-            "albums_count": 10,
-        }
-        b = {"id": 2, "name": "B Rock", "level": 1, "parent_id": 1, "albums_count": 1}
-        a = {"id": 3, "name": "A Rock", "level": 1, "parent_id": 1, "albums_count": 1}
-        groups = views.group_genre_options([rock, b, a])
-        self.assertEqual(
-            [o["name"] for o in groups[0]["options"]], ["Rock", "A Rock", "B Rock"]
-        )
-
-    def test_no_options_means_no_groups(self):
-        self.assertEqual(views.group_genre_options([]), [])
+class GenreOptionTests(TestCase):
+    """The genre options the filter is built from."""
 
     def test_the_album_count_is_selected_for_display(self):
         """Annotating without selecting left the template rendering a blank."""

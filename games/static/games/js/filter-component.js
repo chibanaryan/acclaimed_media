@@ -107,19 +107,8 @@ document.addEventListener('alpine:init', () => {
         deleteFilterDeleting: false,
 
         _getCsrfToken() {
-            const name = 'am_csrftoken'; // settings.CSRF_COOKIE_NAME
-            let cookieValue = null;
-            if (document.cookie && document.cookie !== '') {
-                const cookies = document.cookie.split(';');
-                for (let i = 0; i < cookies.length; i++) {
-                    const cookie = cookies[i].trim();
-                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                        break;
-                    }
-                }
-            }
-            return cookieValue;
+            // utils-base.js's, which every page loads first
+            return readCsrfToken();
         },
 
         // Cleanup method for memory leak prevention
@@ -1235,7 +1224,7 @@ document.addEventListener('alpine:init', () => {
                         setTimeout(() => {
                             const desktopElement = document.getElementById('game-' + highlightId);
                             const mobileElement = document.getElementById('game-' + highlightId + '-mobile');
-                            const isDesktop = window.matchMedia('(min-width: 962px)').matches;
+                            const isDesktop = isDesktopWidth();
                             const element = isDesktop ? desktopElement : mobileElement;
 
                             if (element) {

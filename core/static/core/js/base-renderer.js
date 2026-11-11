@@ -46,10 +46,8 @@ class BaseMediaListRenderer {
      * @protected
      */
     _getCsrfToken() {
-        if (this._csrfToken) return this._csrfToken;
-        const match = document.cookie.match(/(?:^|;\s*)am_csrftoken=([^;]+)/);
-        this._csrfToken = match ? match[1] : '';
-        return this._csrfToken;
+        // utils-base.js's, which every page loads first
+        return readCsrfToken();
     }
 
     /**
@@ -483,21 +481,22 @@ class BaseMediaListRenderer {
      * @param {string} viewMode - 'list' or 'grid'
      */
     _scrollToHighlight(itemId, viewMode = 'list') {
-        // Subclasses should override with their specific ID patterns
+        // A section's rows are `<prefix>-<id>`, `-mobile` and `-grid`
+        const prefix = this.ROW_ID_PREFIX || 'item';
         setTimeout(() => {
             let elementToScroll = null;
             let elementsToHighlight = [];
 
             if (viewMode === 'grid') {
-                const gridElement = document.getElementById('item-' + itemId + '-grid');
+                const gridElement = document.getElementById(prefix + '-' + itemId + '-grid');
                 if (gridElement) {
                     elementToScroll = gridElement;
                     elementsToHighlight = [gridElement];
                 }
             } else {
-                const desktopElement = document.getElementById('item-' + itemId);
-                const mobileElement = document.getElementById('item-' + itemId + '-mobile');
-                const isDesktop = window.matchMedia('(min-width: 962px)').matches;
+                const desktopElement = document.getElementById(prefix + '-' + itemId);
+                const mobileElement = document.getElementById(prefix + '-' + itemId + '-mobile');
+                const isDesktop = isDesktopWidth();
                 elementToScroll = isDesktop ? desktopElement : mobileElement;
 
                 if (desktopElement) elementsToHighlight.push(desktopElement);

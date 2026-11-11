@@ -1142,56 +1142,6 @@ class SeriesModelTests(TestCase):
 class DeveloperModelTests(TestCase):
     """Tests for Developer model methods."""
 
-    def test_get_all_subsidiaries_empty(self):
-        """Test get_all_subsidiaries with no children."""
-        dev = models.Developer.objects.create(name="Solo Dev", slug="solo-dev")
-        result = dev.get_all_subsidiaries()
-        self.assertEqual(result, [])
-
-    def test_get_all_subsidiaries_with_children(self):
-        """Test get_all_subsidiaries returns all descendants."""
-        parent = models.Developer.objects.create(name="Parent", slug="parent")
-        child1 = models.Developer.objects.create(name="Child 1", parent=parent)
-        child2 = models.Developer.objects.create(name="Child 2", parent=parent)
-        grandchild = models.Developer.objects.create(name="Grandchild", parent=child1)
-
-        result = parent.get_all_subsidiaries()
-        self.assertEqual(len(result), 3)
-        self.assertIn(child1, result)
-        self.assertIn(child2, result)
-        self.assertIn(grandchild, result)
-
-    def test_get_all_subsidiaries_include_self(self):
-        """Test get_all_subsidiaries with include_self=True."""
-        parent = models.Developer.objects.create(name="Parent", slug="parent")
-        child = models.Developer.objects.create(name="Child", parent=parent)
-
-        result = parent.get_all_subsidiaries(include_self=True)
-        self.assertEqual(len(result), 2)
-        self.assertIn(parent, result)
-        self.assertIn(child, result)
-
-    def test_get_all_subsidiary_ids(self):
-        """Test get_all_subsidiary_ids returns correct IDs."""
-        parent = models.Developer.objects.create(name="Parent", slug="parent")
-        child = models.Developer.objects.create(name="Child", parent=parent)
-        grandchild = models.Developer.objects.create(name="Grandchild", parent=child)
-
-        result = parent.get_all_subsidiary_ids()
-        self.assertEqual(len(result), 2)
-        self.assertIn(child.id, result)
-        self.assertIn(grandchild.id, result)
-
-    def test_get_all_subsidiary_ids_include_self(self):
-        """Test get_all_subsidiary_ids with include_self=True."""
-        parent = models.Developer.objects.create(name="Parent", slug="parent")
-        child = models.Developer.objects.create(name="Child", parent=parent)
-
-        result = parent.get_all_subsidiary_ids(include_self=True)
-        self.assertEqual(len(result), 2)
-        self.assertIn(parent.id, result)
-        self.assertIn(child.id, result)
-
     def test_save_clears_slug_for_non_root_developer(self):
         """Test that save() clears slug when developer has a parent."""
         parent = models.Developer.objects.create(name="Parent", slug="parent")
@@ -1368,70 +1318,6 @@ class DeveloperPropertyTests(TestCase):
         """Test is_subsidiary is False for developer without parent."""
         dev = models.Developer.objects.create(name="Root Dev", slug="root-dev")
         self.assertFalse(dev.is_subsidiary)
-
-
-class GameListsGroupedTests(TestCase):
-    """Tests for Game.lists_grouped_by_type method."""
-
-    def test_lists_grouped_by_type_empty(self):
-        """Test lists_grouped_by_type returns empty dict for game with no lists."""
-        game = models.Game.objects.create(name="No Lists Game", rank=1, igdb_id=1)
-        result = game.lists_grouped_by_type
-        self.assertEqual(result, {})
-
-    def test_lists_grouped_by_type_groups_correctly(self):
-        """Test lists_grouped_by_type groups lists by type."""
-        game = models.Game.objects.create(name="Popular Game", rank=1, igdb_id=1)
-
-        # Create publication and lists of different types
-        pub = models.Publication.objects.create(name="Test Pub", slug="test-pub")
-
-        alltime_list = models.List.objects.create(
-            name="Top 100 All Time",
-            publisher=pub,
-            type=constants.LIST_ALLTIME,
-            year=2024,
-        )
-        decade_list = models.List.objects.create(
-            name="Best of 2020s",
-            publisher=pub,
-            type=constants.LIST_DECADE,
-            year=2029,
-        )
-
-        # Add game to both lists
-        models.ListMembership.objects.create(game=game, list=alltime_list, rank=5)
-        models.ListMembership.objects.create(game=game, list=decade_list, rank=3)
-
-        result = game.lists_grouped_by_type
-        self.assertIn("All time", result)
-        self.assertIn("Decade", result)
-        self.assertEqual(len(result["All time"]), 1)
-        self.assertEqual(len(result["Decade"]), 1)
-        self.assertEqual(result["All time"][0]["rank"], 5)
-        self.assertEqual(result["Decade"][0]["rank"], 3)
-
-    def test_lists_grouped_by_type_sorted_order(self):
-        """Test lists_grouped_by_type returns types in correct order."""
-        game = models.Game.objects.create(name="Multi List Game", rank=1, igdb_id=1)
-        pub = models.Publication.objects.create(name="Pub", slug="pub")
-
-        # Create lists in non-sorted order
-        eoy_list = models.List.objects.create(
-            name="EOY", publisher=pub, type=constants.LIST_EOY, year=2023
-        )
-        alltime_list = models.List.objects.create(
-            name="All Time", publisher=pub, type=constants.LIST_ALLTIME, year=2024
-        )
-
-        models.ListMembership.objects.create(game=game, list=eoy_list, rank=1)
-        models.ListMembership.objects.create(game=game, list=alltime_list, rank=2)
-
-        result = game.lists_grouped_by_type
-        keys = list(result.keys())
-        # All time should come before End of year in sorted order
-        self.assertEqual(keys[0], "All time")
-        self.assertEqual(keys[1], "End of year")
 
 
 class IGDBGameDataEdgeCaseTests(TestCase):

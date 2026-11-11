@@ -332,18 +332,6 @@ class ClientSideFiltering {
                 this._initLoadMoreButton(loadMoreContainer, gameListContainer, countContainer);
             }
         });
-
-        // Randomize icon on hover
-        button.addEventListener('mouseenter', () => {
-            const icons = ['mdi-gamepad-variant', 'mdi-controller', 'mdi-controller-classic', 'mdi-pac-man', 'mdi-space-invaders', 'mdi-run-fast', 'mdi-power'];
-            const iconSpan = button.querySelector('.icon .mdi');
-            if (iconSpan) {
-                iconSpan.classList.remove('mdi-plus-circle-outline');
-                icons.forEach(cls => iconSpan.classList.remove(cls));
-                const randomIcon = icons[Math.floor(Math.random() * icons.length)];
-                iconSpan.classList.add(randomIcon);
-            }
-        });
     }
 
     /**

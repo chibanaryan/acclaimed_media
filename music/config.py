@@ -14,7 +14,6 @@ from django.conf import settings
 CACHE_TIMEOUT_5_MINUTES = 60 * 5  # 300 seconds
 CACHE_TIMEOUT_1_HOUR = 60 * 60  # 3600 seconds
 CACHE_TIMEOUT_24_HOURS = 60 * 60 * 24  # 86400 seconds
-CACHE_TIMEOUT_DEFAULT = CACHE_TIMEOUT_24_HOURS
 
 # Whole rendered pages for anonymous visitors (core.mixins.
 # AnonymousResponseCacheMixin), per process, and served only while the
@@ -33,7 +32,6 @@ CACHE_VERSION = "v1"
 # =============================================================================
 
 DEFAULT_PAGE_SIZE = 100
-SEARCH_PAGE_SIZE = 100
 
 # =============================================================================
 # Year Defaults
@@ -271,10 +269,6 @@ WIKIDATA_SPOTIFY_PROPERTY = "P2205"
 
 # Read off an artist entity, so Artist.musicbrainz_id needs no MusicBrainz call.
 WIKIDATA_ARTIST_MUSICBRAINZ_PROPERTY = "P434"
-
-# Cover Art Archive thumbnail sizes. 250 covers the 90px rows at 2x, 500 the
-# 300px detail image.
-COVER_ART_THUMBNAIL_SIZES = (250, 500, 1200)
 
 # What a downloaded cover may be. It is stored with the content type the
 # remote sent and served with it from this origin, which shares its cookies

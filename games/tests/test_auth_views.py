@@ -164,11 +164,11 @@ class AllauthSignupIsClosedTests(TestCase):
         # The script is injected from an idle callback, which can come
         # before htmx has started: it waits for DOMContentLoaded's
         # listeners, or `load` if that event has gone by
-        self.assertIn("setTimeout(openSignupFromFragment, 0);", source)
-        self.assertIn(
-            "window.addEventListener('load', openSignupFromFragment, { once: true })",
-            source,
-        )
+        self.assertIn("setTimeout(then, 0);", source)
+        self.assertIn("window.addEventListener('load', then, { once: true })", source)
+        self.assertIn("whenPageReady(openSignupFromFragment);", source)
+        # `#contact` waits the same way, not on a fixed timeout
+        self.assertIn("whenPageReady(openContactFromFragment);", source)
         # Never for a signed-in visitor, whatever link carried it, nor over
         # a screen the visitor opened meanwhile
         self.assertIn("authModal.dataset.signedIn === 'true' || authModal.open", source)

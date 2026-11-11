@@ -375,10 +375,7 @@ class ReadableTextTests(SimpleTestCase):
                 self.assertIn(f"{opening} {icon} <span>All ", before)
 
     def test_the_listed_text_is_no_longer_half_opacity(self):
-        for path in (
-            "music/templates/music/includes/_album_search_results.html",
-            "core/templates/core/includes/_saved_filters_dropdown.html",
-        ):
+        for path in ("core/templates/core/includes/_saved_filters_dropdown.html",):
             with self.subTest(path=path):
                 self.assertNotIn("text-base-content/50", read(path))
 

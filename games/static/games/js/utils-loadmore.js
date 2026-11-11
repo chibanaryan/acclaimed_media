@@ -5,17 +5,6 @@
  * Loaded only after initial page render to avoid blocking.
  */
 
-// Gaming icons for hover effect (from MDI subset)
-const LOAD_MORE_ICONS = [
-    'mdi-gamepad-variant',
-    'mdi-controller',
-    'mdi-controller-classic',
-    'mdi-pac-man',
-    'mdi-space-invaders',
-    'mdi-run-fast',
-    'mdi-power'
-];
-
 /**
  * Track if Load More has been initialized to prevent duplicate event listeners
  */
@@ -54,14 +43,6 @@ function initLoadMore() {
                 handleLoadMore({ currentTarget: button });
             }
         });
-
-        // Use event delegation for hover (icon randomization)
-        container.addEventListener('mouseenter', function(e) {
-            const button = e.target.closest('.load-more-button');
-            if (button) {
-                randomizeLoadMoreIcon(button);
-            }
-        }, true); // Use capture phase to catch mouseenter on button
 
         loadMoreInitialized = true;
     }
@@ -761,21 +742,6 @@ async function handleLoadMore(event) {
 }
 
 /**
- * Randomizes the Load More button icon on hover
- * @param {HTMLElement} button - The Load More button
- */
-function randomizeLoadMoreIcon(button) {
-    const iconSpan = button.querySelector('.icon .mdi');
-    if (iconSpan) {
-        // Remove default and all gaming icon classes, then add a random one
-        iconSpan.classList.remove('mdi-plus-circle-outline');
-        LOAD_MORE_ICONS.forEach(cls => iconSpan.classList.remove(cls));
-        const randomIcon = LOAD_MORE_ICONS[Math.floor(Math.random() * LOAD_MORE_ICONS.length)];
-        iconSpan.classList.add(randomIcon);
-    }
-}
-
-/**
  * Updates the result summary text
  * @param {number} loaded - Number of items currently loaded
  * @param {number} total - Total number of items
@@ -911,7 +877,7 @@ function scrollToAndHighlightGameById(gameId) {
         var desktopEl = document.getElementById('game-' + gameId);
         var mobileEl = document.getElementById('game-' + gameId + '-mobile');
 
-        var isDesktop = window.matchMedia('(min-width: 962px)').matches;
+        var isDesktop = isDesktopWidth();
         elementToScroll = isDesktop ? desktopEl : mobileEl;
 
         if (desktopEl) elementsToHighlight.push(desktopEl);

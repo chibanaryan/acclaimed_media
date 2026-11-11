@@ -32,6 +32,9 @@ class GameListRenderer extends BaseMediaListRenderer {
         // Rendering and paging are the base class's; only the grid's
         // class name differs, because styles.css keys on it.
         this.GRID_CLASS = 'game-grid';
+        // Rows are game-<id>, game-<id>-mobile and game-<id>-grid, for the
+        // base class's highlight
+        this.ROW_ID_PREFIX = 'game';
     }
 
     /**
@@ -1178,44 +1181,6 @@ class GameListRenderer extends BaseMediaListRenderer {
     </div>
 </div>`;
         return div.firstElementChild;
-    }
-
-    /**
-     * Scroll to and highlight a game
-     * @private
-     * @param {number} gameId - Game ID to highlight
-     * @param {string} viewMode - 'list' or 'grid'
-     */
-    _scrollToHighlight(gameId, viewMode = 'list') {
-        setTimeout(() => {
-            let elementToScroll = null;
-            let elementsToHighlight = [];
-
-            if (viewMode === 'grid') {
-                // Grid view has a single element per game
-                const gridElement = document.getElementById(`game-${gameId}-grid`);
-                if (gridElement) {
-                    elementToScroll = gridElement;
-                    elementsToHighlight = [gridElement];
-                }
-            } else {
-                // List view has separate desktop/mobile elements
-                const desktopElement = document.getElementById(`game-${gameId}`);
-                const mobileElement = document.getElementById(`game-${gameId}-mobile`);
-                const isDesktop = window.matchMedia('(min-width: 962px)').matches;
-                elementToScroll = isDesktop ? desktopElement : mobileElement;
-
-                if (desktopElement) elementsToHighlight.push(desktopElement);
-                if (mobileElement) elementsToHighlight.push(mobileElement);
-            }
-
-            if (elementToScroll) {
-                flashHighlight(elementToScroll, elementsToHighlight);
-                // Marked once: rows rendered later (Load More, a jump)
-                // should not come back highlighted with no fade
-                this.highlightId = null;
-            }
-        }, 300);
     }
 
     /**

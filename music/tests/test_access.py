@@ -43,7 +43,6 @@ class AccessFixtureMixin:
     def read_urls(self):
         return [
             reverse("music:home"),
-            reverse("music:search") + "?q=album",
             reverse("music:download"),
             reverse("music:list-list"),
             reverse("music:artist-list"),

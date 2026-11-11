@@ -325,30 +325,6 @@ class CreatorBase(models.Model):
             return self._prefetched_root
         return self.root_creator
 
-    def get_all_subsidiaries(self, include_self: bool = False) -> list:
-        """Get all subsidiary creators recursively."""
-        descendants = []
-        if include_self:
-            descendants.append(self)
-
-        for sub in self.subsidiaries.all():
-            descendants.append(sub)
-            descendants.extend(sub.get_all_subsidiaries(include_self=False))
-
-        return descendants
-
-    def get_all_subsidiary_ids(self, include_self: bool = False) -> list:
-        """Get IDs of all subsidiary creators (optimized for filtering)."""
-        ids = []
-        if include_self:
-            ids.append(self.id)
-
-        for sub in self.subsidiaries.all():
-            ids.append(sub.id)
-            ids.extend(sub.get_all_subsidiary_ids(include_self=False))
-
-        return ids
-
     def save(self, *args, **kwargs):
         """Save the creator, clearing slug if it has a parent."""
         # Only root creators should have slugs

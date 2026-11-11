@@ -594,39 +594,6 @@ def genre_tree_options(descendants=None):
     ]
 
 
-def group_genre_options(options):
-    """Group flat genre options under their root, for <optgroup>.
-
-    The taxonomy is two levels - a root genre and the vocabulary's leaves
-    beneath it - which is more than a flat list of names can present
-    usefully. Roots keep the order ``genre_normalizer.GENRE_HIERARCHY`` sets,
-    which the query's ``display_order`` already reflects.
-
-    A root is offered as a selectable option of its own as well as a group
-    label, because filtering on "all of Rock" is the most useful thing a
-    reader can ask for.
-    """
-    by_id = {option["id"]: option for option in options}
-    groups = []
-    group_index = {}
-
-    for option in options:
-        root = option
-        # Walk up to the root; the tree is two deep, so this is one step.
-        while root.get("parent_id") and root["parent_id"] in by_id:
-            root = by_id[root["parent_id"]]
-
-        if root["id"] not in group_index:
-            group_index[root["id"]] = {"root": root, "options": []}
-            groups.append(group_index[root["id"]])
-        group_index[root["id"]]["options"].append(option)
-
-    for group in groups:
-        group["options"].sort(key=lambda item: (item["level"], item["name"]))
-
-    return groups
-
-
 def _cached_year_baseline(min_year, max_year):
     """Every album per release year: the year heatmap's colour scale.
 
@@ -847,7 +814,6 @@ class AlbumHomePageView(MusicPageCacheMixin, RobustPaginationMixin, ListView):
         context["artists"] = _cached_artist_options()
         genres = _cached_genre_options()
         context["genres"] = genres
-        context["genre_groups"] = group_genre_options(genres)
         context["genre_tree"] = genre_tree_options(self._descendants)
         context["genre_category_icons"] = music_filters.MUSIC_GENRE_CATEGORY_ICONS
         context["default_genre_icon"] = music_filters.DEFAULT_GENRE_ICON
@@ -1573,25 +1539,6 @@ class ArtistDetailView(HTMXPartialMixin, DetailView):
         )
         context["rank_distribution_bin_count"] = config.RANK_DISTRIBUTION_BIN_COUNT
         return context
-
-
-class AlbumSearchView(ListView):
-    """HTMX search results for the album search box."""
-
-    model = models.Album
-    template_name = "music/includes/_album_search_results.html"
-    context_object_name = "albums"
-    paginate_by = 20
-
-    def get_queryset(self):
-        q = self.request.GET.get("q")
-        if not q:
-            return models.Album.objects.none()
-        return (
-            models.Album.objects.with_relations()
-            .filter(album_search_q(q))
-            .order_by("rank")[:20]
-        )
 
 
 def group_lists_by_publication(music_lists):

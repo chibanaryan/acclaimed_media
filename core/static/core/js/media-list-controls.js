@@ -25,17 +25,7 @@
 // readStoredPreference and storePreference are utils-base.js's, which every
 // page loads before Alpine: storage a private window refuses reads as empty.
 
-/**
- * The CSRF token from the cookie (settings.CSRF_COOKIE_NAME).
- *
- * `BaseMediaListRenderer` has one of these too, but it is a method on a
- * class in the deferred filtering bundle, while this file has to load
- * before Alpine - so it is not reachable from here.
- */
-function readCsrfToken() {
-    const match = document.cookie.match(/(?:^|;\s*)am_csrftoken=([^;]+)/);
-    return match ? decodeURIComponent(match[1]) : '';
-}
+// `readCsrfToken` is utils-base.js's, which loads before this file
 
 /** Parse a JSON <script> block the page rendered, or return a fallback. */
 function readJsonScript(id, fallback) {
@@ -48,13 +38,8 @@ function readJsonScript(id, fallback) {
     }
 }
 
-/** Join names with commas and an "and", as core/services/titles.py does. */
-function joinNames(names) {
-    if (!names.length) return '';
-    if (names.length === 1) return names[0];
-    if (names.length === 2) return names.join(' and ');
-    return names.slice(0, -1).join(', ') + ', and ' + names[names.length - 1];
-}
+// `joinNames` is utils-base.js's, which every page loads first: a second
+// global copy here replaced it on music pages, without its `!names` guard
 
 function mediaListControlsData(config) {
     const settings = config || {};

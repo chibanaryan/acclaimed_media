@@ -1020,8 +1020,9 @@ class HighlightSurvivesTheScrollTests(SimpleTestCase):
     CALLERS = (
         "games/static/games/js/utils-loadmore.js",
         "games/static/games/js/filter-component.js",
-        "games/static/games/js/game-list-renderer.js",
+        # games' rows highlight through the base renderer's, by ROW_ID_PREFIX
         "core/static/core/js/base-renderer.js",
+        "games/static/games/js/developer-filter.js",
         "music/static/music/js/album-list-renderer.js",
         "music/static/music/js/album-client-filtering.js",
         "games/templates/games/home.html",
