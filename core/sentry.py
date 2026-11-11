@@ -1,5 +1,23 @@
 """Sentry event processing, imported by settings."""
 
+from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
+
+# Field names the default denylist misses, which it matches whole: allauth's
+# sign-up and password-change forms post their passwords under these.
+EXTRA_DENYLIST = [
+    "password1",
+    "password2",
+    "oldpassword",
+    "new_password1",
+    "new_password2",
+    "unsubscribe_token",
+]
+
+
+def event_scrubber():
+    """The default scrubber, with the field names our forms use."""
+    return EventScrubber(denylist=DEFAULT_DENYLIST + EXTRA_DENYLIST)
+
 
 def name_unrouted_transactions(event, hint):
     """Give the requests that matched no route a few names, not one each.

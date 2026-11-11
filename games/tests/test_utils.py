@@ -641,6 +641,38 @@ class SendPostNotificationEmailTests(TestCase):
 class NotifySubscribersOfNewPostTests(TestCase):
     """Test notify_subscribers_of_new_post utility function."""
 
+    def test_an_address_the_user_has_not_verified_gets_nothing(self):
+        """The mail goes to `user.email`, so that is the address that must be
+        verified, not any other address the account holds."""
+        from allauth.account.models import EmailAddress
+        from django.core import mail
+
+        from games.models import Post
+
+        user = self._create_subscriber("old@example.com", verified=True)
+        user.email = "changed@example.com"
+        user.save()
+        EmailAddress.objects.create(
+            user=user, email="changed@example.com", verified=False, primary=False
+        )
+        author = User.objects.create_user(username="author", email="a@example.com")
+        post = Post.objects.create(title="T", text="x", author=author)
+        self.assertEqual(utils.notify_subscribers_of_new_post(post), 0)
+        self.assertEqual(mail.outbox, [])
+
+    def test_the_verified_address_is_matched_whatever_its_case(self):
+        from django.core import mail
+
+        from games.models import Post
+
+        user = self._create_subscriber("Reader@Example.com", verified=True)
+        user.email = "reader@example.com"
+        user.save()
+        author = User.objects.create_user(username="author", email="a@example.com")
+        post = Post.objects.create(title="T", text="x", author=author)
+        self.assertEqual(utils.notify_subscribers_of_new_post(post), 1)
+        self.assertEqual(len(mail.outbox), 1)
+
     def _create_subscriber(self, email, verified=True, subscribed=True):
         """Helper to create a subscriber user with EmailAddress verification."""
         from allauth.account.models import EmailAddress

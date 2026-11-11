@@ -15,6 +15,7 @@
 
             <h1 class="card-title text-2xl mb-4">Email Verified!</h1>
 
+            {% if logged_in %}
             <p class="text-base-content/85 mb-4">
                 Your email address <strong>{{ email }}</strong> has been verified.
                 You're now logged in and ready to explore!
@@ -26,6 +27,20 @@
                     Start Exploring
                 </a>
             </div>
+            {% else %}
+            {# Opened in a browser that did not sign up: verified, not signed in #}
+            <p class="text-base-content/85 mb-4">
+                Your email address <strong>{{ email }}</strong> has been verified.
+                Log in to continue.
+            </p>
+
+            <div class="card-actions mt-4">
+                <button type="button" class="auth-modal-trigger btn btn-primary">
+                    <span class="mdi mdi-login mr-2" aria-hidden="true"></span>
+                    Log In
+                </button>
+            </div>
+            {% endif %}
             {% else %}
             {# Error Icon #}
             <div class="text-6xl text-error mb-4">

@@ -59,9 +59,14 @@ class ResendVerificationRateLimitTests(AuthRateLimitTestBase):
     def test_a_second_resend_inside_the_cooldown_sends_nothing(self):
         self._user(verified=False)
         url = reverse("auth-modal-resend-verification")
+        # The resend is for the account the session logged in to
+        self.client.post(
+            reverse("auth-modal-login"),
+            {"login": "reader@example.com", "password": "correct-horse-battery"},
+        )
 
-        self.client.post(url, {"email": "reader@example.com"})
-        response = self.client.post(url, {"email": "reader@example.com"})
+        self.client.post(url)
+        response = self.client.post(url)
 
         # The page still says it was sent; the first email's link still works.
         self.assertTemplateUsed(response, "auth/partials/_verification_resent.html")

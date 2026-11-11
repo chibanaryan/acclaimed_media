@@ -3831,25 +3831,29 @@ class AuthModalViewsTest(TestCase):
             user=user, email="resend@example.com", verified=False, primary=True
         )
 
-        response = self.client.post(
-            reverse("auth-modal-resend-verification"),
-            {"email": "resend@example.com"},
+        # The resend is for the account just logged in to
+        self.client.post(
+            reverse("auth-modal-login"),
+            {"login": "resend@example.com", "password": "testpass123"},
         )
+        response = self.client.post(reverse("auth-modal-resend-verification"))
         self.assertEqual(response.status_code, 200)
         content = response.content.decode("utf-8")
         self.assertIn("Email Sent", content)
         self.assertIn("resend@example.com", content)
 
-    def test_auth_modal_resend_verification_nonexistent_email_same_response(self):
-        """Test resend shows same message for nonexistent email."""
+    def test_auth_modal_resend_verification_without_an_account_sends_nothing(self):
+        """With no account in the session there is nobody to resend for,
+        whatever address is posted: the reader is asked to log in."""
+        from django.core import mail
+
         response = self.client.post(
             reverse("auth-modal-resend-verification"),
             {"email": "nonexistent@example.com"},
         )
         self.assertEqual(response.status_code, 200)
-        content = response.content.decode("utf-8")
-        # Should show same success message (prevents enumeration)
-        self.assertIn("Email Sent", content)
+        self.assertContains(response, "Log In to Resend")
+        self.assertEqual(mail.outbox, [])
 
     def test_verification_sent_template_has_resend_button(self):
         """Test that verification sent screen has resend button."""
@@ -3984,8 +3988,9 @@ class AuthModalViewsTest(TestCase):
         content = response.content.decode("utf-8")
         self.assertIn("already taken", content)
 
-    def test_signup_existing_unverified_email_shows_resend(self):
-        """Test signup with existing unverified email shows resend option."""
+    def test_signup_existing_unverified_email_points_to_login(self):
+        """Signing up on an address an account waits on says so, and points
+        to logging in to that account rather than resending for it."""
         from allauth.account.models import EmailAddress
         from django.contrib.auth import get_user_model
 
@@ -4010,7 +4015,8 @@ class AuthModalViewsTest(TestCase):
         self.assertEqual(response.status_code, 200)
         content = response.content.decode("utf-8")
         self.assertIn("Email Not Verified", content)
-        self.assertIn("Resend Verification Email", content)
+        self.assertNotIn("Resend Verification Email", content)
+        self.assertIn("log in to get a new verification link", content)
 
     def test_profile_username_too_short(self):
         """Test profile edit with username less than 3 characters shows error."""

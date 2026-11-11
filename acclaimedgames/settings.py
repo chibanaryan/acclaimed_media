@@ -11,7 +11,7 @@ from sentry_sdk.integrations.django import DjangoIntegration
 
 from core.cache_config import build_caches, release_cache_prefix
 from core.csp import handler_hash, running_tests, sentry_enabled, sentry_report_uri
-from core.sentry import name_unrouted_transactions
+from core.sentry import event_scrubber, name_unrouted_transactions
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 env = environ.Env(DEBUG=(bool, False))
@@ -44,6 +44,9 @@ if SENTRY_ENABLED:
         # passing data_collection turns off the EventScrubber, which is what
         # filters passwords and tokens out of request bodies and frame locals.
         send_default_pii=True,
+        # Matched by whole key name: allauth's password1/password2 and
+        # oldpassword are not on the default list (core.sentry)
+        event_scrubber=event_scrubber(),
         # Sampled, not exhaustive: tracing and profiling every request cost
         # per-request CPU and latency on a dyno that has neither to spare,
         # and burn the Sentry quota. Errors are still captured in full.

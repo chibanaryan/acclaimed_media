@@ -1354,3 +1354,34 @@ class CachedApiFollowsTheDataVersionTests(TestCase):
         models.Game.objects.filter(pk=self.game.pk).update(name="Renamed")
         models.Game.objects.create(name="Imported", rank=2, igdb_id=2)
         self.assertEqual(self.name(), "Renamed")
+
+
+class RegistrationRequiredPageTests(TestCase):
+    """A flat page marked "registration required" is for signed-in readers.
+    The sitemap left such pages out, but the page and its API answered
+    anyone."""
+
+    def setUp(self):
+        from django.contrib.sites.models import Site
+
+        page = FlatPage.objects.create(
+            url="/members/",
+            title="Members",
+            content="Hidden",
+            registration_required=True,
+        )
+        page.sites.add(Site.objects.get_current())
+
+    def test_the_page_sends_a_signed_out_reader_to_log_in(self):
+        response = self.client.get("/page/members/")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/accounts/login/", response["Location"])
+
+    def test_the_page_shows_a_signed_in_reader(self):
+        from django.contrib.auth import get_user_model
+
+        self.client.force_login(get_user_model().objects.create_user("reader"))
+        self.assertContains(self.client.get("/page/members/"), "Hidden")
+
+    def test_the_api_does_not_serve_it(self):
+        self.assertEqual(self.client.get("/api/pages/members/").status_code, 404)

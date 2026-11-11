@@ -28,7 +28,7 @@ from core.services import genre_tree
 from core.services.facets import count_by
 from core.services import search_ranking
 from core.services.query_params import parse_id_list, parse_int, parse_limit
-from core.services.request_body import read_saved_filter
+from core.services.request_body import SavedFilterJSONParser, read_saved_filter
 
 from .. import config, models
 from ..services.credits import (
@@ -73,6 +73,8 @@ class MusicWriteAPIMixin(MusicReadAPIMixin):
     """
 
     permission_classes = [IsAuthenticated]
+    # Capped: DRF's parsers read the body past DATA_UPLOAD_MAX_MEMORY_SIZE
+    parser_classes = [SavedFilterJSONParser]
 
 
 def _name_order():

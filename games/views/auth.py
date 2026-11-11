@@ -59,6 +59,18 @@ def _rate_limited_form(request, template_name, form, **context):
     return response
 
 
+# The account a verification screen was shown for, in the session of the
+# browser it was shown to: set where the password was just given (a sign-up,
+# a login refused for an unverified address), read by the resend and by the
+# confirmation link, which logs in only this browser. A verification is for
+# that account, never for whoever holds the address or opens the link.
+PENDING_ACCOUNT_KEY = "auth_pending_user_id"
+
+
+def _remember_pending_account(request, user):
+    request.session[PENDING_ACCOUNT_KEY] = user.pk
+
+
 def _send_confirmation(request, email_address, *, signup):
     """Send a verification email unless this address was sent one recently.
 
@@ -104,7 +116,9 @@ class AuthModalLoginView(View):
 
             # If no EmailAddress record or not verified, block login
             if not email_address or not email_address.verified:
-                # User exists but email not verified - show resend option
+                # User exists but email not verified - show resend option.
+                # The password was right, so the resend is this account's.
+                _remember_pending_account(request, user)
                 response = TemplateResponse(
                     request,
                     "auth/partials/_unverified_email.html",
@@ -189,6 +203,7 @@ class AuthModalSignupView(View):
             ).first()
             if email_address and not email_address.verified:
                 _send_confirmation(request, email_address, signup=True)
+            _remember_pending_account(request, user)
 
             # Don't log in - show verification screen instead
             response = TemplateResponse(
@@ -199,16 +214,19 @@ class AuthModalSignupView(View):
             response["HX-Push-Url"] = "false"
             return response
 
-        # Check if email already exists with unverified account
+        # An address an account is waiting to verify. The reader has not
+        # shown that account's password, so it is not theirs to resend for:
+        # they log in to it, which proves it, or reset its password, which
+        # proves the inbox. A resend here mailed that account's link to
+        # whoever owned the inbox, and the link logged them in to it.
         email = request.POST.get("email", "").strip()
         if email and form.errors.get("email"):
             existing_email = EmailAddress.objects.filter(email__iexact=email).first()
             if existing_email and not existing_email.verified:
-                # Show resend verification option instead of error
                 response = TemplateResponse(
                     request,
                     "auth/partials/_unverified_email.html",
-                    {"email": existing_email.email},
+                    {"email": existing_email.email, "account_unproven": True},
                 )
                 response["HX-Push-Url"] = "false"
                 return response
@@ -266,34 +284,45 @@ class AuthModalForgotPasswordView(View):
 
 
 class AuthModalResendVerificationView(View):
-    """Handle resending verification email from the auth modal."""
+    """Resend the verification email of the account the modal was showing.
+
+    The account is the session's (`PENDING_ACCOUNT_KEY`), never the address
+    posted: two accounts can wait on one address, and the resend mailed the
+    oldest, which need not be the reader's.
+    """
 
     def post(self, request):
         from allauth.account.models import EmailAddress
 
-        email = request.POST.get("email", "").strip()
+        user = User.objects.filter(pk=request.session.get(PENDING_ACCOUNT_KEY)).first()
+        if user is None:
+            # Nothing to say which account: the reader logs in to it first
+            response = TemplateResponse(
+                request, "auth/partials/_verification_resent.html", {"no_account": True}
+            )
+            response["HX-Push-Url"] = "false"
+            return response
 
-        if email:
-            # `first()`, as the other lookups here: allauth keeps an address
-            # unique only once verified, so two unverified rows can share
-            # one, and `get()` was a 500 on them. Nothing is said either way
-            # about whether the address exists.
-            # Nothing for an address some account has verified: allauth
-            # keeps a verified address to one account, so another account's
-            # unverified row can never be confirmed, and its link would be
-            # an "Invalid Link" in the owner's inbox. Else the oldest
-            # unverified row.
-            rows = EmailAddress.objects.filter(email__iexact=email)
-            if not rows.filter(verified=True).exists():
-                email_address = rows.order_by("pk").first()
-                if email_address:
-                    _send_confirmation(request, email_address, signup=False)
+        email_address = (
+            EmailAddress.objects.filter(user=user, email__iexact=user.email)
+            .order_by("pk")
+            .first()
+        )
+        # allauth keeps a verified address to one account, so this one's row
+        # can never be confirmed once another has verified it: its link would
+        # be an "Invalid Link". Said, since the reader has given the password.
+        taken = (
+            EmailAddress.objects.filter(email__iexact=user.email, verified=True)
+            .exclude(user=user)
+            .exists()
+        )
+        if email_address and not email_address.verified and not taken:
+            _send_confirmation(request, email_address, signup=False)
 
-        # Always show success (prevents email enumeration)
         response = TemplateResponse(
             request,
             "auth/partials/_verification_resent.html",
-            {"email": email},
+            {"email": user.email, "taken": taken},
         )
         response["HX-Push-Url"] = "false"
         return response
@@ -319,16 +348,26 @@ class EmailConfirmationView(TemplateView):
             if email_confirmation and email_confirmation.confirm(request):
                 email_address = email_confirmation.email_address
 
-                # Log the user in (matches ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION)
+                # Log in only the browser that signed up or logged in as
+                # this account, as allauth's own login on confirmation does.
+                # Anyone else who opens the link - a mail scanner, or the
+                # owner of an address someone else signed up with - gets a
+                # verified address and the sign-in button, not a session.
                 user = email_address.user
-                login(
-                    request, user, backend="django.contrib.auth.backends.ModelBackend"
-                )
+                logged_in = request.session.get(PENDING_ACCOUNT_KEY) == user.pk
+                if logged_in:
+                    request.session.pop(PENDING_ACCOUNT_KEY)
+                    login(
+                        request,
+                        user,
+                        backend="django.contrib.auth.backends.ModelBackend",
+                    )
 
                 return self.render_to_response(
                     {
                         "success": True,
                         "email": email_address.email,
+                        "logged_in": logged_in,
                     }
                 )
         except Exception:
@@ -437,14 +476,31 @@ class AuthModalProfileView(View):
 class SignupRedirectView(View):
     """allauth's sign-up route, which the modal replaces.
 
-    A signed-out visitor goes to the home page with the modal open on its
-    sign-up screen (`/#signup`, read by modal-handlers.js); a signed-in one
+    A signed-out visitor goes back to the page in `next` (else home) with
+    the modal open on its sign-up screen (`#signup`, read by
+    modal-handlers.js); a signed-in one
     goes home, as allauth's own view sends them away. Any method: a POST is
     not a sign-up here.
     """
 
     def dispatch(self, request, *args, **kwargs):
-        return redirect("/" if request.user.is_authenticated else "/#signup")
+        if request.user.is_authenticated:
+            return redirect("/")
+        return redirect(_signup_landing(request))
+
+
+def _signup_landing(request):
+    """Where a signed-out visitor sent to sign up lands: the page they came
+    from, as allauth's login page passes it in `next`, with the modal open
+    there. Only a path on this site, and never back to an auth page."""
+    target = request.GET.get("next", "")
+    if (
+        target.startswith("/")
+        and url_has_allowed_host_and_scheme(target, allowed_hosts=None)
+        and not urlparse(target).path.startswith(("/auth/", "/accounts/"))
+    ):
+        return urlparse(target)._replace(fragment="").geturl() + "#signup"
+    return "/#signup"
 
 
 class AuthLogoutView(View):

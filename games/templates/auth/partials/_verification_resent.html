@@ -1,18 +1,31 @@
-{# Confirmation after resending verification email #}
+{# After the resend button: sent, refused because another account has verified the address (taken), or no account to send for (no_account) #}
 
 <div class="text-center py-4">
-    {# Success icon #}
+    {% if no_account or taken %}
+    <span class="mdi mdi-email-alert text-6xl text-warning mb-4 block" aria-hidden="true"></span>
+    {% else %}
     <span class="mdi mdi-email-fast text-6xl text-success mb-4 block" aria-hidden="true"></span>
+    {% endif %}
 
-    <h3 id="authModalTitle" class="text-lg font-bold mb-2">Email Sent</h3>
+    <h3 id="authModalTitle" class="text-lg font-bold mb-2">{% if no_account %}Log In to Resend{% elif taken %}Address Already in Use{% else %}Email Sent{% endif %}</h3>
+    {% if no_account %}
     <p class="text-sm text-base-content/70 mb-6">
-        If an account exists for <strong>{{ email }}</strong>,
-        we've sent a new verification link.
+        Log in to the account to get a new verification link.
+    </p>
+    {% elif taken %}
+    <p class="text-sm text-base-content/70 mb-6">
+        <strong>{{ email }}</strong> has been verified by another account, so this
+        one cannot use it. Sign up again with another address.
+    </p>
+    {% else %}
+    <p class="text-sm text-base-content/70 mb-6">
+        We've sent a new verification link to <strong>{{ email }}</strong>.
     </p>
 
     <p class="text-xs text-base-content/65 mb-6">
         Please check your inbox and spam folder.
     </p>
+    {% endif %}
 
     {# Return to login button #}
     <button type="button"

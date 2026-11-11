@@ -274,13 +274,20 @@ def notify_subscribers_of_new_post(post) -> int:
         Number of emails sent successfully
     """
     from allauth.account.models import EmailAddress
+    from django.db.models import Exists, OuterRef
+
     from core.models import User
 
-    # Get users who are subscribed AND have a verified email
-    verified_emails = EmailAddress.objects.filter(verified=True).values_list(
-        "user_id", flat=True
+    # Subscribed, and the address the mail goes to (`user.email`) is one
+    # the user has verified: any verified address used to do, so an account
+    # whose email was changed was mailed at the unverified one
+    subscribers = User.objects.filter(email_subscribed=True).filter(
+        Exists(
+            EmailAddress.objects.filter(
+                user=OuterRef("pk"), email__iexact=OuterRef("email"), verified=True
+            )
+        )
     )
-    subscribers = User.objects.filter(email_subscribed=True, id__in=verified_emails)
     sent_count = 0
 
     for user in subscribers:

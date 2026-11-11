@@ -1,10 +1,36 @@
-{# Shown at login if email not verified #}
+{# Shown at login, or at sign-up on an address an account waits on, when that address is not verified #}
+{# account_unproven: the sign-up case. The reader has not given that account's password, so no resend is offered for it: they log in to it, or reset its password, which proves the inbox. #}
 
 <div class="text-center py-4">
     {# Warning icon #}
     <span class="mdi mdi-email-alert text-6xl text-warning mb-4 block" aria-hidden="true"></span>
 
     <h3 id="authModalTitle" class="text-lg font-bold mb-2">Email Not Verified</h3>
+    {% if account_unproven %}
+    <p class="text-sm text-base-content/70 mb-6">
+        An account with <strong>{{ email }}</strong> is waiting for its address to be verified.
+    </p>
+
+    <p class="text-xs text-base-content/65 mb-6">
+        If it's yours, log in to get a new verification link, or reset its password.
+    </p>
+
+    <button type="button"
+            class="btn btn-primary w-full mb-2"
+            hx-get="{% url 'auth-modal-login' %}"
+            hx-target="#auth-modal-content"
+            hx-swap="innerHTML">
+        <span class="mdi mdi-login" aria-hidden="true"></span>
+        Log In
+    </button>
+    <button type="button"
+            class="btn btn-ghost btn-sm"
+            hx-get="{% url 'auth-modal-forgot-password' %}"
+            hx-target="#auth-modal-content"
+            hx-swap="innerHTML">
+        Forgot password?
+    </button>
+    {% else %}
     <p class="text-sm text-base-content/70 mb-6">
         Please verify <strong>{{ email }}</strong> before signing in.
     </p>
@@ -13,13 +39,12 @@
         Check your inbox for a verification link, or request a new one below.
     </p>
 
-    {# Resend verification email button #}
+    {# Resend verification email button: for the account just logged in to, which the session holds #}
     <form hx-post="{% url 'auth-modal-resend-verification' %}"
           hx-target="#auth-modal-content"
           hx-swap="innerHTML"
           class="mb-4">
         {% csrf_token %}
-        <input type="hidden" name="email" value="{{ email }}">
         <button type="submit" class="btn btn-primary w-full">
             <span class="mdi mdi-email-sync" aria-hidden="true"></span>
             Resend Verification Email
@@ -35,4 +60,5 @@
         <span class="mdi mdi-arrow-left" aria-hidden="true"></span>
         Back to Login
     </button>
+    {% endif %}
 </div>

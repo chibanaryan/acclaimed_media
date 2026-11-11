@@ -193,6 +193,20 @@ class AllauthSignupIsClosedTests(TestCase):
         response = self.client.get(reverse("account_signup"))
         self.assertEqual((response.status_code, response["Location"]), (302, "/"))
 
+    def test_a_next_path_is_kept(self):
+        """allauth's login page links here with the page the reader came
+        from: the modal is on every page, so it opens there."""
+        response = self.client.get(
+            reverse("account_signup"), {"next": "/game/zelda/?a=1"}
+        )
+        self.assertEqual(response["Location"], "/game/zelda/?a=1#signup")
+
+    def test_a_next_on_another_site_is_not_followed(self):
+        for target in ("https://evil.example/", "//evil.example/", "/accounts/login/"):
+            with self.subTest(target=target):
+                response = self.client.get(reverse("account_signup"), {"next": target})
+                self.assertEqual(response["Location"], "/#signup")
+
     def test_the_page_redirects_home(self):
         response = self.client.get(reverse("account_signup"))
         self.assertEqual(response.status_code, 302)
@@ -228,52 +242,48 @@ class AuthModalEdgeTests(TestCase):
         clear_all_caches()
         self.addCleanup(clear_all_caches)
 
+    def _waiting_account(self, name, email, *, verified=False):
+        user = User.objects.create_user(username=name, email=email, password="pw-12345")
+        EmailAddress.objects.create(
+            user=user, email=email, verified=verified, primary=True
+        )
+        return user
+
+    def _log_in(self, name):
+        self.client.post(
+            reverse("auth-modal-login"), {"login": name, "password": "pw-12345"}
+        )
+
     def test_resending_to_an_address_two_unverified_accounts_share(self):
         """allauth keeps an address unique only once it is verified; `get()`
         on two rows was a 500."""
-        for name in ("first", "second"):
-            user = User.objects.create_user(username=name, email="shared@example.com")
-            EmailAddress.objects.create(
-                user=user, email="shared@example.com", verified=False, primary=True
-            )
-        response = self.client.post(
-            reverse("auth-modal-resend-verification"), {"email": "shared@example.com"}
-        )
+        self._waiting_account("first", "shared@example.com")
+        self._waiting_account("second", "shared@example.com")
+        self._log_in("second")
+        response = self.client.post(reverse("auth-modal-resend-verification"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Email Sent")
 
     def test_nothing_is_resent_for_an_address_another_account_has_verified(self):
         """allauth keeps a verified address to one account, so the other's
         row can never be confirmed: a mail for it is a dead link in the
-        owner's inbox, which anyone could ask for."""
+        owner's inbox."""
         from django.core import mail
 
-        verified = User.objects.create_user(username="first", email="both@example.com")
-        EmailAddress.objects.create(
-            user=verified, email="both@example.com", verified=True, primary=True
-        )
-        waiting = User.objects.create_user(username="second", email="both@example.com")
-        EmailAddress.objects.create(
-            user=waiting, email="both@example.com", verified=False, primary=True
-        )
-        response = self.client.post(
-            reverse("auth-modal-resend-verification"), {"email": "both@example.com"}
-        )
-        # The same answer either way: whether the address exists is not said
-        self.assertContains(response, "Email Sent")
+        self._waiting_account("first", "both@example.com", verified=True)
+        self._waiting_account("second", "both@example.com")
+        self._log_in("second")
+        response = self.client.post(reverse("auth-modal-resend-verification"))
+        self.assertContains(response, "Address Already in Use")
         self.assertEqual(mail.outbox, [])
 
-    def test_resending_to_two_unverified_accounts_mails_the_oldest_once(self):
+    def test_resending_for_one_of_two_waiting_accounts_mails_once(self):
         from django.core import mail
 
-        for name in ("first", "second"):
-            user = User.objects.create_user(username=name, email="pair@example.com")
-            EmailAddress.objects.create(
-                user=user, email="pair@example.com", verified=False, primary=True
-            )
-        self.client.post(
-            reverse("auth-modal-resend-verification"), {"email": "pair@example.com"}
-        )
+        self._waiting_account("first", "pair@example.com")
+        self._waiting_account("second", "pair@example.com")
+        self._log_in("first")
+        self.client.post(reverse("auth-modal-resend-verification"))
         self.assertEqual(len(mail.outbox), 1)
 
     def test_a_refused_username_does_not_push_the_modals_address(self):
@@ -300,3 +310,123 @@ class AuthModalEdgeTests(TestCase):
         self.assertEqual(response["HX-Refresh"], "true")
         user.refresh_from_db()
         self.assertEqual(user.username, "casey")
+
+
+def _confirmation_row(message):
+    """The EmailAddress row a verification mail's link confirms."""
+    import re
+
+    from allauth.account.models import EmailConfirmationHMAC
+
+    key = re.search(r"/accounts/confirm-email/([^/\s]+)/", message.body).group(1)
+    return EmailConfirmationHMAC.from_key(key).email_address
+
+
+class VerificationBelongsToAnAccountTests(TestCase):
+    """A verification is for the account that asked for it, not for whoever
+    holds the address or opens the link.
+
+    allauth keeps an address to one account only once it is verified, so
+    two accounts can wait on one address. Until 2026-11-11 the resend mailed
+    the oldest of them, whichever account the reader had just signed up as,
+    and the link logged in whoever opened it: someone who signed up first
+    with another person's address and their own password was then signed in
+    as an account whose password they knew, by the owner's own click.
+    """
+
+    PASSWORD = "a-long-passphrase-1"
+
+    def setUp(self):
+        clear_all_caches()
+        self.addCleanup(clear_all_caches)
+
+    def _account(self, name, email, *, verified=False):
+        user = User.objects.create_user(
+            username=name, email=email, password=self.PASSWORD
+        )
+        EmailAddress.objects.create(
+            user=user, email=email, verified=verified, primary=True
+        )
+        return user
+
+    def _log_in(self, login):
+        return self.client.post(
+            reverse("auth-modal-login"), {"login": login, "password": self.PASSWORD}
+        )
+
+    def test_the_resend_goes_to_the_account_that_logged_in(self):
+        from django.core import mail
+
+        self._account("squatter", "shared@example.com")
+        owner = self._account("owner", "shared@example.com")
+        self.assertContains(self._log_in("owner"), "Email Not Verified")
+        self.client.post(reverse("auth-modal-resend-verification"))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(_confirmation_row(mail.outbox[0]).user, owner)
+
+    def test_a_posted_address_is_not_whose_link_is_sent(self):
+        from django.core import mail
+
+        self._account("waiting", "someone@example.com")
+        response = self.client.post(
+            reverse("auth-modal-resend-verification"),
+            {"email": "someone@example.com"},
+        )
+        self.assertEqual(mail.outbox, [])
+        self.assertContains(response, "Log in")
+
+    def test_signing_up_on_an_address_another_account_waits_on_offers_no_resend(self):
+        self._account("squatter", "victim@example.com")
+        response = self.client.post(
+            reverse("auth-modal-signup"),
+            {
+                "email": "victim@example.com",
+                "password1": self.PASSWORD,
+                "password2": self.PASSWORD,
+            },
+        )
+        self.assertNotContains(response, reverse("auth-modal-resend-verification"))
+        self.assertContains(response, reverse("auth-modal-forgot-password"))
+
+    def test_the_resend_says_when_another_account_has_verified_the_address(self):
+        from django.core import mail
+
+        self._account("owner", "both@example.com", verified=True)
+        self._account("latecomer", "both@example.com")
+        self._log_in("latecomer")
+        response = self.client.post(reverse("auth-modal-resend-verification"))
+        self.assertEqual(mail.outbox, [])
+        self.assertContains(response, "another account")
+
+    def test_the_browser_that_signed_up_is_logged_in_by_its_link(self):
+        from django.core import mail
+
+        self.client.post(
+            reverse("auth-modal-signup"),
+            {
+                "email": "new@example.com",
+                "password1": self.PASSWORD,
+                "password2": self.PASSWORD,
+            },
+        )
+        from allauth.account.models import EmailConfirmationHMAC
+
+        row = _confirmation_row(mail.outbox[0])
+        key = EmailConfirmationHMAC(row).key
+        response = self.client.get(reverse("account_confirm_email", args=[key]))
+        self.assertTrue(response.context["success"])
+        self.assertEqual(int(self.client.session["_auth_user_id"]), row.user_id)
+
+    def test_a_link_opened_elsewhere_verifies_without_logging_in(self):
+        from allauth.account.models import EmailConfirmationHMAC
+
+        user = self._account("reader", "reader@example.com")
+        row = EmailAddress.objects.get(user=user)
+        response = self.client.get(
+            reverse("account_confirm_email", args=[EmailConfirmationHMAC(row).key])
+        )
+        self.assertTrue(response.context["success"])
+        row.refresh_from_db()
+        self.assertTrue(row.verified)
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertContains(response, "auth-modal-trigger")

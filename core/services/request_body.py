@@ -6,6 +6,11 @@ A JSON body is the caller's to write, as a query string is
 APIs.
 """
 
+import io
+
+from rest_framework.exceptions import ParseError
+from rest_framework.parsers import JSONParser
+
 
 def read_saved_filter(data):
     """``(name, filters)`` from a saved-filter request body.
@@ -29,3 +34,24 @@ def read_saved_filter(data):
         name.strip() if isinstance(name, str) else "",
         filters if isinstance(filters, dict) else None,
     )
+
+
+# A saved filter is a few hundred bytes; the largest a real filter
+# component writes (every genre, every platform) is a few kilobytes.
+MAX_SAVED_FILTER_BYTES = 16 * 1024
+
+
+class SavedFilterJSONParser(JSONParser):
+    """JSON, refused past ``MAX_SAVED_FILTER_BYTES`` before it is parsed.
+
+    DRF reads the body from the stream itself, so Django's
+    ``DATA_UPLOAD_MAX_MEMORY_SIZE`` never applied to it: a signed-in caller
+    could have a worker parse, and the table keep, any size of object.
+    Reads one byte past the cap, never the rest.
+    """
+
+    def parse(self, stream, media_type=None, parser_context=None):
+        raw = stream.read(MAX_SAVED_FILTER_BYTES + 1) if stream else b""
+        if len(raw) > MAX_SAVED_FILTER_BYTES:
+            raise ParseError("The saved filter is too large.")
+        return super().parse(io.BytesIO(raw), media_type, parser_context)

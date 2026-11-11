@@ -4,6 +4,7 @@ import html
 import logging
 
 from django.conf import settings
+from django.contrib.auth.views import redirect_to_login
 from django.contrib.flatpages.models import FlatPage
 from django.http import Http404, HttpResponse, HttpResponseGone
 from django.shortcuts import redirect
@@ -106,14 +107,11 @@ class ContactThankYouView(ApexCanonicalMixin, TemplateView):
 class PageDetailView(ApexCanonicalMixin, TemplateView):
     template_name = "pages/page_detail.html"
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        import markdown
-
-        slug = kwargs.get("slug")
+    def get(self, request, *args, **kwargs):
         # /page/{slug}/ first (the URL pattern's own form), then /{slug}/,
         # which the stored pages use. `first()`: a flat page's URL is
         # unique per site, not in the table, and `get()` on two was a 500.
+        slug = kwargs.get("slug")
         flatpage = None
         for url in (f"/page/{slug}/", f"/{slug}/"):
             flatpage = FlatPage.objects.filter(url=url).order_by("pk").first()
@@ -121,7 +119,18 @@ class PageDetailView(ApexCanonicalMixin, TemplateView):
                 break
         if flatpage is None:
             raise Http404("No such page")
+        # As Django's own flat page view does, and as the sitemap already
+        # left such a page out
+        if flatpage.registration_required and not request.user.is_authenticated:
+            return redirect_to_login(request.get_full_path())
+        self.flatpage = flatpage
+        return super().get(request, *args, **kwargs)
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        import markdown
+
+        flatpage = self.flatpage
         # Convert markdown to HTML (matching API serializer behavior)
         if flatpage.content:
             flatpage.rendered_content = markdown.markdown(flatpage.content)

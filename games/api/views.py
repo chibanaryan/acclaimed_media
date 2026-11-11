@@ -25,7 +25,7 @@ from core import sites
 from core.services import search_ranking
 from core.services.genre_tree import descendants_by_id
 from core.services.query_params import parse_id_list, parse_limit
-from core.services.request_body import read_saved_filter
+from core.services.request_body import SavedFilterJSONParser, read_saved_filter
 from games.services.data_version import compute_game_data_version
 
 from .. import config, models, utils
@@ -380,7 +380,13 @@ class PageDetailView(RetrieveAPIView):
     def get_object(self):
         url = self.kwargs.get("url")
         # `first()`, as the page's own view: the URL is not unique
-        page = FlatPage.objects.filter(url=f"/{url}/").order_by("pk").first()
+        # Never one for signed-in readers only: this API authenticates nobody,
+        # and its answers are kept for everyone
+        page = (
+            FlatPage.objects.filter(url=f"/{url}/", registration_required=False)
+            .order_by("pk")
+            .first()
+        )
         if page is None:
             raise Http404("No such page")
         return page
@@ -976,6 +982,7 @@ class SavedFilterSetListCreateView(APIView):
 
     authentication_classes = [SessionAuthentication]
     permission_classes = [IsAuthenticated]
+    parser_classes = [SavedFilterJSONParser]
 
     def get(self, request):
         """List all saved filter sets for current user."""
@@ -1058,6 +1065,7 @@ class SavedFilterSetDetailView(APIView):
 
     authentication_classes = [SessionAuthentication]
     permission_classes = [IsAuthenticated]
+    parser_classes = [SavedFilterJSONParser]
 
     def get_object(self, pk, user):
         return get_object_or_404(models.SavedFilterSet, pk=pk, user=user)

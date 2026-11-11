@@ -55,3 +55,48 @@ class NameUnroutedTransactionsTests(SimpleTestCase):
     def test_an_event_with_no_source_is_left_as_it_is(self):
         event = {"type": "transaction", "transaction": "task"}
         self.assertEqual(name_unrouted_transactions(dict(event), {}), event)
+
+
+class EventScrubberTests(SimpleTestCase):
+    """sentry-sdk's scrubber matches whole key names, and `password` is on
+    its list but allauth's `password1`, `password2` and `oldpassword` are
+    not: a sign-up that raised sent both passwords in the request body."""
+
+    def test_allauths_password_fields_are_scrubbed(self):
+        from core.sentry import event_scrubber
+
+        event = {
+            "request": {
+                "data": {
+                    "email": "reader@example.com",
+                    "password1": "hunter22",
+                    "password2": "hunter22",
+                    "oldpassword": "old-one",
+                }
+            },
+            "exception": {
+                "values": [
+                    {
+                        "stacktrace": {
+                            "frames": [{"vars": {"password1": "hunter22", "x": 1}}]
+                        }
+                    }
+                ]
+            },
+        }
+        event_scrubber().scrub_event(event)
+        data = event["request"]["data"]
+        for field in ("password1", "password2", "oldpassword"):
+            self.assertNotEqual(data[field], "hunter22", field)
+            self.assertNotEqual(data[field], "old-one", field)
+        self.assertEqual(data["email"], "reader@example.com")
+        frame = event["exception"]["values"][0]["stacktrace"]["frames"][0]
+        self.assertNotEqual(frame["vars"]["password1"], "hunter22")
+
+    def test_settings_pass_it(self):
+        from pathlib import Path
+
+        from django.conf import settings
+
+        source = (Path(settings.BASE_DIR) / "acclaimedgames/settings.py").read_text()
+        self.assertIn("event_scrubber=event_scrubber()", source)

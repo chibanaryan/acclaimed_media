@@ -280,3 +280,41 @@ class SavedFilterBodiesTests(TestCase):
                 self.assertEqual(self.send("patch", url, body).status_code, 400)
         saved.refresh_from_db()
         self.assertEqual(saved.name, "Mine")
+
+
+class SavedFilterBodySizeTests(TestCase):
+    """DRF reads a body from the stream itself, so Django's
+    DATA_UPLOAD_MAX_MEMORY_SIZE never applied: a signed-in caller could make
+    a worker parse, and the table store, any number of megabytes."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="big", password="pw-12345")
+
+    def setUp(self):
+        self.client.force_login(self.user)
+
+    def test_a_huge_body_is_refused_on_both_sites(self):
+        from core import sites
+        from core.tests.utils import site_host
+
+        body = json.dumps({"name": "Big", "filters": {"q": "x" * 100_000}})
+        games = self.client.post(
+            "/api/saved-filters/", data=body, content_type="application/json"
+        )
+        self.assertEqual(games.status_code, 400)
+        music = self.client.post(
+            sites.site_reverse(sites.MUSIC, "music-api:saved-filter-list"),
+            data=body,
+            content_type="application/json",
+            HTTP_HOST=site_host(sites.MUSIC),
+            secure=True,
+        )
+        self.assertEqual(music.status_code, 400)
+
+    def test_an_ordinary_body_is_kept(self):
+        body = json.dumps({"name": "Fine", "filters": {"genres": [1, 2]}})
+        response = self.client.post(
+            "/api/saved-filters/", data=body, content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 201)

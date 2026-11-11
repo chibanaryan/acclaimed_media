@@ -74,6 +74,10 @@ def _is_rate_limited(client_ip):
 
 
 def _incr(key, timeout):
+    """Count one, creating the counter if needed: `add` first, as
+    `RateLimitMiddleware._incr` does, since incr-or-`set(1)` let a second
+    thread's `set` reset the first one's count."""
+    cache.add(key, 0, timeout=timeout)
     try:
         return cache.incr(key)
     except ValueError:

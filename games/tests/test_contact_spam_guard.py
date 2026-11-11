@@ -154,3 +154,18 @@ class ContactSpamGuardTests(TestCase):
         self.assertFalse(decision.allowed)
         self.assertEqual(decision.reason, "rate_limit")
         self.assertEqual(decision.client_ip, "45.148.10.143")
+
+    def test_a_counter_created_by_another_thread_is_counted_not_reset(self):
+        """`add` creates the counter only if missing, so a second thread
+        meeting a new key counts on: incr-or-`set(1)` reset it."""
+        from django.core.cache import cache
+
+        cache.set("guard-test", 4, timeout=60)
+        self.assertEqual(contact_spam_guard._incr("guard-test", 60), 5)
+
+    def test_a_counter_evicted_between_add_and_incr_starts_at_one(self):
+        from django.core.cache import cache
+
+        with patch.object(cache, "incr", side_effect=ValueError):
+            self.assertEqual(contact_spam_guard._incr("gone", 60), 1)
+        self.assertEqual(cache.get("gone"), 1)
