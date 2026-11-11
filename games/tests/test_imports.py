@@ -1,3 +1,4 @@
+import json
 from io import StringIO
 from unittest import mock
 
@@ -1668,17 +1669,34 @@ class ImportIGDBWithProgressTests(NoHeartbeatMixin, InlineImportThreadMixin, Tes
 
     @mock.patch("games.services.igdb_importer.IGDBImportService")
     def test_import_igdb_with_progress_success(self, mock_service_class):
-        """Test successful IGDB import with progress."""
-        # Create a mock service
-        mock_service = mock.MagicMock()
-        mock_service_class.return_value = mock_service
+        """The service's progress reaches the stream, each event named.
 
-        # Get the generator - this tests the function can be called
-        # The actual progress streaming is tested via integration tests
-        generator = utils.import_igdb_with_progress()
+        The callback names an event that does not name itself, and leaves
+        one that does. This test, and one beside it, used to end at
+        `assertIsNotNone(generator)`, which no generator fails.
+        """
 
-        # Verify generator exists
-        self.assertIsNotNone(generator)
+        def service(*args, progress_callback=None, **kwargs):
+            instance = mock.MagicMock()
+
+            def import_games(queryset):
+                progress_callback("start", {"total": 1})
+                progress_callback("progress", {"event": "custom", "current": 1})
+
+            instance.import_games.side_effect = import_games
+            return instance
+
+        mock_service_class.side_effect = service
+
+        events = [
+            json.loads(chunk.split("data: ", 1)[1].split("\n", 1)[0])
+            for chunk in utils.import_igdb_with_progress()
+            if chunk.startswith("data: ")
+        ]
+
+        self.assertIn({"total": 1, "event": "start"}, events)
+        self.assertIn({"event": "custom", "current": 1}, events)
+        self.assertNotIn("error", [event["event"] for event in events])
         # Service may or may not be created depending on games in DB
         # Just verify the function executes without error
 
@@ -1820,64 +1838,6 @@ class ImportIGDBWithProgressTests(NoHeartbeatMixin, InlineImportThreadMixin, Tes
         self.assertGreater(len(events), 0)
         error_events = [e for e in events if "error" in e.lower()]
         self.assertGreater(len(error_events), 0)
-
-    @mock.patch("games.services.igdb_importer.IGDBImportService")
-    def test_import_igdb_with_progress_callback_with_existing_event(
-        self, mock_service_class
-    ):
-        """Test import_igdb_with_progress when data has 'event' key."""
-        # Create a game so the service is initialized
-        platform, _ = models.Platform.objects.get_or_create(
-            code="PC", defaults={"name": "PC"}
-        )
-        game = models.Game.objects.create(rank=1, name="Test", year_of_release=2024)
-        game.platforms.add(platform)
-
-        # Capture the actual callback that gets passed to the service
-        captured_callback = []
-
-        def mock_init(*args, **kwargs):
-            # Capture the progress_callback
-            if "progress_callback" in kwargs:
-                captured_callback.append(kwargs["progress_callback"])
-            # Return a mock service
-            service = mock.MagicMock()
-            service.progress_callback = kwargs.get("progress_callback")
-            service.import_games = mock.MagicMock()
-            return service
-
-        mock_service_class.side_effect = mock_init
-
-        # Get generator - this will create the service with the callback
-        generator = utils.import_igdb_with_progress()
-
-        # If we captured the callback, test it with data that already has 'event' key
-        if captured_callback:
-            callback = captured_callback[0]
-            # The callback adds an "event" key only to data that has none.
-            # Data without the key, which gets it:
-            test_data_no_event = {"message": "test"}
-            callback("start", test_data_no_event)
-            # Data that already has the key, which keeps its own:
-            test_data_with_event = {"event": "custom", "message": "test"}
-            callback("start", test_data_with_event)
-
-        # Consume a few events
-        events = []
-        try:
-            for i, event in enumerate(generator):
-                events.append(event)
-                if i > 5:
-                    break
-        except Exception:
-            pass
-
-        # Verify generator works and callback was tested
-        self.assertIsNotNone(generator)
-        # Verify callback was captured and tested
-        self.assertGreater(
-            len(captured_callback), 0, "Callback should have been captured"
-        )
 
     def test_import_igdb_with_progress_update_relationships(self):
         """Test import_igdb_with_progress with update_relationships=True."""

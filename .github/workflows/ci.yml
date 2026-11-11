@@ -48,7 +48,9 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: ~/.cache/pre-commit
-          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+          # The Python version too: the hooks' environments are built on
+          # it, and a bump reused the ones built for the last
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml', '.python-version') }}
       # Only the lint hooks: the pytest hook expects a local venv/.
       - run: pre-commit run black --all-files --show-diff-on-failure
       - run: pre-commit run flake8 --all-files

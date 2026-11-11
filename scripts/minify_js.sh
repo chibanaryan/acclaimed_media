@@ -15,7 +15,9 @@
 # same source could commit different bytes. 5.51.2 reproduces every
 # committed .min.js exactly; bump it deliberately and commit the rebuild.
 
-set -e
+# -u and pipefail too, as the other scripts here: an unset variable or a
+# failed first half of a pipe stops the run, where -e alone let both by
+set -euo pipefail
 
 # The paths below are relative to the repository root, wherever it is run from
 cd "$(dirname "$0")/.."

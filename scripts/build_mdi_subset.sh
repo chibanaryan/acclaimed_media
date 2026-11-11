@@ -60,7 +60,8 @@ original_size="$(wc -c < "$FONT_PATH" | tr -d ' ')"
 codepoint_count="$(wc -l < "$tmp_unicodes" | tr -d ' ')"
 
 echo "Fetching full MDI font v${MDI_VERSION}..."
-if ! curl -fsSL "$MDI_FONT_URL" -o "$tmp_full_font"; then
+# --max-time: a download that stalls ends, where it held the script for good
+if ! curl -fsSL --max-time 120 "$MDI_FONT_URL" -o "$tmp_full_font"; then
   echo "Could not download the full MDI font from $MDI_FONT_URL"
   exit 1
 fi

@@ -2,9 +2,11 @@
 Discogs client: the genre source of record for albums.
 
 Discogs is used for genres because it is the only source that supplies both
-a curated vocabulary and per-album assignments by exact ID. 498 of the 502
-album QIDs in the release carry a Discogs master ID (Wikidata P1954), so no
-title matching is needed.
+a curated vocabulary and per-album assignments by exact ID. Nearly every
+album's Wikidata entity carries a Discogs master ID (P1954; 498 of the 502
+QIDs in the first, 500-album release), so no title matching is needed. An
+album without one, or with one Discogs has dropped, takes the master its
+MusicBrainz release group links (AGENTS.md, "Music Metadata Pipeline").
 
 Its vocabulary is already two levels deep, which is the shape ``MusicGenre``
 models: ``genres`` is a small closed set of top-level names (only nine of

@@ -235,8 +235,8 @@ class WikipediaGenreTreeSerializer(serializers.ModelSerializer):
         """
         Get count of games with this genre.
 
-        Note: For root categories, this includes games tagged with any
-        descendant genre.
+        The games tagged with the genre itself: the views annotate a direct
+        count, which leaves a root's descendants out.
         """
         # Check if count was annotated on the queryset
         if hasattr(obj, "game_count_annotated"):

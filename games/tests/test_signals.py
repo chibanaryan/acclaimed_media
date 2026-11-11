@@ -175,9 +175,11 @@ class DeveloperCacheInvalidationSignalTests(CommitHooksRunNowMixin, TestCase):
         # Delete parent first (child still references it)
         parent.delete()
 
-        # Deleting child should not raise exception
-        # (the signal handler should catch DoesNotExist)
-        child.delete()  # Should not raise
+        # The parent's delete cascades to the child, so this is a delete of
+        # a row already gone, whose handler finds no parent to drop
+        child.delete()
+
+        self.assertFalse(Developer.objects.exists())
 
 
 class GameDeveloperM2MSignalTests(CommitHooksRunNowMixin, TestCase):
@@ -265,7 +267,9 @@ class GameDeveloperM2MSignalTests(CommitHooksRunNowMixin, TestCase):
         dev.delete()
 
         # Clear the game's developers (referencing deleted dev shouldn't crash)
-        game.developers.clear()  # Should not raise
+        game.developers.clear()
+
+        self.assertEqual(game.developers.count(), 0)
 
     def test_m2m_signal_handles_nonexistent_developer_in_pk_set(self):
         """Test that M2M signal handles developer IDs that don't exist in DB."""
@@ -282,7 +286,8 @@ class GameDeveloperM2MSignalTests(CommitHooksRunNowMixin, TestCase):
             pk_set={99999},  # Nonexistent developer ID
             action="post_add",
         )
-        # Should not raise - the except Developer.DoesNotExist should handle it
+        # Nothing to assert but that it returns: the handler looks the ids
+        # up with a filter, so one that names no row drops nothing
 
 
 class GameDeleteSignalTests(CommitHooksRunNowMixin, TestCase):

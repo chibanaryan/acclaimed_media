@@ -53,7 +53,7 @@ class ImportView(StaffOnlyMixin, FormView):
         context["metadata_resumed"] = post_import.resume()
 
         try:
-            # Get all counts in a single aggregation query (optimized)
+            # A count a figure, about fifteen small queries: a staff page
             total_games = models.Game.objects.count()
 
             # Count metadata records (not games)

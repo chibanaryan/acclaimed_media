@@ -6,9 +6,12 @@ description: Fetch album metadata from Wikidata, Discogs, MusicBrainz and the Co
 # Album Metadata Fetch
 
 Populates album cover art, genres, artists, release dates and labels for the
-`music/` app. Every album in the ranking carries a Wikidata QID, which is the
-hub: it supplies the Discogs and MusicBrainz identifiers the other sources are
-keyed by, so no title matching is ever needed.
+`music/` app. Nearly every album in the ranking carries a Wikidata QID, which
+is the hub: it supplies the Discogs and MusicBrainz identifiers the other
+sources are keyed by. Two fallbacks fill its gaps: an album with no
+MusicBrainz release group is searched for by title and artist in the cover
+pass, and one with no usable Discogs master takes the one its release group
+links. An album the release gives no QID is skipped by the Wikidata pass.
 
 ## Basic Usage
 
@@ -85,6 +88,10 @@ heroku logs --tail --dyno run.N
 
 They are separate because their costs differ by two orders of magnitude.
 
+The requests and times are a full fetch of the first, 500-album release;
+the ranking holds 1,000 now, so a full fetch is about twice each. A routine
+run fetches only what an import left missing.
+
 | Pass | Requests | Time (500 albums) | What it writes |
 | --- | --- | --- | --- |
 | `wikidata` | ~25 | ~30s | `WikipediaAlbumData`, both external IDs, `Artist` rows |
@@ -101,6 +108,8 @@ rather than minutes. The default run omits `musicbrainz`: it is enrichment,
 and its hard 1 req/sec cap would dominate a routine refresh.
 
 ## Data Sources
+
+Coverage was counted on that first release's 502 QIDs.
 
 | Source | Auth | Rate limit | Coverage of the 502 QIDs |
 | --- | --- | --- | --- |

@@ -101,6 +101,14 @@ class IconsAreDefinedTests(SimpleTestCase):
         ):
             self.assertIn(name, used)
 
+    def test_the_subset_file_lists_every_icon_the_page_defines(self):
+        """It is "the subset's source mappings" (the icons skill), and had
+        fallen 43 behind base.html. The font was right all along, since the
+        build reads both, but the file said less than the page showed."""
+        subset = dict(RULE.findall(self.subset))
+        self.assertEqual(sorted(set(self.defined) - set(subset)), [])
+        self.assertEqual(sorted(set(subset) - set(self.defined)), [])
+
     def test_the_subset_file_agrees_on_every_codepoint_it_repeats(self):
         """The build reads both files: a name mapped two ways is two glyphs,
         and the page shows base.html's."""

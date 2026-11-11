@@ -1743,7 +1743,7 @@ class AlbumCoverView(View):
 
     The URL carries the archive's release MBID, image id and size, all of
     which are immutable for a given image, so the response is cached for a
-    year. Staff-gated like every other music route.
+    year. Public, as every music route but the import page is.
     """
 
     # A year, which is the maximum worth asking for, marked immutable so a
@@ -1772,12 +1772,12 @@ class AlbumCoverView(View):
 class MusicImportView(StaffOnlyMixin, View):
     """Import the album rankings from uploaded files or the bundled release.
 
-    Staff-gated like every other music view, as ``games.views.ImportView``
-    now is too - it was login-gated until 2026-10-17, which let any verified
+    Staff-only, the one music view that is, as ``games.views.ImportView`` is
+    too - that was login-gated until 2026-10-17, which let any verified
     account replace the game rankings.
 
-    The import runs inline rather than over SSE: 500 albums land in well
-    under a second, so the streaming progress machinery the games importer
+    The import runs inline rather than over SSE: the 1,000 albums land in
+    about a second, so the streaming progress machinery the games importer
     needs would be scaffolding without a purpose.
     """
 

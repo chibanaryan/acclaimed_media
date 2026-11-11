@@ -88,7 +88,7 @@ class ListListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
     """
     Source Lists page - displays lists grouped by publication.
 
-    Publications are paginated (30 per page) and can be sorted by:
+    Publications are paginated (50 per page) and can be sorted by:
     - importance (default): weighted score based on list type counts
     - alpha: alphabetical by name
 
