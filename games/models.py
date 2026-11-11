@@ -533,7 +533,7 @@ class Series(models.Model):
         super().save(*args, **kwargs)
 
     @classmethod
-    def from_igdb(cls, collection: dict, _retried: bool = False) -> "Series":
+    def from_igdb(cls, collection: dict) -> "Series":
         """The series for an IGDB collection, made or brought up to date.
 
         Name and slug are unique, but IGDB's collection names are not: two
@@ -541,28 +541,32 @@ class Series(models.Model):
         named the second failed on every refresh. The later one takes its
         IGDB id in both ("Mario (2)", "mario-2"). A renamed collection is
         renamed here; it kept its first name for good.
+
+        Twice at most: a new series another thread made between the lookup
+        and the save (the IGDB pool runs eight) is read back on the second,
+        as `get_or_create` did.
         """
         igdb_id = collection["id"]
-        name = collection["name"]
-        slug = collection.get("slug") or slugify(name)
-        series = cls.objects.filter(igdb_id=igdb_id).first() or cls(igdb_id=igdb_id)
-        others = cls.objects.exclude(pk=series.pk) if series.pk else cls.objects.all()
-        if others.filter(name=name).exists():
-            name = f"{name} ({igdb_id})"
-        if others.filter(slug=slug).exists():
-            slug = f"{slug}-{igdb_id}"
-        if (series.name, series.slug) != (name, slug):
+        for attempt in range(2):
+            name = collection["name"]
+            slug = collection.get("slug") or slugify(name)
+            series = cls.objects.filter(igdb_id=igdb_id).first() or cls(igdb_id=igdb_id)
+            others = cls.objects.exclude(pk=series.pk) if series.pk else cls.objects
+            if others.filter(name=name).exists():
+                name = f"{name} ({igdb_id})"
+            if others.filter(slug=slug).exists():
+                slug = f"{slug}-{igdb_id}"
+            if (series.name, series.slug) == (name, slug):
+                return series
             series.name, series.slug = name, slug
             try:
                 with transaction.atomic():
                     series.save()
+                return series
             except IntegrityError:
-                # Another thread made it between the lookup and the save
-                # (the IGDB pool runs eight); `get_or_create` re-read it too
-                if series.pk is not None or _retried:
+                if series.pk is not None or attempt:
                     raise
-                return cls.from_igdb(collection, _retried=True)
-        return series
+        raise AssertionError("unreachable")  # pragma: no cover
 
 
 class IGDBGameData(models.Model):

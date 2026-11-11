@@ -84,7 +84,7 @@ class EventScrubberTests(SimpleTestCase):
                 ]
             },
         }
-        event_scrubber().scrub_event(event)
+        event_scrubber(True).scrub_event(event)
         data = event["request"]["data"]
         for field in ("password1", "password2", "oldpassword"):
             self.assertNotEqual(data[field], "hunter22", field)
@@ -103,7 +103,7 @@ class EventScrubberTests(SimpleTestCase):
             "request": {"headers": {"X-Forwarded-For": "203.0.113.9"}},
             "user": {"ip_address": "203.0.113.9"},
         }
-        event_scrubber().scrub_event(event)
+        event_scrubber(True).scrub_event(event)
         self.assertEqual(event["user"]["ip_address"], "203.0.113.9")
         self.assertEqual(event["request"]["headers"]["X-Forwarded-For"], "203.0.113.9")
 
@@ -113,7 +113,8 @@ class EventScrubberTests(SimpleTestCase):
         from django.conf import settings
 
         source = (Path(settings.BASE_DIR) / "acclaimedgames/settings.py").read_text()
-        self.assertIn("event_scrubber=event_scrubber()", source)
+        self.assertIn("event_scrubber=event_scrubber(SENTRY_SEND_DEFAULT_PII)", source)
+        self.assertIn("send_default_pii=SENTRY_SEND_DEFAULT_PII", source)
 
 
 class RequestErrorsReachTheLogsTests(SimpleTestCase):

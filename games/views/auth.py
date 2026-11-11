@@ -316,11 +316,21 @@ class AuthModalResendVerificationView(View):
             .exclude(user=user)
             .exists()
         )
-        # An account with no address row (one made in the admin) has nothing
-        # a link could confirm, and its login says unverified: give it one
+        # An account with no row for its address (made in the admin, or its
+        # email changed there) has nothing a link could confirm, and its
+        # login says unverified: give it one. Primary only if it has none,
+        # which allauth keeps to one a user, and through `get_or_create`,
+        # which a second press of Resend at the same moment reads back.
         if email_address is None and user.email and not taken:
-            email_address = EmailAddress.objects.create(
-                user=user, email=user.email, primary=True, verified=False
+            email_address, _ = EmailAddress.objects.get_or_create(
+                user=user,
+                email=user.email,
+                defaults={
+                    "verified": False,
+                    "primary": not EmailAddress.objects.filter(
+                        user=user, primary=True
+                    ).exists(),
+                },
             )
         # Verified already (in another browser, say): nothing to send, and
         # the screen says so rather than promise a link
@@ -335,6 +345,8 @@ class AuthModalResendVerificationView(View):
                 "email": user.email,
                 "taken": taken,
                 "verified": verified,
+                # No address at all: nothing was sent, and none can be
+                "no_address": email_address is None and not taken,
             },
         )
         response["HX-Push-Url"] = "false"

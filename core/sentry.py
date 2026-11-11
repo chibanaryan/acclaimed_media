@@ -14,15 +14,15 @@ EXTRA_DENYLIST = [
 ]
 
 
-def event_scrubber():
+def event_scrubber(send_default_pii):
     """The default scrubber, with the field names our forms use.
 
-    With ``send_default_pii``, as settings pass it to the SDK: a scrubber
-    built without it also filters client addresses, which the SDK's own
-    leaves, and the uptime, scraper and rate-limit traces read.
+    Given the ``send_default_pii`` settings pass the SDK, as the SDK's own
+    scrubber is: one built without it also filtered every client address,
+    which the uptime, scraper and rate-limit traces read.
     """
     return EventScrubber(
-        denylist=DEFAULT_DENYLIST + EXTRA_DENYLIST, send_default_pii=True
+        denylist=DEFAULT_DENYLIST + EXTRA_DENYLIST, send_default_pii=send_default_pii
     )
 
 

@@ -34,6 +34,8 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from django.db import transaction
 
+from core import loaded_values
+
 from music import config, models
 from music.discogs import DiscogsClient
 from music.musicbrainz import (
@@ -49,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 # A MusicBrainz id is a UUID
 MBID_PATTERN = re.compile(
-    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 )
 
 
@@ -149,15 +151,31 @@ class AlbumMetadataService:
         setattr(album, field_name, record)
         album.save(update_fields=[field_name])
 
+    @staticmethod
+    def _read_back(album) -> None:
+        """Re-read an album whose savepoint rolled back.
+
+        The rollback undid its writes, not this object, which the next pass
+        is handed: read it back as the database has it, its cached relations
+        (a primary record rolled away) with it, and what `RemembersLoaded`
+        holds of it, so a later save still sees a changed year as changed.
+        """
+        try:
+            album.refresh_from_db()
+            loaded_values.remember(album)
+        except Exception:  # an album deleted meanwhile is the next pass's
+            logger.exception("Could not re-read %s", album.name)
+
     def _for_one_album(self, pass_key, album, result, step, *args) -> None:
         """Run ``step(album, *args)``, keeping its failure to the album.
 
         In a savepoint, so a database error leaves the connection usable,
         and the album is read back afterwards, so the object the next pass
         is handed matches what the rollback left. Logged and counted as that
-        album's error. The savepoint spans the album's downloads too, which
-        holds a connection in a transaction for a few seconds at most. One
-        bad row used to end the cover, Discogs and MusicBrainz passes, and
+        album's error. The savepoint spans the album's network requests too:
+        a cover pass that walks a group's releases at MusicBrainz's 1 req/s
+        holds its connection in a transaction for tens of seconds (ROADMAP).
+        One bad row used to end the cover, Discogs and MusicBrainz passes, and
         escape the command before its genre rebuild, release dates, slugs
         and cache drop. The Wikidata pass has always worked this way.
         """
@@ -170,13 +188,7 @@ class AlbumMetadataService:
             self._notify(
                 "error", {"pass": pass_key, "name": album.name, "message": str(exc)}
             )
-            # The savepoint undid the album's writes, not this object, which
-            # the next pass is handed: read it back as the database has it,
-            # its cached relations (a primary record rolled away) with it
-            try:
-                album.refresh_from_db()
-            except Exception:  # an album deleted meanwhile is the next pass's
-                logger.exception("Could not re-read %s", album.name)
+            self._read_back(album)
 
     # -------------------------------------------------------- wikidata pass
 
@@ -252,6 +264,8 @@ class AlbumMetadataService:
             except Exception as exc:  # one album must not stop the run
                 logger.exception("Wikidata pass failed for %s", album.name)
                 result.errors.append(f"{album.name}: {exc}")
+                # The later passes are handed this album
+                self._read_back(album)
                 self._notify(
                     "error",
                     {"pass": "wikidata", "name": album.name, "message": str(exc)},
@@ -344,7 +358,9 @@ class AlbumMetadataService:
             # Only a well-formed id: an overlong one was a DataError on
             # Postgres, outside any album's guard, which ended the pass, and
             # one cut to fit would be a wrong id over a right one
-            mbid = fetched.musicbrainz_id
+            # Lower-case, as MusicBrainz writes them: an upper-case copy
+            # differed from the stored id and was rewritten every week
+            mbid = (fetched.musicbrainz_id or "").lower()
             if mbid and not MBID_PATTERN.fullmatch(mbid):
                 logger.warning("Malformed MusicBrainz id for %s: %r", artist, mbid)
                 mbid = None

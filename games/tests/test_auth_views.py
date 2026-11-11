@@ -424,6 +424,53 @@ class VerificationBelongsToAnAccountTests(TestCase):
         self.assertContains(response, "Email Sent")
         self.assertEqual(_confirmation_row(mail.outbox[0]).user, user)
 
+    def test_an_account_whose_email_changed_keeps_its_primary_row(self):
+        """Its old row is primary, and a second primary row breaks allauth's
+        constraint: the resend was a 500."""
+        from django.core import mail
+
+        user = self._account("moved", "old@example.com")
+        user.email = "new@example.com"
+        user.save()
+        self._log_in("moved")
+        response = self.client.post(reverse("auth-modal-resend-verification"))
+        self.assertContains(response, "Email Sent")
+        new = EmailAddress.objects.get(user=user, email="new@example.com")
+        self.assertFalse(new.primary)
+        self.assertEqual(_confirmation_row(mail.outbox[0]), new)
+
+    def test_two_resends_at_once_make_one_row(self):
+        """Both found no row and both created one; the second was a 500."""
+        from unittest import mock
+
+        user = User.objects.create_user(
+            username="twice", email="twice@example.com", password=self.PASSWORD
+        )
+        self._log_in("twice")
+        EmailAddress.objects.create(user=user, email="twice@example.com")
+        real = EmailAddress.objects.filter
+
+        def misses_once(*args, **kwargs):
+            if kwargs.get("user") == user and not getattr(misses_once, "done", False):
+                misses_once.done = True
+                return EmailAddress.objects.none()
+            return real(*args, **kwargs)
+
+        with mock.patch.object(EmailAddress.objects, "filter", side_effect=misses_once):
+            response = self.client.post(reverse("auth-modal-resend-verification"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(EmailAddress.objects.filter(user=user).count(), 1)
+
+    def test_an_account_with_no_email_is_not_promised_a_link(self):
+        from django.core import mail
+
+        User.objects.create_user(username="noemail", password=self.PASSWORD)
+        self.assertContains(self._log_in("noemail"), "Email Not Verified")
+        response = self.client.post(reverse("auth-modal-resend-verification"))
+        self.assertEqual(mail.outbox, [])
+        self.assertNotContains(response, "We've sent")
+        self.assertContains(response, "No Address to Verify")
+
     def test_the_browser_that_signed_up_is_logged_in_by_its_link(self):
         from django.core import mail
 

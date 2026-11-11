@@ -1560,6 +1560,54 @@ class OneAlbumsErrorTests(ServiceTestCase):
             self.service._for_one_album("covers", self.album, result, fails)
         self.assertIn("Could not re-read", "\n".join(logs.output))
 
+    def test_an_upper_case_artist_mbid_is_stored_lower_case(self):
+        from music.wikidata import ArtistMetadata
+
+        good = "b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d"
+        artist = models.Artist.objects.create(
+            name="The Beatles", source_id=1, wikidata_id="Q1299"
+        )
+        self.service._save_artist_ids(
+            {"Q1299": ArtistMetadata(wikidata_id="Q1299", musicbrainz_id=good.upper())}
+        )
+        artist.refresh_from_db()
+        self.assertEqual(artist.musicbrainz_id, good)
+
+    def test_a_read_back_album_remembers_what_the_row_holds(self):
+        """`refresh_from_db` alone left `RemembersLoaded` holding the rolled
+        back year, so the next real change of it read as no change."""
+        from core import loaded_values
+
+        def changes_the_year(album, *args):
+            album.year_released = 1970
+            album.save()
+            raise RuntimeError("boom")
+
+        result = PassResult(name="Cover art")
+        self.service._for_one_album("covers", self.album, result, changes_the_year)
+        self.assertEqual(self.album.year_released, 1969)
+        self.album.year_released = 1970
+        self.assertTrue(loaded_values.changed(self.album, "year_released"))
+
+    def test_the_wikidata_pass_reads_back_a_failed_album(self):
+        def half_done(album, metadata, labels):
+            album.musicbrainz_release_group_id = "33333333-3333-3333-3333-333333333333"
+            album.save(update_fields=["musicbrainz_release_group_id"])
+            raise RuntimeError("boom")
+
+        client = mock.MagicMock()
+        client.__enter__.return_value = client
+        client.fetch_album_metadata.return_value = {}
+        client.fetch_artists.return_value = {}
+        client.fetch_labels.return_value = {}
+        self.album.musicbrainz_release_group_id = RG_MBID
+        self.album.save()
+        with mock.patch(
+            "music.services.metadata_service.WikidataClient", return_value=client
+        ), mock.patch.object(self.service, "_save_wikidata", side_effect=half_done):
+            self.service.run_wikidata([self.album])
+        self.assertEqual(self.album.musicbrainz_release_group_id, RG_MBID)
+
     def test_a_malformed_artist_mbid_is_skipped_not_stored(self):
         """P434 was stored as it came; on Postgres one overlong value was a
         DataError outside the per-album guard, which ended the pass. Cut to

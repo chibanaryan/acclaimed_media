@@ -190,6 +190,14 @@ and four of the small leftovers. Found by its audits and left:
       a query a node; nothing on a request path calls them.
     - The four search boxes still carry a copy each of the combobox markup
       (bug 8's list).
+    - An album's release-group MBID (Wikidata P436) is stored as Wikidata
+      gives it: unlike an artist's (P434, since this pass), it is not
+      checked to be a UUID, so a malformed one replaces a good one and the
+      cover pass asks the archive for a group that does not exist.
+    - A metadata pass's per-album savepoint spans the album's network
+      requests, so a cover pass walking a group's releases at 1 req/s holds
+      a connection idle in a transaction, and the album's row lock, for tens
+      of seconds. Fetching first and saving in the savepoint would end it.
 
 ## Music: after launch
 

@@ -35,6 +35,8 @@ SENTRY_ENVIRONMENT = env("SENTRY_ENVIRONMENT", default="") or (
 SENTRY_ENABLED = sentry_enabled(
     SENTRY_DSN, SENTRY_ENVIRONMENT, test_mode=TEST_MODE, argv=sys.argv
 )
+# One value for the SDK and its scrubber, which must agree
+SENTRY_SEND_DEFAULT_PII = True
 if SENTRY_ENABLED:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
@@ -43,10 +45,10 @@ if SENTRY_ENABLED:
         # Deprecated in sentry-sdk 2.7x in favour of data_collection, but kept:
         # passing data_collection turns off the EventScrubber, which is what
         # filters passwords and tokens out of request bodies and frame locals.
-        send_default_pii=True,
+        send_default_pii=SENTRY_SEND_DEFAULT_PII,
         # Matched by whole key name: allauth's password1/password2 and
         # oldpassword are not on the default list (core.sentry)
-        event_scrubber=event_scrubber(),
+        event_scrubber=event_scrubber(SENTRY_SEND_DEFAULT_PII),
         # Sampled, not exhaustive: tracing and profiling every request cost
         # per-request CPU and latency on a dyno that has neither to spare,
         # and burn the Sentry quota. Errors are still captured in full.
