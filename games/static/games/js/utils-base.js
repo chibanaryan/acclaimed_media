@@ -882,6 +882,82 @@ function searchGroupOrder(order, defaults) {
 var SEARCH_GROUPS_GAMES = ['games', 'series', 'developers'];
 
 /**
+ * The keyboard half of a search box, spread into each search component: the
+ * WAI-ARIA combobox pattern with a listbox popup.
+ *
+ * The input keeps focus and names the option the arrow keys are on
+ * (`aria-activedescendant`); Enter follows it, and with none it does what it
+ * always did, the full search. The options are the result links, found in
+ * the listbox as it stands (`x-ref="listbox"`), so the groups the template
+ * nests them in need no arithmetic here. They stay links, tabbable as
+ * before: the arrow keys are a second way in, not the only one.
+ *
+ * Until 2026-11-10 the boxes were a field followed by links, with no way
+ * to them from the field but Tab.
+ * @returns {Object} State and methods to spread into an Alpine component
+ */
+function searchComboboxState() {
+    return {
+        // The active option's id, or '' for none
+        activeOption: '',
+
+        /** @private The result links, in the order shown. */
+        _searchOptions() {
+            const listbox = this.$refs && this.$refs.listbox;
+            return listbox ? Array.from(listbox.querySelectorAll('[role="option"]')) : [];
+        },
+
+        /** Moves the active option by `step`, wrapping at either end. */
+        moveOption(step) {
+            const options = this._searchOptions();
+            if (!options.length) {
+                this.activeOption = '';
+                return;
+            }
+            const prefix = this.$refs.listbox.id + '-option-';
+            let current = -1;
+            options.forEach((option, index) => {
+                if (option.getAttribute('aria-selected') === 'true') current = index;
+                // Numbered afresh each time: a keyed loop reuses elements,
+                // so an id given last time may be another position's now
+                option.id = prefix + index;
+            });
+            let next = current + step;
+            if (current === -1) next = step > 0 ? 0 : options.length - 1;
+            if (next < 0) next = options.length - 1;
+            if (next >= options.length) next = 0;
+            options.forEach((option, index) => {
+                option.setAttribute('aria-selected', index === next ? 'true' : 'false');
+            });
+            this.activeOption = options[next].id;
+            if (typeof options[next].scrollIntoView === 'function') {
+                options[next].scrollIntoView({ block: 'nearest' });
+            }
+        },
+
+        /**
+         * Follows the active option, if there is one.
+         * @returns {boolean} Whether there was: false leaves Enter to the caller
+         */
+        activateOption(event) {
+            const active = this._searchOptions().find(
+                option => option.getAttribute('aria-selected') === 'true'
+            );
+            if (!active) return false;
+            if (event && typeof event.preventDefault === 'function') event.preventDefault();
+            active.click();
+            return true;
+        },
+
+        /** Forgets the active option: the results under it are changing. */
+        clearActiveOption() {
+            this._searchOptions().forEach(option => option.removeAttribute('aria-selected'));
+            this.activeOption = '';
+        }
+    };
+}
+
+/**
  * Creates Alpine.js unified search component data (developers, games, and series)
  * @param {string} apiUrl - API endpoint for unified search
  * @param {number} developerLimit - Max developer results (default 3)
@@ -898,6 +974,7 @@ function createUnifiedSearchData(apiUrl, developerLimit = 3, gameLimit = 5, seri
     const requests = new FetchManager();
 
     return {
+        ...searchComboboxState(),
         showMenu: false,
         q: '',
         developers: [],
@@ -923,6 +1000,8 @@ function createUnifiedSearchData(apiUrl, developerLimit = 3, gameLimit = 5, seri
         },
 
         async loadResults() {
+            // The results are about to change under the active option
+            this.clearActiveOption();
             const trimmedQ = this.q.trim();
             if (trimmedQ.length < 2) {
                 requests.abort();
@@ -960,6 +1039,7 @@ function createUnifiedSearchData(apiUrl, developerLimit = 3, gameLimit = 5, seri
 
         reset() {
             requests.abort();
+            this.clearActiveOption();
             this.showMenu = false;
             this.q = '';
             this.developers = [];

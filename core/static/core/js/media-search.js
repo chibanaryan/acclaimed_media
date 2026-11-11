@@ -17,9 +17,9 @@
  * An endpoint may also answer with `order`, its group names in the order to
  * show them - it puts whichever group holds the better match first, so
  * "Beatles" leads with the band and "Abbey Road" with the album. A template
- * loops over `order` to place the groups. `searchGroupOrder` and
- * `FetchManager` come from games/js/utils-base.js, which every page loads
- * ahead of this file.
+ * loops over `order` to place the groups. `searchGroupOrder`,
+ * `FetchManager` and `searchComboboxState` come from games/js/utils-base.js,
+ * which every page loads ahead of this file.
  *
  * Only the newest request may write. Each keystroke's request aborts the one
  * before it, and one that was aborted writes nothing, `loading` included:
@@ -40,6 +40,8 @@ function createMediaSearchData(apiUrl, limits) {
     };
 
     return {
+        // The arrow keys and the active option: games/js/utils-base.js
+        ...searchComboboxState(),
         showMenu: false,
         q: '',
         loading: false,
@@ -56,6 +58,8 @@ function createMediaSearchData(apiUrl, limits) {
         },
 
         async loadResults() {
+            // The results are about to change under the active option
+            this.clearActiveOption();
             const query = this.q.trim();
             if (query.length < 2) {
                 requests.abort();
@@ -101,6 +105,7 @@ function createMediaSearchData(apiUrl, limits) {
 
         reset() {
             requests.abort();
+            this.clearActiveOption();
             this.showMenu = false;
             this.q = '';
             this.loading = false;

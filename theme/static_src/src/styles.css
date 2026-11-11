@@ -1192,6 +1192,18 @@ input[type="number"] {
   display: none;
 }
 
+/* The result the arrow keys are on in a search box (searchComboboxState in
+   utils-base.js). The input keeps the focus, so the option has no focus
+   ring of its own to say where the keys are: a hovered row's tint, and an
+   outline, since a tint alone is under 3:1 against the menu. */
+.menu [role="option"][aria-selected="true"] {
+  background-color: color-mix(in oklab, var(--color-base-content) 10%, transparent);
+  /* The text colour: the primary is a dark green in both themes, which
+     the dark theme's menu swallows */
+  outline: 2px solid var(--color-base-content);
+  outline-offset: -2px;
+}
+
 /* Quick-mark mode (core/js/quick-mark.js): while a mode is on, a click on a
    tracking button applies it rather than opening the menu, so the buttons
    say so with their cursor and a ring on hover. */

@@ -1232,6 +1232,85 @@ async function checkGamesFailedBackWithoutTheEngine(page) {
 }
 
 /**
+ * The sidebar's search box by keyboard: the arrow keys move an active option
+ * the field names (the WAI-ARIA combobox pattern), Enter follows it, and
+ * Enter with none active is still the full search. Until 2026-11-10 the only
+ * way from the field to a result was Tab. Answers as above.
+ */
+async function checkSearchBoxByKeyboard(page, site, query) {
+    await page.setViewport({ width: 1440, height: 900 });
+    await page.goto(site + '/', { waitUntil: 'load' });
+    const field = await page.waitForSelector('#sidebar-search');
+    const state = () => page.$eval('#sidebar-search', input => {
+        const active = document.getElementById(input.getAttribute('aria-activedescendant') || '');
+        const listbox = document.getElementById(input.getAttribute('aria-controls'));
+        return {
+            role: input.getAttribute('role'),
+            expanded: input.getAttribute('aria-expanded'),
+            listbox: listbox && listbox.getAttribute('role'),
+            options: listbox ? listbox.querySelectorAll('[role="option"]').length : 0,
+            selected: listbox ? listbox.querySelectorAll('[aria-selected="true"]').length : 0,
+            active: active && {
+                role: active.getAttribute('role'),
+                selected: active.getAttribute('aria-selected'),
+                href: active.href,
+                visible: active.getBoundingClientRect().height > 0,
+            },
+            focused: document.activeElement === input,
+        };
+    });
+    await sleep(500);
+    let now = await state();
+    if (now.role !== 'combobox' || now.listbox !== 'listbox') return `${site}: the field is no combobox with a listbox`;
+    if (now.expanded !== 'false') return `${site}: the field says it is expanded before anything is typed`;
+    await field.type(query);
+    for (let tries = 0; tries < 60 && !(await state()).options; tries += 1) await sleep(100);
+    now = await state();
+    if (!now.options) return `${site}: a search for "${query}" showed no results`;
+    if (now.expanded !== 'true') return `${site}: the field does not say its results are showing`;
+    if (now.active) return `${site}: an option is active before an arrow key is pressed`;
+    await page.keyboard.press('ArrowDown');
+    const first = await state();
+    if (!first.active || first.active.role !== 'option' || first.active.selected !== 'true') {
+        return `${site}: ArrowDown named no selected option`;
+    }
+    if (!first.active.visible) return `${site}: the active option is not on screen`;
+    if (first.selected !== 1) return `${site}: ${first.selected} options are selected`;
+    if (!first.focused) return `${site}: the arrow key took the focus out of the field`;
+    await page.keyboard.press('ArrowDown');
+    const second = await state();
+    if (!second.active || second.active.href === first.active.href) return `${site}: a second ArrowDown did not move on`;
+    await page.keyboard.press('ArrowUp');
+    await page.keyboard.press('ArrowUp');
+    const wrapped = await state();
+    if (!wrapped.active || wrapped.selected !== 1) return `${site}: ArrowUp past the top lost the active option`;
+    if (wrapped.active.href === first.active.href) return `${site}: ArrowUp past the top did not wrap to the last option`;
+    await page.keyboard.press('ArrowDown');
+    await Promise.all([
+        page.waitForNavigation({ waitUntil: 'load' }),
+        page.keyboard.press('Enter'),
+    ]);
+    if (page.url() !== first.active.href) return `${site}: Enter went to ${page.url()}, not the active option's ${first.active.href}`;
+
+    // And with no option active, Enter is what it was: the full search
+    const again = await page.waitForSelector('#sidebar-search');
+    await sleep(500);
+    await again.type(query);
+    for (let tries = 0; tries < 60 && !(await state()).options; tries += 1) await sleep(100);
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Escape');
+    now = await state();
+    if (now.active || now.expanded !== 'false') return `${site}: Escape left the results open or an option active`;
+    await Promise.all([
+        page.waitForNavigation({ waitUntil: 'load' }),
+        page.keyboard.press('Enter'),
+    ]);
+    const searched = new URL(page.url());
+    return searched.searchParams.get('q') === query
+        ? null : `${site}: Enter with no active option went to ${page.url()}`;
+}
+
+/**
  * A Back whose render failed leaves the list it left under the address it
  * went to, and the engine, arriving then, found the filters equal to the
  * address's and took the rows for that address's list: it left the 1990s on
@@ -2578,6 +2657,8 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     }
     await report('games failed Back without the engine', checkGamesFailedBackWithoutTheEngine);
     await report('games failed Back, then the engine', checkGamesFailedBackThenTheEngine);
+    await report('games search box by keyboard', page => checkSearchBoxByKeyboard(page, games, 'smoke'));
+    await report('music search box by keyboard', page => checkSearchBoxByKeyboard(page, music, 'smoke'));
     await report('games failed search keeps the typing', checkGamesFailedSearchKeepsTheTyping);
     for (const engineFirst of [true, false]) {
         await report(`music a row genre failing before Alpine, engine failed ${engineFirst ? 'first' : 'after'}`,

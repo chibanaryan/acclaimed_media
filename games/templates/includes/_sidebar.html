@@ -31,8 +31,17 @@
                        class="grow"
                        x-model="q"
                        @focus="showMenu = true"
+                       @input="showMenu = true"
                        @input.debounce.300ms="loadResults()"
-                       @keydown.enter="if(q.trim().length >= 2) window.location.href = '{% url 'music:home' %}?q=' + encodeURIComponent(q.trim())"
+                       @keydown.down.prevent="showMenu = true; moveOption(1)"
+                       @keydown.up.prevent="showMenu = true; moveOption(-1)"
+                       @keydown.escape="clearActiveOption(); showMenu = false"
+                       @keydown.enter="if (!activateOption($event) && q.trim().length >= 2) window.location.href = '{% url 'music:home' %}?q=' + encodeURIComponent(q.trim())"
+                       role="combobox"
+                       aria-autocomplete="list"
+                       aria-controls="sidebar-search-results"
+                       :aria-expanded="showMenu && hasResults() ? 'true' : 'false'"
+                       :aria-activedescendant="activeOption || false"
                        autocomplete="off">
                 <button type="button"
                         @click="reset(); showMenu = false"
@@ -48,6 +57,7 @@
                  class="absolute left-0 top-full mt-1 bg-base-200 rounded-box w-80 p-2 shadow-lg z-[9999] max-h-80 overflow-y-auto">
                 {# DaisyUI sizes a menu, and each item in it, to its content, so a #}
                 {# long title overran the w-80 dropdown instead of truncating. #}
+                {# The hints sit outside the listbox, which holds options alone #}
                 <ul class="menu menu-sm p-0 w-full flex-nowrap [&>li>*]:w-full [&>li>*]:min-w-0">
                     <template x-if="!q || q.trim().length < 2">
                         <li class="disabled"><span class="text-base-content/85 text-sm">Enter 2+ characters</span></li>
@@ -55,17 +65,19 @@
                     <template x-if="q && q.trim().length >= 2 && !loading && !hasResults()">
                         <li class="disabled"><span class="text-base-content/85 text-sm">No results found</span></li>
                     </template>
+                </ul>
+                <ul class="menu menu-sm p-0 w-full flex-nowrap [&>li>*]:w-full [&>li>*]:min-w-0" role="listbox" id="sidebar-search-results" x-ref="listbox" aria-label="Search results" x-show="hasResults()">
                     {# One nested list per group, in the order the response gives: the group holding the better match leads (core/services/search_ranking.py). Searching an artist also matches every album credited to them, so with albums always first, five of those filled the box and hid the artist below the fold. #}
                     <template x-for="group in order" :key="group">
-                        <li class="search-group">
-                            <ul class="w-full flex-nowrap [&>li>*]:w-full [&>li>*]:min-w-0">
+                        <li class="search-group" role="none">
+                            <ul class="w-full flex-nowrap [&>li>*]:w-full [&>li>*]:min-w-0" role="group" :aria-label="group.charAt(0).toUpperCase() + group.slice(1)">
                                 {# Artists #}
                                 <template x-if="group === 'artists' && has('artists')">
-                                    <li class="menu-title text-xs uppercase tracking-wider text-base-content/70 pb-0" :class="group === order[0] ? 'pt-1' : 'pt-2'">Artists</li>
+                                    <li role="presentation" aria-hidden="true" class="menu-title text-xs uppercase tracking-wider text-base-content/70 pb-0" :class="group === order[0] ? 'pt-1' : 'pt-2'">Artists</li>
                                 </template>
                                 <template x-for="artist in (group === 'artists' ? results.artists : [])" :key="'artist-' + artist.slug">
-                                    <li>
-                                        <a :href="'{% url 'music:artist-list' %}' + artist.slug + '/'" class="flex items-center gap-2 py-2">
+                                    <li role="none">
+                                        <a role="option" :href="'{% url 'music:artist-list' %}' + artist.slug + '/'" class="flex items-center gap-2 py-2">
                                             <span class="mdi mdi-account-music text-lg text-accent" aria-hidden="true"></span>
                                             <div class="flex-1 min-w-0">
                                                 <div class="font-semibold text-sm truncate" x-text="artist.name"></div>
@@ -75,20 +87,20 @@
                                     </li>
                                 </template>
                                 <template x-if="group === 'artists' && q && q.trim().length >= 2 && !loading && has('artists')">
-                                    <li>
-                                        <a :href="'{% url 'music:artist-list' %}?q=' + encodeURIComponent(q.trim())" class="link link-accent text-sm">
+                                    <li role="none">
+                                        <a role="option" :href="'{% url 'music:artist-list' %}?q=' + encodeURIComponent(q.trim())" class="link link-accent text-sm">
                                             See all artist results...
                                         </a>
                                     </li>
                                 </template>
                                 {# Albums #}
                                 <template x-if="group === 'albums' && has('albums')">
-                                    <li class="menu-title text-xs uppercase tracking-wider text-base-content/70 pb-0" :class="group === order[0] ? 'pt-1' : 'pt-2'">Albums</li>
+                                    <li role="presentation" aria-hidden="true" class="menu-title text-xs uppercase tracking-wider text-base-content/70 pb-0" :class="group === order[0] ? 'pt-1' : 'pt-2'">Albums</li>
                                 </template>
                                 <template x-for="album in (group === 'albums' ? results.albums : [])" :key="'album-' + album.id">
-                                    <li>
-                                        <a :href="'{% url 'music:home' %}' + album.slug + '/'" class="flex items-center gap-2 py-2">
-                                            <img :src="album.thumbnail" :alt="album.name" width="90" height="90" class="w-6 h-6 rounded object-cover">
+                                    <li role="none">
+                                        <a role="option" :href="'{% url 'music:home' %}' + album.slug + '/'" class="flex items-center gap-2 py-2">
+                                            <img :src="album.thumbnail" alt="" width="90" height="90" class="w-6 h-6 rounded object-cover">
                                             <div class="flex-1 min-w-0">
                                                 <div class="font-semibold text-sm truncate" x-text="album.name"></div>
                                                 <div class="text-xs text-base-content/85" x-text="(album.year_released || '') + ' &bull; #' + album.rank"></div>
@@ -97,8 +109,8 @@
                                     </li>
                                 </template>
                                 <template x-if="group === 'albums' && q && q.trim().length >= 2 && !loading && has('albums')">
-                                    <li>
-                                        <a :href="'{% url 'music:home' %}?q=' + encodeURIComponent(q.trim())" class="link link-accent text-sm">
+                                    <li role="none">
+                                        <a role="option" :href="'{% url 'music:home' %}?q=' + encodeURIComponent(q.trim())" class="link link-accent text-sm">
                                             See all album results...
                                         </a>
                                     </li>
@@ -130,8 +142,17 @@
                        class="grow"
                        x-model="q"
                        @focus="showMenu = true"
+                       @input="showMenu = true"
                        @input.debounce.300ms="loadResults()"
-                       @keydown.enter="if(q.trim().length >= 2) window.location.href = '{% url 'home' %}?q=' + encodeURIComponent(q.trim())"
+                       @keydown.down.prevent="showMenu = true; moveOption(1)"
+                       @keydown.up.prevent="showMenu = true; moveOption(-1)"
+                       @keydown.escape="clearActiveOption(); showMenu = false"
+                       @keydown.enter="if (!activateOption($event) && q.trim().length >= 2) window.location.href = '{% url 'home' %}?q=' + encodeURIComponent(q.trim())"
+                       role="combobox"
+                       aria-autocomplete="list"
+                       aria-controls="sidebar-search-results"
+                       :aria-expanded="showMenu && hasResults() ? 'true' : 'false'"
+                       :aria-activedescendant="activeOption || false"
                        autocomplete="off">
                 <button type="button"
                         @click="reset()"
@@ -147,6 +168,7 @@
                  class="absolute left-0 top-full mt-1 bg-base-200 rounded-box w-80 p-2 shadow-lg z-[9999] max-h-80 overflow-y-auto">
                 {# DaisyUI sizes a menu, and each item in it, to its content, so a #}
                 {# long title overran the w-80 dropdown instead of truncating. #}
+                {# The hints sit outside the listbox, which holds options alone #}
                 <ul class="menu menu-sm p-0 w-full flex-nowrap [&>li>*]:w-full [&>li>*]:min-w-0">
                     <template x-if="!q || q.trim().length < 2">
                         <li class="disabled"><span class="text-base-content/85 text-sm">Enter 2+ characters</span></li>
@@ -154,18 +176,20 @@
                     <template x-if="q && q.trim().length >= 2 && !loading && !hasResults()">
                         <li class="disabled"><span class="text-base-content/85 text-sm">No results found</span></li>
                     </template>
+                </ul>
+                <ul class="menu menu-sm p-0 w-full flex-nowrap [&>li>*]:w-full [&>li>*]:min-w-0" role="listbox" id="sidebar-search-results" x-ref="listbox" aria-label="Search results" x-show="hasResults()">
                     {# One nested list per group, in the order the response gives: the group holding the better match leads (core/services/search_ranking.py), so "Nintendo" leads with the developer and "Halo" with the series. #}
                     <template x-for="group in order" :key="group">
-                        <li class="search-group">
-                            <ul class="w-full flex-nowrap [&>li>*]:w-full [&>li>*]:min-w-0">
+                        <li class="search-group" role="none">
+                            <ul class="w-full flex-nowrap [&>li>*]:w-full [&>li>*]:min-w-0" role="group" :aria-label="group.charAt(0).toUpperCase() + group.slice(1)">
                             {# Games section #}
                             <template x-if="group === 'games' && hasGameResults()">
-                                <li class="menu-title text-xs uppercase tracking-wider text-base-content/70 pb-0" :class="group === order[0] ? 'pt-1' : 'pt-2'">Games</li>
+                                <li role="presentation" aria-hidden="true" class="menu-title text-xs uppercase tracking-wider text-base-content/70 pb-0" :class="group === order[0] ? 'pt-1' : 'pt-2'">Games</li>
                             </template>
                             <template x-for="result in (group === 'games' ? games : [])" :key="'game-' + result.id">
-                                <li>
-                                    <a :href="'/game/' + result.slug + '/'" class="flex items-center gap-2 py-2">
-                                        <img :src="result.thumbnail" :alt="result.name" width="90" height="128" class="w-6 h-auto rounded">
+                                <li role="none">
+                                    <a role="option" :href="'/game/' + result.slug + '/'" class="flex items-center gap-2 py-2">
+                                        <img :src="result.thumbnail" alt="" width="90" height="128" class="w-6 h-auto rounded">
                                         <div class="flex-1 min-w-0">
                                             <div class="font-semibold text-sm truncate" x-text="result.name"></div>
                                             <div class="text-xs text-base-content/85" x-text="result.year_of_release + ' &bull; #' + result.rank"></div>
@@ -174,19 +198,19 @@
                                 </li>
                             </template>
                             <template x-if="group === 'games' && q && q.trim().length >= 2 && !loading && hasGameResults()">
-                                <li>
-                                    <a :href="'{% url 'home' %}?q=' + encodeURIComponent(q.trim())" class="link link-accent text-sm">
+                                <li role="none">
+                                    <a role="option" :href="'{% url 'home' %}?q=' + encodeURIComponent(q.trim())" class="link link-accent text-sm">
                                         See all game results...
                                     </a>
                                 </li>
                             </template>
                             {# Developers section #}
                             <template x-if="group === 'developers' && hasDeveloperResults()">
-                                <li class="menu-title text-xs uppercase tracking-wider text-base-content/70 pb-0" :class="group === order[0] ? 'pt-1' : 'pt-2'">Developers</li>
+                                <li role="presentation" aria-hidden="true" class="menu-title text-xs uppercase tracking-wider text-base-content/70 pb-0" :class="group === order[0] ? 'pt-1' : 'pt-2'">Developers</li>
                             </template>
                             <template x-for="dev in (group === 'developers' ? developers : [])" :key="'dev-' + dev.id">
-                                <li>
-                                    <a :href="'/developers/' + dev.root_slug + '/' + (dev.id !== dev.root_id ? '#developer-' + dev.id : '')" class="flex items-center gap-2 py-2">
+                                <li role="none">
+                                    <a role="option" :href="'/developers/' + dev.root_slug + '/' + (dev.id !== dev.root_id ? '#developer-' + dev.id : '')" class="flex items-center gap-2 py-2">
                                         <span class="mdi mdi-account-group text-lg text-accent" aria-hidden="true"></span>
                                         <div class="flex-1 min-w-0">
                                             <div class="font-semibold text-sm truncate" x-text="dev.name"></div>
@@ -196,19 +220,19 @@
                                 </li>
                             </template>
                             <template x-if="group === 'developers' && q && q.trim().length >= 2 && !loading && hasDeveloperResults()">
-                                <li>
-                                    <a :href="'{% url 'developers-list' %}?q=' + encodeURIComponent(q.trim())" class="link link-accent text-sm">
+                                <li role="none">
+                                    <a role="option" :href="'{% url 'developers-list' %}?q=' + encodeURIComponent(q.trim())" class="link link-accent text-sm">
                                         See all developer results...
                                     </a>
                                 </li>
                             </template>
                             {# Series section #}
                             <template x-if="group === 'series' && hasSeriesResults()">
-                                <li class="menu-title text-xs uppercase tracking-wider text-base-content/70 pb-0" :class="group === order[0] ? 'pt-1' : 'pt-2'">Series</li>
+                                <li role="presentation" aria-hidden="true" class="menu-title text-xs uppercase tracking-wider text-base-content/70 pb-0" :class="group === order[0] ? 'pt-1' : 'pt-2'">Series</li>
                             </template>
                             <template x-for="s in (group === 'series' ? series : [])" :key="'series-' + s.id">
-                                <li>
-                                    <a :href="'{% url 'home' %}?series=' + s.id" class="flex items-center gap-2 py-2">
+                                <li role="none">
+                                    <a role="option" :href="'{% url 'home' %}?series=' + s.id" class="flex items-center gap-2 py-2">
                                         <span class="mdi mdi-mushroom text-lg text-accent" aria-hidden="true"></span>
                                         <div class="flex-1 min-w-0">
                                             <div class="font-semibold text-sm truncate" x-text="s.name"></div>
