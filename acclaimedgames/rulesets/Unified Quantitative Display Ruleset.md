@@ -4,7 +4,7 @@ A comprehensive ruleset for producing visual displays of quantitative informatio
 
 ---
 
-## Project Context: Acclaimed Video Games
+## Project Context: Acclaimed Media
 
 This section captures requirements gathered from stakeholder interview (December 2025) to guide visualization decisions for this specific project.
 

@@ -6,7 +6,7 @@ description: Run Django tests with coverage reporting. Use when asked to test, r
 # Django Tests with Coverage
 
 The suites live in `games/tests/`, `music/tests/`, `core/tests/` and
-`books/tests/` (about 4,200 tests). Use the venv's interpreter
+`books/tests/` (about 4,700 tests). Use the venv's interpreter
 (`venv/bin/...`), not a bare `python3` or `pytest`.
 
 ## IMPORTANT: No Parallel Coverage Runs

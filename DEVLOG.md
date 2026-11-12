@@ -1,5 +1,64 @@
 # Developer Log
 
+## 2026-11-12 (fifth improvement pass)
+
+- **Changing an account's email in the admin no longer leaves the old
+  address able to reset its password.** The admin wrote `User.email` and
+  left allauth's address rows, which its password reset and its own login
+  read first. The save now leaves the account the rows a sign-up on the new
+  address would have, refuses an address another account has verified, and
+  tells staff what went (ROADMAP 13 as was). Accounts changed before this
+  keep their old rows until repaired (ROADMAP 27)
+- **The dark theme's green text can be read.** An axe-core run over
+  thirteen pages in both themes found its accent, the colour of every link
+  and every row's rank, at 2.7:1 to 3.6:1, and its primary, used as text by
+  a badge and each platform's hover, at 1.5:1 to 2.0:1: the developers
+  list's "N games" badge on a phone could barely be seen. The accent is
+  lighter and stands in for the primary wherever that was text. A test
+  computes the ratios from the stylesheet
+- **The games rankings' list query is a tenth of what it was** (ROADMAP 5).
+  The count of lists beside each game is a subquery a row, not a join to
+  every membership grouped over every game, and the sort adds no `DISTINCT`.
+  On a copy of production's data the first hundred rows went from 124 ms to
+  17.5 ms on SQLite and 54 ms to 20 ms on Postgres 15, the same rows. Music's
+  has the same change
+- **The artist page keeps its buttons in step.** It never loaded the script
+  that copies a status from a row's desktop button to its phone one, so the
+  hidden one kept its old icon until a reload, and focus fell to the top of
+  the page
+- **The weekly games refresh tells the caches when it changed something.**
+  It writes genres, slugs and artwork through saves the data version does
+  not see, and a reader's stored payload has no age limit. It compares the
+  payload before and after, and moves the version only if it changed
+- Requests answered wrongly are not: `/api/developers/` left out 42 parent
+  companies whose games belong to their studios; the search box answered
+  "🎮🎮" with the top of the rankings; a signed-out CSV was named
+  "...-played"; `?page=0` showed the last page; a year range written
+  backwards listed nothing (ROADMAP 12 as was); the source-lists total
+  ignored the search in one mode (11 as was); a username could not be changed back to
+  the account's own email; a contact name with a line break failed the send
+- Platform group ids (`?platforms=mfr-nintendo`) are no longer read from
+  the URL: no page ever wrote one, and the heading, the engine and the CSV
+  each read them differently (ROADMAP 10 as was). A list type the games file
+  spells its own way no longer drops its group from a game's page
+- A saved "Short" playtime filter comes back as Short; Log In and Contact
+  answer within a second of the page loading, not whenever the browser is
+  idle; a server Load More keeps keyboard focus; the mobile sheet's
+  sections say whether they are open; a platform's code on a row is named
+  by what it shows
+- Removed the games renderer's second copy of each row, built from strings
+  for a page with no templates: about 300 lines that could not run, and
+  10 KB of the bundle. Two PostCSS plugins the stylesheet does not use
+- The coverage gate names what it leaves out. Music's import handler and
+  nine commands are under it (13,490 statements, from 12,409); five games
+  files stay out, by name, at 62% to 81%. A test compiles every template.
+  Local test runs no longer install the debug toolbar, as CI's never did.
+  The smoke test signs in for the first time, as a seeded reader
+- Tried and taken out at its second review round: honouring `Retry-After`
+  in music's HTTP client (ROADMAP 10 says what it has to get right). Left
+  as it was, on a closer look: `populate_platform_years`, which is the one
+  way to re-apply the years table after editing it, and now has a test
+
 ## 2026-11-11 (fourth improvement pass)
 
 - **A verification belongs to the account that asked for it.** The

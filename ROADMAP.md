@@ -27,10 +27,11 @@ it in `scripts/browser_smoke.js` first.
    it replaced, so if those rows fail, revert that one commit ("The search
    boxes are comboboxes") rather than patch it unheard.
 
-The browser harnesses used for v905 are in the ashgabat worktree's
-`.context/ygrid/`, which is gitignored and so exists only there:
-`matrix.js`, `musicrace.js`, `loadmore.js`, `round8.js`-`round10.js`, and
-`xbrowser.js` for WebKit and Firefox.
+The browser harnesses used for v905 (`matrix.js`, `musicrace.js`,
+`loadmore.js`, `round8.js`-`round10.js`, and `xbrowser.js` for WebKit and
+Firefox) were in the ashgabat worktree's `.context/ygrid/`, which is
+gitignored: that worktree is gone, and they with it. What they checked in
+Chrome is in `scripts/browser_smoke.js`; nothing here runs WebKit or Firefox.
 
 ## Open bugs (found 2026-11-03, second session)
 
@@ -82,30 +83,20 @@ most of the small leftovers; `DEVLOG.md`). Left, or found by it:
    below jumps. Only its URL is stored. A 16:9 crop was tried on 2026-11-10
    and reverted: there were no articles locally to check a crop against.
    Store the dimensions, or pick the crop looking at the real images.
-5. **The games rankings' list query is the one piece of per-request work
-   worth a look.** The three pieces filed here as unmeasured were timed on
-   2026-11-10 against a local copy of production's data (SQLite, shared
-   caches warm, the whole-page cache emptied for each run, median of six):
-
-   | Page | Time | Queries | In SQL |
-   |---|---|---|---|
-   | `/developers/` | 65 ms | 4 | 3 ms |
-   | `/developers/?page=2&append=true` | 47 ms | 4 | 2 ms |
-   | music `/` | 285 ms | 14 | 29 ms |
-   | games `/` | 242 ms | 15 | 120 ms |
-
-   None of the three is the cost it was feared to be: the developers list
-   is cheap, the album rankings' genre pairs do not show among its queries,
-   and the HLTB totals aggregate takes 1 ms. What does show is games' main
-   list query, 109 ms of the 120: `SELECT DISTINCT` over every column of
-   every game, joined to the list memberships and grouped for
-   `COUNT(DISTINCT listmembership.id)`, before the first 100 are taken. A
-   correlated subquery for `list_count`, or dropping the `DISTINCT` the
-   `GROUP BY` already makes redundant, would narrow it. Not changed: it
-   is the query the parity tests order by, the numbers are SQLite's, and
-   production's Postgres may plan it differently. Time it there
-   (`EXPLAIN ANALYZE` from a one-off dyno) before touching it. The rest of
-   each page's time is template rendering, which the page cache answers.
+5. **The games rankings' list query, on production.** It was the one
+   piece of per-request work worth a look: 109 ms of the page's 120 ms of
+   SQL (measured 2026-11-10 on SQLite), a `SELECT DISTINCT` over every
+   column of every game, joined to the list memberships and grouped for
+   their count. Since 2026-11-12 `list_count` is a subquery a row and the
+   sort adds no `DISTINCT` (`DEVLOG.md`): on the local copy of production's
+   data the first hundred rows with their prefetches went from 124 ms to
+   17.5 ms on SQLite and from 54 ms to 20 ms on Postgres 15. Two things are
+   left. Production is Postgres 18 on other hardware, and was not measured:
+   read `/`'s p50 across a deploy (item 26). And a list filtered by genre,
+   platform or series still carries the `DISTINCT` its many-to-many join
+   needs (46 ms to 30 ms with two platforms, so less of a gain); an
+   `Exists` in place of each join would end it, in three functions that
+   the facet counts, the API's list and the landing pages share.
 6. **A failed Back, then a failed change, with no engine.** A Back whose
    render fails leaves the old list under the new address, and the engine
    now renders the address's list when it arrives. With the engine's data
@@ -125,8 +116,6 @@ most of the small leftovers; `DEVLOG.md`). Left, or found by it:
    last is a wrong match by name. Giving each its HLTB id on Wikidata
    (P2816) settles it for good, since an id is looked up before any name.
 8. **Small leftovers.**
-    - `populate_platform_years` has no caller; `games/platform_years.py`
-      keeps it "for re-applying the whole table after editing it".
     - The games import's "Load Test Data" is hidden without `DEBUG` but
       accepted by the server. It loads the checked-in release, as
       `import_games_data` does, so it was left.
@@ -149,67 +138,98 @@ most of the small leftovers; `DEVLOG.md`). Left, or found by it:
     - `base.html` and `_nav_mobile.html` carry about 400 lines of inline
       script on every page, which a static file would let a browser keep.
       Unmeasured.
-    - The 100% coverage gate omits every management command and both
-      `import_handler.py` modules, about 7,700 lines: the scheduled jobs
-      and the import pipelines. Each has tests; none of it is measured.
+    - The 100% coverage gate leaves out five games files that have tests
+      and fall short of it, each by name in `.coveragerc` (measured
+      2026-11-12): `refresh_all_metadata` 62%, `games/services/
+      import_handler.py` 68%, `get_wiki_genres` 70%, `fetch_hltb_data` 80%,
+      `fetch_wikipedia_metadata` 81%. Mostly the async fetch loops and the
+      three progress streams. The books command has no tests at all.
 
 ## Open bugs (found 2026-11-11)
 
 The fourth pass (`DEVLOG.md`) fixed resending a verification (bug 8 as was)
-and four of the small leftovers. Found by its audits and left:
+and four of the small leftovers. The fifth, on 2026-11-12, fixed the
+platform group ids, the source-lists total, the reversed year range, the
+server Load More's focus, the release-group MBID check and the admin's
+email rows (bugs 10 to 12 as were, and three of 13's). Found by the fourth
+pass's audits and left:
 
 9. **Nothing stores IGDB's summary.** Every fetch asks IGDB for `summary`
    and `storyline` and drops them, so a game page's meta description and
    JSON-LD use one stock sentence for every game. A `summary` field on
    `IGDBGameData`, filled by the fetch and read by the page, would give
    each its own; it needs a migration and a forced IGDB pass to fill.
-10. **The platform group ids (`mfr-nintendo`, `ff-handheld`) are reachable
-    only by hand.** No script writes one, but the server filters by them:
-    the heading then names the raw id ("Most Acclaimed mfr-nintendo
-    Games"), the engine does not know them, and the CSV's file name
-    expands them where the heading does not. Remove them, or make all three
-    agree (`games/services/game_filters.py`).
-11. **The source-lists total ignores the search in one of its two modes**
-    (`games/views/lists.py`): grouped by publication, "of Y lists" counts
-    every list; grouped by type it counts the matches.
-12. **A reversed year range** (`?start=2000&end=1990`, hand-written) lists
-    nothing, on both sides, under a heading reading "2000-1990". Swapping
-    it would have to happen in the server's filter and the engine's alike.
-13. **Smaller, found and left.**
-    - Music's server Load More (before the engine) replaces its button out
-      of band, and focus falls to the top of the page; the engine's keeps
-      it since this pass (`replaceKeepingFocus`).
+10. **Smaller, found and left.**
     - `ALLOWED_HOSTS` keeps `localhost` and `127.0.0.1` in production;
       nothing exploitable was found.
     - `USE_TZ = False`: every datetime is naive, correct only because
       `TIME_ZONE` is UTC. Turning it on is a migration project.
     - The music rate-limited client paces itself by the wall clock and
       backs off a fixed 1 s / 2 s on a 429 or 503, ignoring `Retry-After`.
+      Honouring it was tried on 2026-11-12 and taken out at its second
+      review round. What an implementation has to get right: a service that
+      is down says so to every request, so the waits need a ceiling a pass
+      and not only a wait (a thousand records at two minutes apiece hold
+      the metadata lock for a day and a half); that ceiling has to refill
+      on a success, or a long pass with the odd honest throttle stops
+      honouring them; `float("nan")` parses, and `time.sleep` refuses it,
+      out of methods documented never to raise; and the cover pass shares
+      one client between two threads.
     - Recursive genre helpers (`MusicGenre.get_descendants`,
       `WikipediaGenre.get_ancestors`, ...) are kept for one-off use and are
       a query a node; nothing on a request path calls them.
     - The four search boxes still carry a copy each of the combobox markup
       (bug 8's list).
-    - An album's release-group MBID (Wikidata P436) is stored as Wikidata
-      gives it: unlike an artist's (P434, since this pass), it is not
-      checked to be a UUID, so a malformed one replaces a good one and the
-      cover pass asks the archive for a group that does not exist.
-    - **Changing an account's email in the admin leaves allauth's address
-      rows behind.** The old row stays, often primary, and allauth's
-      password reset matches any row: whoever holds the old address can
-      still reset the password. The new address gets no row, so the login
-      says unverified and the modal can only point to the contact form. The
-      admin also writes addresses with their capitals, where allauth
-      compares lower-case ones, so a mixed-case row escapes its
-      one-verified-account rule. The admin's save should sync the rows
-      (allauth's `sync_user_email_addresses`, lower-cased, the new address
-      primary once confirmed, the old dropped), and staff be told. Six
-      review rounds on 2026-11-11 tried repairing the rows from the resend
-      instead and kept finding edges; it was taken out.
     - A metadata pass's per-album savepoint spans the album's network
       requests, so a cover pass walking a group's releases at 1 req/s holds
       a connection idle in a transaction, and the album's row lock, for tens
       of seconds. Fetching first and saving in the savepoint would end it.
+
+## Open bugs (found 2026-11-12)
+
+The fifth pass (`DEVLOG.md`). Its surveys found little that a reader could
+reach, which is its own finding: a crawl of all 3,633 sitemap URLs on a copy
+of production's data returned no error, and eslint and ruff's bug rules
+found nothing to fix. What it found and left:
+
+11. **Found and left.**
+    - **The year grid's labels on its warmer tiles, in the dark theme.**
+      axe-core measured the label (`#e4e4e7`) at 2.9:1 to 4.4:1 on the
+      heatmap's mid and high colours (`#b0792d`, `#a4712b`, `#886029`): 85
+      tiles on the two rankings pages of the smoke data. A darker label on
+      a warm tile, or a lighter one's shadow, would fix it; the grid's fade
+      is the CSS that cost the most frames to get right (AGENTS.md, "A
+      selected year range reads as one shape"), so look at real frames.
+    - **Three names that do not hold their label word for word** (WCAG
+      2.5.3, for someone driving the page by voice): a year cell reads "10"
+      and is named "2010, 12 albums"; the sort's direction reads "Desc" and
+      is named "Descending order: switch to ascending"; the games mobile
+      bar's Music icon reads "Beta" and is named "Music (beta)".
+    - **Sign-up with an email over 150 characters** sets the username to
+      it (`ModalAccountAdapter.populate_username`), which the column does
+      not hold: a `DataError` on Postgres. The profile form refuses one
+      since this pass; the adapter should fall back to allauth's generated
+      name, as it does for a name that breaks the rules.
+    - **`post_import.payload_fingerprint` calls the API view's own
+      `_payload`**, through a lazy import. If that method came to read its
+      request, the fingerprint would be None every week and the version
+      would move every Sunday, which the tests would catch
+      (`RefreshMovesTheDataVersionTests`). Moving the payload's builder
+      into `games/services` for the view and the job to share would end
+      the coupling.
+    - **Album detail's two `COUNT`s** (albums of its year, of its decade)
+      were to read the cached year baseline. Left: the shared cache is a
+      Postgres table in production, so the read costs the query it saves.
+    - **The shared venv has django-allauth 65.20.1**, where the lock pins
+      65.21.0 (2026-11-12). CI installs the lock; a local run does not test
+      what ships until `pip install -r requirements.txt -r
+      requirements-dev.txt` is run in the main checkout.
+    - `scripts/setup_worktree.sh` runs under `set -e` alone. `-u` needs
+      `${CLAUDE_PROJECT_DIR:-}` and `${CLAUDE_ENV_FILE:-}`, and care with
+      an empty array under macOS's bash 3.2; it runs at every session's
+      start, so it was left.
+    - `games/utils.py` re-exports six names only tests read; their patches
+      could name the service modules.
 
 ## Music: after launch
 
@@ -217,7 +237,7 @@ The section is public at `music.acclaimedmedia.org`, beside the games site and
 a landing page at the apex (2026-10-30; AGENTS.md, "Domain"). The pages keep a
 "Beta" badge while `music.config.MUSIC_BETA` is on.
 
-14. **New brand artwork.** The favicons still read "Acclaimed Video Games"
+12. **New brand artwork.** The favicons still read "Acclaimed Video Games"
    (`games/static/games/brand/`), and a page without artwork of its own has
    no `og:image` since the old one was removed; every page title already
    says Acclaimed Media. A new default goes in `base.html`'s `og_image` block,
@@ -227,7 +247,7 @@ a landing page at the apex (2026-10-30; AGENTS.md, "Domain"). The pages keep a
 ## Production: after the 2026-11-09 and 2026-11-10 passes ship
 
 The third 2026-11-10 pass adds no migration. It shipped on 2026-11-11 (v921), after four
-review rounds. Items 22 to 25 below are what to check now that it has.
+review rounds. Items 20 to 23 below are what to check now that it has.
 
 The rankings page is 690 KB anonymous and 833 KB logged in, and the dyno
 runs gthread with three threads per worker (AGENTS.md, "Production memory
@@ -235,13 +255,13 @@ budget"). `--threads 3` was checked on 2026-11-09: over 72 hours the two
 workers peaked at 333 MiB RSS of the 512 MiB quota and swap was 0 but for
 one 6.9 MiB reading, so it stays.
 
-15. **Watch the two burst windows after the deploy.** A scraper asks for
+13. **Watch the two burst windows after the deploy.** A scraper asks for
    3,500-4,800 filtered pages in five minutes at about 04:00 and 21:00 UTC,
    and Sentry's uptime check timed out 11 times in the week to 2026-11-09
    (AGENTS.md, "Caching"). After the deploy, read the uptime monitor across
    the next two windows, `/`'s p50 inside them, and `heroku logs` for
    "Autorestarting worker" during one.
-16. **Read a week of render-budget reports, then decide on
+14. **Read a week of render-budget reports, then decide on
     `ANON_RENDER_BUDGET_ENFORCE`.** The budget only logs: "Anonymous renders
     over budget", at 10 in a burst (WARNING, the logs) and 100 and 1,000
     (ERROR, Sentry). If the only bursts are the scraper's windows, turn it
@@ -250,31 +270,34 @@ one 6.9 MiB reading, so it stays.
     it is a script's (`HX-Request`) is not counted, so a scraper that learnt
     to send the header would pass it; `?partial=true` on its own no longer
     does.
-17. **Check memory under `--max-requests 2000`.** It was 500 until
+15. **Check memory under `--max-requests 2000`.** It was 500 until
     2026-11-09, and memory was measured flat only to 1,000 renders. The page
     cache also holds ~200 more pages, ~12 MB a worker. After a few days read
     `memory.rss.bytes.max` and `memory.swap.bytes.max` from the metrics API;
     back to 1,000 if the peak climbs towards the quota. An import's metadata
     fetch spends ~85 MB in one worker while it runs, so read a week that
     held one.
-18. **Merge the Dependabot queue.** #32 is Django 6.1.3, a security release;
-    #31 and #30 wait with it. #32 and #31 were green on 2026-11-10
-    (`/upgrade-deps`).
-19. **The next deploy applies two migrations**, `games.0124` and
+16. **Merge the Dependabot queue.** #32 is Django 6.1.3, a security release;
+    #31 and #30 wait with it. #32 and #31 were green on 2026-11-10 and
+    again on 2026-11-12 (`/upgrade-deps`). #30 (npm) fails `audit`, `css`
+    and `browser`, so it needs its CSS rebuilt and read; it will also want
+    rebasing over the fifth pass, which took two PostCSS plugins out of
+    `package.json`.
+17. **The next deploy applies two migrations**, `games.0124` and
     `music.0015`: unique constraints on game, developer and album slugs
     and on game and developer IGDB ids. Production had no duplicates on
     2026-11-10; if a release imported since then has one, the release
     phase fails on it and names the constraint. `/deploy` backs up first.
-20. **The first Sunday after the deploy, read the weekly games job.**
+18. **The first Sunday after the deploy, read the weekly games job.**
     `refresh_all_metadata` now fails when a phase could not run at all, so
     Sentry's cron monitor will alert on a phase that has been failing
     quietly. The job's output names the phase.
-21. **Check one notification email's headers** once a post goes out: Gmail
+19. **Check one notification email's headers** once a post goes out: Gmail
     and Apple Mail should show their own Unsubscribe control
     (`List-Unsubscribe-Post`), and the footer link should ask before it
     unsubscribes.
 
-22. **The first Sunday after it ships, read both weekly jobs.**
+20. **The first Sunday after it ships, read both weekly jobs.**
     `fetch_album_metadata` now fails when its Wikidata pass lands nothing,
     so Sentry's cron monitor will alert on an outage it has been reading as
     a good Sunday. Games' Wikipedia phase now sends the credentials it paces
@@ -282,28 +305,53 @@ one 6.9 MiB reading, so it stays.
     and its timeout is 30 seconds, so a stalled page is a logged failure,
     not a five-minute wait. The HLTB phase will move Wordle and the three
     games in bug 7.
-23. **The games API's old cache rows lapse by themselves.** Its keys
+21. **The games API's old cache rows lapse by themselves.** Its keys
     changed shape (`games_api:...`); the rows Django's `cache_page` wrote
     (`views.decorators.cache...`) are never read again and expire within a
     day. Nothing to clear.
-24. **`/accounts/signup/` redirects to the modal's sign-up screen.** Check production once for
+22. **`/accounts/signup/` redirects to the modal's sign-up screen.** Check production once for
     accounts whose username contains `@` and is not their own email
     (`User.objects.filter(username__contains="@").exclude(username=F("email"))`):
     each is a name taken through the old page, and may be squatting
     another person's address.
-25. **Run the search rows of the assistive-tech checklist** (bug 1) on the
+23. **Run the search rows of the assistive-tech checklist** (bug 1) on the
     deployed site, since production is where a screen reader is easiest to
     point.
 
-26. **After the fourth pass ships, check one sign-up end to end.** The
+24. **After the fourth pass ships, check one sign-up end to end.** The
     confirmation link now logs in only the browser that signed up: sign up
     in one browser, open the link there (logged in), and in another
     (verified, with a Log In button). Then read one Sentry event from a
     form post and confirm `password1` is filtered.
-27. **The first Sunday after it, read the music job's errors.** An album's
+25. **The first Sunday after it, read the music job's errors.** An album's
     failure in the cover, Discogs or MusicBrainz pass is now an error line
     and the pass goes on, where it ended the run; a pass that logs many is
     a source down, not many bad albums.
+
+26. **After the fifth pass ships, read `/`'s p50 on games across the
+    deploy**, and the same inside one burst window. The list query should
+    be most of the difference (bug 5). If it is not, `EXPLAIN (ANALYZE)` the
+    page's list query from a one-off dyno: the plan to expect is an index
+    scan on `rank` under the limit, with the list count's subquery run a
+    hundred times.
+27. **Repair the accounts whose email was changed in the admin before
+    2026-11-12.** The admin now puts allauth's rows in step when an email
+    changes, and only then: an account changed earlier keeps a row for its
+    old address, which can still reset its password. List them from a
+    one-off dyno, in a command and not `manage.py shell` (AGENTS.md):
+    `EmailAddress.objects.exclude(email__iexact=F("user__email"))`. Each is
+    either a secondary address its reader added at `/accounts/email/`, to
+    leave, or an old one, for `core.services.account_email
+    .sync_address_rows(user)`.
+28. **Look at the dark theme once on a real screen.** Its links and ranks
+    are a lighter green (the accent at 65% lightness, from 50%), which the
+    arithmetic and axe-core agree is readable; whether it is the green you
+    want is yours to say. One line in `theme/static_src/src/styles.css`,
+    and `core/tests/test_theme_contrast.py` says how dark it may go.
+29. **The first Sunday after it ships, read the weekly games job** once
+    more: it now moves the data version only if a phase changed what the
+    pages show, so `/api/games/all/`'s version should change on a Sunday
+    that changed something and not otherwise.
 
 ## Music: not worth doing as parity
 

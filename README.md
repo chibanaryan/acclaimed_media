@@ -152,7 +152,7 @@ its own at `/import/` on the music host, for its four release files.
 
 ### Quick Actions
 
-- **Load Test Data** - Load bundled test files (development only)
+- **Load Test Data** - Load the checked-in release files (the button is shown only under `DEBUG`)
 - **Delete Game Data** - Destructive maintenance reset for ranking data
 - **Fetch IGDB Data** - Pull cover art, descriptions, and genres
 

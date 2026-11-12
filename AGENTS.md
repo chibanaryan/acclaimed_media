@@ -345,7 +345,9 @@ Django REST Framework powers the API at `/api/` with endpoints:
 - `/api/games/<slug>/` - Game details with lists appearances
 - `/api/games/all/` - Every game in one payload, for client-side filtering
   (cached under the data version; see "Caching")
-- `/api/developers/` - List of all developers with games
+- `/api/developers/` - List of all developers with games, their studios'
+  counted, as the developers page counts them. It counted direct games
+  until 2026-11-12, and left out 42 parents (Microsoft, CD Projekt)
 - `/api/developers/<slug>/` - Developer details by slug
 - `/api/developers/by-id/<igdb_id>/` - Developer details by IGDB ID
 - `/api/developer-aliases/` and `/api/developer-aliases/<igdb_id>/` - The
@@ -357,7 +359,12 @@ Django REST Framework powers the API at `/api/` with endpoints:
   (also at `/api/wikipedia-genres/...` for backwards compatibility)
 - `/api/snippets/<slug>/` and `/api/pages/<url>/` - A text snippet, a flat page
 - `/api/meta/` - Metadata about the database
-- `/api/unified-search/` - Unified search for games, developers, and series
+- `/api/unified-search/` - Unified search for games, developers, and series.
+  A name is found as typed or without its accents
+  (`games.models.name_search_q`), the latter only for a query unidecode
+  has a spelling for throughout: it drops an emoji, and "the folded name
+  contains nothing" is every row, so "🎮🎮" was answered with the top of
+  the rankings until 2026-11-12. `/developers/?q=` uses the same clause
 - `/api/saved-filters/` and `/api/saved-filters/<pk>/` - A reader's saved
   filter combinations: the games API's only writes, behind a session and CSRF
 
@@ -366,8 +373,14 @@ Books API endpoints (behind `BOOKS_ENABLED` feature flag):
 - `/api/books/search/` - Book search
 - `/api/books/<slug>/` - Book details with lists appearances
 - `/api/books/all/` - Bulk endpoint with gzip compression
+- `/api/books/version/` - The data version the bulk payload is kept under
 - `/api/books/authors/` - List authors
 - `/api/books/authors/<slug>/` - Author details with book list
+- `/api/books/authors/by-id/<goodreads_id>/` - The same, by Goodreads id
+- `/api/books/lists/` - Source lists
+- `/api/books/genres/` and `/api/books/genres/tree/` - Book genres, flat and
+  as a tree
+- `/api/books/meta/` - Metadata about the database
 - `/api/books/unified-search/` - Unified book search
 
 Music API endpoints, on `music.acclaimedmedia.org` (at `/api/` on the
@@ -668,6 +681,12 @@ saw. Add a query there when adding a filter or a sort.
   every swapped partial, which mutates the global Sets and then deletes its
   own earlier copies so they do not pile up. `core/js/media-tracking.js` is
   one delegated listener instead, and a page registers what its scope means.
+  **Every page that renders the button includes
+  `music/includes/_album_tracking_script.html`** in its `pre_alpine`
+  block: the rankings, the album page and the artist page. The artist
+  page had none until 2026-11-12, so a status chosen there left the row's
+  hidden half on its old icon and dropped keyboard focus (smoke: "music
+  artist page mirrors a status").
 - **The toggle is atomic.** The delete and the write run in one transaction
   under a per-user lock, and `user_tracking_service.write_tracking_row` finds
   the user's row by tracking key or FK and updates it, so a double-click
@@ -930,6 +949,8 @@ The application uses Django templates with HTMX for dynamic interactions and Alp
 - Responsive design using Tailwind's mobile-first breakpoints (md:, lg:, etc.)
 - Custom components defined in `theme/static_src/src/styles.css` using Tailwind's `@layer components`
 - Text a reader needs is at least `text-base-content/65`: `/50` was 3.2:1 on the light theme's `base-300`, and `/65` is 4.99:1 there, the worst case of both themes
+- **In the dark theme, text is the accent, never the primary.** The dark theme's primary is a background colour, nearly as dark as its pages: as text it is 1.5:1 to 2.0:1. Its accent is the colour of text (links, each row's rank), at 65% lightness, 4.9:1 at worst; it was 50% and 2.7:1 to 3.6:1 until 2026-11-12. `styles.css` gives the accent to `text-primary`, `link-primary`, `hover:text-primary`, an outlined `badge-primary` and the mobile bar's active item under `[data-theme="forest"]`; a component that `@apply`s `text-primary` needs its selector added there, and `core/tests/test_theme_contrast.py` fails on one that is not. That test computes the ratios from the themes' OKLCH values, so change a colour there and run it
+- **A control's spoken name holds its visible text** (WCAG 2.5.3): someone driving the page by voice says what they see. A platform's code on a row is `aria-label="SNES: filter by Super NES"`, not "Filter by Super NES"
 
 **Template Filters:**
 - `from_now` - Converts datetime to relative time (e.g., "2 hours ago")
@@ -986,6 +1007,7 @@ the apex until 2026-10-30):
 - `/artists/` - Artist list with album counts
 - `/artists/<slug>/` - Artist detail with ranked albums
 - `/lists/` - The published source lists behind the rankings
+- `/download/` - The rankings as filtered, as CSV
 - `/import/` - Staff import for the four release files. Linked from nowhere,
   staff included: staff type the URL
 - `/<album_id>/toggle-listened/` - POST, `?status=none|want|listened|own`,
@@ -1148,7 +1170,7 @@ The home page game rankings use a **dual-rendering architecture** that requires 
 | Server-Side (Python/Django) | Client-Side (JavaScript) |
 |----------------------------|--------------------------|
 | `games/templates/games/includes/_game_row_desktop.html` | `games/static/games/js/game-list-renderer.js` |
-| `games/templates/games/includes/_game_row_mobile.html` | (fallback string methods: `_renderDesktopRowString`, `_renderMobileRowString`) |
+| `games/templates/games/includes/_game_row_mobile.html` | (the same file: `_renderDesktopRow`, `_renderMobileRow`) |
 | `games/templatetags/game_filters.py` | `_platformFamilies`, `_familyInfo` objects |
 | `music/templates/music/includes/_album_row.html` | `music/static/music/js/album-list-renderer.js` |
 | `music/templates/music/includes/_album_card_grid.html` | `AlbumListRenderer._renderGridCard` |
@@ -1175,8 +1197,13 @@ test compares it with the server's for each shape.
 **When Modifying Game Rows:**
 1. Update the Django template for server-rendered output
 2. Update the JavaScript renderer's DOM-cloning logic (uses `data-slot` attributes)
-3. Update the JavaScript fallback string-rendering methods to match
-4. Ensure `PLATFORM_FAMILIES` and `FAMILY_INFO` constants match between Python and JS
+3. Ensure `PLATFORM_FAMILIES` and `FAMILY_INFO` constants match between Python and JS
+
+There is no third copy to keep in step. Until 2026-11-12 the renderer also
+built each row, the played button and the grid card from strings, for a page
+with no `<template>`s, about 300 lines that could not run: the page that
+loads the bundle always renders them. Without them the engine now declines to
+start (`GameListRenderer.hasTemplates`), and the server goes on rendering.
 
 **Key Data Slots:** `rank`, `global-rank`, `thumbnail`, `name`, `year`, `title-link`, `thumb-link`, `year-link`, `meta-row`, `platforms`, `genres`, `list-count`, `primary-developer`, `played-button`
 
@@ -1285,7 +1312,13 @@ Wordle, from the 2020 mobile game to the 2021 browser one. The `/api/games/all/`
 (summed hours, and the ids of open-ended games). An HLTB save leaves
 `Game.modified` alone, and the weekly refresh saves every row whether or not
 anything changed, so `updated_at` would make every visitor re-download the
-data each week.
+data each week. For the same reason the weekly job moves the version only
+if it changed what the pages show (2026-11-12): its IGDB and Wikipedia
+phases write genres, slugs and artwork through saves that leave
+`Game.modified` alone, so until then nothing told a reader's stored
+payload, which has no age limit. `refresh_all_metadata` fingerprints the
+payload before and after (`post_import.payload_fingerprint`) and calls
+`move_data_version()` if they differ or cannot be compared.
 
 ## Forum (removed)
 
@@ -1821,6 +1854,17 @@ search row is pinned by growth, in `music/tests/test_api.py`:
   each plus the six of the page's data version since 2026-11-03.
   `/api/games/all/` uses `descendants_by_id` too, in place of its own copy
   of the walk.
+- **`with_list_count()` is a subquery a row, on games and music**
+  (2026-11-12). It was `Count("lists", distinct=True)`: a join to every
+  membership, grouped over every column of every game, and `_order_games`
+  put a `DISTINCT` on every sort, all before the page's hundred rows were
+  taken. That one query was 109 ms of games' 120 ms of SQL. The filters
+  that join many-to-many (genres, platforms, series) add their own
+  `distinct()`, and an unfiltered list has no row twice. On the local copy
+  of production's data the first hundred rows with their prefetches went
+  from 124 ms to 17.5 ms on SQLite and 54 ms to 20 ms on Postgres 15 (the
+  list query itself, 35 ms to 1.1 ms). Pinned by
+  `games/tests/test_game_filters.py::RankingsListQueryTests`.
 - **The rest are pinned by growth, not by count**
   (`games/tests/test_query_budgets.py`). Each test renders a page, adds more
   of what it lists, and requires the same query count, so an N+1 fails it
@@ -1847,6 +1891,19 @@ it replaced had drifted:
   1995. `query_filters.resolve_year_range` is the one rule, the browser's
   (`currentFilterParams`): a start or an end beats a year, which beats a
   decade. Only a hand-written URL carries two (2026-11-10).
+- A range written backwards (`?start=2000&end=1990`, by hand: no control
+  writes one) listed nothing, on both sides and both sites, under a
+  heading reading "2000-1990". It is the range (2026-11-12):
+  `query_params.ordered_range`, in `resolve_year_range` and music's
+  `year_window`, and in the browser `getFiltersFromURL`, music's
+  `_filtersFrom` and `AlbumFilterEngine.filter`.
+- `?platforms=` is platform ids and nothing else. It also took group ids
+  (`mfr-nintendo`, `ff-nintendo-home`) until 2026-11-12, which no page
+  ever wrote into a link: the heading named the raw id, the engine did
+  not know them and the CSV's file name expanded them. The server's copy
+  of the platform hierarchy went with them; the sidebar's two
+  (`filter-subcomponents.js` and `client-filter.js`'s fallback) are held
+  equal by `ClientPlatformHierarchyParityTests`.
 
 Facet cache keys hash every filter parameter except the skipped dimension's
 (`facet_params`).
@@ -1977,9 +2034,23 @@ URL whatever the request is uses `sites.site_reverse()` (music's
   the address posted, and says so when another account has verified the
   address, or it is verified already; signing up on an address another
   account waits on points to logging in or a reset. An account with no
-  address row for its email (made or changed in the admin) is pointed to
-  the contact form: the resend does not repair the rows, which is the
-  admin save's to do (ROADMAP).
+  address row for its email is pointed to the contact form: the resend
+  does not repair the rows, which is the admin save's to do.
+- **Changing an account's email in the admin puts allauth's rows in
+  step** (2026-11-12, `core.services.account_email.sync_address_rows`,
+  from `UserAdmin.save_related`, after the inline's formset has saved).
+  The admin wrote `User.email` and left the `EmailAddress` rows: the old
+  row stayed, often primary and verified, and allauth's password reset
+  and its own login read those rows first, so whoever held the old
+  address could still reset the password. Now the account is left the
+  rows a sign-up on the new address would have: one, lower-case, primary,
+  verified only if the account had verified that address already. The
+  form refuses an address another account has verified, staff are told
+  what went, and no email is sent (the reader confirms it from the login
+  screen's Resend). Only a changed email is checked or synced: a
+  secondary address a reader added themselves is kept, and an account
+  changed before this keeps its old rows until its email is next changed
+  (ROADMAP).
 - **The old apex paths redirect.** Everything the apex served before is in
   links and search indexes, so `urls_root`'s catch-all
   (`core.views.redirect_to_site`) sends `/music/<rest>` to
@@ -2608,7 +2679,9 @@ manage.py ...`. `.env.example` lists them all.
 - `CACHE_URL` - Cache backend URL. Production uses `dbcache://cache_table`.
   Local dev (`DEBUG`) ignores an unset or `dbcache` URL and uses LocMem; any
   other URL is used as given. Tests set `locmemcache://`, and get LocMem
-  without one. See the Caching section
+  without one. A dyno with none does not start (2026-11-12): it fell back
+  to a file cache of its own, so an invalidation or the metadata lock
+  reached one process. See the Caching section
 - `METADATA_AFTER_IMPORT` - Whether an import fetches the metadata it left
   missing (default: on, off under test). See "Imports start their metadata
   fetch"
@@ -2619,7 +2692,10 @@ manage.py ...`. `.env.example` lists them all.
   when `DYNO` is set (any Heroku dyno) and `development` everywhere else.
   `core.sentry.event_scrubber` adds allauth's `password1`, `password2`
   and `oldpassword` to the default denylist, which matches whole key names
-  and let them through until 2026-11-11. A request's unhandled exception is
+  and let them through until 2026-11-11, and the CSRF token where it
+  travels outside its cookie: htmx's `X-CSRFToken` header and a form's
+  `csrfmiddlewaretoken` (2026-11-12; the SDK redacts the session and CSRF
+  cookies itself, by their configured names). A request's unhandled exception is
   also logged to the console (`django.request`), so it is in `heroku logs`
   when Sentry is down or over quota.
   `development` sends nothing, neither errors nor CSP reports, even with
@@ -2637,7 +2713,7 @@ manage.py ...`. `.env.example` lists them all.
 
 - **`.python-version`** - Specifies Python 3.14 for Heroku deployment; the local venv tracks production's patch release (see "Dependencies")
 - **`.pre-commit-config.yaml`** - Pre-commit hook configuration for code quality enforcement (Black, Flake8, tests)
-- **`.coveragerc`** - Coverage configuration. It omits migrations, the tests, every management command and both `import_handler.py` modules, so the 100% gate does not cover the scheduled jobs or the import pipelines
+- **`.coveragerc`** - Coverage configuration. It omits migrations, the tests and six files by name: four games commands (`refresh_all_metadata`, `fetch_wikipedia_metadata`, `fetch_hltb_data`, `get_wiki_genres`) and `games/services/import_handler.py`, which have tests and are at 62% to 81%, and the books command, which has none. Every other command and music's import handler are under the 100% gate since 2026-11-12, and a new command is measured by default. Until then it left out every command and both handlers by pattern
 - **`.flake8`** - Flake8 linter configuration (max line length 88; excludes nothing of ours but migrations and `.context/`)
 - **`scripts/run_tests.sh`** - The same suites under Django's own test runner; see below
 
@@ -2815,8 +2891,8 @@ Four layers, from automatic to manual:
   | `production-install` | `requirements.txt` alone, as Heroku installs it: `check --deploy`, importing every non-test module, `collectstatic`, pages rendered under manifest storage, and the https redirect read from `X-Forwarded-Proto` |
   | `audit` | `pip-audit` on both locks, `npm audit` (any severity). The one job a Monday's scheduled run does |
   | `css` | rebuilds the CSS and fails if it differs from the committed file |
-  | `js` | `scripts/minify_js.sh --check`: the same for the minified JS and bundles |
-  | `browser` | `scripts/browser_smoke.js`: Chrome over the main pages, failing on a JS, Alpine or CSP error, plus Back and Load More across the engine load, music's takeover leaving a row's POST alone, a year range outside the corpus and leaving it, a games highlight landing, a mobile row opened by keyboard, the CSV button, a failed filter request rolled back on both sites, a failed Back followed by the engine, and each site's search box by keyboard |
+  | `js` | `scripts/minify_js.sh --check`: the same for the minified JS and bundles, and `node --check` on the two scripts terser never parses |
+  | `browser` | `scripts/browser_smoke.js`: Chrome over the main pages, failing on a JS, Alpine or CSP error, plus Back and Load More across the engine load, music's takeover leaving a row's POST alone, a year range outside the corpus and leaving it, a games highlight landing, a mobile row opened by keyboard, the CSV button, a failed filter request rolled back on both sites, a failed Back followed by the engine, each site's search box by keyboard, a reversed year range on both sites, a server Load More keeping focus, and, signed in as the reader `smoke_seed.py` makes, a status chosen on the artist page reaching the row's other half |
 
   `css` exists because Heroku runs only the Python buildpack, so the
   committed `theme/static/css/dist/styles.css` is what ships. An npm bump
@@ -2990,6 +3066,14 @@ bundled, because they have to run before Alpine initialises:
 `media-search.min.js`. Pages push them onto `window.alpineScripts` in
 `{% block pre_alpine %}`.
 
+`games/js/rank-distribution.min.js`, the chart's script, is queued the same
+way by the four pages that draw a chart (both rankings pages, developer
+detail, artist detail). `base.html` queued it on every page until
+2026-11-12, ahead of Alpine. A page that includes
+`core/includes/_rank_distribution.html` has to queue it:
+`ChartScriptIsQueuedWhereThereIsAChartTests` lists the pages, and the smoke
+test fails on a chart with no script.
+
 `core/tests/test_static_bundles.py` asserts that every bundle a template
 references exists and that each defines the base classes its members extend.
 Both of those failed silently in the books bundle until 2026-10-17.
@@ -3052,7 +3136,9 @@ Alpine and the bundles), each because the bare form failed for someone
   `replaceKeepingFocus`**, which puts a keyboard reader's focus on the new
   button, or the "all loaded" line, rather than at the top of the page.
   Choosing a status does the same for the item's new button
-  (`media-tracking.js`, `played-menu.js`).
+  (`media-tracking.js`, `played-menu.js`). A Load More the server answers
+  (music's, before its engine loads) replaces `#load-more-container` out
+  of band, and a listener here puts focus on the new one (2026-11-12).
 - **A failed search says "Search failed"** (`failed` on both search
   components), where it read as "No results found".
 - **A search box aborts the request it overtakes** (`FetchManager`), in
