@@ -134,13 +134,24 @@ class ThemeContrastTests(SimpleTestCase):
         which an override of `.text-primary` does not match: the mobile
         bar's active item kept the dark primary."""
         source = STYLES.read_text(encoding="utf-8")
-        applied = re.findall(
-            r"\n\s*([^{}\n]+?)\s*\{[^{}]*@apply[^;]*\btext-primary(?![\w-])", source
-        )
-        self.assertTrue(applied)
+        source = re.sub(r"/\*.*?\*/", "", source, flags=re.S)
+        applied = []
+        # Each innermost rule: its selector list, whole, and its body
+        for selectors, body in re.findall(r"([^{};]+)\{([^{}]*)\}", source):
+            classes = [
+                name
+                for names in re.findall(r"@apply([^;]*);", body)
+                for name in names.split()
+            ]
+            # The class itself: `hover:text-primary` and `text-primary/50`
+            # are other rules, which this override would not put right
+            if "text-primary" in classes:
+                applied += [selector.strip() for selector in selectors.split(",")]
+        self.assertEqual(applied, [".navbar .btn.btn-active"])
+        full = STYLES.read_text(encoding="utf-8")
         for selector in applied:
             with self.subTest(selector=selector):
-                self.assertIn(f'[data-theme="forest"] {selector}', source)
+                self.assertIn(f'[data-theme="forest"] {selector}', full)
 
     def test_a_form_label_is_readable_in_both_themes(self):
         """DaisyUI's `.label` is the text colour at 60%; ours is at 70%."""

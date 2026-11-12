@@ -1471,7 +1471,8 @@ class AQueryThatFoldsToNothingTests(TestCase):
             game.series.add(series)
 
     def test_the_search_box_finds_nothing_for_it(self):
-        for query in ("🎮🎮", "★★★"):
+        # The third folds to "o", which is in every name here
+        for query in ("🎮🎮", "★★★", "🎮o"):
             with self.subTest(query=query):
                 data = self.client.get("/api/unified-search/", {"q": query}).json()
                 self.assertEqual(

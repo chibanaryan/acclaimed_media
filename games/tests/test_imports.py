@@ -1056,6 +1056,14 @@ class ImportListMembershipsTests(TestCase):
             utils.import_listmemberships(StringIO("0:1\r\n0:2\r\n"))
         self.assertFalse(models.ListMembership.objects.exists())
 
+    def test_a_shared_rank_no_row_reaches_fails_nothing(self):
+        """As it never did: `get()` was only asked for a row's own rank."""
+        models.Game.objects.create(name="Third", rank=3, igdb_id=3)
+        models.Game.objects.create(name="Also third", rank=3, igdb_id=33)
+        success, _ = utils.import_listmemberships(StringIO("0:1\r\n0:2\r\n\r\n"))
+        self.assertTrue(success)
+        self.assertEqual(models.ListMembership.objects.count(), 2)
+
     def test_the_games_are_read_once_not_a_row_each(self):
         with self.assertNumQueries(4):
             # The delete, the lists, the games, one bulk insert

@@ -252,14 +252,17 @@ def name_search_q(query, lookup="contains"):
     is stored through ``normalize_name`` (developers, series), ``icontains``
     where it keeps its case (games).
 
-    A query that folds to nothing (an emoji, a "★") is matched as typed
-    alone. "The folded name contains nothing" is every row that has one,
-    and the search box answered "🎮🎮" with the top of the rankings.
+    Only for a query unidecode has a spelling for throughout. One it drops
+    a character of (an emoji, a "★") is matched as typed alone: what is
+    left is not what was asked for. "🎮🎮" folds to nothing, and "the
+    folded name contains nothing" is every row that has one, so the search
+    box answered it with the top of the rankings; "🎮a" folds to "a".
     """
     match = models.Q(name__icontains=query)
-    folded_query = normalize_name(query)
-    if folded_query:
-        match |= models.Q(**{f"name_normalized__{lookup}": folded_query})
+    if all(unidecode(character) for character in query if not character.isspace()):
+        folded_query = normalize_name(query)
+        if folded_query:
+            match |= models.Q(**{f"name_normalized__{lookup}": folded_query})
     return match
 
 

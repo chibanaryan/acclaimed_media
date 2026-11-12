@@ -65,6 +65,9 @@ def _rate_limited_form(request, template_name, form, **context):
 # that account, never for whoever holds the address or opens the link.
 PENDING_ACCOUNT_KEY = "auth_pending_user_id"
 
+# What the username column holds: less than an email address may be long
+USERNAME_COLUMN_LENGTH = User._meta.get_field("username").max_length
+
 
 def _remember_pending_account(request, user):
     request.session[PENDING_ACCOUNT_KEY] = user.pk
@@ -460,9 +463,11 @@ class AuthModalProfileView(View):
         if new_username and new_username != user.username:
             if new_username.lower() != user.email.lower():
                 username_error = User.username_error(new_username, exclude_pk=user.pk)
-            elif len(new_username) > User._meta.get_field("username").max_length:
-                # An address may be 254 characters and the column holds 150
-                username_error = "Username must be 150 characters or fewer."
+            elif len(new_username) > USERNAME_COLUMN_LENGTH:
+                # An address may be 254 characters, more than the column holds
+                username_error = (
+                    f"Username must be {USERNAME_COLUMN_LENGTH} characters or fewer."
+                )
             elif User.username_claimed(new_username, exclude_pk=user.pk):
                 username_error = "This username is already taken."
             if username_error:
