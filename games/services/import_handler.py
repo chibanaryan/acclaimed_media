@@ -11,8 +11,9 @@ Also provides IGDB data fetching with progress tracking.
 """
 
 import csv
-import logging
 import dataclasses
+import json
+import logging
 from io import TextIOWrapper
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -29,6 +30,7 @@ from games.services.genre_normalizer import (
     get_or_create_genre,
     normalize_genre,
 )
+from games.services.progress_stream import ProgressEvents, drain
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +98,6 @@ def _holding_the_fetch_lock(events):
     ``start_thread`` runs the work and lets go of the lock after it; a
     stream that never starts any lets go as it closes.
     """
-    import json
 
     taken = post_import.hold()
     if taken is None:
@@ -151,42 +152,11 @@ def _igdb_progress(update_relationships, force_refresh, start_thread):
             that have no IGDB metadata yet. Avoids having to clear IGDB
             metadata to pick up changed cover art, developers, or genres.
     """
-    import json
-    import queue
-    import threading
-
     from games import igdb
     from games.services.igdb_importer import IGDBImportService
 
-    # A bounded queue, so a slow or disconnected client cannot grow it without limit
-    event_queue = queue.Queue(maxsize=1000)
-
-    # Event to signal when client disconnects
-    stop_event = threading.Event()
-
-    def _queue_event(payload) -> None:
-        """Best-effort enqueue that drops oldest events if the queue is full."""
-        if stop_event.is_set():
-            return
-        try:
-            event_queue.put_nowait(payload)
-        except queue.Full:
-            try:
-                event_queue.get_nowait()
-            except queue.Empty:
-                return
-            try:
-                event_queue.put_nowait(payload)
-            except queue.Full:
-                return
-
-    def progress_callback(event_type: str, data: dict) -> None:
-        """Callback to stream service events to SSE client."""
-        # Add event type if not already present
-        if "event" not in data:
-            data["event"] = event_type
-        # Queue the event for immediate streaming
-        _queue_event(json.dumps(data))
+    events = ProgressEvents()
+    progress_callback = events.emit
 
     try:
         if update_relationships:
@@ -197,26 +167,15 @@ def _igdb_progress(update_relationships, force_refresh, start_thread):
 
             total_games = games.count()
             if total_games == 0:
-                _queue_event(
-                    json.dumps(
-                        {"event": "error", "error": "No games with IGDB data found"}
-                    )
-                )
-                _queue_event(None)
+                events.send("error", error="No games with IGDB data found")
+                events.finish()
             else:
                 # Run relationship update in a thread
                 def run_update():
                     try:
                         api_client = igdb.get_api()
                         if not api_client:
-                            _queue_event(
-                                json.dumps(
-                                    {
-                                        "event": "error",
-                                        "error": "IGDB API unavailable",
-                                    }
-                                )
-                            )
+                            events.send("error", error="IGDB API unavailable")
                             return
 
                         progress_callback("start", {"total": total_games})
@@ -299,11 +258,9 @@ def _igdb_progress(update_relationships, force_refresh, start_thread):
                         )
                     except Exception:
                         logger.exception("IGDB relationship update failed")
-                        _queue_event(
-                            json.dumps({"event": "error", "error": IGDB_FAILED})
-                        )
+                        events.send("error", error=IGDB_FAILED)
                     finally:
-                        _queue_event(None)
+                        events.finish()
 
                 start_thread(run_update)
         else:
@@ -329,46 +286,27 @@ def _igdb_progress(update_relationships, force_refresh, start_thread):
                     service.import_games(games)
                 except Exception:
                     logger.exception("IGDB import failed")
-                    _queue_event(json.dumps({"event": "error", "error": IGDB_FAILED}))
+                    events.send("error", error=IGDB_FAILED)
                 finally:
                     # Signal that we're done
-                    _queue_event(None)
+                    events.finish()
 
             start_thread(run_import)
 
-        # Stream events as they come in from the queue
-        try:
-            while True:
-                try:
-                    # Wait for event with timeout to detect if thread is stuck
-                    # Increased to 120s to handle large batches and API rate limiting
-                    event_json = event_queue.get(timeout=120)
-
-                    # None signals the end of the import
-                    if event_json is None:
-                        break
-
-                    # Yield the event in SSE format with padding to force flush
-                    # Adding whitespace ensures the web server doesn't
-                    # buffer the response
-                    yield f"data: {event_json}\n\n" + (" " * 2048) + "\n"
-                except queue.Empty:
-                    # Timeout waiting for events
-                    error_msg = "Import timeout - no progress for 120 seconds"
-                    error_data = json.dumps({"event": "error", "error": error_msg})
-                    yield f"data: {error_data}\n\n"
-                    break
-        except GeneratorExit:
-            # Client disconnected - signal the import thread to stop
-            # Note: The import thread will continue in the background as
-            # a daemon thread until it completes. This prevents wasted
-            # API calls if the user navigates away.
-            stop_event.set()
-            logger.info(
+        # IGDB answers a batch at a time, so two minutes with nothing
+        # reported is a stuck fetch
+        yield from drain(
+            events,
+            idle_event={
+                "event": "error",
+                "error": "Import timeout - no progress for 120 seconds",
+            },
+            max_idle_polls=8,
+            on_disconnect=lambda: logger.info(
                 "Client disconnected from IGDB import progress stream. "
                 "Import thread continues in background."
-            )
-            raise
+            ),
+        )
 
     except Exception:
         logger.exception("IGDB progress stream failed")
@@ -394,43 +332,11 @@ def _wikipedia_progress(force_refresh, start_thread):
     Yields:
         SSE-formatted events with progress data
     """
-    import json
-    import queue
-    import threading
-
     from games.services.wiki_page_lookup_service import WikiPageLookupService
     from games.services.wiki_genre_service import WikiGenreService
 
-    # A bounded queue, so a slow or disconnected client cannot grow it without limit
-    event_queue = queue.Queue(maxsize=1000)
-
-    # Event to signal when client disconnects
-    stop_event = threading.Event()
-
-    def _queue_event(payload) -> None:
-        """Best-effort enqueue that drops oldest events if the queue is full."""
-        if stop_event.is_set():
-            return
-        try:
-            event_queue.put_nowait(payload)
-        except queue.Full:
-            try:
-                event_queue.get_nowait()
-            except queue.Empty:
-                return
-            try:
-                event_queue.put_nowait(payload)
-            except queue.Full:
-                return
-
-    def progress_callback(event_type: str, data: dict) -> None:
-        """Callback to stream service events to SSE client."""
-        # Add event type if not already present
-        if "event" not in data:
-            data["event"] = event_type
-
-        # Queue the event for immediate streaming
-        _queue_event(json.dumps(data))
+    events = ProgressEvents()
+    progress_callback = events.emit
 
     # Initialize services to None for safe cleanup in finally block
     service = None
@@ -470,7 +376,7 @@ def _wikipedia_progress(force_refresh, start_thread):
                 for idx, (game_id, game_name, wikidata_id, year) in enumerate(
                     games_data, start=1
                 ):
-                    if stop_event.is_set():
+                    if events.stopped():
                         break
 
                     # Wrap individual game lookup in try/except to prevent one failure
@@ -484,76 +390,9 @@ def _wikipedia_progress(force_refresh, start_thread):
                             # Get the game object
                             game = models.Game.objects.get(id=game_id)
 
-                            # First, check for orphaned record with same page_title
-                            orphaned_record = models.WikipediaGameData.objects.filter(
-                                page_title=result.page_title,
-                                game__isnull=True,
-                                is_primary=True,
-                            ).first()
-
-                            if orphaned_record:
-                                # Reconnect orphaned record
-                                # Unset is_primary on any existing records for this game
-                                models.WikipediaGameData.objects.filter(
-                                    game=game, is_primary=True
-                                ).update(is_primary=False)
-
-                                # Reconnect the orphaned record
-                                orphaned_record.game = game
-                                orphaned_record.lookup_source = result.lookup_source
-                                # Update wikidata_id if available
-                                if wikidata_id:
-                                    orphaned_record.wikidata_id = wikidata_id
-                                # Keep the IDs harvested from Wikidata (P2816,
-                                # P1733) and the Wikiquote sitelink in sync so
-                                # HLTB matching and quotes work for new games
-                                if result.hltb_id:
-                                    orphaned_record.hltb_id = result.hltb_id
-                                if result.steam_app_id:
-                                    orphaned_record.steam_app_id = result.steam_app_id
-                                if result.wikiquote_page_title:
-                                    orphaned_record.wikiquote_page_title = (
-                                        result.wikiquote_page_title
-                                    )
-                                orphaned_record.save(
-                                    update_fields=[
-                                        "game",
-                                        "lookup_source",
-                                        "wikidata_id",
-                                        "hltb_id",
-                                        "steam_app_id",
-                                        "wikiquote_page_title",
-                                    ]
-                                )
-                                wiki_game_data = orphaned_record
-                            else:
-                                # No orphaned record found, create or update
-                                # Unset is_primary on any existing records
-                                models.WikipediaGameData.objects.filter(
-                                    game=game, is_primary=True
-                                ).update(is_primary=False)
-
-                                # Create or update WikipediaGameData record
-                                defaults = {
-                                    "lookup_source": result.lookup_source,
-                                    "is_primary": True,
-                                }
-                                if wikidata_id:
-                                    defaults["wikidata_id"] = wikidata_id
-                                if result.hltb_id:
-                                    defaults["hltb_id"] = result.hltb_id
-                                if result.steam_app_id:
-                                    defaults["steam_app_id"] = result.steam_app_id
-                                if result.wikiquote_page_title:
-                                    defaults["wikiquote_page_title"] = (
-                                        result.wikiquote_page_title
-                                    )
-
-                                wiki_game_data, created = (
-                                    models.WikipediaGameData.upsert_for_game(
-                                        game, result.page_title, defaults
-                                    )
-                                )
+                            wiki_game_data = models.WikipediaGameData.attach_page(
+                                game, result, wikidata_id
+                            )
 
                             # Scrape genres from the Wikipedia page
                             # Use the URL we already found to avoid duplicate searches
@@ -596,10 +435,6 @@ def _wikipedia_progress(force_refresh, start_thread):
                                     game_name,
                                     genre_error,
                                 )
-
-                            # Set primary relationship
-                            game.primary_wikipedia_game_data = wiki_game_data
-                            game.save(update_fields=["primary_wikipedia_game_data"])
 
                             successful_count += 1
 
@@ -666,7 +501,7 @@ def _wikipedia_progress(force_refresh, start_thread):
 
             except Exception:
                 logger.exception("Wikipedia page lookup failed")
-                _queue_event(json.dumps({"event": "error", "error": WIKIPEDIA_FAILED}))
+                events.send("error", error=WIKIPEDIA_FAILED)
             finally:
                 # Clean up services to release HTTP sessions
                 if service:
@@ -674,54 +509,21 @@ def _wikipedia_progress(force_refresh, start_thread):
                 if genre_service:
                     genre_service.close()
                 # Signal that we're done
-                _queue_event(None)
+                events.finish()
 
         start_thread(run_lookup)
 
-        # Stream events as they come in from the queue
-        try:
-            no_progress_count = 0
-            max_no_progress = 120  # 120 * 15s = 30 minutes max idle time
-
-            while True:
-                try:
-                    # Wait for event with 15-second timeout for keepalive
-                    # Keepalive pings stop Heroku closing an idle connection
-                    event_json = event_queue.get(timeout=15)
-
-                    # None signals the end of the lookup
-                    if event_json is None:
-                        break
-
-                    # Reset no-progress counter on successful event
-                    no_progress_count = 0
-
-                    # Yield the event in SSE format with padding to force flush
-                    # Adding whitespace ensures the web server doesn't
-                    # buffer the response
-                    yield f"data: {event_json}\n\n" + (" " * 2048) + "\n"
-                except queue.Empty:
-                    # No event in 15 seconds - send keepalive ping
-                    no_progress_count += 1
-
-                    if no_progress_count >= max_no_progress:
-                        # 30 minutes with no progress - likely stalled
-                        error_msg = "Lookup timeout - no progress for 30 minutes"
-                        error_data = json.dumps({"event": "error", "error": error_msg})
-                        yield f"data: {error_data}\n\n"
-                        break
-
-                    # Send keepalive comment to prevent connection timeout
-                    # SSE comments (lines starting with :) are ignored by client
-                    yield ": keepalive\n\n"
-        except GeneratorExit:
-            # Client disconnected - signal the lookup thread to stop
-            stop_event.set()
-            logger.info(
+        yield from drain(
+            events,
+            idle_event={
+                "event": "error",
+                "error": "Lookup timeout - no progress for 30 minutes",
+            },
+            on_disconnect=lambda: logger.info(
                 "Client disconnected from Wikipedia page lookup progress stream. "
                 "Lookup thread continues in background."
-            )
-            raise
+            ),
+        )
 
     except Exception:
         logger.exception("Wikipedia page lookup stream failed")
@@ -917,60 +719,27 @@ def import_batch_with_progress(data: Dict[str, Any]):
     Yields server-sent events as the import produces them; the import
     itself is ``_run_batch``, all or nothing.
     """
-    import json
-    import queue
-    import threading
-
-    # A bounded queue, so a slow or disconnected client cannot grow it without limit
-    event_queue = queue.Queue(maxsize=1000)
-
-    # Event to signal when client disconnects
-    stop_event = threading.Event()
-
-    def _queue_event(payload) -> None:
-        """Best-effort enqueue that drops oldest events if the queue is full."""
-        if stop_event.is_set():
-            return
-        try:
-            event_queue.put_nowait(payload)
-        except queue.Full:
-            try:
-                event_queue.get_nowait()
-            except queue.Empty:
-                return
-            try:
-                event_queue.put_nowait(payload)
-            except queue.Full:
-                return
-
-    def progress_callback(event_type: str, data: dict) -> None:
-        """Callback to stream service events to SSE client."""
-        # Add event type if not already present
-        if "event" not in data:
-            data["event"] = event_type
-        # Queue the event for immediate streaming
-        _queue_event(json.dumps(data))
+    events = ProgressEvents()
+    progress_callback = events.emit
 
     def error_event(message, file=None):
-        payload = {"event": "error", "message": message}
+        payload = {"message": message}
         if file:
             payload["file"] = file
-        _queue_event(json.dumps(payload))
+        events.send("error", **payload)
 
     try:
 
         def run_import():
             try:
-                result = _run_batch(data, progress_callback, stop_event.is_set)
+                result = _run_batch(data, progress_callback, events.stopped)
                 if result.ok:
                     # Committed: the recreated games have no slugs until IGDB
                     # is fetched again, so start it, and tell the page.
                     if result.games_imported:
                         note = post_import.schedule()
                         if note:
-                            _queue_event(
-                                json.dumps({"event": "metadata", "message": note})
-                            )
+                            events.send("metadata", message=note)
                 elif result.failed_file:
                     # Which file and why, then what became of the files
                     # before it
@@ -983,50 +752,17 @@ def import_batch_with_progress(data: Dict[str, Any]):
                 error_event(IMPORT_FAILED)
             finally:
                 # Signal that we're done
-                _queue_event(None)
+                events.finish()
 
         _start_import_thread(run_import)
 
-        # Stream events as they come in from the queue
-        try:
-            no_progress_count = 0
-            max_no_progress = 120  # 120 * 15s = 30 minutes max idle time
-
-            while True:
-                try:
-                    # Wait with a short timeout so keepalive chunks go out well
-                    # inside Heroku's 55-second idle-connection limit.
-                    event_json = event_queue.get(timeout=15)
-
-                    # None signals the end of the import
-                    if event_json is None:
-                        break
-
-                    # Reset no-progress counter on successful event
-                    no_progress_count = 0
-
-                    # Yield the event in SSE format with padding to encourage
-                    # immediate flush through proxies/buffers.
-                    yield f"data: {event_json}\n\n" + (" " * 2048) + "\n"
-                except queue.Empty:
-                    # No event in 15 seconds - send keepalive ping so the
-                    # request stays active while large imports continue.
-                    no_progress_count += 1
-
-                    if no_progress_count >= max_no_progress:
-                        error_msg = "Import timeout - no progress for 30 minutes"
-                        error_data = json.dumps(
-                            {"event": "error", "message": error_msg}
-                        )
-                        yield f"data: {error_data}\n\n"
-                        break
-
-                    # SSE comments are ignored by the client but keep the
-                    # stream active for Gunicorn/Heroku.
-                    yield ": keepalive\n\n"
-        except GeneratorExit:
-            stop_event.set()
-            raise
+        yield from drain(
+            events,
+            idle_event={
+                "event": "error",
+                "message": "Import timeout - no progress for 30 minutes",
+            },
+        )
 
     except Exception:
         logger.exception("Batch import progress stream failed")

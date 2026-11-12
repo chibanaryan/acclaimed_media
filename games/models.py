@@ -864,6 +864,46 @@ class WikipediaGameData(models.Model):
             game=game, page_title=page_title, defaults=defaults
         )
 
+    @classmethod
+    def attach_page(cls, game, page, wikidata_id):
+        """Make the page a lookup found the game's primary Wikipedia record.
+
+        ``page`` is a ``PageLookupResult``. A record of that page left
+        orphaned by an import is taken back, keeping its genres; otherwise
+        the game's own record of the page is updated, or one is made. What
+        the lookup did not find (an HLTB id, a Steam AppID, a Wikiquote
+        title) is left as the record has it.
+
+        The staff page's stream and ``fetch_wikipedia_metadata`` each had a
+        copy of this until 2026-11-12.
+        """
+        found = {"lookup_source": page.lookup_source}
+        if wikidata_id:
+            found["wikidata_id"] = wikidata_id
+        for field in ("hltb_id", "steam_app_id", "wikiquote_page_title"):
+            value = getattr(page, field)
+            if value:
+                found[field] = value
+
+        orphan = cls.objects.filter(
+            page_title=page.page_title, game__isnull=True, is_primary=True
+        ).first()
+        cls.objects.filter(game=game, is_primary=True).update(is_primary=False)
+        if orphan:
+            orphan.game = game
+            for field, value in found.items():
+                setattr(orphan, field, value)
+            orphan.save(update_fields=["game", *found])
+            record = orphan
+        else:
+            record, _created = cls.upsert_for_game(
+                game, page.page_title, {**found, "is_primary": True}
+            )
+
+        game.primary_wikipedia_game_data = record
+        game.save(update_fields=["primary_wikipedia_game_data"])
+        return record
+
 
 # The open-ended rule, shown beside the field in the admin
 OPEN_ENDED_OVERRIDE_HELP = (

@@ -205,7 +205,7 @@ class Command(BaseCommand):
 
                     # Save page data to database if requested
                     if options.get("save"):
-                        wiki_game_data = self._save_page_data(
+                        wiki_game_data = WikipediaGameData.attach_page(
                             game, page_result, game.wikidata_id
                         )
 
@@ -416,79 +416,6 @@ class Command(BaseCommand):
             games = games[: options["limit"]]
 
         return games
-
-    def _save_page_data(self, game, page_result, wikidata_id):
-        """Save Wikipedia page data to database."""
-        # First, check for orphaned record with same page_title
-        orphaned_record = WikipediaGameData.objects.filter(
-            page_title=page_result.page_title,
-            game__isnull=True,
-            is_primary=True,
-        ).first()
-
-        if orphaned_record:
-            # Reconnect orphaned record
-            # Unset is_primary on any existing records for this game
-            WikipediaGameData.objects.filter(game=game, is_primary=True).update(
-                is_primary=False
-            )
-
-            # Reconnect the orphaned record
-            orphaned_record.game = game
-            orphaned_record.lookup_source = page_result.lookup_source
-            # Update wikidata_id if available
-            if wikidata_id:
-                orphaned_record.wikidata_id = wikidata_id
-            # Update hltb_id if available from Wikidata P2816
-            if page_result.hltb_id:
-                orphaned_record.hltb_id = page_result.hltb_id
-            # Update steam_app_id if available from Wikidata P1733
-            if page_result.steam_app_id:
-                orphaned_record.steam_app_id = page_result.steam_app_id
-            # Update wikiquote_page_title if available
-            if page_result.wikiquote_page_title:
-                orphaned_record.wikiquote_page_title = page_result.wikiquote_page_title
-            orphaned_record.save(
-                update_fields=[
-                    "game",
-                    "lookup_source",
-                    "wikidata_id",
-                    "hltb_id",
-                    "steam_app_id",
-                    "wikiquote_page_title",
-                ]
-            )
-            wiki_game_data = orphaned_record
-        else:
-            # No orphaned record found, create or update
-            # Unset is_primary on any existing records
-            WikipediaGameData.objects.filter(game=game, is_primary=True).update(
-                is_primary=False
-            )
-
-            # Create or update WikipediaGameData record
-            defaults = {
-                "lookup_source": page_result.lookup_source,
-                "is_primary": True,
-            }
-            if wikidata_id:
-                defaults["wikidata_id"] = wikidata_id
-            if page_result.hltb_id:
-                defaults["hltb_id"] = page_result.hltb_id
-            if page_result.steam_app_id:
-                defaults["steam_app_id"] = page_result.steam_app_id
-            if page_result.wikiquote_page_title:
-                defaults["wikiquote_page_title"] = page_result.wikiquote_page_title
-
-            wiki_game_data, created = WikipediaGameData.upsert_for_game(
-                game, page_result.page_title, defaults
-            )
-
-        # Set primary relationship
-        game.primary_wikipedia_game_data = wiki_game_data
-        game.save(update_fields=["primary_wikipedia_game_data"])
-
-        return wiki_game_data
 
     def _get_csv_path(self, output_path):
         """Get CSV output path (use provided or generate timestamp-based)."""

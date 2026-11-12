@@ -1863,6 +1863,12 @@ class ImportIGDBWithProgressTests(NoHeartbeatMixin, InlineImportThreadMixin, Tes
         self.assertGreater(
             len(timeout_events), 0, f"Expected timeout error, got events: {events[:2]}"
         )
+        # Two minutes of quiet, in 15-second polls with a keepalive after
+        # each: it waited the two minutes in one go and sent nothing, and
+        # Heroku's router closes a connection idle for 55 seconds
+        self.assertEqual(events[:-1], [": keepalive\n\n"] * 7)
+        self.assertIn("no progress for 120 seconds", events[-1])
+        mock_queue.get.assert_called_with(timeout=15)
 
     @mock.patch("games.services.igdb_importer.IGDBImportService")
     def test_import_igdb_with_progress_exception(self, mock_service_class):
