@@ -460,6 +460,9 @@ class AuthModalProfileView(View):
         if new_username and new_username != user.username:
             if new_username.lower() != user.email.lower():
                 username_error = User.username_error(new_username, exclude_pk=user.pk)
+            elif len(new_username) > User._meta.get_field("username").max_length:
+                # An address may be 254 characters and the column holds 150
+                username_error = "Username must be 150 characters or fewer."
             elif User.username_claimed(new_username, exclude_pk=user.pk):
                 username_error = "This username is already taken."
             if username_error:

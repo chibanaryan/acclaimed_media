@@ -1663,6 +1663,19 @@ class DeveloperListViewTest(TestCase):
                     ["Pokémon Studio"],
                 )
 
+    def test_a_search_that_folds_to_nothing_finds_nothing(self):
+        """unidecode has no letters for an emoji, and "contains nothing"
+        is every developer."""
+        for query in ("🎮", "★"):
+            with self.subTest(query=query):
+                response = self.client.get(reverse("developers-list"), {"q": query})
+                self.assertEqual(list(response.context["developers"]), [])
+        # A blank query is no query
+        response = self.client.get(reverse("developers-list"), {"q": "   "})
+        self.assertEqual(
+            [dev.name for dev in response.context["developers"]], ["Nintendo"]
+        )
+
     def test_developer_list_loads(self):
         """Test that developer list page loads."""
         response = self.client.get(reverse("developers-list"))

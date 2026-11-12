@@ -232,7 +232,8 @@
    colour, the dark theme uses the accent, the same green made to be read.
    The light theme's primary is dark on light, and needs none of this. */
 [data-theme="forest"] .text-primary,
-[data-theme="forest"] .link-primary {
+[data-theme="forest"] .link-primary,
+[data-theme="forest"] .navbar .btn.btn-active {
   color: var(--color-accent);
 }
 
@@ -1016,7 +1017,9 @@ tr.entity-row:hover {
     background: oklch(var(--bc) / 0.3);
   }
 
-  /* Active nav item styling for mobile navbar buttons */
+  /* Active nav item styling for mobile navbar buttons. `text-primary`
+     applied here is a rule of its own, which the dark theme's override of
+     the utility does not reach: it names this selector too (above). */
   .navbar .btn.btn-active {
     @apply bg-primary/20 text-primary;
   }

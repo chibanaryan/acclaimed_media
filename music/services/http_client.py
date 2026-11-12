@@ -56,6 +56,11 @@ class RateLimitedClient:
     #: metadata lock, and a service that asks for an hour is down.
     MAX_RETRY_AFTER: float = 60.0
 
+    #: How long a client waits on `Retry-After` in all, beyond its own
+    #: backoff. A service that is down says so to every request: honoured
+    #: each time, a thousand records would wait two minutes apiece.
+    RETRY_AFTER_ALLOWANCE: float = 300.0
+
     #: How loudly ``get_json`` reports running out of retries. Error reaches
     #: Sentry, so a client whose caller has a fallback lowers it.
     give_up_level: int = logging.ERROR
@@ -74,6 +79,8 @@ class RateLimitedClient:
         # Rate limiting state. The lock is held across the sleep so that
         # concurrent callers queue rather than all wake at once.
         self.last_request_time: float = 0.0
+        # Seconds waited on `Retry-After` beyond our own backoff
+        self._retry_after_waited: float = 0.0
         self.rate_limit_lock = threading.Lock()
 
         # The HTTP status of the last ``get_json`` response, or None when
@@ -110,15 +117,20 @@ class RateLimitedClient:
 
         Our own backoff, or the server's `Retry-After` where that is longer
         (in seconds: a date is not read, and backs off as before), up to
-        ``MAX_RETRY_AFTER``. It was ignored until 2026-11-12, so a service
-        that said when to come back was asked again after one second and
-        two, and the record was given up as a miss.
+        ``MAX_RETRY_AFTER`` a wait and ``RETRY_AFTER_ALLOWANCE`` a client,
+        after which the backoff is our own again. It was ignored until
+        2026-11-12, so a service that said when to come back was asked
+        again after one second and two, and the record given up as a miss.
         """
         try:
             asked = float(response.headers.get("Retry-After", ""))
         except (TypeError, ValueError):
             asked = 0.0
-        return min(max(retry_delay, asked), self.MAX_RETRY_AFTER)
+        extra = min(asked, self.MAX_RETRY_AFTER) - retry_delay
+        if extra <= 0 or self._retry_after_waited + extra > self.RETRY_AFTER_ALLOWANCE:
+            return retry_delay
+        self._retry_after_waited += extra
+        return retry_delay + extra
 
     def get_json(
         self,

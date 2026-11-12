@@ -6,12 +6,13 @@ from datetime import datetime
 from django.contrib.flatpages.models import FlatPage
 from django.core.cache import cache
 from django.db import connection
-from django.db.models import Count, Q
+from django.db.models import Count
 from django.db.models.functions import Lower
 from django.shortcuts import get_object_or_404
 from django.http import Http404, HttpResponse
 from django.utils.cache import patch_response_headers, patch_vary_headers
 from django.utils.decorators import method_decorator
+from django.utils.functional import cached_property
 from django.conf import settings
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
@@ -197,9 +198,14 @@ class CountsThroughStudiosMixin:
     games all belong to its studios (Microsoft, CD Projekt) was missing.
     """
 
+    @cached_property
+    def developer_game_counts(self):
+        """Read once a request: the list filters by it and serialises it."""
+        return get_developer_game_counts()
+
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context["developer_game_counts"] = get_developer_game_counts()
+        context["developer_game_counts"] = self.developer_game_counts
         return context
 
 
@@ -235,7 +241,7 @@ class DeveloperListAPIView(CountsThroughStudiosMixin, ListAPIView):
     def get_queryset(self):
         # Only developers with games, their studios' included
         qs = (
-            models.Developer.objects.filter(id__in=list(get_developer_game_counts()))
+            models.Developer.objects.filter(id__in=list(self.developer_game_counts))
             .select_related("parent")
             .prefetch_related("subsidiaries")
             .order_by(Lower("name"))
@@ -478,7 +484,6 @@ class GameSearchAPIView(APIView):
         from django.http import JsonResponse
 
         q = request.GET.get("q", "").strip()
-        q_normalized = models.normalize_name(q)
         limit = parse_limit(request.GET.get("limit"), default=5)
 
         if len(q) < 2:
@@ -488,9 +493,7 @@ class GameSearchAPIView(APIView):
         # Search both original name and normalized (accent-stripped) version.
         # Use normalized query so accented and ASCII input both match.
         games = (
-            models.Game.objects.filter(
-                Q(name__icontains=q) | Q(name_normalized__icontains=q_normalized)
-            )
+            models.Game.objects.filter(models.name_search_q(q, lookup="icontains"))
             .select_related("primary_igdb_game_data")
             .only(
                 "id",
@@ -603,7 +606,7 @@ class UnifiedSearchView(APIView):
         developer_rows = _best_first(
             q,
             models.Developer.objects.filter(
-                Q(name__icontains=q) | Q(name_normalized__contains=q_normalized),
+                models.name_search_q(q),
                 id__in=list(counts),
             ).annotate(games_count=Count("developed_games")),
             developer_limit,
@@ -638,9 +641,7 @@ class UnifiedSearchView(APIView):
         # Ranked, with an exact title first, in one bounded query.
         games = list(
             search_ranking.exact_first(
-                models.Game.objects.filter(
-                    Q(name__icontains=q) | Q(name_normalized__icontains=q_normalized)
-                ),
+                models.Game.objects.filter(models.name_search_q(q, lookup="icontains")),
                 "rank",
                 name=q,
                 name_normalized=q_normalized,
@@ -673,9 +674,7 @@ class UnifiedSearchView(APIView):
         # Series with 2+ games, as the filter lists
         series_rows = _best_first(
             q,
-            models.Series.objects.filter(
-                Q(name__icontains=q) | Q(name_normalized__contains=q_normalized)
-            )
+            models.Series.objects.filter(models.name_search_q(q))
             .annotate(games_count=Count("games"))
             .filter(games_count__gte=2),
             series_limit,

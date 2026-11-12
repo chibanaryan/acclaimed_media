@@ -175,6 +175,9 @@ class Command(BaseCommand):
         # Print header
         self._print_header(options)
 
+        # What the pages show before the phases, to compare with after
+        before = None if options.get("dry_run") else post_import.payload_fingerprint()
+
         # [1/3] IGDB Refresh
         if not options.get("wikipedia_only") and not options.get("hltb_only"):
             try:
@@ -282,14 +285,19 @@ class Command(BaseCommand):
         # The phases write genres, slugs and artwork through saves that
         # leave `Game.modified` alone, so nothing told the cached pages, the
         # payload or a reader's stored copy of it, which has no age limit.
-        # Whether or not a phase failed: what it wrote before then counts.
-        if not options.get("dry_run") and not post_import.move_data_version():
-            self.stdout.write(
-                self.style.WARNING(
-                    "\n  The games data version could not be moved; cached "
-                    "pages may show last week's data until it is."
+        # Moved only if the payload changed (or cannot be compared), so an
+        # unchanged week costs no reader a download; and whether or not a
+        # phase failed, since what it wrote before then counts.
+        if not options.get("dry_run"):
+            after = post_import.payload_fingerprint()
+            changed = before is None or after is None or after != before
+            if changed and not post_import.move_data_version():
+                self.stdout.write(
+                    self.style.WARNING(
+                        "\n  The games data version could not be moved; cached "
+                        "pages may show last week's data until it is."
+                    )
                 )
-            )
 
         # Print summary
         self._print_summary()

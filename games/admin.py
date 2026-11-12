@@ -696,14 +696,20 @@ class UserAdminChangeForm(UserChangeForm):
     """The change form, with the email as allauth keeps one."""
 
     def clean_email(self):
-        """Lower-case, and not an address another account has verified.
+        """A changed email: lower-case, and not another account's verified one.
 
         allauth compares lower-case addresses, and one address is verified
         by one account (``unique_verified_email``): the row this save makes
         for it could never be verified, and a case-only change to one that
         is would fail on that constraint.
         """
-        email = (self.cleaned_data.get("email") or "").strip().lower()
+        email = self.cleaned_data.get("email") or ""
+        if "email" not in self.changed_data:
+            # Left as it is stored: the rows are put in step only with a
+            # changed email, and an abandoned account whose address another
+            # has since verified must still be saveable for anything else
+            return email
+        email = email.strip().lower()
         if (
             email
             and EmailAddress.objects.filter(email__iexact=email, verified=True)

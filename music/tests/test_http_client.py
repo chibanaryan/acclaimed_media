@@ -262,6 +262,29 @@ class GetJsonTests(ClientTestCase):
                 client.get_json("https://example.test/")
                 self.sleep.assert_called_once_with(waited)
 
+    def test_a_service_that_is_down_does_not_stretch_the_pass(self):
+        """Honoured without limit, a service answering every request with
+        `Retry-After: 3600` cost two minutes a record where it had cost
+        three seconds: a thousand covers in a day and a half, holding the
+        metadata lock. The waits it asks for beyond our own backoff are
+        spent from one allowance a client; past it, the backoff is ours."""
+        client, session = self.build(delay=0)
+        session.get.return_value = fake_response(
+            status_code=503, headers={"Retry-After": "3600"}
+        )
+        records = 40
+        with self.assertLogs("music.services.http_client", "WARNING"):
+            for _ in range(records):
+                self.assertIsNone(client.get_json("https://example.test/"))
+        waited = sum(call[0][0] for call in self.sleep.call_args_list)
+        ours = records * (client.initial_retry_delay * 3)
+        self.assertLessEqual(waited, ours + client.RETRY_AFTER_ALLOWANCE)
+        # And the last records wait only as long as they did before
+        self.assertEqual(
+            [call[0][0] for call in self.sleep.call_args_list[-2:]],
+            [client.initial_retry_delay, client.initial_retry_delay * 2],
+        )
+
     def test_a_server_error_is_retried_too(self):
         """A 500 from the Cover Art Archive is usually transient."""
         client, session = self.build()

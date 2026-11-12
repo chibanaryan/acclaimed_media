@@ -2,7 +2,7 @@
 
 import math
 
-from django.db.models import Count, Max, Prefetch, Q, prefetch_related_objects
+from django.db.models import Count, Max, Prefetch, prefetch_related_objects
 from django.http import Http404
 from django.shortcuts import redirect, get_object_or_404
 from django.views import View
@@ -100,13 +100,11 @@ class DeveloperListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
             .distinct()
         )
 
-        # Search filter: accents folded too, as the search box's is
-        q = self.request.GET.get("q")
+        # Search filter: accents folded too, as the search box's is. A
+        # blank query is no query
+        q = (self.request.GET.get("q") or "").strip()
         if q:
-            qs = qs.filter(
-                Q(name__icontains=q)
-                | Q(name_normalized__contains=models.normalize_name(q))
-            )
+            qs = qs.filter(models.name_search_q(q))
 
         # Sorting is done in get_context_data, from cached hierarchy data
         return qs

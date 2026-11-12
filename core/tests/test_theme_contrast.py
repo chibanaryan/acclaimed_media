@@ -120,6 +120,7 @@ class ThemeContrastTests(SimpleTestCase):
         for selector in (
             '[data-theme="forest"] .text-primary',
             '[data-theme="forest"] .link-primary',
+            '[data-theme="forest"] .navbar .btn.btn-active',
             '[data-theme="forest"] .badge-outline.badge-primary',
             '[data-theme="forest"] .hover\\:text-primary:hover',
             '[data-theme="forest"] .badge-outline.hover\\:badge-primary:hover',
@@ -127,6 +128,19 @@ class ThemeContrastTests(SimpleTestCase):
             with self.subTest(selector=selector):
                 self.assertIn(selector, source)
                 self.assertIn(selector.replace('"', ""), compiled)
+
+    def test_a_component_that_applies_the_primary_as_text_is_overridden_too(self):
+        """`@apply text-primary` compiles into the component's own rule,
+        which an override of `.text-primary` does not match: the mobile
+        bar's active item kept the dark primary."""
+        source = STYLES.read_text(encoding="utf-8")
+        applied = re.findall(
+            r"\n\s*([^{}\n]+?)\s*\{[^{}]*@apply[^;]*\btext-primary(?![\w-])", source
+        )
+        self.assertTrue(applied)
+        for selector in applied:
+            with self.subTest(selector=selector):
+                self.assertIn(f'[data-theme="forest"] {selector}', source)
 
     def test_a_form_label_is_readable_in_both_themes(self):
         """DaisyUI's `.label` is the text colour at 60%; ours is at 70%."""

@@ -245,6 +245,24 @@ def normalize_name(name):
     return unidecode(name or "").lower().strip()[:200]
 
 
+def name_search_q(query, lookup="contains"):
+    """A ``Q`` finding ``query`` in a name, as typed or without its accents.
+
+    ``lookup`` is how the folded column is compared: ``contains`` where it
+    is stored through ``normalize_name`` (developers, series), ``icontains``
+    where it keeps its case (games).
+
+    A query that folds to nothing (an emoji, a "★") is matched as typed
+    alone. "The folded name contains nothing" is every row that has one,
+    and the search box answered "🎮🎮" with the top of the rankings.
+    """
+    match = models.Q(name__icontains=query)
+    folded_query = normalize_name(query)
+    if folded_query:
+        match |= models.Q(**{f"name_normalized__{lookup}": folded_query})
+    return match
+
+
 class Developer(CreatorBase):
     """
     A game development entity with optional parent hierarchy.

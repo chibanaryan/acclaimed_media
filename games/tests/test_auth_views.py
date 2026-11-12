@@ -346,6 +346,19 @@ class AuthModalEdgeTests(TestCase):
         user.refresh_from_db()
         self.assertEqual(user.username, "casey")
 
+    def test_an_email_too_long_for_a_username_is_refused(self):
+        """An address may be 254 characters and a username 150: saved, it
+        was a DataError on Postgres."""
+        email = "a" * 150 + "@example.com"
+        user = User.objects.create_user(
+            username="casey", email=email, password="pw-12345"
+        )
+        self.client.login(username="casey", password="pw-12345")
+        response = self.client.post(reverse("auth-modal-profile"), {"username": email})
+        self.assertContains(response, "150 characters or fewer")
+        user.refresh_from_db()
+        self.assertEqual(user.username, "casey")
+
     def test_a_signed_out_profile_request_shows_the_login_form(self):
         """A session that expired in another tab. `HX-Redirect` made the
         browser navigate to the login partial as a page of its own."""

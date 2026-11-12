@@ -112,6 +112,25 @@ class UserAdminEmailChangeTests(TestCase):
         self.assertEqual(self.reader.email, "old@example.com")
         self.assertEqual(self.rows(), [("old@example.com", True, True)])
 
+    def test_an_untouched_email_is_not_checked_or_rewritten(self):
+        """An abandoned account whose address another has since verified:
+        staff could not untick Active, or save anything else, until they
+        cleared an email they had not touched."""
+        User.objects.filter(pk=self.reader.pk).update(email="Taken@example.com")
+        EmailAddress.objects.filter(user=self.reader).delete()
+        other = User.objects.create_user(username="other", email="taken@example.com")
+        EmailAddress.objects.create(
+            user=other, email="taken@example.com", verified=True, primary=True
+        )
+        response = self.save(first_name="Reader")
+        self.assertEqual(response.status_code, 302)
+        self.reader.refresh_from_db()
+        self.assertEqual(self.reader.first_name, "Reader")
+        # As it was: the rows are synced only with a changed email, so the
+        # email is not lower-cased without them either
+        self.assertEqual(self.reader.email, "Taken@example.com")
+        self.assertEqual(self.rows(), [])
+
     def test_an_address_the_account_had_verified_already_stays_verified(self):
         EmailAddress.objects.create(
             user=self.reader, email="second@example.com", verified=True, primary=False

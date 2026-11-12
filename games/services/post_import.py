@@ -9,6 +9,8 @@ the slugs it links by cannot do without.
 """
 
 import asyncio
+import hashlib
+import json
 import logging
 
 from asgiref.sync import sync_to_async
@@ -88,6 +90,29 @@ def _run_igdb(stdout):
 
 def _slugless():
     return Game.objects.filter(slug__isnull=True, igdb_id__isnull=False).count()
+
+
+def payload_fingerprint():
+    """A hash of what `/api/games/all/` serves, or None if it cannot be read.
+
+    For a job that writes through saves the data version does not see (the
+    weekly refresh: genres, slugs, artwork) to say whether it changed what
+    a page or a reader's stored payload shows. The version is left alone
+    when it did not: moved every Sunday regardless, it would have every
+    returning reader download the payload again for nothing, which is why
+    the version fingerprints the playtimes rather than reading
+    ``updated_at`` (``data_version.py``).
+    """
+    # Here, not at the top: the API layer imports the services
+    from games.api.views import GameAllDataView
+
+    try:
+        payload = GameAllDataView()._payload("")
+        text = json.dumps(payload, sort_keys=True, default=str)
+    except Exception:
+        logger.exception("Could not fingerprint the games payload")
+        return None
+    return hashlib.md5(text.encode()).hexdigest()
 
 
 def move_data_version():

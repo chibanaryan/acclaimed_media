@@ -1296,8 +1296,17 @@ def import_listmemberships(
     if progress_callback:
         progress_callback("start", {"total": total_rows, "file": "Game Positions"})
 
-    # Read once: a `get` a row was a query for each of 1,400 games
-    games_by_rank = {game.rank: game for game in models.Game.objects.only("rank")}
+    # Read once: a `get` a row was a query for each of 1,400 games. A row
+    # is its rank's game, so two games of one rank fail the import, as the
+    # `get` did, rather than the later one taking the row
+    games_by_rank = {}
+    for game in models.Game.objects.only("rank").order_by("rank", "pk"):
+        if game.rank in games_by_rank:
+            raise ImportFileError(
+                f"Two games are ranked {game.rank}, so the positions file's "
+                "rows cannot be matched to games by rank."
+            )
+        games_by_rank[game.rank] = game
 
     for line_number, line in enumerate(f):
         row_number += 1

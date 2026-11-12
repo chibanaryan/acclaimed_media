@@ -76,19 +76,29 @@ class RefreshMovesTheDataVersionTests(TestCase):
     leave ``Game.modified`` alone, and nothing else the data version reads
     need move in a week. A reader's stored payload is kept for as long as
     its version is the page's, so until 2026-11-12 it could hold last
-    week's genres and a slug IGDB had since renamed."""
+    week's genres and a slug IGDB had since renamed.
+
+    Moved only when the payload changed: every Sunday regardless, every
+    returning reader would download it again for nothing."""
 
     def setUp(self):
-        game = Game.objects.create(name="Alpha Quest", rank=1, igdb_id=7)
+        self.game = Game.objects.create(
+            name="Alpha Quest", rank=1, igdb_id=7, slug="alpha-quest"
+        )
         # `timezone.now` a second past the game's `modified`, so a move shows
         self.enterContext(
             mock.patch(
                 "django.utils.timezone.now",
-                return_value=game.modified + timedelta(seconds=1),
+                return_value=self.game.modified + timedelta(seconds=1),
             )
         )
 
-    def run_command(self, **options):
+    def rename_the_slug(self, *args, **kwargs):
+        """As ``get_igdb`` saves a slug: with ``update_fields``, which
+        leaves ``modified`` alone."""
+        Game.objects.filter(pk=self.game.pk).update(slug="alpha-quest-renamed")
+
+    def run_command(self, import_games=None, **options):
         with mock.patch(f"{COMMAND}.IGDBImportService") as service:
             instance = service.return_value
             instance.batch_size = 50
@@ -96,33 +106,54 @@ class RefreshMovesTheDataVersionTests(TestCase):
             instance.api_client.use_pro_tier = False
             instance.processed_count = 1
             instance.error_count = 0
+            instance.import_games.side_effect = import_games
             call_command(
                 "refresh_all_metadata", stdout=StringIO(), igdb_only=True, **options
             )
-            return instance
 
-    def test_a_refresh_moves_it(self):
+    def test_a_refresh_that_changed_what_the_pages_show_moves_it(self):
         before = compute_game_data_version()
-        self.run_command()
+        self.run_command(import_games=self.rename_the_slug)
         self.assertNotEqual(compute_game_data_version(), before)
 
-    def test_a_dry_run_does_not(self):
+    def test_a_refresh_that_changed_nothing_leaves_it(self):
         before = compute_game_data_version()
-        self.run_command(dry_run=True)
+        self.run_command()
+        self.assertEqual(compute_game_data_version(), before)
+
+    def test_a_dry_run_leaves_it(self):
+        before = compute_game_data_version()
+        with mock.patch(f"{COMMAND}.post_import.payload_fingerprint") as fingerprint:
+            self.run_command(dry_run=True)
+        fingerprint.assert_not_called()
         self.assertEqual(compute_game_data_version(), before)
 
     def test_a_phase_that_failed_part_way_still_moves_it(self):
         """What it wrote before it raised is in the pages all the same."""
+
+        def fail_after_writing(*args, **kwargs):
+            self.rename_the_slug()
+            raise RuntimeError("boom")
+
         before = compute_game_data_version()
-        with mock.patch(f"{COMMAND}.IGDBImportService") as service:
-            service.return_value.import_games.side_effect = RuntimeError("boom")
-            service.return_value.batch_size = 50
-            service.return_value.concurrency = 1
-            with (
-                self.assertLogs(refresh_all_metadata.logger, level="ERROR"),
-                self.assertRaises(CommandError),
-            ):
-                call_command("refresh_all_metadata", stdout=StringIO(), igdb_only=True)
+        with (
+            self.assertLogs(refresh_all_metadata.logger, level="ERROR"),
+            self.assertRaises(CommandError),
+        ):
+            self.run_command(import_games=fail_after_writing)
+        self.assertNotEqual(compute_game_data_version(), before)
+
+    def test_a_payload_that_cannot_be_compared_moves_it(self):
+        """Not knowing is not "unchanged"."""
+        before = compute_game_data_version()
+        with (
+            mock.patch(
+                "games.api.views.GameAllDataView._payload",
+                side_effect=RuntimeError("boom"),
+            ),
+            self.assertLogs("games.services.post_import", level="ERROR"),
+        ):
+            self.run_command()
         self.assertNotEqual(compute_game_data_version(), before)
 
 

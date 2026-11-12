@@ -1451,3 +1451,47 @@ class DeveloperListCountsThroughStudiosTests(TestCase):
     def test_the_search_still_narrows_it(self):
         results = self.client.get("/api/developers/", {"q": "Parent"}).json()["results"]
         self.assertEqual([row["name"] for row in results], ["Parent Co"])
+
+
+class AQueryThatFoldsToNothingTests(TestCase):
+    """unidecode has no letters for an emoji or a "★", so the folded query
+    is empty, and "the folded name contains nothing" is every row with one:
+    the search box answered "🎮🎮" with the top of the rankings. Such a
+    query is matched as typed alone (``models.name_search_q``)."""
+
+    def setUp(self):
+        clear_all_caches()
+        studio = models.Developer.objects.create(name="Pokémon Studio", slug="ps")
+        series = models.Series.objects.create(name="Pokémon", slug="pokemon", igdb_id=1)
+        for rank in (1, 2):
+            game = models.Game.objects.create(
+                name=f"Pokémon {rank}", rank=rank, slug=f"pokemon-{rank}"
+            )
+            game.developers.add(studio)
+            game.series.add(series)
+
+    def test_the_search_box_finds_nothing_for_it(self):
+        for query in ("🎮🎮", "★★★"):
+            with self.subTest(query=query):
+                data = self.client.get("/api/unified-search/", {"q": query}).json()
+                self.assertEqual(
+                    (data["games"], data["developers"], data["series"]), ([], [], [])
+                )
+                found = self.client.get("/api/games/search/", {"q": query}).json()
+                self.assertEqual(found["results"], [])
+
+    def test_a_name_is_still_found_without_its_accents(self):
+        data = self.client.get("/api/unified-search/", {"q": "pokemon"}).json()
+        self.assertEqual(len(data["games"]), 2)
+        self.assertEqual(len(data["developers"]), 1)
+        self.assertEqual(len(data["series"]), 1)
+
+    def test_the_clause_itself(self):
+        from django.db.models import Q
+
+        self.assertEqual(str(models.name_search_q("🎮")), str(Q(name__icontains="🎮")))
+        self.assertIn("name_normalized__contains", str(models.name_search_q("É")))
+        self.assertIn(
+            "name_normalized__icontains",
+            str(models.name_search_q("É", lookup="icontains")),
+        )

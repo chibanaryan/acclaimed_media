@@ -1046,6 +1046,16 @@ class ImportListMembershipsTests(TestCase):
         ):
             utils.import_listmemberships(StringIO("0:1\r\n0:two\r\n"))
 
+    def test_two_games_of_one_rank_fail_the_import(self):
+        """A row is matched to its game by rank. `get()` raised on two; read
+        into a dict, the later one silently took the row's lists."""
+        models.Game.objects.create(name="Also second", rank=2, igdb_id=22)
+        with self.assertRaisesMessage(
+            import_handler.ImportFileError, "Two games are ranked 2"
+        ):
+            utils.import_listmemberships(StringIO("0:1\r\n0:2\r\n"))
+        self.assertFalse(models.ListMembership.objects.exists())
+
     def test_the_games_are_read_once_not_a_row_each(self):
         with self.assertNumQueries(4):
             # The delete, the lists, the games, one bulk insert

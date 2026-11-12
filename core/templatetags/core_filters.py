@@ -140,7 +140,7 @@ def tojson(value):
     first string with ``</script>`` in it would have ended the script, and
     one with a quote the ``data-bins='...'`` attribute.
     """
-    return mark_safe(json.dumps(value).translate(_JSON_MARKUP_ESCAPES))
+    return json_for_script(value)
 
 
 @register.filter
