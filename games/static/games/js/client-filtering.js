@@ -71,6 +71,10 @@ class ClientSideFiltering {
 
                 this.engine = new GameFilterEngine(data);
                 this.renderer = new GameListRenderer(this.engine);
+                // No templates, no engine: the server goes on rendering
+                if (!this.renderer.hasTemplates()) {
+                    throw new Error('the page has no row templates to render from');
+                }
 
                 // Get year bounds from data
                 const bounds = this.engine.getYearBounds();

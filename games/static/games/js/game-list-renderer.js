@@ -284,11 +284,25 @@ class GameListRenderer extends BaseMediaListRenderer {
             playedButton: document.getElementById('played-button-template')
         };
 
-        // Fallback check - if templates don't exist, we'll use string rendering
         if (!this._templates.desktop || !this._templates.mobile) {
-            console.warn('Game row templates not found, falling back to string rendering');
+            // Nothing can be rendered without them, and the engine does not
+            // start (`hasTemplates`, asked by ClientSideFiltering.init): the
+            // server goes on rendering the list. Rows built from strings
+            // stood in here until 2026-11-12, a third copy of each row's
+            // markup that could not run: the page that loads the bundle
+            // always renders the templates.
+            console.warn('Game row templates not found; the server renders the list');
             this._templates = null;
         }
+    }
+
+    /**
+     * Whether the page has the row templates the renderer clones.
+     * @returns {boolean}
+     */
+    hasTemplates() {
+        this._initTemplates();
+        return Boolean(this._templates);
     }
 
 
@@ -333,14 +347,7 @@ class GameListRenderer extends BaseMediaListRenderer {
         }
 
         const template = this._templates?.playedButton;
-        if (!template) {
-            // Fallback to string-based button
-            const html = this._renderPlayedButtonString(game);
-            if (!html) return null;
-            const div = document.createElement('div');
-            div.innerHTML = html;
-            return div.firstElementChild;
-        }
+        if (!template) return null;
 
         const fragment = template.content.cloneNode(true);
         const wrapper = fragment.querySelector('[data-slot="played-wrapper"]');
@@ -458,14 +465,11 @@ class GameListRenderer extends BaseMediaListRenderer {
         this._initTemplates();
 
         const template = this._templates?.desktop;
-        if (!template) {
-            // Fallback: create element from string (legacy behavior)
-            return this._renderDesktopRowString(game, index, showRank);
-        }
+        if (!template) return null;
 
         const fragment = template.content.cloneNode(true);
         const row = fragment.querySelector('[data-slot="root"]');
-        if (!row) return this._renderDesktopRowString(game, index, showRank);
+        if (!row) return null;
 
         const expanded = this.engine.expandGame(game);
         const isHighlighted = this.highlightId && game.id === this.highlightId;
@@ -617,151 +621,6 @@ class GameListRenderer extends BaseMediaListRenderer {
     }
 
     /**
-     * Fallback: Render desktop row as string (legacy behavior)
-     * Visually pleasing design with metadata always visible
-     * @private
-     */
-    _renderDesktopRowString(game, index, showRank) {
-        const expanded = this.engine.expandGame(game);
-        const isHighlighted = this.highlightId && game.id === this.highlightId;
-        const thumbnail = this._getThumbnail(game.a);
-        const thumbnail2x = this._getThumbnail2x(game.a);
-        // Always show sequential position (index) as the main rank
-        const displayRank = index;
-        const showGlobalRank = showRank === 'filtered';
-
-        // Build developers HTML (in meta row)
-        let primaryDevHtml = '';
-        if (expanded.developers.length > 0) {
-            const devLinks = expanded.developers.map(dev => {
-                const rootDev = this._getRootDeveloper(dev);
-                const devSlug = rootDev?.slug;
-                if (devSlug) {
-                    const anchor = (dev.id !== rootDev?.id)
-                        ? `#developer-${dev.id}-game-${game.id}`
-                        : `#game-${game.id}`;
-                    return `<a href="/developers/${devSlug}/${anchor}" class="link link-hover">${this._escapeHtml(dev.name)}</a>`;
-                } else {
-                    return this._escapeHtml(dev.name);
-                }
-            });
-            primaryDevHtml = `<span class="whitespace-nowrap" data-slot="primary-developer">${devLinks.join(', ')}</span>`;
-        }
-
-        // Group platforms by family - icons for 3+, text codes for < 3
-        const platformFamilies = this._groupPlatformsByFamily(expanded.platforms);
-        const platformsHtml = platformFamilies.map((f, fi) => {
-            if (f.count >= 3) {
-                const iconHtml = f.svg
-                    ? `<svg class="w-3.5 h-3.5" aria-hidden="true"><use href="${this._staticUrls.platformIcons}#${f.svg}"></use></svg>`
-                    : `<span class="mdi ${f.icon} text-sm leading-none" aria-hidden="true"></span>`;
-                const countHtml = `<span class="tabular-nums font-bold leading-none" style="font-size: 8px; margin-left: 1px; margin-top: -2px;">${f.count}</span>`;
-                const comma = fi < platformFamilies.length - 1 ? ', ' : '';
-                return `<button type="button" class="tooltip tooltip-top inline-flex items-start hover:text-primary cursor-pointer transition-colors" data-tip="${this._escapeHtml(f.tooltip)}" aria-label="Filter by ${this._escapeHtml(f.tooltip)}" data-add-platforms="${f.platformIdsStr}">${iconHtml}${countHtml}</button>${comma}`;
-            } else {
-                return f.platforms.map((p, pi) => {
-                    const comma = (pi < f.platforms.length - 1) ? ', ' : (fi < platformFamilies.length - 1 ? ', ' : '');
-                    return `<button type="button" class="tooltip tooltip-top hover:text-primary cursor-pointer transition-colors" data-tip="${this._escapeHtml(p.name)}" aria-label="Filter by ${this._escapeHtml(p.name)}" data-add-platforms="${p.id}">${p.code}</button>${comma}`;
-                }).join('');
-            }
-        }).join('');
-
-        const genresHtml = expanded.genres.map((g, i) =>
-            `<button type="button" class="hover:text-primary cursor-pointer transition-colors" data-add-genre="${g.id}" title="${this._escapeHtml(g.name)}">${this._escapeHtml(g.name)}</button>${i < expanded.genres.length - 1 ? '<span class="text-base-content/30"> / </span>' : ''}`
-        ).join('');
-
-        const globalRankHtml = showGlobalRank ? `<span class="game-row-global-rank text-xs text-base-content/80 tabular-nums">(#${game.r})</span>` : '';
-        const playedButtonHtml = this._renderPlayedButtonString(game);
-        const playedContainerHtml = playedButtonHtml ? `<div class="w-12 min-w-12 max-w-12 shrink-0 flex items-center justify-center">${playedButtonHtml}</div>` : '';
-
-        // Build meta row content (developer, platforms, genres, playtime, list count - always visible)
-        let metaRowHtml = primaryDevHtml;
-        if (platformFamilies.length > 0) {
-            const bullet = metaRowHtml ? '<span class="text-base-content/30">|</span> ' : '';
-            metaRowHtml += ` <span class="whitespace-nowrap">${bullet}<span data-slot="platforms">${platformsHtml}</span></span>`;
-        }
-        if (expanded.genres.length > 0) {
-            const bullet = metaRowHtml ? '<span class="text-base-content/30">|</span> ' : '';
-            metaRowHtml += ` <span class="whitespace-nowrap">${bullet}<span data-slot="genres">${genresHtml}</span></span>`;
-        }
-        if (this._hasAnyPlaytime(game)) {
-            const bullet = metaRowHtml ? '<span class="text-base-content/30">|</span> ' : '';
-            metaRowHtml += this._playtimeMetaHtml(game, bullet, 'HowLongToBeat playtime');
-        }
-        if (game.lc) {
-            const bullet = metaRowHtml ? '<span class="text-base-content/30">|</span> ' : '';
-            metaRowHtml += ` <span class="whitespace-nowrap">${bullet}<span class="tabular-nums" data-slot="list-count">${game.lc} lists</span></span>`;
-        }
-
-        const div = document.createElement('div');
-        div.innerHTML = `
-<div class="game-row-wrapper hidden desktop:flex items-center" id="game-${game.id}">
-    ${playedContainerHtml}
-    <div class="game-row desktop flex-1 py-1.5 px-3 grid ${isHighlighted ? 'is-highlighted' : ''}" style="grid-template-columns: auto 1fr;">
-        <div class="flex items-center gap-3 flex-shrink-0">
-            ${showRank !== 'none' ? `<div class="w-14 text-center flex flex-col items-center justify-center"><span class="game-rank text-xl font-bold text-accent tabular-nums">${displayRank}</span>${globalRankHtml}</div>` : ''}
-            <a href="/game/${game.s}/" class="game-thumb-link">
-                <img src="${thumbnail}" srcset="${thumbnail} 1x, ${thumbnail2x} 2x" alt="${this._escapeHtml(game.n)}" width="90" height="128" loading="lazy" decoding="async" class="game-thumb">
-            </a>
-        </div>
-        <div class="flex-1 min-w-0 px-4">
-            <div class="truncate">
-                <a href="/game/${game.s}/" class="game-title text-lg font-bold link link-hover">${this._escapeHtml(game.n)}</a>
-                <a rel="nofollow"${game.y ? ` href="/?start=${game.y}&end=${game.y}&highlight=${game.id}"` : ''} class="text-base-content/80 ml-1.5">(${game.y || 'N/A'})</a>
-            </div>
-            <div class="game-row-details text-base-content/80 text-sm ml-4" data-slot="meta-row">${metaRowHtml}</div>
-        </div>
-    </div>
-</div>`;
-        return div.firstElementChild;
-    }
-
-    /**
-     * Fallback: Render game status dropdown button as string
-     * Handles 3 states: played, want to play, untracked
-     * The menu is the page's shared #played-menu (played-menu.js)
-     * @private
-     */
-    _renderPlayedButtonString(game) {
-        if (!window.isAuthenticated || !game.i) return '';
-        const igdbId = game.i;
-        const status = this._getGameStatus(igdbId);
-
-        // Tooltip shows game status
-        const tooltips = {
-            'played': 'You have played this game!',
-            'want': 'You want to play this game!',
-            'none': "You aren't tracking this game."
-        };
-        const tooltipText = tooltips[status];
-
-        // Icon based on status
-        let innerHtml;
-        if (status === 'played') {
-            innerHtml = `<span class="flex items-center justify-center w-6 h-6"><img src="${this._staticUrls.marioStar}" srcset="${this._staticUrls.marioStar} 1x, ${this._staticUrls.marioStar2x} 2x" alt="Played" width="32" height="32" class="w-6 h-6 drop-shadow-[0_0_6px_rgba(250,204,21,0.9)]"></span>`;
-        } else if (status === 'want') {
-            innerHtml = `<span class="flex items-center justify-center w-6 h-6"><span class="mdi mdi-star-plus-outline text-2xl text-warning" aria-hidden="true"></span></span>`;
-        } else {
-            innerHtml = `<span class="flex items-center justify-center w-6 h-6"><span class="mdi mdi-star-outline text-2xl text-base-content/30" aria-hidden="true"></span></span>`;
-        }
-
-        const ariaLabels = {
-            'played': 'Played - click to change',
-            'want': 'Want to play - click to change',
-            'none': 'Not tracked - click to change'
-        };
-        const ariaLabel = ariaLabels[status];
-
-        // The menu is the page's shared #played-menu (played-menu.js)
-        return `<div class="played-button-wrapper" ` +
-            `data-igdb-id="${igdbId}" data-status="${status}" onclick="event.stopPropagation()">` +
-            `<button type="button" ` +
-            `class="played-button desktop:tooltip desktop:tooltip-top flex items-center justify-center shrink-0 cursor-pointer h-8 w-8 min-w-8" ` +
-            `data-tip="${tooltipText}" aria-label="${ariaLabel}" aria-haspopup="menu" aria-expanded="false">` +
-            `${innerHtml}</button></div>`;
-    }
-
-    /**
      * Render a single game row (mobile version) using DOM template cloning
      * @protected
      * @override
@@ -771,13 +630,11 @@ class GameListRenderer extends BaseMediaListRenderer {
         this._initTemplates();
 
         const template = this._templates?.mobile;
-        if (!template) {
-            return this._renderMobileRowString(game, index, showRank);
-        }
+        if (!template) return null;
 
         const fragment = template.content.cloneNode(true);
         const row = fragment.querySelector('[data-slot="root"]');
-        if (!row) return this._renderMobileRowString(game, index, showRank);
+        if (!row) return null;
 
         const expanded = this.engine.expandGame(game);
         const isHighlighted = this.highlightId && game.id === this.highlightId;
@@ -901,96 +758,6 @@ class GameListRenderer extends BaseMediaListRenderer {
     }
 
     /**
-     * Fallback: Render mobile row as string (legacy behavior)
-     * @private
-     */
-    _renderMobileRowString(game, index, showRank) {
-        const expanded = this.engine.expandGame(game);
-        const isHighlighted = this.highlightId && game.id === this.highlightId;
-        const thumbnail = this._getThumbnail(game.a);
-        // Always show sequential position (index) as the main rank
-        const displayRank = index;
-        const showRankInline = showRank !== 'none';
-
-        // Build unified meta row: Developer, Platforms, Genres, Playtime, List count
-        const platformFamilies = this._groupPlatformsByFamily(expanded.platforms);
-        let metaHtml = '';
-
-        // Developers (full list)
-        if (expanded.developers.length > 0) {
-            const devNames = expanded.developers.map(d => this._escapeHtml(d.name)).join(', ');
-            metaHtml += `<span class="whitespace-nowrap" data-slot="primary-developer">${devNames}</span>`;
-        }
-
-        // Platforms
-        if (platformFamilies.length > 0) {
-            const bullet = metaHtml ? '<span class="text-base-content/30">|</span> ' : '';
-            const platformsHtml = platformFamilies.map((f, fi) => {
-                if (f.count >= 3) {
-                    const iconHtml = f.svg
-                        ? `<svg class="w-3 h-3" aria-hidden="true"><use href="${this._staticUrls.platformIcons}#${f.svg}"></use></svg>`
-                        : `<span class="mdi ${f.icon}" aria-hidden="true"></span>`;
-                    const countHtml = `<span class="tabular-nums font-bold" style="font-size: 8px; margin-left: 1px;">${f.count}</span>`;
-                    const comma = fi < platformFamilies.length - 1 ? ', ' : '';
-                    return `<span class="inline-flex items-center" title="${this._escapeHtml(f.tooltip)}">${iconHtml}${countHtml}</span>${comma}`;
-                } else {
-                    return f.platforms.map((p, pi) => {
-                        const comma = (pi < f.platforms.length - 1) ? ', ' : (fi < platformFamilies.length - 1 ? ', ' : '');
-                        return `<span title="${this._escapeHtml(p.name)}">${p.code}</span>${comma}`;
-                    }).join('');
-                }
-            }).join('');
-            metaHtml += ` <span class="whitespace-nowrap">${bullet}<span data-slot="platforms">${platformsHtml}</span></span>`;
-        }
-
-        // Genres (all)
-        if (expanded.genres.length > 0) {
-            const bullet = metaHtml ? '<span class="text-base-content/30">|</span> ' : '';
-            const genresHtml = expanded.genres.map((g, i) =>
-                `${this._escapeHtml(g.name)}${i < expanded.genres.length - 1 ? '<span class="text-base-content/30"> / </span>' : ''}`
-            ).join('');
-            metaHtml += ` <span class="whitespace-nowrap">${bullet}<span data-slot="genres">${genresHtml}</span></span>`;
-        }
-
-        // Playtime
-        if (this._hasAnyPlaytime(game)) {
-            const bullet = metaHtml ? '<span class="text-base-content/30">|</span> ' : '';
-            metaHtml += this._playtimeMetaHtml(game, bullet, 'Playtime');
-        }
-
-        // List count
-        if (game.lc) {
-            const bullet = metaHtml ? '<span class="text-base-content/30">|</span> ' : '';
-            metaHtml += ` <span class="whitespace-nowrap">${bullet}<span class="tabular-nums" data-slot="list-count">${game.lc} lists</span></span>`;
-        }
-
-        const playedButtonHtml = this._renderPlayedButtonString(game);
-        // Only include container if authenticated (button exists)
-        const playedContainerHtml = playedButtonHtml ? `<div class="w-8 h-8 min-w-8 max-w-8 shrink-0 flex items-center justify-center">${playedButtonHtml}</div>` : '';
-        // Grid columns: no more rank column (rank is inline with title)
-        const hasPlayedButton = !!playedButtonHtml;
-        const gridCols = hasPlayedButton ? 'auto auto 1fr' : 'auto 1fr';
-        // Inline rank and global rank in title
-        const rankHtml = showRankInline ? `<span class="text-accent tabular-nums text-lg">#${displayRank}</span> ` : '';
-        const globalRankHtml = showRank === 'filtered' ? `<span class="font-normal text-xs text-base-content/80 tabular-nums"> (#${game.r})</span>` : '';
-
-        const div = document.createElement('div');
-        div.innerHTML = `
-<div class="game-row game-card-mobile desktop:hidden grid items-center gap-3 p-2 bg-base-200 rounded-lg mb-2 cursor-pointer ${isHighlighted ? 'is-highlighted' : ''}" id="game-${game.id}-mobile" data-href="/game/${game.s}/" style="grid-template-columns: ${gridCols};">
-    ${playedContainerHtml}
-    <div class="w-12 rounded overflow-hidden bg-base-100" style="aspect-ratio: 90/128;"><img src="${thumbnail}" alt="${this._escapeHtml(game.n)}" width="90" height="128" class="w-full h-full object-cover" loading="lazy" decoding="async"></div>
-    <div class="min-w-0 flex items-center justify-between">
-        <div class="min-w-0">
-            <div class="font-bold text-base leading-tight line-clamp-2" data-slot="title">${rankHtml}<a href="/game/${game.s}/" class="link link-hover" data-slot="title-link">${this._escapeHtml(game.n)}</a> <span class="font-normal text-sm text-base-content/70">(${game.y || 'N/A'})</span>${globalRankHtml}</div>
-            <div class="text-xs text-base-content/65" data-slot="meta">${metaHtml}</div>
-        </div>
-    </div>
-</div>`;
-        return div.firstElementChild;
-    }
-
-
-    /**
      * Render a single grid card using DOM template cloning
      * @protected
      * @override
@@ -1000,13 +767,11 @@ class GameListRenderer extends BaseMediaListRenderer {
         this._initTemplates();
 
         const template = this._templates?.grid;
-        if (!template) {
-            return this._renderGridCardString(game, index, showRank);
-        }
+        if (!template) return null;
 
         const fragment = template.content.cloneNode(true);
         const card = fragment.querySelector('[data-slot="root"]');
-        if (!card) return this._renderGridCardString(game, index, showRank);
+        if (!card) return null;
 
         const isHighlighted = this.highlightId && game.id === this.highlightId;
         const coverUrl = this._getCoverBig(game.a);
@@ -1119,68 +884,6 @@ class GameListRenderer extends BaseMediaListRenderer {
         }
 
         return card;
-    }
-
-    /**
-     * Fallback: Render grid card as string (legacy behavior)
-     * @private
-     */
-    _renderGridCardString(game, index, showRank) {
-        const isHighlighted = this.highlightId && game.id === this.highlightId;
-        const coverUrl = this._getCoverBig(game.a);
-        const coverUrl2x = this._getCoverBig2x(game.a);
-        // Always show sequential position (index) as the main rank
-        const displayRank = index;
-        const showRankBadge = showRank !== 'none';
-        const showGlobalRank = showRank === 'filtered';
-
-        const globalRankHtml = showGlobalRank ? `<span class="game-card-global-rank">#${game.r}</span>` : '';
-        const rankHtml = showRankBadge
-            ? `<div class="game-card-rank"><span class="badge">#${displayRank}</span></div>`
-            : '';
-
-        // Build overlay content
-        const expanded = this.engine.expandGame(game);
-        let overlayContent = '';
-        if (expanded.developers.length > 0) {
-            overlayContent += `<div class="game-card-dev">${this._escapeHtml(expanded.developers.map(d => d.name).join(', '))}</div>`;
-        }
-        if (expanded.platforms.length > 0) {
-            overlayContent += `<div class="game-card-platforms">${this._escapeHtml(expanded.platforms.map(p => p.code).join(', '))}</div>`;
-        }
-        if (expanded.genres.length > 0) {
-            overlayContent += `<div class="game-card-genres">${this._escapeHtml(expanded.genres.map(g => g.name).join(' / '))}</div>`;
-        }
-        if (this._hasAnyPlaytime(game)) {
-            const playtime = this._getPlaytime(game);
-            const hidden = (playtime === null || playtime === undefined) ? ' hidden' : '';
-            overlayContent += `<div class="game-card-playtime${hidden}" data-slot="playtime" ${this._playtimeDataAttrs(game, 'HowLongToBeat playtime')} title="${this._playtimeTitle('HowLongToBeat playtime')}">${this._formatPlaytime(playtime)}</div>`;
-        }
-        if (game.lc) {
-            overlayContent += `<div class="game-card-lists">${game.lc} lists</div>`;
-        }
-
-        const div = document.createElement('div');
-        div.innerHTML = `
-<div class="game-card-grid ${isHighlighted ? 'is-highlighted' : ''}" id="game-${game.id}-grid">
-    <div class="game-card-cover relative">
-        ${rankHtml}
-        ${globalRankHtml}
-        <a href="/game/${game.s}/" class="block w-full h-full">
-            <img src="${coverUrl}" srcset="${coverUrl} 1x, ${coverUrl2x} 2x" alt="${this._escapeHtml(game.n)}" width="264" height="374" loading="lazy" decoding="async" class="w-full h-full object-cover">
-        </a>
-        <div class="game-card-overlay">
-            <div class="game-card-overlay-content">${overlayContent}</div>
-        </div>
-    </div>
-    <div class="game-card-info">
-        <a href="/game/${game.s}/" class="link link-hover">
-            <span class="game-card-name">${this._escapeHtml(game.n)}</span>
-        </a>
-        <span class="game-card-year">${game.y || 'N/A'}</span>
-    </div>
-</div>`;
-        return div.firstElementChild;
     }
 
     /**

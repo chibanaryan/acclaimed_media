@@ -44,8 +44,9 @@ class HighlightLinksAreNofollowTests(SimpleTestCase):
                 if 'rel="nofollow"' not in tag:
                     missing.append(f"{path.relative_to(settings.BASE_DIR)}: {tag}")
         # The pattern still matches something, or the test checks nothing
-        # (14 until _game_row_properties.html, which nothing rendered, went)
-        self.assertGreaterEqual(len(found), 13)
+        # (14 until _game_row_properties.html, which nothing rendered, went,
+        # and 13 until the games renderer's string fallback did)
+        self.assertGreaterEqual(len(found), 12)
         self.assertEqual(missing, [])
 
     def test_the_robots_rule_it_mirrors_is_still_there(self):

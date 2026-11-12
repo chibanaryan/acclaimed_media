@@ -241,3 +241,9 @@ SORT_OPTIONS = (
         ),
     },
 )
+
+# How many filter combinations a reader keeps, and how long a name may be.
+# A courtesy that keeps the dropdown readable, enforced in the API, as
+# music's are (music/config.py).
+MAX_SAVED_FILTERS = 10
+SAVED_FILTER_NAME_MAX_LENGTH = 255

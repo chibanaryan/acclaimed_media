@@ -526,8 +526,8 @@ def _validate_saved_filter_name(name, user, exclude_pk=None):
     """The name rules, or an error string if the name breaks one.
 
     Shared by create and rename so the two cannot disagree about the
-    ceiling or about what counts as a duplicate - games enforces the same
-    three rules twice over, once per method.
+    ceiling or about what counts as a duplicate, as games' are
+    (``games.api.views._saved_filter_name_error``).
     """
     if not name:
         return "Filter name is required."

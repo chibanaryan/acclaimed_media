@@ -620,16 +620,15 @@ class UnifiedSearchView(APIView):
         developer_rows = [row for row in developer_rows if row[3] in developers_by_id]
         for *_, dev_id, games_count in developer_rows:
             dev = developers_by_id[dev_id]
-            # Use root developer's slug and id for URL routing
+            # The root developer's slug and id, for URL routing: the
+            # developer itself when it has no parent, so never None
             root = dev.root_developer
-            root_slug = root.slug if root else dev.slug
-            root_id = root.id if root else dev.id
             developer_results.append(
                 {
                     "id": dev.id,
                     "name": dev.name,
-                    "root_slug": root_slug,
-                    "root_id": root_id,
+                    "root_slug": root.slug,
+                    "root_id": root.id,
                     "games_count": games_count,
                 }
             )
@@ -1000,12 +999,34 @@ class GameAllDataView(APIView):
         }
 
 
+def _saved_filter_name_error(name, user, exclude_pk=None):
+    """The name rules, or an error string if the name breaks one.
+
+    Shared by create and rename, as music's are
+    (``music.api.views._validate_saved_filter_name``): each method had its
+    own copy of the three rules, and of the ceiling.
+    """
+    if not name:
+        return "Filter name is required."
+    if len(name) > config.SAVED_FILTER_NAME_MAX_LENGTH:
+        return (
+            f"Filter name must be {config.SAVED_FILTER_NAME_MAX_LENGTH} "
+            "characters or less."
+        )
+    duplicates = models.SavedFilterSet.objects.filter(user=user, name=name)
+    if exclude_pk is not None:
+        duplicates = duplicates.exclude(pk=exclude_pk)
+    if duplicates.exists():
+        return "A filter with this name already exists."
+    return None
+
+
 class SavedFilterSetListCreateView(APIView):
     """
     List saved filter sets for current user (GET).
     Create new saved filter set (POST).
 
-    Enforces maximum of 10 saved filters per user.
+    Enforces ``config.MAX_SAVED_FILTERS`` saved filters per user.
     """
 
     authentication_classes = [SessionAuthentication]
@@ -1016,7 +1037,7 @@ class SavedFilterSetListCreateView(APIView):
         """List all saved filter sets for current user."""
         filter_sets = models.SavedFilterSet.objects.filter(user=request.user).order_by(
             "-modified"
-        )[:10]
+        )[: config.MAX_SAVED_FILTERS]
 
         data = [
             {
@@ -1033,11 +1054,11 @@ class SavedFilterSetListCreateView(APIView):
         """Create a new saved filter set."""
         current_count = models.SavedFilterSet.objects.filter(user=request.user).count()
 
-        if current_count >= 10:
+        if current_count >= config.MAX_SAVED_FILTERS:
             return Response(
                 {
-                    "error": "Maximum of 10 saved filters allowed. "
-                    "Delete one to save a new filter."
+                    "error": f"Maximum of {config.MAX_SAVED_FILTERS} saved filters "
+                    "allowed. Delete one to save a new filter."
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -1056,18 +1077,9 @@ class SavedFilterSetListCreateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if len(name) > 255:
-            return Response(
-                {"error": "Filter name must be 255 characters or less."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Check for duplicate name
-        if models.SavedFilterSet.objects.filter(user=request.user, name=name).exists():
-            return Response(
-                {"error": "A filter with this name already exists."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        error = _saved_filter_name_error(name, request.user)
+        if error:
+            return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
 
         filter_set = models.SavedFilterSet.objects.create(
             user=request.user,
@@ -1103,28 +1115,9 @@ class SavedFilterSetDetailView(APIView):
         filter_set = self.get_object(pk, request.user)
 
         name, _ = read_saved_filter(request.data)
-        if not name:
-            return Response(
-                {"error": "Name is required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if len(name) > 255:
-            return Response(
-                {"error": "Filter name must be 255 characters or less."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Check for duplicate name (excluding current filter)
-        if (
-            models.SavedFilterSet.objects.filter(user=request.user, name=name)
-            .exclude(pk=pk)
-            .exists()
-        ):
-            return Response(
-                {"error": "A filter with this name already exists."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        error = _saved_filter_name_error(name, request.user, exclude_pk=pk)
+        if error:
+            return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
 
         filter_set.name = name
         filter_set.save(update_fields=["name", "modified"])

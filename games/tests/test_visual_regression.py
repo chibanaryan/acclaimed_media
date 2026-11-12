@@ -128,14 +128,37 @@ class TemplateStructureTests(TestCase):
             self.assertTrue(link.get_text(strip=True))
 
     def test_the_renderer_links_a_mobile_rows_title_as_the_server_does(self):
-        """Its cloned row and its string fallback both."""
         source = (
             Path(settings.BASE_DIR) / "games/static/games/js/game-list-renderer.js"
         ).read_text()
         link = (
             '<a href="/game/${game.s}/" class="link link-hover" data-slot="title-link">'
         )
-        self.assertEqual(source.count(link), 2)
+        self.assertEqual(source.count(link), 1)
+
+    def test_the_renderer_has_no_second_copy_of_a_row(self):
+        """It built each row, the played button and the grid card from
+        strings as well, for a page with no templates: a third copy of the
+        markup to keep in step, which could not run. Without templates the
+        engine does not start, and the server renders the list."""
+        js = Path(settings.BASE_DIR) / "games/static/games/js"
+        renderer = (js / "game-list-renderer.js").read_text()
+        for name in (
+            "_renderDesktopRowString",
+            "_renderMobileRowString",
+            "_renderGridCardString",
+            "_renderPlayedButtonString",
+        ):
+            with self.subTest(method=name):
+                self.assertNotIn(name, renderer)
+        self.assertIn("hasTemplates() {", renderer)
+        self.assertIn(
+            "if (!this.renderer.hasTemplates()) {",
+            (js / "client-filtering.js").read_text(),
+        )
+        self.assertIn(
+            "hasTemplates()", (js / "client-side-filtering.bundle.min.js").read_text()
+        )
 
     def test_mobile_template_has_required_slots(self):
         """
@@ -347,9 +370,7 @@ class ServerRenderedOutputTests(TestCase):
         renderer = (
             Path(settings.BASE_DIR) / "games/static/games/js/game-list-renderer.js"
         ).read_text()
-        # Both client paths: the cloned row, and the string fallback
         self.assertIn("yearLink.removeAttribute('href')", renderer)
-        self.assertIn('<a rel="nofollow"${game.y ? ` href="/?start=', renderer)
 
 
 class DataTransformationTests(TestCase):
