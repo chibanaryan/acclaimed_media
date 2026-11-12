@@ -22,10 +22,6 @@
   On a copy of production's data the first hundred rows went from 124 ms to
   17.5 ms on SQLite and 54 ms to 20 ms on Postgres 15, the same rows. Music's
   has the same change
-- **The artist page keeps its buttons in step.** It never loaded the script
-  that copies a status from a row's desktop button to its phone one, so the
-  hidden one kept its old icon until a reload, and focus fell to the top of
-  the page
 - **The weekly games refresh tells the caches when it changed something.**
   It writes genres, slugs and artwork through saves the data version does
   not see, and a reader's stored payload has no age limit. It compares the
@@ -35,30 +31,28 @@
   "🎮🎮" with the top of the rankings; a signed-out CSV was named
   "...-played"; `?page=0` showed the last page; a year range written
   backwards listed nothing (ROADMAP 12 as was); the source-lists total
-  ignored the search in one mode (11 as was); a username could not be changed back to
-  the account's own email; a contact name with a line break failed the send
-- Platform group ids (`?platforms=mfr-nintendo`) are no longer read from
-  the URL: no page ever wrote one, and the heading, the engine and the CSV
-  each read them differently (ROADMAP 10 as was). A list type the games file
-  spells its own way no longer drops its group from a game's page
-- A saved "Short" playtime filter comes back as Short; Log In and Contact
-  answer within a second of the page loading, not whenever the browser is
-  idle; a server Load More keeps keyboard focus; the mobile sheet's
-  sections say whether they are open; a platform's code on a row is named
-  by what it shows
+  ignored the search in one mode (11 as was); platform group ids
+  (`?platforms=mfr-nintendo`), which no page ever wrote, are no longer read
+  (10 as was); a list type the games file spells its own way no longer
+  drops its group from a game's page
+- **Buttons and choices that did not hold.** The artist page never loaded
+  the script that copies a status from a row's desktop button to its phone
+  one. A theme chosen on `127.0.0.1` was undone by the next page: the
+  theme's cookie named a domain no browser keeps for an address, so one
+  already there could not be changed. A saved "Short" playtime filter came
+  back as custom; Log In and Contact waited for the browser to be idle; a
+  username could not be changed back to the account's own email
+- Keyboard and screen readers: a server Load More keeps focus; the mobile
+  sheet's sections say whether they are open; a platform's code on a row
+  is named by what it shows
 - Removed the games renderer's second copy of each row, built from strings
   for a page with no templates: about 300 lines that could not run, and
   10 KB of the bundle. Two PostCSS plugins the stylesheet does not use
 - The coverage gate names what it leaves out. Music's import handler and
   nine commands are under it (13,490 statements, from 12,409); five games
-  files stay out, by name, at 62% to 81%. A test compiles every template.
-  Local test runs no longer install the debug toolbar, as CI's never did.
-  The smoke test signs in for the first time, as a seeded reader
-- **A theme chosen on `127.0.0.1` stays chosen.** The theme's cookie named
-  a domain made of the host's last two parts, which for an address is `.0.1`
-  and is not kept, so a `theme` cookie already there could not be changed
-  and put the reader back on it at every page. An address's cookie is its
-  own now, and a host's own does not outlive the shared one in production
+  files stay out, by name, at 62% to 81%. A test compiles every template,
+  local test runs no longer install the debug toolbar, and the smoke test
+  signs in for the first time, as a seeded reader
 - Tried and taken out at its second review round: honouring `Retry-After`
   in music's HTTP client (ROADMAP 10 says what it has to get right). Left
   as it was, on a closer look: `populate_platform_years`, which is the one
