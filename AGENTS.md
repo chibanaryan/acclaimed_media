@@ -2070,13 +2070,13 @@ landing page and shares its cache.
   signed out once. JavaScript that reads the CSRF cookie reads
   `am_csrftoken`. The theme choice is in `localStorage`, which is per
   origin, so `_theme_script.html` also keeps it in a domain-wide `theme`
-  cookie, which wins. On a host with no parent a cookie may name
-  (`*.localhost`, a bare name, an address such as `127.0.0.1`) the cookie
-  is the host's own. For an address it named `.0.1` until 2026-11-12, which
-  is not kept, so a `theme` cookie already there could not be changed and
-  put the reader back on its theme at every page
-  (`core/tests/test_theme_cookie_js.py`; smoke: "a theme chosen on
-  127.0.0.1 stays").
+  cookie, which wins. It asks for the domain's and writes the host's own
+  if the browser did not keep it, as it does not on a host with no parent
+  a cookie may name (`*.localhost`, an address such as `127.0.0.1`). Until
+  2026-11-12 nothing was written there, so a `theme` cookie already on
+  `127.0.0.1` could not be changed and put the reader back on its theme at
+  every page (`core/tests/test_theme_cookie_js.py`; smoke: "a theme chosen
+  on 127.0.0.1 stays").
 - **Development** uses the same names under localhost: `localhost:8000`,
   `games.localhost:8000`, `music.localhost:8000` (Chrome resolves
   `*.localhost` itself; `ALLOWED_HOSTS` takes `.localhost` under `DEBUG`).

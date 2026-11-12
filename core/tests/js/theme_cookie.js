@@ -5,13 +5,16 @@
  *
  *   node core/tests/js/theme_cookie.js
  *
- * The cookie jar follows a browser's rules as far as they matter here: a
- * cookie with a Domain is kept only if the host is that domain or under it,
- * never for an address and never for a single label ("localhost", which
- * Chrome refuses); one without is the host's alone; a host is sent both, the
- * older first.
+ * The cookie jar keeps a browser's rules as far as they matter here, and by
+ * its own lights, not the script's. A cookie with a Domain is kept only if
+ * the host is that domain or under it, never for an IP address (Node's own
+ * test of one) and never for a public suffix (the few named below, which is
+ * what Chrome refuses: `Domain=localhost` is not kept). One without a
+ * Domain is the host's alone. A host is sent both, the older first, and a
+ * cookie written again keeps its place.
  */
 const fs = require('fs');
+const net = require('net');
 const path = require('path');
 const vm = require('vm');
 
@@ -20,10 +23,11 @@ const template = fs.readFileSync(
     path.join(root, 'games/templates/includes/_theme_script.html'), 'utf8');
 const script = template.match(/<script[^>]*>([\s\S]*?)<\/script>/)[1];
 
+const PUBLIC_SUFFIXES = new Set(['org', 'com', 'localhost', 'herokuapp.com']);
+
 function browser() {
     const jar = [];
     const storage = {};
-    const isAddress = host => /^[\d.]+$/.test(host) || host.includes(':');
     const visibleTo = host => jar.filter(cookie => cookie.domain
         ? host === cookie.domain || host.endsWith('.' + cookie.domain)
         : cookie.host === host);
@@ -39,13 +43,19 @@ function browser() {
         if ('domain' in given) {
             domain = given.domain.replace(/^\./, '');
             const under = host === domain || host.endsWith('.' + domain);
-            if (!under || isAddress(host) || !domain.includes('.')) return;
+            // A trailing dot names the same suffix
+            const suffix = PUBLIC_SUFFIXES.has(domain.replace(/\.$/, ''));
+            if (!under || net.isIP(host) || suffix) return;
         }
-        const at = jar.findIndex(cookie => cookie.name === name &&
-            cookie.domain === domain && (domain || cookie.host === host));
-        if (at !== -1) jar.splice(at, 1);
-        if (given['max-age'] === '0') return;
-        jar.push({ name, value, domain, host: domain ? null : host });
+        const same = cookie => cookie.name === name &&
+            cookie.domain === domain && (domain || cookie.host === host);
+        const at = jar.findIndex(same);
+        if (given['max-age'] === '0') {
+            if (at !== -1) jar.splice(at, 1);
+            return;
+        }
+        const cookie = { name, value, domain, host: domain ? null : host };
+        if (at === -1) jar.push(cookie); else jar[at] = cookie;
     }
 
     /** One page load on `host`: runs the script, answers what it left. */
@@ -89,8 +99,9 @@ function browser() {
 const output = {};
 
 // A choice made on a host is the next page's, for each kind of host
-for (const host of ['127.0.0.1', '[::1]', 'localhost', 'games.localhost',
-    'games.acclaimedmedia.org', 'acclaimedmedia.org']) {
+for (const host of ['127.0.0.1', 'localhost', 'games.localhost',
+    'games.acclaimedmedia.org', 'acclaimedmedia.org',
+    'games.acclaimedmedia.org.', 'acclaimedgames.herokuapp.com']) {
     const tab = browser();
     const first = tab.load(host).theme;
     tab.choose(tab.load(host), 'lofi');
@@ -99,7 +110,7 @@ for (const host of ['127.0.0.1', '[::1]', 'localhost', 'games.localhost',
 
 // A host-only cookie already there, which the toggle has to be able to
 // change: 127.0.0.1's cookies are shared by every port
-for (const host of ['127.0.0.1', 'games.acclaimedmedia.org']) {
+for (const host of ['127.0.0.1', 'games.localhost', 'games.acclaimedmedia.org']) {
     const tab = browser();
     tab.set(host, 'theme=lofi;path=/');
     const before = tab.load(host).theme;

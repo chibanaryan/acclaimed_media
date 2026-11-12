@@ -230,6 +230,13 @@ found nothing to fix. What it found and left:
       start, so it was left.
     - `games/utils.py` re-exports six names only tests read; their patches
       could name the service modules.
+    - **Two `theme` cookies the toggle cannot reach still win where they
+      exist**, neither of which this site writes: one with a longer path
+      than `/` (another app on a shared address such as `127.0.0.1`), and a
+      host's own on a site other than the one the toggle was used on. And
+      on an address the cookie is named `theme`, which another local app
+      may use. A name of our own (`am_theme`, as the session's is) would
+      end all three, at one reset of every reader's choice across sites.
 
 ## Music: after launch
 
