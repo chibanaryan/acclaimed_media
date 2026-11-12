@@ -269,6 +269,33 @@ class WikidataPassTests(ServiceTestCase):
         self.assertEqual(result.processed, 1)
         self.assertEqual(self.album.musicbrainz_release_group_id, RG_MBID)
 
+    def test_a_malformed_release_group_id_does_not_replace_a_good_one(self):
+        """Wikidata's P436 is what its editors typed. Stored as given, a
+        malformed one replaced a good one, and the cover pass asked the
+        archive for a group that does not exist; an artist's id (P434) has
+        been checked since 2026-11-11."""
+        self.album.musicbrainz_release_group_id = RG_MBID
+        self.album.save()
+        for bad in ("not-a-uuid", RG_MBID + "x", RG_MBID[:-1]):
+            with self.subTest(mbid=bad):
+                with self.assertLogs("music.services.metadata_service", "WARNING"):
+                    self.run_pass(
+                        metadata={
+                            "Q173643": self.album_meta(musicbrainz_release_group_id=bad)
+                        }
+                    )
+                self.album.refresh_from_db()
+                self.assertEqual(self.album.musicbrainz_release_group_id, RG_MBID)
+
+    def test_a_release_group_id_is_stored_lower_case(self):
+        self.run_pass(
+            metadata={
+                "Q173643": self.album_meta(musicbrainz_release_group_id=RG_MBID.upper())
+            }
+        )
+        self.album.refresh_from_db()
+        self.assertEqual(self.album.musicbrainz_release_group_id, RG_MBID)
+
     def test_no_albums_is_a_no_op(self):
         result = self.service.run_wikidata([])
         self.assertEqual(result.processed, 0)

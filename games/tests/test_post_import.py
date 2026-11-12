@@ -179,7 +179,7 @@ class RefreshAfterImportTests(TestCase):
     def test_moving_it_touches_one_game(self):
         games = self.games(3)
         self.later()
-        post_import._move_data_version()
+        post_import.move_data_version()
         moved = [
             game.pk
             for game in games
@@ -188,7 +188,7 @@ class RefreshAfterImportTests(TestCase):
         self.assertEqual(moved, [games[0].pk])
 
     def test_moving_it_with_no_games_does_nothing(self):
-        post_import._move_data_version()
+        post_import.move_data_version()
         self.assertFalse(models.Game.objects.exists())
 
     def test_a_failed_check_does_not_stop_the_later_steps(self):

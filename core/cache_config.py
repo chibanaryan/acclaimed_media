@@ -27,6 +27,7 @@ degraded rate limiting under exactly the crawler load it exists to stop.
 import re
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 LOCMEM_BACKEND = "django.core.cache.backends.locmem.LocMemCache"
 FILE_BACKEND = "django.core.cache.backends.filebased.FileBasedCache"
@@ -55,7 +56,7 @@ LOCAL_CACHE_OPTIONS = {"MAX_ENTRIES": 500}
 RATELIMIT_CACHE_OPTIONS = {"MAX_ENTRIES": 5000}
 
 
-def build_default_cache(cache_url, *, debug, test_mode, base_dir):
+def build_default_cache(cache_url, *, debug, test_mode, base_dir, on_dyno=False):
     """Return the ``default`` (shared) cache config for an environment."""
     if debug and not test_mode and (not cache_url or cache_url.startswith("dbcache")):
         # Local dev stays on LocMem: dbcache would need `createcachetable`
@@ -76,6 +77,14 @@ def build_default_cache(cache_url, *, debug, test_mode, base_dir):
         # below is one directory shared by every xdist worker, and by the
         # next run.
         return {"BACKEND": LOCMEM_BACKEND}
+
+    if on_dyno:
+        # The file cache below would be one throwaway directory a dyno, so
+        # an invalidation or the metadata lock would reach one of them
+        raise ImproperlyConfigured(
+            "CACHE_URL is not set. Production shares one cache between its "
+            "processes: heroku config:set CACHE_URL=dbcache://cache_table"
+        )
 
     # No URL and not DEBUG: a file-based cache survives dev server restarts.
     return {"BACKEND": FILE_BACKEND, "LOCATION": base_dir / "django_cache"}
@@ -103,10 +112,14 @@ def release_cache_prefix(release):
     return re.sub(r"\d+", lambda m: m[0].zfill(8), release)
 
 
-def build_caches(cache_url, *, debug, test_mode, base_dir):
+def build_caches(cache_url, *, debug, test_mode, base_dir, on_dyno=False):
     """Return the whole ``CACHES`` setting: a shared alias and two local ones."""
     default = build_default_cache(
-        cache_url, debug=debug, test_mode=test_mode, base_dir=base_dir
+        cache_url,
+        debug=debug,
+        test_mode=test_mode,
+        base_dir=base_dir,
+        on_dyno=on_dyno,
     )
     return {
         "default": default,

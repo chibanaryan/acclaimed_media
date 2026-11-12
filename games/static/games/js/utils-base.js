@@ -823,11 +823,16 @@ function getFiltersFromURL(search) {
         return Number.isFinite(value) ? value : null;
     };
     const list = name => (params.get(name) || '').split(',').filter(id => id);
+    // A range written backwards (by hand: no control writes one) is the
+    // range, as the server reads it (`resolve_year_range`)
+    let start = number('start');
+    let end = number('end');
+    if (start !== null && end !== null && start > end) [start, end] = [end, start];
 
     return {
         q: params.get('q') || '',
-        start: number('start'),
-        end: number('end'),
+        start,
+        end,
         genres: list('genres'),
         platforms: list('platforms'),
         series: list('series'),

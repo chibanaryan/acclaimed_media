@@ -55,6 +55,24 @@ class RobustPaginationMixinTest(TestCase):
         # Should return last page (page 3 with 25 items, 10 per page)
         self.assertEqual(page_obj.number, 3)
 
+    def test_a_page_below_one_is_the_first_not_the_last(self):
+        """`?page=0` and `?page=-3` are below the range, not past it: they
+        were answered with the last page, as a page too high is."""
+
+        class TestView(RobustPaginationMixin, ListView):
+            model = models.Game
+            paginate_by = 10
+            paginate_orphans = 0
+
+        for page in ("0", "-3"):
+            with self.subTest(page=page):
+                view = TestView()
+                view.request = self.factory.get(f"/?page={page}")
+                _, page_obj, _, _ = view.paginate_queryset(
+                    models.Game.objects.order_by("rank"), 10
+                )
+                self.assertEqual(page_obj.number, 1)
+
     def test_non_numeric_page_defaults_to_first(self):
         """Test that non-numeric page defaults to page 1."""
 

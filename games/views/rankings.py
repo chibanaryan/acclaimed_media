@@ -16,6 +16,7 @@ from core import sites
 from core.cache_helpers import batched_cache_reads, cache_get, cache_set
 from core.mixins import AnonymousResponseCacheMixin, RobustPaginationMixin
 from core.services import ranking, seo
+from core.services.query_params import parse_id_list
 from games import config, models, utils
 from games.cache import (
     GENERATION_HERO,
@@ -379,7 +380,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         )
         return _order_games(qs, self.request.GET)
 
-    def _facet_queryset(self, skip, platforms):
+    def _facet_queryset(self, skip):
         """Every game under the page's filters but ``skip``'s, for a count.
 
         The counts beside each year cell, genre and platform answer "how
@@ -392,7 +393,6 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
             skip=(skip,),
             user=self.request.user,
             descendants=self._genre_descendants,
-            platforms=platforms,
         )
 
     def get_context_data(self, **kwargs):
@@ -484,7 +484,11 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         if dir_param not in {"asc", "desc"}:
             dir_param = "asc"
         genres_param = self.request.GET.get("genres")
-        platforms_param = self.request.GET.get("platforms")
+        # Ids only, as the list is filtered: anything else was named raw in
+        # the heading over a list it had not narrowed
+        platform_ids = [
+            str(pk) for pk in parse_id_list(self.request.GET.get("platforms"))
+        ]
         series_param = self.request.GET.get("series")
         played_param = self.request.GET.get("played")
 
@@ -506,7 +510,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
             q_param
             or has_year_filter
             or genres_param
-            or platforms_param
+            or platform_ids
             or series_param
             or sort_param != "rank"
             or dir_param != "asc"
@@ -520,7 +524,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
             "start": start_val,
             "end": end_val,
             "genres": genres_param.split(",") if genres_param else [],
-            "platforms": platforms_param.split(",") if platforms_param else [],
+            "platforms": platform_ids,
             "series": series_param.split(",") if series_param else [],
             "played": (
                 played_param
@@ -586,7 +590,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         year_counts_cache_key = self._facet_cache_keys["year"]
         year_counts = cache_get(year_counts_cache_key)
         if year_counts is None:
-            base_qs = self._facet_queryset("year", platforms)
+            base_qs = self._facet_queryset("year")
 
             # Calculate year counts from filtered base queryset
             # Use distinct=True to avoid counting games multiple times when M2M JOINs
@@ -610,7 +614,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         genre_counts_cache_key = self._facet_cache_keys["genres"]
         genre_counts = cache_get(genre_counts_cache_key)
         if genre_counts is None:
-            genre_facet_qs = self._facet_queryset("genres", platforms)
+            genre_facet_qs = self._facet_queryset("genres")
 
             # Standard faceted counting (single-select mode)
             genre_counts = dict(
@@ -626,7 +630,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         platform_counts_cache_key = self._facet_cache_keys["platforms"]
         platform_counts = cache_get(platform_counts_cache_key)
         if platform_counts is None:
-            platform_facet_qs = self._facet_queryset("platforms", platforms)
+            platform_facet_qs = self._facet_queryset("platforms")
 
             # Count games per platform
             platform_counts = dict(

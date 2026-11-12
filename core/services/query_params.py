@@ -40,6 +40,13 @@ def parse_id_list(raw):
     return ids
 
 
+def ordered_range(start, end):
+    """``(start, end)`` the right way round; either may be None, an open side."""
+    if start is not None and end is not None and start > end:
+        return end, start
+    return start, end
+
+
 def parse_direction(raw, default):
     """A sort direction, ``"asc"`` or ``"desc"``, else ``default``.
 

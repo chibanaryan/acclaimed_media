@@ -93,6 +93,26 @@ class EventScrubberTests(SimpleTestCase):
         frame = event["exception"]["values"][0]["stacktrace"]["frames"][0]
         self.assertNotEqual(frame["vars"]["password1"], "hunter22")
 
+    def test_the_csrf_token_is_scrubbed_wherever_it_travels(self):
+        """The SDK redacts the CSRF and session cookies by their configured
+        names, and the `Cookie` header. The token also rides in htmx's
+        `X-CSRFToken` header (`base.html`'s `hx-headers`) and each form's
+        `csrfmiddlewaretoken`, and the default list has `x_csrftoken`,
+        which a header written with a hyphen does not match."""
+        from core.sentry import event_scrubber
+
+        event = {
+            "request": {
+                "headers": {"X-Csrftoken": "token", "User-Agent": "browser"},
+                "data": {"csrfmiddlewaretoken": "token", "name": "Reader"},
+            }
+        }
+        event_scrubber(True).scrub_event(event)
+        self.assertNotEqual(event["request"]["headers"]["X-Csrftoken"], "token")
+        self.assertNotEqual(event["request"]["data"]["csrfmiddlewaretoken"], "token")
+        self.assertEqual(event["request"]["headers"]["User-Agent"], "browser")
+        self.assertEqual(event["request"]["data"]["name"], "Reader")
+
     def test_client_addresses_are_kept(self):
         """Settings send PII on purpose (`send_default_pii=True`), and the
         SDK's own scrubber honours that; one built without saying so also
@@ -127,3 +147,13 @@ class RequestErrorsReachTheLogsTests(SimpleTestCase):
         logger = settings.LOGGING["loggers"]["django.request"]
         self.assertEqual(logger["handlers"], ["console"])
         self.assertFalse(logger["propagate"])
+
+    def test_django_security_logs_to_the_console_but_for_wrong_hosts(self):
+        """A refused CSRF token printed nowhere outside DEBUG. A wrong Host
+        is every scanner that asks by address, so it stays out."""
+        from django.conf import settings
+
+        loggers = settings.LOGGING["loggers"]
+        self.assertEqual(loggers["django.security"]["handlers"], ["console"])
+        self.assertFalse(loggers["django.security"]["propagate"])
+        self.assertEqual(loggers["django.security.DisallowedHost"]["level"], "CRITICAL")

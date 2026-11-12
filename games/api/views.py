@@ -189,8 +189,22 @@ class GameDetailView(RetrieveAPIView):
     )
 
 
+class CountsThroughStudiosMixin:
+    """A developer's ``games_count`` is its studios' games too.
+
+    As the developers page and the search box count them. The list counted
+    direct games only and showed developers with any, so a parent whose
+    games all belong to its studios (Microsoft, CD Projekt) was missing.
+    """
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["developer_game_counts"] = get_developer_game_counts()
+        return context
+
+
 @method_decorator(cache_page(60 * 30), name="dispatch")  # 30 min cache
-class DeveloperDetailAPIView(RetrieveAPIView):
+class DeveloperDetailAPIView(CountsThroughStudiosMixin, RetrieveAPIView):
     """API endpoint for developer details."""
 
     lookup_field = "slug"
@@ -204,7 +218,7 @@ class DeveloperDetailAPIView(RetrieveAPIView):
 CompanyDetailView = DeveloperDetailAPIView
 
 
-class DeveloperListAPIView(ListAPIView):
+class DeveloperListAPIView(CountsThroughStudiosMixin, ListAPIView):
     """API endpoint for listing developers."""
 
     serializer_class = serializers.DeveloperSerializer
@@ -219,15 +233,12 @@ class DeveloperListAPIView(ListAPIView):
     ]
 
     def get_queryset(self):
+        # Only developers with games, their studios' included
         qs = (
-            models.Developer.objects.annotate(
-                games_count=Count("developed_games"),
-            )
-            .filter(games_count__gt=0)  # Only show developers with games
+            models.Developer.objects.filter(id__in=list(get_developer_game_counts()))
             .select_related("parent")
             .prefetch_related("subsidiaries")
             .order_by(Lower("name"))
-            .distinct()
         )
 
         for filter in self.filters:
@@ -241,17 +252,13 @@ class DeveloperListAPIView(ListAPIView):
 StudioListView = DeveloperListAPIView
 
 
-class DeveloperDetailByIdView(RetrieveAPIView):
+class DeveloperDetailByIdView(CountsThroughStudiosMixin, RetrieveAPIView):
     """API endpoint for developer details by IGDB ID."""
 
     lookup_field = "igdb_id"
     serializer_class = serializers.DeveloperSerializer
-    queryset = (
-        models.Developer.objects.annotate(
-            games_count=Count("developed_games"),
-        )
-        .select_related("parent")
-        .prefetch_related("subsidiaries")
+    queryset = models.Developer.objects.select_related("parent").prefetch_related(
+        "subsidiaries"
     )
 
 

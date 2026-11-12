@@ -14,9 +14,9 @@ from games.services import playtime
 from games.services.query_filters import resolve_year_range
 from games.services.game_filters import (
     apply_game_filters,
-    expand_platform_virtual_ids,
     platforms_lookup,
     playtime_range,
+    wants_played_filter,
 )
 
 from ._helpers import _get_year_bounds
@@ -59,17 +59,11 @@ def download_games_csv(request):
 
     platforms_lookup_list = platforms_lookup()
     genre_ids = parse_id_list(genres_param)
-    platform_ids = (
-        expand_platform_virtual_ids(platforms_param, platforms_lookup_list)
-        if platforms_param
-        else []
-    )
+    platform_ids = parse_id_list(platforms_param)
 
     # The page's own filters and sort, so the file is what was on screen
-    qs = apply_game_filters(qs, request.GET, user=user, platforms=platforms_lookup_list)
+    qs = apply_game_filters(qs, request.GET, user=user)
     qs = _order_games(qs, request.GET)
-
-    use_filtered_rank = True
 
     # Build filename based on filters
     min_year, max_year = _get_year_bounds()
@@ -83,7 +77,6 @@ def download_games_csv(request):
         transform_id=True,
         generation_key=GENERATION_RELEASE,
     )
-    # platforms_lookup_list already loaded above for virtual ID expansion
 
     # Get series list for title building (if series filter is used)
     series_list = None
@@ -122,9 +115,11 @@ def download_games_csv(request):
         "genres": [str(gid) for gid in genre_ids],
         "platforms": [str(pid) for pid in platform_ids],
         "series": series_ids_for_filter,
+        # Named only when it was applied: signed out it applies to nobody,
+        # and the whole list was called "...-played.csv"
         "played": (
             [s.strip() for s in played_param.split(",") if s.strip()]
-            if played_param
+            if wants_played_filter(request.GET, user)
             else []
         ),
         "rank_display": "filtered",
@@ -174,7 +169,6 @@ def download_games_csv(request):
         platforms = ", ".join(p.name for p in game.platforms.all())
         genres = ", ".join(g.name for g in game.wikipedia_genres.all())
         series = ", ".join(s.name for s in game.series.all())
-        filtered_rank = index if use_filtered_rank else game.rank
 
         # Get HLTB data
         hltb_main = ""
@@ -192,7 +186,7 @@ def download_games_csv(request):
                 )
 
         row = [
-            filtered_rank,
+            index,
             game.rank,
             game.name,
             game.year_of_release,

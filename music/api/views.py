@@ -27,7 +27,7 @@ from core import constants as core_constants
 from core.services import genre_tree
 from core.services.facets import count_by
 from core.services import search_ranking
-from core.services.query_params import parse_id_list, parse_int, parse_limit
+from core.services.query_params import parse_id_list, parse_limit
 from core.services.request_body import SavedFilterJSONParser, read_saved_filter
 
 from .. import config, models
@@ -41,7 +41,7 @@ from ..services.credits import (
     variant_names_of,
 )
 from ..services.data_version import compute_album_data_version
-from ..views import expand_genre_ids
+from ..views import expand_genre_ids, year_window
 from . import serializers
 
 
@@ -344,8 +344,7 @@ class AlbumListView(MusicReadAPIMixin, ListAPIView):
         if genre_ids:
             qs = qs.filter(genres__id__in=expand_genre_ids(genre_ids))
 
-        for param, lookup in (("start", "gte"), ("end", "lte")):
-            value = parse_int(params.get(param))
+        for value, lookup in zip(year_window(params), ("gte", "lte")):
             if value is not None and value >= 0:
                 qs = qs.filter(**{f"year_released__{lookup}": value})
 

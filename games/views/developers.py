@@ -2,7 +2,7 @@
 
 import math
 
-from django.db.models import Count, Max, Prefetch, prefetch_related_objects
+from django.db.models import Count, Max, Prefetch, Q, prefetch_related_objects
 from django.http import Http404
 from django.shortcuts import redirect, get_object_or_404
 from django.views import View
@@ -11,6 +11,7 @@ from django.views.generic import ListView, DetailView
 from core.mixins import HTMXPartialMixin, RobustPaginationMixin
 from core.services import ranking
 from core.services.query_params import parse_direction, parse_int
+from core.templatetags.core_filters import json_for_script
 from core.cache_helpers import current_generation, set_if_current
 from games import config, models
 from games.cache import GENERATION_DEVELOPERS, developer_detail_cache_key
@@ -99,10 +100,13 @@ class DeveloperListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
             .distinct()
         )
 
-        # Search filter
+        # Search filter: accents folded too, as the search box's is
         q = self.request.GET.get("q")
         if q:
-            qs = qs.filter(name__icontains=q)
+            qs = qs.filter(
+                Q(name__icontains=q)
+                | Q(name_normalized__contains=models.normalize_name(q))
+            )
 
         # Sorting is done in get_context_data, from cached hierarchy data
         return qs
@@ -670,20 +674,14 @@ class DeveloperDetailView(DetailView):
         # Build developer -> child IDs mapping for Alpine.js
         dev_child_map = {d["id"]: d["child_ids"] for d in devs_flat}
 
-        # Serialize to JSON for Alpine.js
-        import json
-        from django.core.serializers.json import DjangoJSONEncoder
-
-        context["developer_game_map_json"] = json.dumps(
-            dev_game_map, cls=DjangoJSONEncoder
-        )
-        context["developer_child_map_json"] = json.dumps(
-            dev_child_map, cls=DjangoJSONEncoder
-        )
+        # Serialized for Alpine.js, into a <script> body: escaped for one,
+        # where bare json.dumps was safe only while every value is a number
+        context["developer_game_map_json"] = json_for_script(dev_game_map)
+        context["developer_child_map_json"] = json_for_script(dev_child_map)
 
         # Game rank map for JavaScript to calculate filtered rank distribution
         game_rank_map = {game.id: game.rank for game in all_games if game.rank}
-        context["game_rank_map_json"] = json.dumps(game_rank_map, cls=DjangoJSONEncoder)
+        context["game_rank_map_json"] = json_for_script(game_rank_map)
 
         # Game data map with playtime for sorting
         game_data_map = {}
@@ -691,7 +689,7 @@ class DeveloperDetailView(DetailView):
             game_data_map[game.id] = {
                 "pt": playtime.shown_hours(game.primary_hltb_game_data)
             }
-        context["game_data_map_json"] = json.dumps(game_data_map, cls=DjangoJSONEncoder)
+        context["game_data_map_json"] = json_for_script(game_data_map)
 
         # Build game -> developer IDs map for anchor links
         # This maps each game_id to the list of developer_ids that have it

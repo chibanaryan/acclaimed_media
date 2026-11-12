@@ -29,7 +29,9 @@ class RobustPaginationMixin:
         page = self.request.GET.get("page")
 
         try:
-            page_number = int(page) if page else 1
+            # A page below the first is the first: left to the paginator it
+            # was "out of range", which is answered with the last
+            page_number = max(1, int(page)) if page else 1
         except (TypeError, ValueError):
             page_number = 1
 

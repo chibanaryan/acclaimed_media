@@ -231,6 +231,37 @@ class GetJsonTests(ClientTestCase):
             [client.initial_retry_delay, client.initial_retry_delay * 2],
         )
 
+    def test_a_throttle_waits_as_long_as_the_server_asks(self):
+        """`Retry-After` was ignored: a service asking for ten seconds was
+        asked again after one and two, and the record given up as a miss."""
+        client, session = self.build(delay=0)
+        session.get.side_effect = [
+            fake_response(status_code=429, headers={"Retry-After": "10"}),
+            fake_response(status_code=503, headers={"Retry-After": "1"}),
+            fake_response(json_body={"ok": 1}),
+        ]
+        self.assertEqual(client.get_json("https://example.test/"), {"ok": 1})
+        # The server's wait where it is longer than ours, never shorter
+        self.assertEqual(
+            [call[0][0] for call in self.sleep.call_args_list],
+            [10.0, client.initial_retry_delay * 2],
+        )
+
+    def test_an_unreadable_or_endless_retry_after_does_not_stall_the_pass(self):
+        for header, waited in (
+            ("Wed, 21 Oct 2026 07:28:00 GMT", RateLimitedClient.initial_retry_delay),
+            ("-5", RateLimitedClient.initial_retry_delay),
+            ("86400", RateLimitedClient.MAX_RETRY_AFTER),
+        ):
+            with self.subTest(header=header):
+                client, session = self.build(delay=0)
+                session.get.side_effect = [
+                    fake_response(status_code=429, headers={"Retry-After": header}),
+                    fake_response(json_body={"ok": 1}),
+                ]
+                client.get_json("https://example.test/")
+                self.sleep.assert_called_once_with(waited)
+
     def test_a_server_error_is_retried_too(self):
         """A 500 from the Cover Art Archive is usually transient."""
         client, session = self.build()
@@ -276,6 +307,15 @@ class GetBytesTests(ClientTestCase):
         self.assertEqual(
             client.get_bytes("https://example.test/x.png"), (b"\x89PNG", "image/png")
         )
+
+    def test_a_throttled_download_waits_as_long_as_the_server_asks(self):
+        client, session = self.build(delay=0)
+        session.get.side_effect = [
+            fake_response(status_code=429, headers={"Retry-After": "7"}),
+            fake_response(content=b"\xff\xd8"),
+        ]
+        self.assertIsNotNone(client.get_bytes("https://example.test/x.jpg"))
+        self.sleep.assert_called_once_with(7.0)
 
     def test_the_content_type_defaults_to_jpeg(self):
         client, session = self.build()

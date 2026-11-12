@@ -815,6 +815,30 @@ class GameDetailViewTest(TestCase):
         # Should have lists grouped by type
         self.assertTrue(len(response.context["grouped_lists"]) > 0)
 
+    def test_groups_follow_the_type_order_and_none_is_dropped(self):
+        """The order was a hand-kept list of the labels, so a group whose
+        label it did not name was left off the page. The games file's type
+        column is stored as written, whatever it is."""
+        pub = Publication.objects.create(name="Other Pub")
+        for name, type_code in (
+            ("Year's best", "E"),
+            ("Of the decade", "D"),
+            ("Oddities", "M"),
+            ("Readers' poll", "R"),
+        ):
+            source = List.objects.create(
+                name=name, publisher=pub, year=2020, type=type_code
+            )
+            ListMembership.objects.create(game=self.game, list=source, rank=2)
+        response = self.client.get(
+            reverse("game-detail", kwargs={"slug": self.game.slug})
+        )
+        self.assertEqual(
+            [label for label, _ in response.context["grouped_lists"]],
+            ["All time", "Decade", "Miscellaneous", "End of year", "R"],
+        )
+        self.assertContains(response, "Readers&#x27; poll")
+
     def test_invalid_slug_returns_404(self):
         """Test that invalid slug returns 404."""
         response = self.client.get(
@@ -1602,6 +1626,20 @@ class DeveloperListViewTest(TestCase):
         self.assertContains(response, "data-entity-load-more")
         self.assertContains(response, f'data-list-url="{escape(path)}"')
         self.assertContains(response, "core/js/entity-load-more")
+
+    def test_the_search_finds_a_name_without_its_accents(self):
+        """As the search box does: it matched ``name`` alone, so "pokemon"
+        found Pokémon studios in the dropdown and none on this page."""
+        studio = Developer.objects.create(name="Pokémon Studio", slug="pokemon-studio")
+        Game.objects.create(name="Game 3", rank=3).developers.add(studio)
+        clear_all_caches()
+        for query in ("pokemon", "POKÉMON", "Pokémon"):
+            with self.subTest(query=query):
+                response = self.client.get(reverse("developers-list"), {"q": query})
+                self.assertEqual(
+                    [dev.name for dev in response.context["developers"]],
+                    ["Pokémon Studio"],
+                )
 
     def test_developer_list_loads(self):
         """Test that developer list page loads."""
@@ -2459,6 +2497,14 @@ class ListListViewTest(TestCase):
         self.assertEqual(groups[0]["lists"][0].type, constants.LIST_ALLTIME)
         self.assertEqual(response.context["grand_total_list_count"], 1)
 
+    def test_the_total_follows_the_search_when_grouped_by_publication(self):
+        """ "N of M lists": M counted every list whatever was searched for,
+        so the loaded count could never reach it. Grouped by type it has
+        always counted the matches."""
+        response = self.client.get(reverse("list-list") + "?group_by=publication&q=IGN")
+        self.assertEqual(response.context["total_list_count"], 1)
+        self.assertEqual(response.context["grand_total_list_count"], 1)
+
     def test_search_filter(self):
         """Test filtering publications by search query."""
         response = self.client.get(reverse("list-list") + "?q=IGN")
@@ -3050,6 +3096,23 @@ class GameDownloadCSVTest(TestCase):
         self.assertIn("Game 1", content)
         self.assertNotIn("Game 2", content)
 
+    def test_a_signed_out_download_is_not_named_for_a_played_filter(self):
+        """`?played=` applies to nobody signed out, and the file is the whole
+        list: it was still named "...-played.csv"."""
+        plain = self.client.get(reverse("games-download"))
+        response = self.client.get(reverse("games-download") + "?played=yes")
+        self.assertEqual(response.content, plain.content)
+        self.assertEqual(response["Content-Disposition"], plain["Content-Disposition"])
+        self.assertNotIn("played", response["Content-Disposition"])
+
+    def test_a_signed_in_download_is_named_for_its_played_filter(self):
+        User.objects.create_user(
+            username="testuser", email="test@example.com", password="testpass123"
+        )
+        self.client.login(username="testuser", password="testpass123")
+        response = self.client.get(reverse("games-download") + "?played=yes")
+        self.assertIn("played", response["Content-Disposition"])
+
     def test_csv_respects_played_no_filter(self):
         """Test that CSV respects played=no filter."""
         user = User.objects.create_user(
@@ -3575,12 +3638,11 @@ class AuthModalViewsTest(TestCase):
         response = self.client.post(reverse("auth-logout"), HTTP_REFERER=referer)
         self.assertEqual(response.url, referer)
 
-    def test_auth_modal_profile_unauthenticated_redirects_to_login(self):
-        """Test that profile view redirects to login if not authenticated."""
+    def test_auth_modal_profile_unauthenticated_shows_the_login_form(self):
+        """A signed-out profile request is answered with the login form."""
         response = self.client.get(reverse("auth-modal-profile"))
         self.assertEqual(response.status_code, 200)
-        # Should have HX-Redirect header to login
-        self.assertIn("HX-Redirect", response)
+        self.assertTemplateUsed(response, "auth/partials/_login_form.html")
 
     def test_auth_modal_profile_authenticated_shows_form(self):
         """Test that profile view shows form when authenticated."""
@@ -4728,150 +4790,46 @@ class BuildFilterTitleHLTBTests(TestCase):
         self.assertIn("100%", result)
 
 
-class PlatformVirtualIdTests(TestCase):
-    """Tests for _expand_platform_virtual_ids function."""
+class PlatformGroupIdsAreNotFiltersTests(TestCase):
+    """`?platforms=mfr-nintendo` was a server-only spelling of a platform
+    group that no page ever wrote into a link. The list filtered by it, the
+    heading named the raw id, the engine did not know it and the CSV's file
+    name expanded it. It is now what any other non-id is: nothing."""
 
     def setUp(self):
-        # Create test platforms with the expected codes
-        self.nes = Platform.objects.create(
-            code="NES", name="Nintendo Entertainment System"
+        clear_all_caches()
+        self.nes = Platform.objects.create(code="NES", name="NES")
+        self.pc = Platform.objects.create(code="WIN", name="PC")
+        nes_game = Game.objects.create(name="Nintendo Game", rank=1)
+        nes_game.platforms.add(self.nes)
+        pc_game = Game.objects.create(name="PC Game", rank=2)
+        pc_game.platforms.add(self.pc)
+
+    def test_a_group_id_narrows_nothing_and_names_nothing(self):
+        bare = self.client.get(reverse("home"))
+        response = self.client.get(reverse("home"), {"platforms": "mfr-nintendo"})
+        self.assertEqual(
+            [game.name for game in response.context["object_list"]],
+            ["Nintendo Game", "PC Game"],
         )
-        self.snes = Platform.objects.create(code="SNES", name="Super Nintendo")
-        self.sw2 = Platform.objects.create(code="SW2", name="Nintendo Switch 2")
-        self.gw = Platform.objects.create(code="GW", name="Game & Watch")
-        self.d32 = Platform.objects.create(code="D32", name="Dragon 32/64")
-        self.tt = Platform.objects.create(code="TT", name="Tomy Tutor")
-        self.mic = Platform.objects.create(code="MIC", name="Microcomputer")
-        self.vect = Platform.objects.create(code="VECT", name="Vectrex")
-        self.pc = Platform.objects.create(code="PC", name="PC")
+        self.assertEqual(response.context["filter_title"], bare.context["filter_title"])
+        self.assertNotContains(response, "mfr-nintendo")
 
-    def test_expand_virtual_id_nintendo_manufacturer(self):
-        """Test that mfr-nintendo expands to Nintendo platform IDs."""
-        from games.services.game_filters import (
-            expand_platform_virtual_ids as _expand_platform_virtual_ids,
+    def test_an_id_beside_one_still_filters(self):
+        response = self.client.get(
+            reverse("home"), {"platforms": f"mfr-nintendo,{self.pc.id}"}
         )
-
-        platforms = [
-            {"id": self.nes.id, "code": "NES"},
-            {"id": self.snes.id, "code": "SNES"},
-            {"id": self.sw2.id, "code": "SW2"},
-            {"id": self.pc.id, "code": "PC"},
-        ]
-        result = _expand_platform_virtual_ids("mfr-nintendo", platforms)
-        # Should include NES/SNES/SW2 but not PC
-        self.assertIn(self.nes.id, result)
-        self.assertIn(self.snes.id, result)
-        self.assertIn(self.sw2.id, result)
-        self.assertNotIn(self.pc.id, result)
-
-    def test_expand_virtual_id_nintendo_home_form_factor_includes_sw2(self):
-        """Test that ff-nintendo-home expands to include Switch 2."""
-        from games.services.game_filters import (
-            expand_platform_virtual_ids as _expand_platform_virtual_ids,
+        self.assertEqual(
+            [game.name for game in response.context["object_list"]], ["PC Game"]
         )
 
-        platforms = [
-            {"id": self.nes.id, "code": "NES"},
-            {"id": self.sw2.id, "code": "SW2"},
-            {"id": self.pc.id, "code": "PC"},
-        ]
-        result = _expand_platform_virtual_ids("ff-nintendo-home", platforms)
-        self.assertIn(self.nes.id, result)
-        self.assertIn(self.sw2.id, result)
-        self.assertNotIn(self.pc.id, result)
-
-    def test_expand_virtual_id_nintendo_handheld_includes_game_and_watch(self):
-        """Test that ff-nintendo-handheld expands to include Game & Watch."""
-        from games.services.game_filters import (
-            expand_platform_virtual_ids as _expand_platform_virtual_ids,
+    def test_the_csv_agrees(self):
+        bare = self.client.get(reverse("games-download"))
+        response = self.client.get(
+            reverse("games-download"), {"platforms": "mfr-nintendo"}
         )
-
-        platforms = [
-            {"id": self.gw.id, "code": "GW"},
-            {"id": self.pc.id, "code": "PC"},
-        ]
-        result = _expand_platform_virtual_ids("ff-nintendo-handheld", platforms)
-        self.assertIn(self.gw.id, result)
-        self.assertNotIn(self.pc.id, result)
-
-    def test_expand_virtual_id_microcomputer_subgroups_include_new_codes(self):
-        """Test new prod microcomputer codes land in the expected subgroups."""
-        from games.services.game_filters import (
-            expand_platform_virtual_ids as _expand_platform_virtual_ids,
-        )
-
-        platforms = [
-            {"id": self.d32.id, "code": "D32"},
-            {"id": self.tt.id, "code": "TT"},
-            {"id": self.mic.id, "code": "MIC"},
-        ]
-        self.assertIn(
-            self.d32.id, _expand_platform_virtual_ids("ff-computers-uk", platforms)
-        )
-        self.assertIn(
-            self.tt.id, _expand_platform_virtual_ids("ff-computers-japan", platforms)
-        )
-        self.assertIn(
-            self.mic.id, _expand_platform_virtual_ids("ff-computers-other", platforms)
-        )
-
-    def test_expand_virtual_id_retro_manufacturer_includes_vectrex(self):
-        """Test that mfr-retro expands to include Vectrex."""
-        from games.services.game_filters import (
-            expand_platform_virtual_ids as _expand_platform_virtual_ids,
-        )
-
-        platforms = [
-            {"id": self.vect.id, "code": "VECT"},
-            {"id": self.pc.id, "code": "PC"},
-        ]
-        result = _expand_platform_virtual_ids("mfr-retro", platforms)
-        self.assertIn(self.vect.id, result)
-        self.assertNotIn(self.pc.id, result)
-
-    def test_expand_regular_id(self):
-        """Test that regular numeric IDs are returned as-is."""
-        from games.services.game_filters import (
-            expand_platform_virtual_ids as _expand_platform_virtual_ids,
-        )
-
-        platforms = [{"id": self.pc.id, "code": "PC"}]
-        result = _expand_platform_virtual_ids(str(self.pc.id), platforms)
-        self.assertEqual(result, [self.pc.id])
-
-    def test_expand_invalid_id_ignored(self):
-        """Test that invalid IDs are silently ignored."""
-        from games.services.game_filters import (
-            expand_platform_virtual_ids as _expand_platform_virtual_ids,
-        )
-
-        platforms = [{"id": self.pc.id, "code": "PC"}]
-        result = _expand_platform_virtual_ids("invalid,abc,xyz", platforms)
-        self.assertEqual(result, [])
-
-    def test_expand_empty_param_returns_empty(self):
-        """Test that empty param returns empty list."""
-        from games.services.game_filters import (
-            expand_platform_virtual_ids as _expand_platform_virtual_ids,
-        )
-
-        platforms = [{"id": self.pc.id, "code": "PC"}]
-        result = _expand_platform_virtual_ids("", platforms)
-        self.assertEqual(result, [])
-
-    def test_expand_mixed_ids(self):
-        """Test that mix of virtual and regular IDs works."""
-        from games.services.game_filters import (
-            expand_platform_virtual_ids as _expand_platform_virtual_ids,
-        )
-
-        platforms = [
-            {"id": self.nes.id, "code": "NES"},
-            {"id": self.pc.id, "code": "PC"},
-        ]
-        result = _expand_platform_virtual_ids(f"mfr-nintendo,{self.pc.id}", platforms)
-        self.assertIn(self.nes.id, result)
-        self.assertIn(self.pc.id, result)
+        self.assertEqual(response.content, bare.content)
+        self.assertEqual(response["Content-Disposition"], bare["Content-Disposition"])
 
 
 class HomePageDocumentTitleTest(TestCase):

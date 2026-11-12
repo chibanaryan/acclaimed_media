@@ -31,7 +31,6 @@ from core.tests.node import require_node
 from core.tests.utils import clear_all_caches
 from games import models
 from games.platform_years import PLATFORM_YEAR_RANGES
-from games.services.game_filters import PLATFORM_VIRTUAL_IDS
 from games.templatetags.game_filters import FAMILY_INFO, PLATFORM_FAMILIES
 from games.views.filter_titles import PLATFORM_TITLE_GROUPS
 
@@ -833,12 +832,14 @@ class ClientPlatformFamilyMapParityTests(SimpleTestCase):
 
 
 class ClientPlatformHierarchyParityTests(SimpleTestCase):
-    """The sidebar's platform groups expand to what the server's virtual ids do.
+    """The engine's two copies of the sidebar's platform groups agree.
 
     The engine reads window.AV_PLATFORM_HIERARCHY, which the minified
     filter-subcomponents.js derives from its UI table, and falls back to a
     literal in client-filter.js when that script has not run yet. Both are
     run under Node, since the nesting is past what a regex reads reliably.
+    A third copy on the server, for group ids in the URL that no page ever
+    wrote, went on 2026-11-12.
     """
 
     JS_DIR = Path(settings.BASE_DIR) / "games" / "static" / "games" / "js"
@@ -857,15 +858,15 @@ class ClientPlatformHierarchyParityTests(SimpleTestCase):
         require_node()
 
     @staticmethod
-    def _virtual_ids(hierarchy):
-        ids = {}
+    def _groups(hierarchy):
+        groups = {}
         for mfr, group in hierarchy.items():
-            ids[f"mfr-{mfr}"] = set(group["codes"])
+            groups[mfr] = set(group["codes"])
             for ff, sub in group.get("formFactors", {}).items():
-                ids[f"ff-{mfr}-{ff}"] = set(sub["codes"])
-        return ids
+                groups[f"{mfr}/{ff}"] = set(sub["codes"])
+        return groups
 
-    def test_both_client_hierarchies_match_the_server(self):
+    def test_both_client_hierarchies_agree_and_name_real_platforms(self):
         result = subprocess.run(
             [
                 "node",
@@ -879,7 +880,9 @@ class ClientPlatformHierarchyParityTests(SimpleTestCase):
             timeout=30,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        expected = {key: set(codes) for key, codes in PLATFORM_VIRTUAL_IDS.items()}
-        for name, hierarchy in zip(("window", "fallback"), json.loads(result.stdout)):
-            with self.subTest(hierarchy=name):
-                self.assertEqual(self._virtual_ids(hierarchy), expected)
+        window, fallback = (self._groups(h) for h in json.loads(result.stdout))
+        self.assertTrue(window)
+        self.assertEqual(window, fallback)
+        # A code no platform has is a group member nothing can select
+        codes = set().union(*window.values())
+        self.assertLessEqual(codes, set(PLATFORM_YEAR_RANGES))

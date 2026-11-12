@@ -206,8 +206,11 @@ class AlbumFilterEngine {
 
     filter(filters = {}) {
         const query = filters.q ? filters.q.trim().toLowerCase() : '';
-        const start = Number.isFinite(filters.start) ? filters.start : null;
-        const end = Number.isFinite(filters.end) ? filters.end : null;
+        let start = Number.isFinite(filters.start) ? filters.start : null;
+        let end = Number.isFinite(filters.end) ? filters.end : null;
+        // A range written backwards is the range, as the server reads it
+        // (`year_window`); the form's fields hold it as the URL wrote it
+        if (start !== null && end !== null && start > end) [start, end] = [end, start];
         // An album credited under any of an artist's names carries that
         // artist's slug, so the slugs need no expansion, unlike genres.
         const artistIds = (filters.artists || []).map(String);

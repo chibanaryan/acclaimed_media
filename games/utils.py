@@ -89,7 +89,10 @@ def send_contact_email(
 
     category_label = constants.get_contact_category_label(category)
     site_label = CONTACT_SITE_LABELS.get(site, site)
-    subject = f"[{site_label}] [{category_label}] Contact Form Submission from {name}"
+    # On one line: a header cannot hold a line break, and Django refuses to
+    # send one that does. The form's field allows them inside a name.
+    sender = " ".join(name.split())
+    subject = f"[{site_label}] [{category_label}] Contact Form Submission from {sender}"
 
     # Use category-based email alias for better filtering
     # e.g., contact+feature@acclaimedvideogames.com

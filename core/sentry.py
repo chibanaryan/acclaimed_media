@@ -3,7 +3,9 @@
 from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
 
 # Field names the default denylist misses, which it matches whole: allauth's
-# sign-up and password-change forms post their passwords under these.
+# sign-up and password-change forms post their passwords under these. The
+# CSRF token's cookie is redacted by the SDK under its configured name, but
+# the token also travels in htmx's header and in every form's hidden field.
 EXTRA_DENYLIST = [
     "password1",
     "password2",
@@ -11,6 +13,8 @@ EXTRA_DENYLIST = [
     "new_password1",
     "new_password2",
     "unsubscribe_token",
+    "x-csrftoken",
+    "csrfmiddlewaretoken",
 ]
 
 

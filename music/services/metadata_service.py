@@ -55,6 +55,22 @@ MBID_PATTERN = re.compile(
 )
 
 
+def well_formed_mbid(value, owner):
+    """``value`` as MusicBrainz writes an id, or None if it is not one.
+
+    Wikidata's ids are what its editors typed. Lower-case, since an
+    upper-case copy differed from the stored id and was rewritten every
+    week. A malformed one is logged and dropped: stored, it replaced a good
+    id with one the next request 404s on, and an overlong one was a
+    DataError on Postgres.
+    """
+    mbid = (value or "").lower()
+    if mbid and not MBID_PATTERN.fullmatch(mbid):
+        logger.warning("Malformed MusicBrainz id for %s: %r", owner, mbid)
+        return None
+    return mbid or None
+
+
 def fit(model, field_name: str, value):
     """Truncate external text to what its column can actually hold.
 
@@ -281,6 +297,10 @@ class AlbumMetadataService:
             candidate = metadata.get(qid)
             if candidate is None:
                 continue
+            # Checked before an edition is preferred for carrying one
+            candidate.musicbrainz_release_group_id = well_formed_mbid(
+                candidate.musicbrainz_release_group_id, album
+            )
             # Prefer whichever edition actually carries the identifiers.
             if album_meta is None:
                 album_meta = candidate
@@ -358,12 +378,7 @@ class AlbumMetadataService:
             # Only a well-formed id: an overlong one was a DataError on
             # Postgres, outside any album's guard, which ended the pass, and
             # one cut to fit would be a wrong id over a right one
-            # Lower-case, as MusicBrainz writes them: an upper-case copy
-            # differed from the stored id and was rewritten every week
-            mbid = (fetched.musicbrainz_id or "").lower()
-            if mbid and not MBID_PATTERN.fullmatch(mbid):
-                logger.warning("Malformed MusicBrainz id for %s: %r", artist, mbid)
-                mbid = None
+            mbid = well_formed_mbid(fetched.musicbrainz_id, artist)
             if mbid and artist.musicbrainz_id != mbid:
                 artist.musicbrainz_id = mbid
                 changed.append("musicbrainz_id")

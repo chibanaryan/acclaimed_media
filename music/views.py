@@ -61,7 +61,12 @@ from core import sites
 from core.services.spreadsheet import SafeWriter
 from core.services import genre_tree, render_budget, seo
 from core.services.facets import count_by
-from core.services.query_params import parse_direction, parse_id_list, parse_int
+from core.services.query_params import (
+    ordered_range,
+    parse_direction,
+    parse_id_list,
+    parse_int,
+)
 from music import config, models
 from music.forms import MusicImportForm
 from music.services import caching, import_handler, landing_pages, post_import
@@ -176,6 +181,16 @@ def _artist_names(raw, artists):
     return titles.join_names(chosen) if chosen else ""
 
 
+def year_window(params):
+    """``?start=`` and ``?end=`` as ``(start, end)``; None is an open side.
+
+    The one reading of the pair, the right way round: the list, the heading,
+    the controls and the API each parsed them, and a range written
+    backwards listed nothing under "1989-1970".
+    """
+    return ordered_range(parse_int(params.get("start")), parse_int(params.get("end")))
+
+
 def _title_parts(params, min_year=None, max_year=None, genres=None, artists=None):
     """The filter state's labels, which the heading and the tab title share.
 
@@ -191,8 +206,7 @@ def _title_parts(params, min_year=None, max_year=None, genres=None, artists=None
             names[genre_id] for genre_id in selected_genres if genre_id in names
         ]
 
-    start = parse_int(params.get("start"))
-    end = parse_int(params.get("end"))
+    start, end = year_window(params)
     if min_year is not None and max_year is not None:
         years = (
             start if start is not None else min_year,
@@ -415,10 +429,9 @@ def apply_album_filters(queryset, params, skip=(), user=None, descendants=None):
         queryset = queryset.filter(album_search_q(q))
 
     if "year" not in skip:
-        start = parse_int(params.get("start"))
+        start, end = year_window(params)
         if start is not None:
             queryset = queryset.filter(year_released__gte=start)
-        end = parse_int(params.get("end"))
         if end is not None:
             queryset = queryset.filter(year_released__lte=end)
 
@@ -914,10 +927,11 @@ class AlbumHomePageView(MusicPageCacheMixin, RobustPaginationMixin, ListView):
         # The state the shared Alpine filter component starts from. Years
         # default to the full range, which is how the grid spells "no year
         # filter"; the view spells it as absent parameters.
+        start, end = year_window(self.request.GET)
         context["filters"] = {
             "q": context["current_q"],
-            "start": parse_int(self.request.GET.get("start")) or min_year,
-            "end": parse_int(self.request.GET.get("end")) or max_year,
+            "start": start or min_year,
+            "end": end or max_year,
             "genres": [
                 str(genre_id)
                 for genre_id in parse_id_list(self.request.GET.get("genres"))

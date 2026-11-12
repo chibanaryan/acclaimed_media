@@ -111,7 +111,11 @@ class DeveloperSerializer(serializers.ModelSerializer):
         ]
 
     def get_games_count(self, obj):
-        """Get games count (may be annotated or computed)."""
+        """The developer's games: through its studios when the view gives
+        the hierarchy's counts, else annotated or counted directly."""
+        counts = self.context.get("developer_game_counts")
+        if counts is not None:
+            return counts.get(obj.pk, 0)
         if hasattr(obj, "games_count"):
             return obj.games_count
         return obj.developed_games.count()

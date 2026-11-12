@@ -52,6 +52,10 @@ class RateLimitedClient:
     initial_retry_delay: float = 1.0
     timeout: int = 30
 
+    #: The longest a `Retry-After` is honoured for. A pass holds the
+    #: metadata lock, and a service that asks for an hour is down.
+    MAX_RETRY_AFTER: float = 60.0
+
     #: How loudly ``get_json`` reports running out of retries. Error reaches
     #: Sentry, so a client whose caller has a fallback lowers it.
     give_up_level: int = logging.ERROR
@@ -100,6 +104,21 @@ class RateLimitedClient:
 
     def _observe_response(self, response: requests.Response) -> None:
         """Hook for subclasses that pace from rate-limit headers."""
+
+    def _retry_wait(self, response: requests.Response, retry_delay: float) -> float:
+        """Seconds to wait before asking again after a retryable status.
+
+        Our own backoff, or the server's `Retry-After` where that is longer
+        (in seconds: a date is not read, and backs off as before), up to
+        ``MAX_RETRY_AFTER``. It was ignored until 2026-11-12, so a service
+        that said when to come back was asked again after one second and
+        two, and the record was given up as a miss.
+        """
+        try:
+            asked = float(response.headers.get("Retry-After", ""))
+        except (TypeError, ValueError):
+            asked = 0.0
+        return min(max(retry_delay, asked), self.MAX_RETRY_AFTER)
 
     def get_json(
         self,
@@ -170,14 +189,15 @@ class RateLimitedClient:
                         self.max_retries,
                     )
                     return None
+                wait = self._retry_wait(response, retry_delay)
                 logger.warning(
                     "%s returned %s (%s); backing off %.1fs",
                     url,
                     response.status_code,
                     reason,
-                    retry_delay,
+                    wait,
                 )
-                time.sleep(retry_delay)
+                time.sleep(wait)
                 retry_delay *= 2
                 continue
 
@@ -244,7 +264,7 @@ class RateLimitedClient:
                     self.max_retries,
                 )
                 return None
-            time.sleep(retry_delay)
+            time.sleep(self._retry_wait(response, retry_delay))
             retry_delay *= 2
 
     #: What ``_read_image`` answers for a status worth another attempt.

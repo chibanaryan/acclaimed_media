@@ -54,7 +54,7 @@ class GameDetailView(DetailView):
         for membership in game.lists.all():
             list_type = membership.list.type
             label = constants.get_list_type_label(list_type)
-            grouped[label].append(
+            grouped[list_type].append(
                 {
                     "id": membership.list.id,
                     "name": membership.list.name,
@@ -72,9 +72,15 @@ class GameDetailView(DetailView):
                 }
             )
 
-        # Order groups by type importance (All-time, Decade, Misc, EOY)
-        type_order = ["All time", "Decade", "Miscellaneous", "End of year"]
-        sorted_grouped_lists = [(k, grouped[k]) for k in type_order if k in grouped]
+        # Groups by type importance, as music's and books' are, then any
+        # type the order does not name: the games file's type column is
+        # stored as written. A hand-kept list of the labels dropped those.
+        known = constants.LIST_TYPE_IMPORTANCE_ORDER
+        type_order = [code for code in known if code in grouped]
+        type_order += sorted(code for code in grouped if code not in known)
+        sorted_grouped_lists = [
+            (constants.get_list_type_label(code), grouped[code]) for code in type_order
+        ]
 
         context["grouped_lists"] = sorted_grouped_lists
 

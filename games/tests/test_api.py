@@ -1418,3 +1418,36 @@ class PublisherlessListTests(TestCase):
         self.assertEqual(response.status_code, 200)
         names = [row["name"] for row in response.json()["results"]]
         self.assertIn("Orphan List", names)
+
+
+class DeveloperListCountsThroughStudiosTests(TestCase):
+    """A parent whose games all belong to its studios was left out: the list
+    counted direct games only, where the developers page and the search box
+    count through the hierarchy. In production's data that was 42 parents,
+    Microsoft and CD Projekt among them."""
+
+    def setUp(self):
+        clear_all_caches()
+        self.parent = models.Developer.objects.create(
+            name="Parent Co", slug="parent-co"
+        )
+        self.studio = models.Developer.objects.create(
+            name="Studio One", parent=self.parent
+        )
+        self.idle = models.Developer.objects.create(name="Idle Co", slug="idle-co")
+        for rank in (1, 2):
+            game = models.Game.objects.create(name=f"Game {rank}", rank=rank)
+            game.developers.add(self.studio)
+
+    def test_a_parent_is_listed_with_its_studios_games(self):
+        results = self.client.get("/api/developers/").json()["results"]
+        counts = {row["name"]: row["games_count"] for row in results}
+        self.assertEqual(counts, {"Parent Co": 2, "Studio One": 2})
+
+    def test_the_detail_endpoints_count_the_same_way(self):
+        detail = self.client.get("/api/developers/parent-co/").json()
+        self.assertEqual(detail["games_count"], 2)
+
+    def test_the_search_still_narrows_it(self):
+        results = self.client.get("/api/developers/", {"q": "Parent"}).json()["results"]
+        self.assertEqual([row["name"] for row in results], ["Parent Co"])

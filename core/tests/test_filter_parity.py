@@ -51,6 +51,23 @@ class ParityTestCase(TestCase):
                 self.assertTrue(server or query, "the unfiltered page listed nothing")
                 self.assertEqual(engine[section][query], server)
 
+    def assertReversedRangeIsTheRange(
+        self, section, forward, reversed_, server_url, id_pattern, payload
+    ):
+        """A range written backwards (by hand: no control writes one) is the
+        range, on both sides. Each listed nothing, under "2000-1990", and
+        the parity above holds as well when both list nothing."""
+        engine = run_engines(
+            {section: {"payload": payload, "queries": [forward, reversed_]}}
+        )
+        server = self._server_order(server_url.format(query=forward), id_pattern)
+        self.assertTrue(server, "the range listed nothing")
+        self.assertEqual(
+            self._server_order(server_url.format(query=reversed_), id_pattern), server
+        )
+        self.assertEqual(engine[section][forward], server)
+        self.assertEqual(engine[section][reversed_], server)
+
 
 class GamesParityTests(ParityTestCase):
     @classmethod
@@ -131,6 +148,8 @@ class GamesParityTests(ParityTestCase):
             "dir=desc",
             "start=1990&end=1999",
             "start=2000",
+            # A range written backwards is the range, on both sides
+            "start=1999&end=1990",
             # The older year parameters, and two at once: one range on
             # both sides (`resolve_year_range`, `currentFilterParams`)
             "year=1995",
@@ -153,6 +172,22 @@ class GamesParityTests(ParityTestCase):
         ]
         self.assertSameOrder(
             "games", queries, "/?{query}&partial=true", r'id="game-(\d+)"', payload
+        )
+
+    def test_a_reversed_year_range_is_the_range(self):
+        payload = self.client.get("/api/games/all/").json()
+        self.assertReversedRangeIsTheRange(
+            "games",
+            "start=1990&end=1999",
+            "start=1999&end=1990",
+            "/?{query}&partial=true",
+            r'id="game-(\d+)"',
+            payload.get("data", payload),
+        )
+        forward = self.client.get("/?start=1990&end=1999")
+        backward = self.client.get("/?start=1999&end=1990")
+        self.assertEqual(
+            backward.context["filter_title"], forward.context["filter_title"]
         )
 
 
@@ -275,6 +310,8 @@ class MusicParityTests(ParityTestCase):
             "sort=lists",
             "sort=lists&dir=desc",
             "start=1970&end=1989",
+            # A range written backwards is the range, on both sides
+            "start=1989&end=1970",
             f"genres={self.rock.id}",
             f"genres={self.punk.id}",
             f"artists={self.artist.slug}",
@@ -287,6 +324,28 @@ class MusicParityTests(ParityTestCase):
             r'id="music-(\d+)"',
             payload,
         )
+
+    def test_a_reversed_year_range_is_the_range(self):
+        payload = self.client.get("/api/all/").json()
+        self.assertReversedRangeIsTheRange(
+            "music",
+            "start=1970&end=1989",
+            "start=1989&end=1970",
+            "/?{query}&partial=true",
+            r'id="music-(\d+)"',
+            payload.get("data", payload),
+        )
+        forward = self.client.get("/?start=1970&end=1989")
+        backward = self.client.get("/?start=1989&end=1970")
+        self.assertEqual(
+            backward.context["filter_title"], forward.context["filter_title"]
+        )
+        self.assertEqual(backward.context["filters"], forward.context["filters"])
+        api = self.client.get("/api/?start=1989&end=1970").json()
+        self.assertEqual(
+            api["count"], self.client.get("/api/?start=1970&end=1989").json()["count"]
+        )
+        self.assertGreater(api["count"], 0)
 
     def test_a_credit_is_found_without_its_accents(self):
         # The parity above holds just as well when both sides find nothing,

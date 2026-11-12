@@ -468,12 +468,18 @@ class ListListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
         total_lists = sum(g["total_count"] for g in publication_groups)
         context["total_list_count"] = total_lists
 
-        # Grand total list count across ALL publications (for "X of Y lists")
+        # Grand total list count across ALL the publications listed (for "X
+        # of Y lists"), not only those loaded: under the page's search too,
+        # which this left out, so X could never reach Y
         grand_total_qs = models.List.objects.all()
         if year_value:
             grand_total_qs = grand_total_qs.filter(year=year_value)
         if type_code:
             grand_total_qs = grand_total_qs.filter(type=type_code)
+        if search_query:
+            grand_total_qs = grand_total_qs.filter(
+                publisher__name__icontains=search_query
+            )
         context["grand_total_list_count"] = grand_total_qs.count()
 
         # Load More context (paginating publications)

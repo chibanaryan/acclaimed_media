@@ -11,6 +11,7 @@ from datetime import datetime
 import markdown as md
 from django import template
 from django.conf import settings
+from django.core.serializers.json import DjangoJSONEncoder
 from django.utils import timezone
 from django.utils.safestring import mark_safe
 
@@ -116,6 +117,17 @@ _JSON_MARKUP_ESCAPES = {
     ord("&"): "\\u0026",
     ord("'"): "\\u0027",
 }
+
+
+def json_for_script(value):
+    """``value`` as JSON that cannot end a ``<script>`` body or an attribute.
+
+    For a view that serialises once and keeps the string (the developer
+    page caches its context). Dates and decimals as Django's encoder writes
+    them. Marked safe, so it has to be: see ``tojson``.
+    """
+    text = json.dumps(value, cls=DjangoJSONEncoder)
+    return mark_safe(text.translate(_JSON_MARKUP_ESCAPES))
 
 
 @register.filter

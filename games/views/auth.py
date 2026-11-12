@@ -8,7 +8,6 @@ from django.db import transaction
 from django.http import HttpResponse
 from django.template.response import TemplateResponse
 from django.shortcuts import redirect, render
-from django.urls import reverse
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -431,10 +430,10 @@ class AuthModalProfileView(View):
 
     def get(self, request):
         if not request.user.is_authenticated:
-            # Redirect to login form via HTMX
-            response = HttpResponse()
-            response["HX-Redirect"] = reverse("auth-modal-login")
-            return response
+            # A session that ended in another tab: the login form, in the
+            # modal. `HX-Redirect` to its route made the browser load the
+            # partial as a page of its own, with no layout.
+            return AuthModalLoginView().get(request)
 
         response = TemplateResponse(
             request,
@@ -453,15 +452,16 @@ class AuthModalProfileView(View):
         user = request.user
         new_username = request.POST.get("username", "").strip()
 
-        # Validate username (if changed, skip validation if it matches user's email)
+        # The account's own address is the default name, which the rules
+        # would refuse as a name: only that someone verified holds it is
+        # checked. Until 2026-11-12 the rename was skipped with the rules.
         username_error = None
         renamed = False
-        if (
-            new_username
-            and new_username != user.username
-            and new_username.lower() != user.email.lower()
-        ):
-            username_error = User.username_error(new_username, exclude_pk=user.pk)
+        if new_username and new_username != user.username:
+            if new_username.lower() != user.email.lower():
+                username_error = User.username_error(new_username, exclude_pk=user.pk)
+            elif User.username_claimed(new_username, exclude_pk=user.pk):
+                username_error = "This username is already taken."
             if username_error:
                 # Re-render with full context including stats. Not an
                 # address: without the header HTMXPushURLMiddleware pushed

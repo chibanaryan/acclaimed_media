@@ -47,7 +47,7 @@ def refresh_after_import(stdout):
                 failed.append(name)
         # Wikipedia's genres for the added games move nothing the data
         # version reads, so cached pages would go on showing them without.
-        if not _move_data_version():
+        if not move_data_version():
             failed.append(MOVE_VERSION)
     finally:
         _close_async_connections()
@@ -75,7 +75,7 @@ def _run_igdb(stdout):
     # Even after a pass that raised part way: the slugs it did restore are
     # hidden behind cached pages until the version moves. A move that fails
     # here is tried again, and named, at the end.
-    _move_data_version()
+    move_data_version()
     try:
         after = _slugless()
     except Exception:
@@ -90,7 +90,7 @@ def _slugless():
     return Game.objects.filter(slug__isnull=True, igdb_id__isnull=False).count()
 
 
-def _move_data_version():
+def move_data_version():
     """Move the games data version, which reads ``Max(modified)``.
 
     ``get_igdb`` saves slugs with update_fields, which leaves ``modified``

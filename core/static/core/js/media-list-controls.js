@@ -1062,10 +1062,15 @@ function mediaListControlsData(config) {
             // The ids the server reads (`parse_id_list`): `?genres=5,abc` is 5
             const ids = name => list(name).filter(part => /^\d{1,19}$/.test(part))
                 .map(part => String(parseInt(part, 10)));
+            // A range written backwards (by hand: no control writes one) is
+            // the range, as the server reads it (`year_window`)
+            let start = number('start', null);
+            let end = number('end', null);
+            if (start !== null && end !== null && start > end) [start, end] = [end, start];
             return {
                 q: text('q'),
-                start: number('start', this.minYear),
-                end: number('end', this.maxYear),
+                start: start === null ? this.minYear : start,
+                end: end === null ? this.maxYear : end,
                 // Left out, not copied, so the reactive array is not replaced
                 ...(get('genres') !== null ? { genres: ids('genres') } : {}),
                 [statusKey]: list(statusKey),

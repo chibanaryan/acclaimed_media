@@ -68,6 +68,32 @@ class BuildDefaultCacheTests(SimpleTestCase):
         self.assertEqual(config["BACKEND"], cache_config.FILE_BACKEND)
         self.assertEqual(config["LOCATION"], Path("/tmp/example") / "django_cache")
 
+    def test_a_dyno_with_no_url_does_not_start(self):
+        """A file cache there is one throwaway directory a dyno: every
+        invalidation and the metadata lock would reach one process's copy,
+        and nothing would say so."""
+        from django.core.exceptions import ImproperlyConfigured
+
+        with self.assertRaisesMessage(ImproperlyConfigured, "CACHE_URL"):
+            cache_config.build_default_cache(
+                None,
+                debug=False,
+                test_mode=False,
+                base_dir=Path("/tmp/example"),
+                on_dyno=True,
+            )
+        # A test run on a dyno names no cache and still gets its own
+        config = cache_config.build_default_cache(
+            None, debug=False, test_mode=True, base_dir=Path("/tmp"), on_dyno=True
+        )
+        self.assertEqual(config["BACKEND"], cache_config.LOCMEM_BACKEND)
+
+    def test_settings_say_whether_this_is_a_dyno(self):
+        from django.conf import settings
+
+        source = (Path(settings.BASE_DIR) / "acclaimedgames/settings.py").read_text()
+        self.assertIn('on_dyno="DYNO" in os.environ', source)
+
 
 class BuildCachesTests(SimpleTestCase):
     """All three aliases together."""

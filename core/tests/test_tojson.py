@@ -33,3 +33,27 @@ class ToJsonTests(SimpleTestCase):
         self.assertNotIn("'", attribute)
         self.assertNotIn("&", attribute)
         self.assertEqual(json.loads(attribute), value)
+
+
+class JsonForScriptTests(SimpleTestCase):
+    """The same escapes for a view that serialises once and keeps the
+    string: the developer page wrote four maps into a script body through
+    bare ``json.dumps`` and ``|safe``."""
+
+    def test_it_escapes_as_tojson_does_and_takes_decimals(self):
+        from decimal import Decimal
+
+        from core.templatetags.core_filters import json_for_script
+
+        text = json_for_script({"1": {"pt": Decimal("12.5")}, "n": "</script>"})
+        self.assertNotIn("<", text)
+        self.assertEqual(json.loads(text), {"1": {"pt": "12.5"}, "n": "</script>"})
+
+    def test_the_developer_page_serialises_through_it(self):
+        from pathlib import Path
+
+        from django.conf import settings
+
+        source = (Path(settings.BASE_DIR) / "games/views/developers.py").read_text()
+        self.assertNotIn("json.dumps(", source)
+        self.assertEqual(source.count("= json_for_script("), 4)

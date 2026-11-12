@@ -329,6 +329,7 @@ CACHES = build_caches(
     debug=DEBUG,
     test_mode=TEST_MODE,
     base_dir=BASE_DIR,
+    on_dyno="DYNO" in os.environ,
 )
 # The release, for the API's page caches only; see release_cache_prefix
 RELEASE_CACHE_PREFIX = (
@@ -502,6 +503,15 @@ LOGGING = {
             "level": "CRITICAL" if TEST_MODE else "ERROR",
             "propagate": False,
         },
+        # A refused CSRF token or a tampered session, which Django logs here
+        # and printed nowhere: its own console handler is DEBUG-only. Not
+        # DisallowedHost, which is every scanner that asks by IP address.
+        "django.security": {
+            "handlers": ["console"],
+            "level": "CRITICAL" if TEST_MODE else "WARNING",
+            "propagate": False,
+        },
+        "django.security.DisallowedHost": {"level": "CRITICAL"},
         "games.igdb": {"level": "ERROR" if TEST_MODE else "WARNING"},
         "games.management.commands.get_igdb": {
             "level": "CRITICAL" if TEST_MODE else "INFO"

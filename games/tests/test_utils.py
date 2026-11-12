@@ -282,6 +282,21 @@ class SendContactEmailTests(TestCase):
         self.assertIn("test@example.com", email.body)
         self.assertIn("This is a test message.", email.body)
 
+    def test_a_name_with_a_line_break_still_sends(self):
+        """A subject cannot hold one: Django refused the header, and the
+        reader was told their message could not be sent."""
+        from django.core import mail
+
+        result = utils.send_contact_email(
+            name="Test\r\nUser\tOne",
+            email="test@example.com",
+            category="general",
+            message="Still worth reading.",
+        )
+        self.assertTrue(result)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertTrue(mail.outbox[0].subject.endswith("from Test User One"))
+
     def test_send_contact_email_all_categories(self):
         """Test sending email with all category types."""
         from django.core import mail

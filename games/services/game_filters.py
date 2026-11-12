@@ -73,7 +73,7 @@ PLATFORMS_CACHE_KEY = f"search_platforms_list:{config.CACHE_VERSION}"
 
 
 def platforms_lookup():
-    """The platform list virtual ids expand against, cached."""
+    """Every platform, for the sidebar and the heading, cached."""
     return utils.get_or_set_cache(
         PLATFORMS_CACHE_KEY,
         models.Platform.objects.all(),
@@ -89,17 +89,21 @@ def wants_played_filter(params, user):
     return bool(params.get("played") and user and user.is_authenticated)
 
 
-def apply_game_filters(
-    queryset, params, *, skip=(), user=None, descendants=None, platforms=None
-):
+def apply_game_filters(queryset, params, *, skip=(), user=None, descendants=None):
     """Apply the rankings page's filters in ``params`` to ``queryset``.
 
     ``skip`` leaves dimensions out (see ``DIMENSIONS``): a facet count is how
     many games each option has under the *other* filters. ``user`` is needed
     for the played dimension, which also adds its annotation when the
-    queryset lacks it. ``descendants`` (the genre descendant map) and
-    ``platforms`` (``platforms_lookup()``) can be passed in by a caller that
-    filters several times per request; left out, they are built here.
+    queryset lacks it. ``descendants`` (the genre descendant map) can be
+    passed in by a caller that filters several times per request; left out,
+    it is built here.
+
+    ``platforms`` is platform ids and nothing else. Until 2026-11-12 it also
+    took group ids (``mfr-nintendo``, ``ff-nintendo-home``) that no page
+    ever wrote into a link: the heading named the raw id, the engine did
+    not know them, and the CSV's file name expanded them. The sidebar's
+    groups select their platforms' ids.
     """
     q = params.get("q")
     if q and "q" not in skip:
@@ -127,11 +131,8 @@ def apply_game_filters(
             descendants=descendants,
         )
 
-    platforms_param = params.get("platforms")
-    if platforms_param and "platforms" not in skip:
-        platform_ids = expand_platform_virtual_ids(
-            platforms_param, platforms if platforms is not None else platforms_lookup()
-        )
+    platform_ids = parse_id_list(params.get("platforms"))
+    if platform_ids and "platforms" not in skip:
         queryset = utils.apply_platform_filter(queryset, platform_ids)
 
     series_ids = parse_id_list(params.get("series"))
@@ -179,130 +180,6 @@ def facet_params(params, skip):
                 )
             out[name] = value
     return out
-
-
-# Platform hierarchy - maps virtual IDs to platform codes. The sidebar's copy is
-# filter-subcomponents.js SHARED_PLATFORM_HIERARCHY_UI, with client-filter.js's
-# fallback; games/tests/test_visual_regression.py holds all three equal.
-PLATFORM_VIRTUAL_IDS = {
-    # Manufacturer virtual IDs
-    "mfr-nintendo": [
-        "NES",
-        "FDS",
-        "SNES",
-        "N64",
-        "GC",
-        "Wii",
-        "WiiU",
-        "SW",
-        "SW2",
-        "GB",
-        "GBC",
-        "GBA",
-        "DS",
-        "3DS",
-        "GW",
-    ],
-    "mfr-playstation": ["PS", "PS2", "PS3", "PS4", "PS5", "PSVR", "PSP", "PSV"],
-    "mfr-xbox": ["Xbox", "X360", "XB1", "XBXS"],
-    "mfr-sega": ["SMS", "GEN", "SCD", "SAT", "DC", "GG"],
-    "mfr-pc": ["WIN", "DOS", "LIN", "MAC"],
-    "mfr-arcadePlus": ["ARC", "AND", "iOS", "LMD", "VR", "BR"],
-    "mfr-retro": [
-        "A26",
-        "A52",
-        "A78",
-        "INTV",
-        "CV",
-        "TG16",
-        "3DO",
-        "NG",
-        "JAG",
-        "LYNX",
-        "NGP",
-        "VECT",
-        "WS",
-    ],
-    "mfr-computers": [
-        "VC20",
-        "C64",
-        "AMI",
-        "CD32",
-        "D32",
-        "MIC",
-        "ZXS",
-        "CPC",
-        "BBCM",
-        "ARCH",
-        "PC88",
-        "PC98",
-        "FM7",
-        "FMT",
-        "SX1",
-        "MSX",
-        "A8",
-        "AST",
-        "A2",
-        "TT",
-        "T80",
-        "TCC",
-        "PDP",
-        "HP21",
-        "E60",
-    ],
-    # Form factor virtual IDs
-    "ff-nintendo-home": [
-        "NES",
-        "FDS",
-        "SNES",
-        "N64",
-        "GC",
-        "Wii",
-        "WiiU",
-        "SW",
-        "SW2",
-    ],
-    "ff-nintendo-handheld": ["GW", "GB", "GBC", "GBA", "DS", "3DS"],
-    "ff-playstation-home": ["PS", "PS2", "PS3", "PS4", "PS5", "PSVR"],
-    "ff-playstation-handheld": ["PSP", "PSV"],
-    "ff-sega-home": ["SMS", "GEN", "SCD", "SAT", "DC"],
-    "ff-sega-handheld": ["GG"],
-    # Microcomputer form factor virtual IDs
-    "ff-computers-commodore": ["VC20", "C64", "AMI", "CD32"],
-    "ff-computers-uk": ["ZXS", "CPC", "BBCM", "ARCH", "D32"],
-    "ff-computers-japan": ["PC88", "PC98", "FM7", "FMT", "SX1", "MSX", "TT"],
-    "ff-computers-atari": ["A8", "AST"],
-    "ff-computers-other": ["A2", "T80", "TCC", "PDP", "HP21", "E60", "MIC"],
-}
-
-
-def expand_platform_virtual_ids(platforms_param, platforms):
-    """Expand virtual IDs (mfr-nintendo, ff-nintendo-home) to actual platform IDs.
-
-    Returns a list of platform IDs (integers) that should be used for filtering.
-    If the param contains regular IDs, returns those directly.
-    Using - instead of : for URL-friendliness.
-    """
-    if not platforms_param:
-        return []
-
-    # Build code -> ID lookup from platforms list (ensure int IDs)
-    code_to_id = {p.get("code"): int(p["id"]) for p in platforms if p.get("code")}
-
-    platform_ids = []
-    for param in platforms_param.split(","):
-        param = param.strip()
-        if param in PLATFORM_VIRTUAL_IDS:
-            # Virtual ID - expand to all platform codes
-            codes = PLATFORM_VIRTUAL_IDS[param]
-            for code in codes:
-                if code in code_to_id:
-                    platform_ids.append(code_to_id[code])
-        else:
-            # Regular ID; anything else is skipped
-            platform_ids.extend(parse_id_list(param))
-
-    return platform_ids
 
 
 def apply_played_filter(qs, user, played_param):

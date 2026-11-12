@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, List, Optional
 from django.db.models import Q, QuerySet
 
 from core.cache_helpers import cached
-from core.services.query_params import MAX_INT, parse_int
+from core.services.query_params import MAX_INT, ordered_range, parse_int
 from games import config
 
 
@@ -210,10 +210,12 @@ def resolve_year_range(decade=None, year=None, start=None, end=None):
     said 1995. Only a hand-written URL carries two of them.
 
     A value that is not a year is no value, though an unreadable start or
-    end still outranks a year, as it does in the browser.
+    end still outranks a year, as it does in the browser. A range written
+    backwards (``?start=2000&end=1990``, by hand: no control writes one) is
+    the range; it listed nothing under a heading reading "2000-1990".
     """
     if start or end:
-        return parse_int(start), parse_int(end)
+        return ordered_range(parse_int(start), parse_int(end))
     year = parse_int(year)
     if year is not None:
         return year, year

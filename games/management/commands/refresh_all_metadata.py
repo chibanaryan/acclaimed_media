@@ -279,6 +279,18 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR(f"\n  HLTB refresh failed: {e}"))
                 self.hltb_not_found = -1
 
+        # The phases write genres, slugs and artwork through saves that
+        # leave `Game.modified` alone, so nothing told the cached pages, the
+        # payload or a reader's stored copy of it, which has no age limit.
+        # Whether or not a phase failed: what it wrote before then counts.
+        if not options.get("dry_run") and not post_import.move_data_version():
+            self.stdout.write(
+                self.style.WARNING(
+                    "\n  The games data version could not be moved; cached "
+                    "pages may show last week's data until it is."
+                )
+            )
+
         # Print summary
         self._print_summary()
 

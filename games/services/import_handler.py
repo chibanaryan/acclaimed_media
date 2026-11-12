@@ -1296,12 +1296,29 @@ def import_listmemberships(
     if progress_callback:
         progress_callback("start", {"total": total_rows, "file": "Game Positions"})
 
+    # Read once: a `get` a row was a query for each of 1,400 games
+    games_by_rank = {game.rank: game for game in models.Game.objects.only("rank")}
+
     for line_number, line in enumerate(f):
         row_number += 1
-        bits = line.strip().split("\t")
-        game = models.Game.objects.get(rank=line_number + 1)
+        bits = line.strip().split("\t") if line.strip() else []
+        if not bits:
+            # A game on no list keeps its row, and a file may end with one
+            continue
+        game = games_by_rank.get(line_number + 1)
+        if game is None:
+            raise ImportFileError(
+                f"Row {row_number} of the positions file has no game: the "
+                f"games file ranks {len(games_by_rank)}."
+            )
         for bit in bits:
-            list_id, position = [int(x) for x in bit.split(":")]
+            try:
+                list_id, position = [int(x) for x in bit.split(":")]
+            except ValueError:
+                raise ImportFileError(
+                    f"Row {row_number} of the positions file has {bit!r} where "
+                    "a list:position pair of numbers belongs."
+                ) from None
 
             source_list = list_map.get(list_id + 1)
             if not source_list:

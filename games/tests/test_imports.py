@@ -9,6 +9,7 @@ from django.test import TestCase
 from core.models import User
 from core.tests.utils import NoHeartbeatMixin
 from .. import config, models, utils
+from ..services import import_handler
 
 
 def _run_import_inline(target):
@@ -1021,6 +1022,34 @@ class ImportListMembershipsTests(TestCase):
         self.assertEqual(models.ListMembership.objects.count(), 3)
         top_entry = models.ListMembership.objects.get(game__rank=1, list__order=1)
         self.assertEqual(top_entry.rank, 1)
+
+    def test_a_blank_row_is_a_game_on_no_list(self):
+        """A row is a game, in rank order, so a blank one holds its place;
+        and the file may end with one. Each was a ``ValueError`` on
+        ``int("")``, shown to staff as a failed import with no row named."""
+        success, message = utils.import_listmemberships(StringIO("\r\n0:2\r\n\r\n"))
+        self.assertTrue(success)
+        self.assertEqual(
+            list(models.ListMembership.objects.values_list("game__rank", "rank")),
+            [(2, 2)],
+        )
+
+    def test_a_row_with_no_game_of_its_rank_is_named(self):
+        with self.assertRaisesMessage(
+            import_handler.ImportFileError, "Row 3 of the positions file"
+        ):
+            utils.import_listmemberships(StringIO("0:1\r\n0:2\r\n0:3\r\n"))
+
+    def test_a_pair_that_is_not_two_numbers_is_named(self):
+        with self.assertRaisesMessage(
+            import_handler.ImportFileError, "Row 2 of the positions file"
+        ):
+            utils.import_listmemberships(StringIO("0:1\r\n0:two\r\n"))
+
+    def test_the_games_are_read_once_not_a_row_each(self):
+        with self.assertNumQueries(4):
+            # The delete, the lists, the games, one bulk insert
+            utils.import_listmemberships(StringIO("0:1\r\n0:2\r\n"))
 
     def test_import_listmemberships_with_progress_callback(self):
         """Test import_listmemberships with progress callback."""

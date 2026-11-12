@@ -312,6 +312,50 @@ class AuthModalEdgeTests(TestCase):
         user.refresh_from_db()
         self.assertEqual(user.username, "casey")
 
+    def test_a_name_can_be_changed_back_to_the_accounts_own_email(self):
+        """The default name. The rules are skipped for it, and until
+        2026-11-12 so was the rename: the page refreshed on the old name."""
+        user = User.objects.create_user(
+            username="casey", email="Casey@example.com", password="pw-12345"
+        )
+        self.client.login(username="casey", password="pw-12345")
+        response = self.client.post(
+            reverse("auth-modal-profile"), {"username": "casey@example.com"}
+        )
+        self.assertEqual(response["HX-Refresh"], "true")
+        user.refresh_from_db()
+        self.assertEqual(user.username, "casey@example.com")
+
+    def test_an_email_another_verified_account_holds_as_its_name_is_refused(self):
+        """A name taken through allauth's old sign-up page (ROADMAP): the
+        save would otherwise fail on the username's unique constraint."""
+        squatter = User.objects.create_user(
+            username="casey@example.com", email="other@example.com"
+        )
+        EmailAddress.objects.create(
+            user=squatter, email="other@example.com", verified=True, primary=True
+        )
+        user = User.objects.create_user(
+            username="casey", email="casey@example.com", password="pw-12345"
+        )
+        self.client.login(username="casey", password="pw-12345")
+        response = self.client.post(
+            reverse("auth-modal-profile"), {"username": "casey@example.com"}
+        )
+        self.assertContains(response, "already taken")
+        user.refresh_from_db()
+        self.assertEqual(user.username, "casey")
+
+    def test_a_signed_out_profile_request_shows_the_login_form(self):
+        """A session that expired in another tab. `HX-Redirect` made the
+        browser navigate to the login partial as a page of its own."""
+        response = self.client.get(
+            reverse("auth-modal-profile"), HTTP_HX_REQUEST="true"
+        )
+        self.assertNotIn("HX-Redirect", response)
+        self.assertTemplateUsed(response, "auth/partials/_login_form.html")
+        self.assertEqual(response["HX-Push-Url"], "false")
+
 
 def _confirmation_row(message):
     """The EmailAddress row a verification mail's link confirms."""
