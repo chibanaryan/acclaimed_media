@@ -143,8 +143,10 @@ class ThemeContrastTests(SimpleTestCase):
                 for names in re.findall(r"@apply([^;]*);", body)
                 for name in names.split()
             ]
-            # The class itself: `hover:text-primary` and `text-primary/50`
-            # are other rules, which this override would not put right
+            # The class itself. With a variant before it or an opacity
+            # after it, it is another rule, which this override would not
+            # put right. (Neither is spelt out here: the CSS build reads
+            # class names from every .py file, and would build them.)
             if "text-primary" in classes:
                 applied += [selector.strip() for selector in selectors.split(",")]
         self.assertEqual(applied, [".navbar .btn.btn-active"])

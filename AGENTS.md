@@ -2986,6 +2986,14 @@ python manage.py tailwind build
 python manage.py collectstatic --noinput
 ```
 
+**The build reads class names from every `.html`, `.py` and `.js` file**
+(`@source "../../../**/*.{html,py,js}"` in `styles.css`), tests included. A
+Tailwind class written anywhere in one, a comment in a test too, is a class
+built: on 2026-11-12 a test's comment naming an opacity variant of
+`text-primary` added a rule to the stylesheet, and CI's `css` job would have
+failed on the difference. Rebuild after any change that names a class, and
+do not spell out one the pages do not use.
+
 **File Locations:**
 - `theme/static_src/src/styles.css` - Main Tailwind CSS source file with custom components
 - `theme/static/css/dist/styles.css` - Compiled CSS output (auto-generated)
