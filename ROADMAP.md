@@ -194,16 +194,18 @@ and four of the small leftovers. Found by its audits and left:
       gives it: unlike an artist's (P434, since this pass), it is not
       checked to be a UUID, so a malformed one replaces a good one and the
       cover pass asks the archive for a group that does not exist.
-    - Changing an account's email in the admin leaves its old address rows
-      in place, and allauth's password reset matches any row: whoever holds
-      the old address can still reset the password. Confirming the new
-      address makes it primary since this pass, but nothing removes the
-      old. The admin also writes addresses with their capitals, where
-      allauth compares lower-case ones, so a mixed-case row escapes its
+    - **Changing an account's email in the admin leaves allauth's address
+      rows behind.** The old row stays, often primary, and allauth's
+      password reset matches any row: whoever holds the old address can
+      still reset the password. The new address gets no row, so the login
+      says unverified and the modal can only point to the contact form. The
+      admin also writes addresses with their capitals, where allauth
+      compares lower-case ones, so a mixed-case row escapes its
       one-verified-account rule. The admin's save should sync the rows
-      (allauth's `sync_user_email_addresses`, lower-cased, then drop the
-      others), and staff told; the resend only patches the account it is
-      pressed for.
+      (allauth's `sync_user_email_addresses`, lower-cased, the new address
+      primary once confirmed, the old dropped), and staff be told. Six
+      review rounds on 2026-11-11 tried repairing the rows from the resend
+      instead and kept finding edges; it was taken out.
     - A metadata pass's per-album savepoint spans the album's network
       requests, so a cover pass walking a group's releases at 1 req/s holds
       a connection idle in a transaction, and the album's row lock, for tens

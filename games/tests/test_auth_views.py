@@ -412,67 +412,6 @@ class VerificationBelongsToAnAccountTests(TestCase):
         self.assertNotContains(response, "We've sent")
         self.assertContains(response, "Already Verified")
 
-    def test_an_account_with_no_address_row_gets_one_and_a_link(self):
-        """Made in the admin, it has no row: its login said unverified, and
-        Resend had nothing to confirm."""
-        from django.core import mail
-
-        user = User.objects.create_user(
-            username="adminmade", email="adminmade@example.com", password=self.PASSWORD
-        )
-        self.assertContains(self._log_in("adminmade"), "Email Not Verified")
-        response = self.client.post(reverse("auth-modal-resend-verification"))
-        self.assertContains(response, "Email Sent")
-        self.assertEqual(_confirmation_row(mail.outbox[0]).user, user)
-
-    def test_an_account_whose_email_changed_gets_it_as_primary_once_confirmed(self):
-        """Its old row is primary, and a second primary row breaks allauth's
-        constraint (a 500). The new address takes over when its link is
-        confirmed, which shows who holds the inbox, not when it is sent."""
-        from allauth.account.models import EmailConfirmationHMAC
-        from django.core import mail
-
-        user = self._account("moved", "old@example.com")
-        user.email = "new@example.com"
-        user.save()
-        self._log_in("moved")
-        response = self.client.post(reverse("auth-modal-resend-verification"))
-        self.assertContains(response, "Email Sent")
-        new = EmailAddress.objects.get(user=user, email="new@example.com")
-        self.assertFalse(new.primary)
-        self.assertEqual(_confirmation_row(mail.outbox[0]), new)
-        self.client.get(
-            reverse("account_confirm_email", args=[EmailConfirmationHMAC(new).key])
-        )
-        new.refresh_from_db()
-        self.assertTrue(new.primary)
-        self.assertFalse(EmailAddress.objects.get(email="old@example.com").primary)
-
-    def test_a_mixed_case_address_is_stored_lower_case(self):
-        """allauth compares lower-cased addresses: a row kept as typed
-        escaped its rule that one account holds a verified address."""
-        user = User.objects.create_user(
-            username="cased", email="Cased@Example.com", password=self.PASSWORD
-        )
-        self._log_in("cased")
-        self.client.post(reverse("auth-modal-resend-verification"))
-        self.assertEqual(
-            list(
-                EmailAddress.objects.filter(user=user).values_list("email", flat=True)
-            ),
-            ["cased@example.com"],
-        )
-
-    def test_pressing_resend_twice_makes_one_row(self):
-        user = User.objects.create_user(
-            username="twice", email="twice@example.com", password=self.PASSWORD
-        )
-        self._log_in("twice")
-        for _ in range(2):
-            response = self.client.post(reverse("auth-modal-resend-verification"))
-            self.assertEqual(response.status_code, 200)
-        self.assertEqual(EmailAddress.objects.filter(user=user).count(), 1)
-
     def test_an_account_with_no_email_is_told_so_at_login(self):
         """Not offered a resend that can send nothing, and pointed at the
         contact form, which opens in place (a `/#contact` link opened
@@ -481,7 +420,7 @@ class VerificationBelongsToAnAccountTests(TestCase):
 
         User.objects.create_user(username="noemail", password=self.PASSWORD)
         login = self._log_in("noemail")
-        self.assertContains(login, "No Address to Verify")
+        self.assertContains(login, "Can't Send a Link")
         self.assertNotContains(login, reverse("auth-modal-resend-verification"))
         self.assertContains(login, "contact-modal-trigger")
         self.assertContains(login, "data-close-dialog")
@@ -509,7 +448,30 @@ class VerificationBelongsToAnAccountTests(TestCase):
         User.objects.filter(pk=user.pk).update(email="")
         response = self.client.post(reverse("auth-modal-resend-verification"))
         self.assertEqual(mail.outbox, [])
-        self.assertContains(response, "No Address to Verify")
+        self.assertContains(response, "Can't Send a Link")
+
+    def test_an_account_with_no_row_for_its_address_is_pointed_to_contact(self):
+        """Made or changed in the admin, it has nothing a link could
+        confirm: the login says so, offers no resend, and remembers no
+        account for one. Repairing its rows is the admin's (ROADMAP)."""
+        user = self._account("moved", "old@example.com")
+        user.email = "new@example.com"
+        user.save()
+        login = self._log_in("moved")
+        self.assertContains(login, "Can't Send a Link")
+        self.assertNotContains(login, reverse("auth-modal-resend-verification"))
+        self.assertNotIn(PENDING_ACCOUNT_KEY, self.client.session)
+        self.assertFalse(EmailAddress.objects.filter(email="new@example.com").exists())
+
+    def test_a_successful_login_forgets_an_earlier_pending_account(self):
+        """Else the earlier account's link, opened in this browser, logged
+        it in over the reader who had just signed in."""
+        self._account("earlier", "earlier@example.com")
+        self._log_in("earlier")
+        self.assertIn(PENDING_ACCOUNT_KEY, self.client.session)
+        self._account("later", "later@example.com", verified=True)
+        self._log_in("later")
+        self.assertNotIn(PENDING_ACCOUNT_KEY, self.client.session)
 
     def test_the_browser_that_signed_up_is_logged_in_by_its_link(self):
         from django.core import mail

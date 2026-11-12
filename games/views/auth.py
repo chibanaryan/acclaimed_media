@@ -109,31 +109,38 @@ class AuthModalLoginView(View):
             user = form.user
 
             # Check if email is verified (mandatory verification)
-            # Look for user's email in EmailAddress table
-            email_address = EmailAddress.objects.filter(
-                user=user, email__iexact=user.email
-            ).first()
+            # Look for user's email in EmailAddress table: a verified row
+            # first, as the resend reads them; unordered, two rows differing
+            # in case could answer either way
+            email_address = (
+                EmailAddress.objects.filter(user=user, email__iexact=user.email)
+                .order_by("-verified", "pk")
+                .first()
+            )
 
             # If no EmailAddress record or not verified, block login
             if not email_address or not email_address.verified:
                 # User exists but email not verified - show resend option.
                 # The password was right, so the resend is this account's.
-                # With no address at all there is nothing to resend to, nor
-                # an account to remember for one: and none an earlier screen
-                # in this browser left, which a link would otherwise log in
-                if user.email:
+                # With no row for its address (an account made or changed in
+                # the admin) there is nothing a link could confirm, nor an
+                # account to remember for one; the screen points to contact.
+                if email_address:
                     _remember_pending_account(request, user)
                 else:
                     request.session.pop(PENDING_ACCOUNT_KEY, None)
                 response = TemplateResponse(
                     request,
                     "auth/partials/_unverified_email.html",
-                    {"email": user.email, "no_address": not user.email},
+                    {"email": user.email, "no_address": not email_address},
                 )
                 response["HX-Push-Url"] = "false"
                 return response
 
-            # Email verified - proceed with login
+            # Email verified - proceed with login. Whatever account an
+            # earlier screen in this browser remembered is not this one's:
+            # left, its link opened here would log that account in over this
+            request.session.pop(PENDING_ACCOUNT_KEY, None)
             login(
                 request,
                 user,
@@ -289,27 +296,6 @@ class AuthModalForgotPasswordView(View):
         return response
 
 
-def _address_row_for(request, user):
-    """A row for ``user.email``, for an account that has none.
-
-    Made in the admin, or its email changed there, it has nothing a link
-    could confirm, and its login says unverified. Through allauth's own
-    `add_email`, which lower-cases the address as every comparison allauth
-    makes does, and reads back a row a second press of Resend made at the
-    same moment. Primary only if the account has none: an old primary is
-    replaced when the new address is confirmed (`EmailConfirmationView`),
-    once the link has shown who holds the inbox, not before.
-    """
-    from allauth.account.models import EmailAddress
-
-    with transaction.atomic():
-        email_address = EmailAddress.objects.add_email(request, user, user.email)
-        if not EmailAddress.objects.filter(user=user, primary=True).exists():
-            email_address.primary = True
-            email_address.save(update_fields=["primary"])
-    return email_address
-
-
 class AuthModalResendVerificationView(View):
     """Resend the verification email of the account the modal was showing.
 
@@ -330,9 +316,17 @@ class AuthModalResendVerificationView(View):
             response["HX-Push-Url"] = "false"
             return response
 
-        if not user.email:
-            # No address at all (an account made in the admin without one):
-            # nothing to send, and the screen says so. The login says it too.
+        email_address = (
+            EmailAddress.objects.filter(user=user, email__iexact=user.email)
+            .order_by("-verified", "pk")
+            .first()
+            if user.email
+            else None
+        )
+        if email_address is None:
+            # No row for its address (made or changed in the admin): nothing
+            # a link could confirm. The screen points to contact, as the
+            # login's does; repairing the rows is the admin's to do (ROADMAP)
             response = TemplateResponse(
                 request,
                 "auth/partials/_verification_resent.html",
@@ -341,11 +335,6 @@ class AuthModalResendVerificationView(View):
             response["HX-Push-Url"] = "false"
             return response
 
-        email_address = (
-            EmailAddress.objects.filter(user=user, email__iexact=user.email)
-            .order_by("pk")
-            .first()
-        )
         # allauth keeps a verified address to one account, so this one's row
         # can never be confirmed once another has verified it: its link would
         # be an "Invalid Link". Said, since the reader has given the password.
@@ -356,10 +345,8 @@ class AuthModalResendVerificationView(View):
         )
         # Verified already (in another browser, say): nothing to send, and
         # the screen says so rather than promise a link
-        verified = bool(email_address and email_address.verified)
+        verified = email_address.verified
         if not verified and not taken:
-            if email_address is None:
-                email_address = _address_row_for(request, user)
             _send_confirmation(request, email_address, signup=False)
 
         response = TemplateResponse(
@@ -397,14 +384,6 @@ class EmailConfirmationView(TemplateView):
                 # owner of an address someone else signed up with - gets a
                 # verified address and the sign-in button, not a session.
                 user = email_address.user
-                # The address the account names, now shown to be the
-                # reader's, becomes its primary: an old primary row left by
-                # an email changed in the admin is not the account's any more
-                if (
-                    not email_address.primary
-                    and email_address.email.lower() == (user.email or "").lower()
-                ):
-                    email_address.set_as_primary()
                 logged_in = request.session.get(PENDING_ACCOUNT_KEY) == user.pk
                 if logged_in:
                     request.session.pop(PENDING_ACCOUNT_KEY)

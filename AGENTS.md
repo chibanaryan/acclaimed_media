@@ -1972,9 +1972,14 @@ URL whatever the request is uses `sites.site_reverse()` (music's
   the password was just given. The confirmation link logs in only that
   browser; anyone else who opens it (a mail scanner, the owner of an
   address someone else signed up with) gets the address verified and a
-  Log In button. Resend sends for that account, never the address posted,
-  and says so when another account has verified the address; signing up on
-  an address another account waits on points to logging in or a reset.
+  Log In button. Any login, refused or not, replaces what an earlier
+  screen in that browser remembered. Resend sends for that account, never
+  the address posted, and says so when another account has verified the
+  address, or it is verified already; signing up on an address another
+  account waits on points to logging in or a reset. An account with no
+  address row for its email (made or changed in the admin) is pointed to
+  the contact form: the resend does not repair the rows, which is the
+  admin save's to do (ROADMAP).
 - **The old apex paths redirect.** Everything the apex served before is in
   links and search indexes, so `urls_root`'s catch-all
   (`core.views.redirect_to_site`) sends `/music/<rest>` to

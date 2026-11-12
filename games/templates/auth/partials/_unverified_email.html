@@ -1,11 +1,11 @@
-{# Shown at login, or at sign-up on an address an account waits on, when that address is not verified; no_address: an account with none #}
+{# Shown at login, or at sign-up on an address an account waits on, when that address is not verified; no_address: an account with no row for its address #}
 {# account_unproven: the sign-up case. The reader has not given that account's password, so no resend is offered for it: they log in to it, or reset its password, which proves the inbox. #}
 
 <div class="text-center py-4">
     {# Warning icon #}
     <span class="mdi mdi-email-alert text-6xl text-warning mb-4 block" aria-hidden="true"></span>
 
-    <h3 id="authModalTitle" class="text-lg font-bold mb-2">{% if no_address %}No Address to Verify{% else %}Email Not Verified{% endif %}</h3>
+    <h3 id="authModalTitle" class="text-lg font-bold mb-2">{% if no_address %}Can't Send a Link{% else %}Email Not Verified{% endif %}</h3>
     {% if no_address %}
     {% include 'auth/partials/_no_address.html' %}
 

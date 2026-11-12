@@ -1,4 +1,4 @@
-{# After the resend button: sent, refused because another account has verified the address (taken), already verified (verified), an account with no address (no_address), or no account to send for (no_account) #}
+{# After the resend button: sent, refused because another account has verified the address (taken), already verified (verified), an account with no row for its address (no_address), or no account to send for (no_account) #}
 
 <div class="text-center py-4">
     {% if verified %}
@@ -9,7 +9,7 @@
     <span class="mdi mdi-email-fast text-6xl text-success mb-4 block" aria-hidden="true"></span>
     {% endif %}
 
-    <h3 id="authModalTitle" class="text-lg font-bold mb-2">{% if verified %}Already Verified{% elif no_address %}No Address to Verify{% elif no_account %}Log In to Resend{% elif taken %}Address Already in Use{% else %}Email Sent{% endif %}</h3>
+    <h3 id="authModalTitle" class="text-lg font-bold mb-2">{% if verified %}Already Verified{% elif no_address %}Can't Send a Link{% elif no_account %}Log In to Resend{% elif taken %}Address Already in Use{% else %}Email Sent{% endif %}</h3>
     {% if verified %}
     <p class="text-sm text-base-content/70 mb-6">
         <strong>{{ email }}</strong> is verified. Log in to continue.
