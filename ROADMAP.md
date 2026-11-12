@@ -284,12 +284,12 @@ one 6.9 MiB reading, so it stays.
     back to 1,000 if the peak climbs towards the quota. An import's metadata
     fetch spends ~85 MB in one worker while it runs, so read a week that
     held one.
-16. **Merge the Dependabot queue.** #32 is Django 6.1.3, a security release;
-    #31 and #30 wait with it. #32 and #31 were green on 2026-11-10 and
-    again on 2026-11-12 (`/upgrade-deps`). #30 (npm) fails `audit`, `css`
-    and `browser`, so it needs its CSS rebuilt and read; it will also want
-    rebasing over the fifth pass, which took two PostCSS plugins out of
-    `package.json`.
+16. **Merge the rest of the Dependabot queue.** #32, Django 6.1.3, a
+    security release, was merged on 2026-11-12 and shipped with the fifth
+    pass. #31 (five Python minor and patch bumps) was green that day and
+    waits. #30 (npm) fails `audit`, `css` and `browser`, so it needs its
+    CSS rebuilt and read; it will also want rebasing over the fifth pass,
+    which took two PostCSS plugins out of `package.json`.
 17. **The next deploy applies two migrations**, `games.0124` and
     `music.0015`: unique constraints on game, developer and album slugs
     and on game and developer IGDB ids. Production had no duplicates on
