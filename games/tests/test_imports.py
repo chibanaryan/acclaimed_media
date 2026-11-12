@@ -7,7 +7,7 @@ from django.db.models import Max
 from django.test import TestCase
 
 from core.models import User
-from core.tests.utils import NoHeartbeatMixin
+from core.tests.utils import NoHeartbeatMixin, clear_all_caches
 from .. import config, models, utils
 from ..services import import_handler
 
@@ -1956,6 +1956,15 @@ class ImportDropsReleaseCachesTests(TestCase):
     page lists and the CSV's genre list. A release adding a year left the
     year grid at the old last year, and `/games/<new year>/` a 404, for a
     day."""
+
+    def setUp(self):
+        # These tests put strings where the pages keep their caches, and one
+        # leaves its string there on purpose. Under the Django runner, which
+        # clears nothing between tests, the next class in the same worker to
+        # ask for the year bounds was handed "kept" (the CSV tests, the day a
+        # new test class moved them into this one's worker).
+        clear_all_caches()
+        self.addCleanup(clear_all_caches)
 
     def test_a_committed_import_drops_them(self):
         from django.core.cache import cache
