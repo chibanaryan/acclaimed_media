@@ -109,7 +109,6 @@
     {# Add core Alpine scripts after page-specific ones #}
     <script nonce="{{ csp_nonce }}">
     window.alpineScripts.push(
-        '{% static "games/js/rank-distribution.min.js" %}',
         '{% static "games/js/vendor/alpine-collapse.min.js" %}',
         '{% static "games/js/vendor/alpine.min.js" %}'
     );

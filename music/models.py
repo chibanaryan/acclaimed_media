@@ -12,7 +12,8 @@ from functools import cached_property
 from typing import Any, Iterable, List, Optional
 
 from django.db import models
-from django.db.models import Count, Exists, OuterRef
+from django.db.models import Count, Exists, OuterRef, Subquery
+from django.db.models.functions import Coalesce
 from django.utils.text import slugify
 
 from core.loaded_values import RemembersLoaded
@@ -310,8 +311,24 @@ class AlbumQuerySet(models.QuerySet):
         )
 
     def with_list_count(self) -> "AlbumQuerySet":
-        """Annotate how many source lists each album appears on."""
-        return self.annotate(list_count=Count("lists", distinct=True))
+        """Annotate how many source lists each album appears on.
+
+        A subquery a row, as games' is (``GameQuerySet.with_list_count``):
+        ``Count("lists")`` joined every membership and grouped every album
+        before the page's hundred rows were taken.
+        """
+        memberships = (
+            AlbumListMembership.objects.filter(album=OuterRef("pk"))
+            .order_by()
+            .values("album")
+            .annotate(total=Count("pk"))
+            .values("total")
+        )
+        return self.annotate(
+            list_count=Coalesce(
+                Subquery(memberships, output_field=models.IntegerField()), 0
+            )
+        )
 
     def with_listen_status(self, user) -> "AlbumQuerySet":
         """Annotate have / heard / want-to-listen status for ``user``.

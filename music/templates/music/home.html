@@ -20,6 +20,8 @@
 <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/filter-subcomponents.min.js" %}');</script>
 <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/media-list-controls.min.js" %}');</script>
 <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/quick-mark.min.js" %}');</script>
+{# The rank distribution chart's script, queued by the pages that show one: base.html queued it on every page, ahead of Alpine #}
+<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "games/js/rank-distribution.min.js" %}');</script>
 {# Keeps the tracking id Sets, each row's other half and focus current after an HTMX button swap #}
 {% include 'music/includes/_album_tracking_script.html' %}
 {% endblock %}

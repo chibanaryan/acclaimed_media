@@ -206,25 +206,28 @@ def _order_games(qs, params):
     def sort_field(field_name):
         return f"-{field_name}" if sort_direction == "desc" else field_name
 
+    # No `distinct()` here: the filters that join many-to-many (genres,
+    # platforms, series) each add their own, and an unfiltered list has no
+    # row twice. Added to every sort, it made the database compare every
+    # column of every game before it took the page's hundred.
     if sort == "year":
-        return qs.distinct().order_by(sort_field("year_of_release"), "rank")
+        return qs.order_by(sort_field("year_of_release"), "rank")
     elif sort == "name":
         # Case-insensitively, as the payload's `ni` is computed, with rank
         # breaking ties in the same direction, so the client can flip its
         # whole order for descending and still agree with this one
         if sort_direction == "desc":
-            return qs.distinct().order_by(Lower("name").desc(), "-rank")
-        return qs.distinct().order_by(Lower("name"), "rank")
+            return qs.order_by(Lower("name").desc(), "-rank")
+        return qs.order_by(Lower("name"), "rank")
     elif sort == "playtime":
         field_prefix = playtime.hours_field(params.get("hltb_mode", "main"))
         return (
             qs.exclude(**{field_prefix: None})
             .filter(playtime.shown_q())
-            .distinct()
             .order_by(sort_field(field_prefix), "rank")
         )
     else:  # Default to rank
-        return qs.distinct().order_by(sort_field("rank"))
+        return qs.order_by(sort_field("rank"))
 
 
 @method_decorator(vary_on_headers("X-Requested-With", "HX-Request"), name="dispatch")

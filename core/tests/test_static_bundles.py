@@ -211,6 +211,48 @@ class SavedFilterSortDirectionRoundTripsTests(SimpleTestCase):
                 self.assertIn("sortDirection", self._source(minified))
 
 
+class ChartScriptIsQueuedWhereThereIsAChartTests(SimpleTestCase):
+    """`rank-distribution.min.js` was queued by base.html, so every page -
+    a blog post, an album, About - fetched and ran it ahead of Alpine for
+    a chart only four pages draw. Each page that includes the chart queues
+    it; the smoke test fails on a chart with no script."""
+
+    PUSH = (
+        "window.alpineScripts.push("
+        """'{% static "games/js/rank-distribution.min.js" %}')"""
+    )
+    # The page template behind each include of the chart
+    PAGES = {
+        "games/templates/includes/_advanced_filters.html": (
+            "games/templates/games/home.html"
+        ),
+        "games/templates/developers/developer_detail.html": (
+            "games/templates/developers/developer_detail.html"
+        ),
+        "music/templates/music/home.html": "music/templates/music/home.html",
+        "music/templates/music/artists/artist_detail.html": (
+            "music/templates/music/artists/artist_detail.html"
+        ),
+    }
+
+    def test_every_template_with_a_chart_has_a_page_that_queues_the_script(self):
+        base = Path(settings.BASE_DIR)
+        including = sorted(
+            str(path.relative_to(base))
+            for app in ("games", "music", "core", "books")
+            for path in (base / app / "templates").rglob("*.html")
+            if "core/includes/_rank_distribution.html" in path.read_text()
+        )
+        self.assertEqual(including, sorted(self.PAGES))
+        for page in set(self.PAGES.values()):
+            with self.subTest(page=page):
+                self.assertEqual((base / page).read_text().count(self.PUSH), 1)
+
+    def test_base_no_longer_queues_it(self):
+        source = (Path(settings.BASE_DIR) / "games/templates/base.html").read_text()
+        self.assertNotIn("rank-distribution", source)
+
+
 class ModalHandlersLoadWithinASecondTests(SimpleTestCase):
     """Log In, Sign Up, Contact and "Send feedback" are plain buttons that
     `modal-handlers.js` alone answers, and it was injected from a

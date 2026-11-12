@@ -2721,6 +2721,13 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
                     await sleep(300);
                 }
             }
+            // The chart's script is queued by the pages that show one, no
+            // longer by every page: one that forgot would draw nothing, and
+            // say nothing
+            if (await page.evaluate(() => Boolean(document.querySelector('.rank-distribution')) &&
+                typeof window.RankDistributionChart !== 'function')) {
+                problems.push('a rank distribution chart with no script to draw it');
+            }
             problems.push(...await page.evaluate(() => window.__csp));
             if (problems.length) {
                 failures += 1;

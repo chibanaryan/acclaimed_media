@@ -1068,10 +1068,27 @@ class GameQuerySet(models.QuerySet):
         )
 
     def with_list_count(self):
-        """Annotate games with count of list appearances."""
-        from django.db.models import Count
+        """Annotate each game with how many lists it appears on.
 
-        return self.annotate(list_count=Count("lists", distinct=True))
+        A subquery a row, not ``Count("lists")``: that joined every
+        membership and grouped every column of every game before the page's
+        hundred rows were taken, and a filter's many-to-many join multiplied
+        the count unless it was ``distinct``. It was 109 ms of the rankings
+        page's 120 ms of SQL (ROADMAP, 2026-11-10).
+        """
+        from django.db.models import Count, IntegerField, OuterRef, Subquery
+        from django.db.models.functions import Coalesce
+
+        memberships = (
+            ListMembership.objects.filter(game=OuterRef("pk"))
+            .order_by()
+            .values("game")
+            .annotate(total=Count("pk"))
+            .values("total")
+        )
+        return self.annotate(
+            list_count=Coalesce(Subquery(memberships, output_field=IntegerField()), 0)
+        )
 
 
 class Game(RemembersLoaded, MediaItemBase):

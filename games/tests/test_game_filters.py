@@ -8,10 +8,21 @@ ignored series and playtime, and the CSV ignored the sort.
 import csv
 import io
 
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 
 from core.tests.utils import clear_all_caches
-from games.models import Game, HLTBGameData, Platform, Series, WikipediaGenre
+from games.models import (
+    Game,
+    HLTBGameData,
+    List,
+    ListMembership,
+    Platform,
+    Publication,
+    Series,
+    WikipediaGenre,
+)
 
 
 class SharedGameFiltersTests(TestCase):
@@ -112,3 +123,79 @@ class SharedGameFiltersTests(TestCase):
             _facet_cache_key("home_year_counts", QueryDict("genres=3,7&platforms=2,1")),
             _facet_cache_key("home_year_counts", QueryDict("genres=7,3&platforms=1,2")),
         )
+
+
+class RankingsListQueryTests(TestCase):
+    """The rankings' list query, and the number of lists each row shows.
+
+    ``list_count`` was ``Count("lists", distinct=True)``: a join to every
+    list membership, grouped over every column of every game, under a
+    ``DISTINCT`` the sort added, all before the first hundred rows were
+    taken. It was 109 ms of the page's 120 ms of SQL. It is a subquery a
+    row now, and the ``DISTINCT`` is left to the filters that join
+    many-to-many, which add their own.
+    """
+
+    def setUp(self):
+        clear_all_caches()
+        self.pc = Platform.objects.create(code="WIN", name="PC")
+        self.mac = Platform.objects.create(code="MAC", name="Mac")
+        self.root = WikipediaGenre.objects.create(name="Query Root", slug="query-root")
+        self.child = WikipediaGenre.objects.create(
+            name="Query Child", slug="query-child", parent=self.root, level=1
+        )
+        publication = Publication.objects.create(name="Mag")
+        self.lists = [
+            List.objects.create(name=f"List {n}", publisher=publication, year=2000 + n)
+            for n in range(3)
+        ]
+        self.both = Game.objects.create(name="On both", rank=1, slug="on-both")
+        self.both.platforms.add(self.pc, self.mac)
+        self.both.wikipedia_genres.add(self.root, self.child)
+        for position, source in enumerate(self.lists, start=1):
+            ListMembership.objects.create(game=self.both, list=source, rank=position)
+        self.unlisted = Game.objects.create(name="On none", rank=2, slug="on-none")
+        self.unlisted.platforms.add(self.pc)
+
+    def rows(self, query=""):
+        response = self.client.get("/?" + query)
+        return [(game.name, game.list_count) for game in response.context["games"]]
+
+    def test_each_game_is_listed_once_with_its_lists(self):
+        self.assertEqual(self.rows(), [("On both", 3), ("On none", 0)])
+
+    def test_a_game_on_two_selected_platforms_is_listed_once(self):
+        """The join that would list it twice also multiplied a joined count."""
+        query = f"platforms={self.pc.id},{self.mac.id}"
+        self.assertEqual(self.rows(query), [("On both", 3), ("On none", 0)])
+
+    def test_a_game_tagged_a_genre_and_its_child_is_listed_once(self):
+        self.assertEqual(self.rows(f"genres={self.root.id}"), [("On both", 3)])
+
+    def test_every_sort_lists_each_game_once(self):
+        query = f"platforms={self.pc.id},{self.mac.id}&sort="
+        for sort in ("rank", "year", "name"):
+            with self.subTest(sort=sort):
+                self.assertEqual(len(self.rows(query + sort)), 2)
+
+    def test_the_unfiltered_list_is_not_grouped_or_made_distinct(self):
+        clear_all_caches()
+        with CaptureQueriesContext(connection) as captured:
+            self.client.get("/")
+        lists = [
+            query["sql"]
+            for query in captured.captured_queries
+            if '"games_game"."name_normalized"' in query["sql"]
+            and "LIMIT" in query["sql"]
+        ]
+        self.assertEqual(len(lists), 1, lists)
+        self.assertNotIn("SELECT DISTINCT", lists[0])
+        # The count's own subquery groups its memberships; the games are not
+        self.assertNotIn('GROUP BY "games_game"', lists[0])
+
+    def test_the_csv_lists_a_game_on_two_selected_platforms_once(self):
+        response = self.client.get(
+            "/download/", {"platforms": f"{self.pc.id},{self.mac.id}"}
+        )
+        lines = response.content.decode().strip().splitlines()
+        self.assertEqual(len(lines), 3)  # the header and two games

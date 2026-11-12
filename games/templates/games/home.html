@@ -28,6 +28,8 @@
     <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "games/js/filter-subcomponents.min.js" %}');</script>
     <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "games/js/filter-component.min.js" %}');</script>
     <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/quick-mark.min.js" %}');</script>
+    {# The rank distribution chart's script, queued by the pages that show one: base.html queued it on every page, ahead of Alpine #}
+    <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "games/js/rank-distribution.min.js" %}');</script>
 {% endblock %}
 
 {% block extra_head %}

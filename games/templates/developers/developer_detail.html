@@ -35,10 +35,11 @@
 {% endblock %}
 
 {# Queued with the Alpine scripts, which load in order before Alpine starts, #}
-{# instead of two parser-blocking tags in <head>; base.html already queues #}
-{# rank-distribution on every page, so it was being fetched twice here. #}
+{# instead of parser-blocking tags in <head>. The chart's script is queued by #}
+{# each page that shows one, since 2026-11-12; base.html queued it on all. #}
 {% block pre_alpine %}
 <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "games/js/developer-filter.min.js" %}');</script>
+<script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "games/js/rank-distribution.min.js" %}');</script>
 {% endblock %}
 
 {% block content %}
