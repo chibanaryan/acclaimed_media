@@ -7,6 +7,7 @@ from games import config
 from games.services.wiki_page_lookup_service import (
     PageLookupResult,
     WikiPageLookupService,
+    external_ids,
 )
 
 
@@ -471,3 +472,44 @@ class WikiPageLookupServiceUnitTests(SimpleTestCase):
         service, _, _ = self._build_service(delay=0, progress_callback=None)
         # Should not raise when callback is absent
         service._notify_progress("progress", {"ok": True})
+
+
+class ExternalIdsFromClaimsTests(SimpleTestCase):
+    """The HLTB id (P2816) and Steam AppID (P1733) an entity's claims hold.
+
+    Four copies of this read the single best-ranked claim, and answered
+    None when that claim had no value, whatever the next one held. A null
+    ``datavalue`` was an ``AttributeError``, which in the weekly refresh
+    dropped the entity, page title and all.
+    """
+
+    @staticmethod
+    def claim(value, rank="normal"):
+        return {"rank": rank, "mainsnak": {"datavalue": {"value": value}}}
+
+    def test_both_ids_are_read(self):
+        claims = {"P2816": [self.claim("1234")], "P1733": [self.claim("620")]}
+        self.assertEqual(external_ids(claims), ("1234", "620"))
+
+    def test_neither_is_none(self):
+        self.assertEqual(external_ids({}), (None, None))
+
+    def test_a_preferred_claim_wins_and_a_deprecated_one_is_dropped(self):
+        claims = {
+            "P2816": [self.claim("normal"), self.claim("best", "preferred")],
+            "P1733": [self.claim("old", "deprecated"), self.claim("now")],
+        }
+        self.assertEqual(external_ids(claims), ("best", "now"))
+
+    def test_a_best_claim_with_no_value_gives_way_to_the_next(self):
+        claims = {
+            "P2816": [
+                {"rank": "preferred", "mainsnak": {"snaktype": "novalue"}},
+                self.claim("1234"),
+            ]
+        }
+        self.assertEqual(external_ids(claims), ("1234", None))
+
+    def test_a_null_datavalue_does_not_raise(self):
+        claims = {"P1733": [{"rank": "normal", "mainsnak": {"datavalue": None}}]}
+        self.assertEqual(external_ids(claims), (None, None))

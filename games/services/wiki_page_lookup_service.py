@@ -10,16 +10,34 @@ import logging
 import re
 import time
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 import threading
 
 import requests
 from django.conf import settings
 
+from core.services.wikidata_claims import first_claim_value
 from games import config
 from games.services.wiki_genre_service import WikiGenreService
 
 logger = logging.getLogger(__name__)
+
+# Wikidata's properties for a game's HowLongToBeat id and Steam AppID
+WIKIDATA_HLTB_PROPERTY = "P2816"
+WIKIDATA_STEAM_PROPERTY = "P1733"
+
+
+def external_ids(claims: Dict) -> Tuple[Optional[str], Optional[str]]:
+    """The HLTB id and the Steam AppID an entity's claims hold, or None each.
+
+    The best-ranked claim that has a value, as music reads its ids
+    (``core.services.wikidata_claims``). The weekly refresh reads them
+    through this too.
+    """
+    return (
+        first_claim_value(claims, WIKIDATA_HLTB_PROPERTY),
+        first_claim_value(claims, WIKIDATA_STEAM_PROPERTY),
+    )
 
 
 @dataclass
@@ -334,57 +352,19 @@ class WikiPageLookupService:
 
             claims = entity.get("claims", {})
 
-            # Extract HLTB ID from P2816 claim (HowLongToBeat ID property)
-            # Filter out deprecated claims and prefer "preferred" rank over "normal"
-            hltb_id = None
-            p2816 = claims.get("P2816", [])
-            if p2816:
-                # Filter out deprecated claims and sort by rank preference
-                valid_claims = []
-                for claim in p2816:
-                    rank = claim.get("rank", "normal")
-                    if rank != "deprecated":
-                        valid_claims.append((claim, rank))
-
-                if valid_claims:
-                    # Sort by rank preference (preferred first, then normal)
-                    valid_claims.sort(key=lambda x: 0 if x[1] == "preferred" else 1)
-                    best_claim = valid_claims[0][0]
-                    mainsnak = best_claim.get("mainsnak", {})
-                    datavalue = mainsnak.get("datavalue", {})
-                    hltb_id = datavalue.get("value")
-                    if hltb_id:
-                        logger.debug(
-                            "Found HLTB ID via Wikidata P2816: %s -> %s",
-                            wikidata_id,
-                            hltb_id,
-                        )
-
-            # Extract Steam AppID from P1733 claim
-            # Filter out deprecated claims and prefer "preferred" rank over "normal"
-            steam_app_id = None
-            p1733 = claims.get("P1733", [])
-            if p1733:
-                # Filter out deprecated claims and sort by rank preference
-                valid_claims = []
-                for claim in p1733:
-                    rank = claim.get("rank", "normal")
-                    if rank != "deprecated":
-                        valid_claims.append((claim, rank))
-
-                if valid_claims:
-                    # Sort by rank preference (preferred first, then normal)
-                    valid_claims.sort(key=lambda x: 0 if x[1] == "preferred" else 1)
-                    best_claim = valid_claims[0][0]
-                    mainsnak = best_claim.get("mainsnak", {})
-                    datavalue = mainsnak.get("datavalue", {})
-                    steam_app_id = datavalue.get("value")
-                    if steam_app_id:
-                        logger.debug(
-                            "Found Steam AppID via Wikidata P1733: %s -> %s",
-                            wikidata_id,
-                            steam_app_id,
-                        )
+            hltb_id, steam_app_id = external_ids(claims)
+            if hltb_id:
+                logger.debug(
+                    "Found HLTB ID via Wikidata P2816: %s -> %s",
+                    wikidata_id,
+                    hltb_id,
+                )
+            if steam_app_id:
+                logger.debug(
+                    "Found Steam AppID via Wikidata P1733: %s -> %s",
+                    wikidata_id,
+                    steam_app_id,
+                )
 
             if page_title:
                 logger.debug(

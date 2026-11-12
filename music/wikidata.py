@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Dict, Iterable, List, Optional
 
+from core.services.wikidata_claims import claim_values, first_claim_value
 from music import config
 from music.services.http_client import RateLimitedClient
 
@@ -61,39 +62,11 @@ class ArtistMetadata:
     wikipedia_title: str = ""
 
 
-def _claim_values(claims: Dict[str, Any], prop: str) -> List[Any]:
-    """Return every usable datavalue for ``prop``, best rank first.
-
-    Deprecated claims are dropped and preferred claims sort ahead of normal
-    ones, which is the same ordering ``games.services.wiki_page_lookup_service``
-    applies to P2816 and P1733.
-    """
-    ranked = [
-        (claim, claim.get("rank", "normal"))
-        for claim in claims.get(prop, [])
-        if claim.get("rank", "normal") != "deprecated"
-    ]
-    ranked.sort(key=lambda pair: 0 if pair[1] == "preferred" else 1)
-
-    values = []
-    for claim, _rank in ranked:
-        datavalue = claim.get("mainsnak", {}).get("datavalue")
-        if datavalue is not None and "value" in datavalue:
-            values.append(datavalue["value"])
-    return values
-
-
-def _first_claim_value(claims: Dict[str, Any], prop: str) -> Optional[Any]:
-    """The best-ranked datavalue for ``prop``, or None."""
-    values = _claim_values(claims, prop)
-    return values[0] if values else None
-
-
 def _entity_ids(claims: Dict[str, Any], prop: str) -> List[str]:
     """The QIDs ``prop`` points at, in rank order."""
     return [
         value["id"]
-        for value in _claim_values(claims, prop)
+        for value in claim_values(claims, prop)
         if isinstance(value, dict) and "id" in value
     ]
 
@@ -249,9 +222,9 @@ class WikidataClient(RateLimitedClient):
         sitelink = entity.get("sitelinks", {}).get("enwiki", {})
 
         label_qids = _entity_ids(claims, config.WIKIDATA_LABEL_PROPERTY)
-        master_id = _first_claim_value(claims, config.WIKIDATA_DISCOGS_MASTER_PROPERTY)
+        master_id = first_claim_value(claims, config.WIKIDATA_DISCOGS_MASTER_PROPERTY)
 
-        released = _first_claim_value(claims, config.WIKIDATA_RELEASE_DATE_PROPERTY)
+        released = first_claim_value(claims, config.WIKIDATA_RELEASE_DATE_PROPERTY)
 
         return AlbumMetadata(
             wikidata_id=qid,
@@ -259,10 +232,10 @@ class WikidataClient(RateLimitedClient):
             release_date=_parse_time_value(released),
             release_date_precision=_date_precision(released),
             record_label_qid=label_qids[0] if label_qids else None,
-            spotify_album_id=_first_claim_value(
+            spotify_album_id=first_claim_value(
                 claims, config.WIKIDATA_SPOTIFY_PROPERTY
             ),
-            musicbrainz_release_group_id=_first_claim_value(
+            musicbrainz_release_group_id=first_claim_value(
                 claims, config.WIKIDATA_MUSICBRAINZ_RELEASE_GROUP_PROPERTY
             ),
             discogs_master_id=self._coerce_master_id(master_id),
@@ -331,7 +304,7 @@ class WikidataClient(RateLimitedClient):
             artists[qid] = ArtistMetadata(
                 wikidata_id=qid,
                 name=_label(entity) or "",
-                musicbrainz_id=_first_claim_value(
+                musicbrainz_id=first_claim_value(
                     entity.get("claims", {}),
                     config.WIKIDATA_ARTIST_MUSICBRAINZ_PROPERTY,
                 ),

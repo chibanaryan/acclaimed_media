@@ -10,10 +10,8 @@ from music.wikidata import (
     AlbumMetadata,
     ArtistMetadata,
     WikidataClient,
-    _claim_values,
     _entity_ids,
     _date_precision,
-    _first_claim_value,
     _parse_time_value,
 )
 
@@ -27,28 +25,6 @@ def time_value(timestamp, precision=11):
 
 
 class ClaimReadingTests(SimpleTestCase):
-    def test_deprecated_claims_are_dropped(self):
-        claims = {"P1": [entity_claim("keep"), entity_claim("drop", "deprecated")]}
-        self.assertEqual(_claim_values(claims, "P1"), ["keep"])
-
-    def test_preferred_claims_sort_first(self):
-        claims = {
-            "P1": [entity_claim("normal"), entity_claim("best", "preferred")],
-        }
-        self.assertEqual(_claim_values(claims, "P1"), ["best", "normal"])
-
-    def test_a_claim_with_no_datavalue_is_skipped(self):
-        claims = {"P1": [{"rank": "normal", "mainsnak": {}}, entity_claim("ok")]}
-        self.assertEqual(_claim_values(claims, "P1"), ["ok"])
-
-    def test_a_missing_property_yields_nothing(self):
-        self.assertEqual(_claim_values({}, "P1"), [])
-        self.assertIsNone(_first_claim_value({}, "P1"))
-
-    def test_first_claim_value_takes_the_best_ranked(self):
-        claims = {"P1": [entity_claim("a"), entity_claim("b", "preferred")]}
-        self.assertEqual(_first_claim_value(claims, "P1"), "b")
-
     def test_entity_ids_reads_only_entity_shaped_values(self):
         claims = {
             "P1": [

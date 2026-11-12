@@ -31,6 +31,7 @@ from games.services.genre_normalizer import (
     get_or_create_genre,
 )
 from games.services.igdb_importer import IGDBImportService
+from games.services.wiki_page_lookup_service import external_ids
 
 logger = logging.getLogger(__name__)
 
@@ -511,52 +512,7 @@ class Command(BaseCommand):
                     if not page_title:
                         return None
 
-                    # Get HLTB ID from P2816 claim
-                    # Filter out deprecated claims and prefer
-                    # "preferred" rank over "normal"
-                    claims = entity.get("claims", {})
-                    hltb_id = None
-                    p2816 = claims.get("P2816", [])
-                    if p2816:
-                        # Filter out deprecated claims and sort by rank preference
-                        valid_claims = []
-                        for claim in p2816:
-                            rank = claim.get("rank", "normal")
-                            if rank != "deprecated":
-                                valid_claims.append((claim, rank))
-
-                        if valid_claims:
-                            # Sort by rank preference (preferred first, then normal)
-                            valid_claims.sort(
-                                key=lambda x: 0 if x[1] == "preferred" else 1
-                            )
-                            best_claim = valid_claims[0][0]
-                            mainsnak = best_claim.get("mainsnak", {})
-                            datavalue = mainsnak.get("datavalue", {})
-                            hltb_id = datavalue.get("value")
-
-                    # Get Steam AppID from P1733 claim
-                    # Filter out deprecated claims and prefer
-                    # "preferred" rank over "normal"
-                    steam_app_id = None
-                    p1733 = claims.get("P1733", [])
-                    if p1733:
-                        # Filter out deprecated claims and sort by rank preference
-                        valid_claims = []
-                        for claim in p1733:
-                            rank = claim.get("rank", "normal")
-                            if rank != "deprecated":
-                                valid_claims.append((claim, rank))
-
-                        if valid_claims:
-                            # Sort by rank preference (preferred first, then normal)
-                            valid_claims.sort(
-                                key=lambda x: 0 if x[1] == "preferred" else 1
-                            )
-                            best_claim = valid_claims[0][0]
-                            mainsnak = best_claim.get("mainsnak", {})
-                            datavalue = mainsnak.get("datavalue", {})
-                            steam_app_id = datavalue.get("value")
+                    hltb_id, steam_app_id = external_ids(entity.get("claims", {}))
 
                     return {
                         "page_title": page_title,
