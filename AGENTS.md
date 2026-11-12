@@ -2070,7 +2070,13 @@ landing page and shares its cache.
   signed out once. JavaScript that reads the CSRF cookie reads
   `am_csrftoken`. The theme choice is in `localStorage`, which is per
   origin, so `_theme_script.html` also keeps it in a domain-wide `theme`
-  cookie.
+  cookie, which wins. On a host with no parent a cookie may name
+  (`*.localhost`, a bare name, an address such as `127.0.0.1`) the cookie
+  is the host's own. For an address it named `.0.1` until 2026-11-12, which
+  is not kept, so a `theme` cookie already there could not be changed and
+  put the reader back on its theme at every page
+  (`core/tests/test_theme_cookie_js.py`; smoke: "a theme chosen on
+  127.0.0.1 stays").
 - **Development** uses the same names under localhost: `localhost:8000`,
   `games.localhost:8000`, `music.localhost:8000` (Chrome resolves
   `*.localhost` itself; `ALLOWED_HOSTS` takes `.localhost` under `DEBUG`).
@@ -2892,7 +2898,7 @@ Four layers, from automatic to manual:
   | `audit` | `pip-audit` on both locks, `npm audit` (any severity). The one job a Monday's scheduled run does |
   | `css` | rebuilds the CSS and fails if it differs from the committed file |
   | `js` | `scripts/minify_js.sh --check`: the same for the minified JS and bundles, and `node --check` on the two scripts terser never parses |
-  | `browser` | `scripts/browser_smoke.js`: Chrome over the main pages, failing on a JS, Alpine or CSP error, plus Back and Load More across the engine load, music's takeover leaving a row's POST alone, a year range outside the corpus and leaving it, a games highlight landing, a mobile row opened by keyboard, the CSV button, a failed filter request rolled back on both sites, a failed Back followed by the engine, each site's search box by keyboard, a reversed year range on both sites, a server Load More keeping focus, and, signed in as the reader `smoke_seed.py` makes, a status chosen on the artist page reaching the row's other half |
+  | `browser` | `scripts/browser_smoke.js`: Chrome over the main pages, failing on a JS, Alpine or CSP error, plus Back and Load More across the engine load, music's takeover leaving a row's POST alone, a year range outside the corpus and leaving it, a games highlight landing, a mobile row opened by keyboard, the CSV button, a failed filter request rolled back on both sites, a failed Back followed by the engine, each site's search box by keyboard, a reversed year range on both sites, a server Load More keeping focus, a theme chosen on `127.0.0.1` staying, and, signed in as the reader `smoke_seed.py` makes, a status chosen on the artist page reaching the row's other half |
 
   `css` exists because Heroku runs only the Python buildpack, so the
   committed `theme/static/css/dist/styles.css` is what ships. An npm bump

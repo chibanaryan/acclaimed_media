@@ -1417,6 +1417,32 @@ async function checkServerLoadMoreKeepsFocus(page) {
 }
 
 /**
+ * On an address the theme's cookie named a domain made of the address's last
+ * two parts (".0.1"), which no browser keeps, so it was never written there.
+ * A `theme` cookie already on 127.0.0.1, whose cookies every port shares,
+ * could then never be changed, and decided every page: a reader who switched
+ * to dark was put back on light by the next page. Answers as above.
+ */
+async function checkAThemeChosenOnAnAddressStays(page) {
+    const address = `http://127.0.0.1:${port}`;
+    const shown = () => page.evaluate(
+        () => document.documentElement.getAttribute('data-theme'));
+    await page.setViewport({ width: 1440, height: 900 });
+    await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'dark' }]);
+    await page.goto(address + '/developers/', { waitUntil: 'load' });
+    // As anything served on this address before could have left it
+    await page.evaluate(() => { document.cookie = 'theme=lofi;path=/;max-age=600'; });
+    await page.goto(address + '/developers/', { waitUntil: 'load' });
+    if (await shown() !== 'lofi') return `127.0.0.1: the cookie's theme was not shown`;
+    await page.evaluate(() => document.getElementById('theme-toggle').click());
+    await sleep(300);
+    if (await shown() !== 'forest') return '127.0.0.1: the toggle did not switch the theme';
+    await page.goto(address + '/lists/', { waitUntil: 'load' });
+    const next = await shown();
+    return next === 'forest' ? null : `127.0.0.1: chose forest, and the next page showed ${next}`;
+}
+
+/**
  * Signs in as the reader `scripts/smoke_seed.py` makes, on `site`, through
  * the modal's own route. From a page that renders the CSRF token, which is
  * what sets its cookie.
@@ -2861,6 +2887,7 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
         start: async opened => opened.waitForFunction(
             musicReady, {}, await opened.waitForSelector('.year-grid-decade')),
     }, [1970, 1989]));
+    await report('a theme chosen on 127.0.0.1 stays', checkAThemeChosenOnAnAddressStays);
     await report('music server Load More keeps focus', checkServerLoadMoreKeepsFocus);
     await report('music artist page mirrors a status', checkArtistPageMirrorsAStatus);
     await report('games sign-up route opens the modal', page => checkSignupRouteOpensTheModal(page, games));

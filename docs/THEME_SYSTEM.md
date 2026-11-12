@@ -22,6 +22,14 @@ In two places, because the site is three origins (`acclaimedmedia.org`,
 
 On localhost there is no shared parent domain a cookie may name, so each of
 `localhost`, `games.localhost` and `music.localhost` keeps its own choice.
+The same goes for an address (`127.0.0.1`, which serves the games site):
+its cookie is the host's own. Until 2026-11-12 the script named a domain
+made of the address's last two parts (`.0.1`), which no browser keeps, so
+there was no cookie there to write, and one already there could not be
+changed and decided every page (see `core/tests/test_theme_cookie_js.py`).
+
+There is one cookie. Saving the domain's removes a host's own of the same
+name: a browser sends both, the older first, and the script reads the first.
 
 ## Page load
 

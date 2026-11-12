@@ -54,6 +54,11 @@
   files stay out, by name, at 62% to 81%. A test compiles every template.
   Local test runs no longer install the debug toolbar, as CI's never did.
   The smoke test signs in for the first time, as a seeded reader
+- **A theme chosen on `127.0.0.1` stays chosen.** The theme's cookie named
+  a domain made of the host's last two parts, which for an address is `.0.1`
+  and is not kept, so a `theme` cookie already there could not be changed
+  and put the reader back on it at every page. An address's cookie is its
+  own now, and a host's own does not outlive the shared one in production
 - Tried and taken out at its second review round: honouring `Retry-After`
   in music's HTTP client (ROADMAP 10 says what it has to get right). Left
   as it was, on a closer look: `populate_platform_years`, which is the one
