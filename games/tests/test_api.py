@@ -93,6 +93,12 @@ class GameListApiTests(TestCase):
 class ApiSmokeTests(TestCase):
 
     def setUp(self):
+        # The developers list reads the cached counts through the hierarchy,
+        # whose drop waits for a commit a TestCase never makes. Under the
+        # Django runner, which clears nothing, the counts an earlier class
+        # left named that class's developers: by ids that SQLite hands out
+        # again from 1, so the list still matched, and Postgres does not.
+        clear_all_caches()
         self.client = APIClient()
         self.publication = models.Publication.objects.create(name="IGN")
         self.list = models.List.objects.create(

@@ -1366,7 +1366,9 @@ async function checkAReversedYearRange(page, { site, rows, start }, [first, last
     await page.goto(`${site}/?start=${first}&end=${last}`, { waitUntil: 'load' });
     const forward = await list();
     if (!forward.ids.length) return `${site}: ${first}-${last} lists nothing`;
-    await page.goto(`${site}/?start=${last}&end=${first}`, { waitUntil: 'load' });
+    // Idle, as every check that starts the games engine waits: at `load`
+    // Alpine may not have started the component that answers the start
+    await page.goto(`${site}/?start=${last}&end=${first}`, { waitUntil: 'networkidle2' });
     const served = await list();
     if (served.ids.join() !== forward.ids.join()) {
         return `${site}: the server listed ${served.ids.length} rows for ${last}-${first}`;
