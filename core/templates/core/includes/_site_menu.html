@@ -3,7 +3,7 @@
 {# The current site is aria-current="true", not "page": it is the site, not the page. Books appears under its own flag. A link into music carries the beta badge while MUSIC_BETA is on. #}
 {% load core_filters %}
 <details class="site-menu w-full mb-3 group">
-    <summary class="flex items-center justify-between gap-1 cursor-pointer list-none rounded-lg px-1 py-1 hover:bg-base-300 [&::-webkit-details-marker]:hidden" aria-label="Acclaimed Media: switch site">
+    <summary class="flex items-center justify-between gap-1 cursor-pointer list-none rounded-lg px-1 py-1 hover:bg-base-300 [&::-webkit-details-marker]:hidden" aria-label="Acclaimed Media {% if media_type == 'music' %}Music{% if MUSIC_BETA %} Beta{% endif %}{% elif media_type == 'books' %}Books{% else %}Games{% endif %}: switch site">
         <span class="min-w-0">
             <span class="block font-bold text-base leading-tight tracking-tight whitespace-nowrap">Acclaimed Media</span>
             <span class="flex items-center gap-1 text-sm text-base-content/70">

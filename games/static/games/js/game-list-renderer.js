@@ -586,7 +586,7 @@ class GameListRenderer extends BaseMediaListRenderer {
                     } else {
                         return f.platforms.map((p, pi) => {
                             const comma = (pi < f.platforms.length - 1) ? ', ' : (fi < platformFamilies.length - 1 ? ', ' : '');
-                            return `<button type="button" class="tooltip tooltip-top hover:text-primary cursor-pointer transition-colors" data-tip="${this._escapeHtml(p.name)}" aria-label="Filter by ${this._escapeHtml(p.name)}" data-add-platforms="${p.id}">${p.code}</button>${comma}`;
+                            return `<button type="button" class="tooltip tooltip-top hover:text-primary cursor-pointer transition-colors" data-tip="${this._escapeHtml(p.name)}" aria-label="${p.code}: filter by ${this._escapeHtml(p.name)}" data-add-platforms="${p.id}">${p.code}</button>${comma}`;
                         }).join('');
                     }
                 }).join('');

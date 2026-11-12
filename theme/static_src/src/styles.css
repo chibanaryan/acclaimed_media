@@ -97,7 +97,12 @@
   --color-primary-content: oklch(97% 0.021 166.113);
   --color-secondary: oklch(54% 0.281 293.009);
   --color-secondary-content: oklch(96% 0.016 293.756);
-  --color-accent: oklch(50% 0.118 165.612);
+  /* The colour of text: links, each row's rank, an article's links. At
+     65% lightness it is 4.9:1 on base-100, the lightest of this theme's
+     backgrounds, and more on the others. It was 50%, which is 2.7:1 there
+     and 3.2:1 on base-200 (axe-core, 2026-11-12). Nothing uses it as a
+     background. */
+  --color-accent: oklch(65% 0.118 165.612);
   --color-accent-content: oklch(97% 0.021 166.113);
   --color-neutral: oklch(26% 0 0);
   --color-neutral-content: oklch(98% 0 0);
@@ -220,6 +225,36 @@
 .nav-ready {
   opacity: 1;
   transition: opacity 0.05s ease-in;
+}
+
+/* The dark theme's primary is a background colour, nearly as dark as its
+   pages: as text it is 1.5:1 to 2.0:1. Where a class names it as a text
+   colour, the dark theme uses the accent, the same green made to be read.
+   The light theme's primary is dark on light, and needs none of this. */
+[data-theme="forest"] .text-primary,
+[data-theme="forest"] .link-primary {
+  color: var(--color-accent);
+}
+
+[data-theme="forest"] .badge-outline.badge-primary {
+  --badge-color: var(--color-accent);
+}
+
+@media (hover: hover) {
+  [data-theme="forest"] .hover\:text-primary:hover {
+    color: var(--color-accent);
+  }
+
+  [data-theme="forest"] .badge-outline.hover\:badge-primary:hover {
+    --badge-color: var(--color-accent);
+  }
+}
+
+/* DaisyUI's form label is the text colour at 60%, which is 4.2:1 on the
+   light theme's base-200. 70% clears 4.5:1 on every background of both
+   themes, as the /65 floor does for text written with a utility. */
+.label {
+  color: color-mix(in oklab, currentcolor 70%, transparent);
 }
 
 /* Prose typography customization for dark theme */

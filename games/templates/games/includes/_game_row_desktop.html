@@ -71,7 +71,7 @@
                                     <span class="tabular-nums font-bold leading-none" style="font-size: 8px; margin-left: 1px; margin-top: -2px;">{{ family.count }}</span></button>{% if not forloop.last %}, {% endif %}
                                 {% else %}
                                     {% for p in family.platforms %}
-                                    <button type="button" class="tooltip tooltip-top hover:text-primary cursor-pointer transition-colors" data-tip="{{ p.name }}" aria-label="Filter by {{ p.name }}" data-add-platforms="{{ p.id }}">{{ p.code }}</button>{% if not forloop.last %}, {% elif not forloop.parentloop.last %}, {% endif %}
+                                    <button type="button" class="tooltip tooltip-top hover:text-primary cursor-pointer transition-colors" data-tip="{{ p.name }}" aria-label="{{ p.code }}: filter by {{ p.name }}" data-add-platforms="{{ p.id }}">{{ p.code }}</button>{% if not forloop.last %}, {% elif not forloop.parentloop.last %}, {% endif %}
                                     {% endfor %}
                                 {% endif %}
                             {% endfor %}
