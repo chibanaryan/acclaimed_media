@@ -368,13 +368,17 @@
 
     {# Hamburger menu with overflow items - ml-auto keeps it right-aligned #}
     <div class="shrink-0 ml-auto">
-        <div @click.away="expanded = false">
+        {# Escape closes it, as it closes the sidebar's site menu, and puts focus back on the button that opened it #}
+        <div @click.away="expanded = false"
+             @keydown.escape.window="if (expanded) { expanded = false; $refs.menuButton.focus(); }">
             <button type="button" @click="expanded = !expanded" class="btn btn-ghost btn-sm"
-                   aria-label="menu" :aria-expanded="expanded">
+                   x-ref="menuButton"
+                   aria-label="menu" aria-controls="mobile-overflow-menu"
+                   :aria-expanded="expanded ? 'true' : 'false'">
                 <span class="mdi mdi-menu text-xl" aria-hidden="true" x-show="!expanded"></span>
                 <span class="mdi mdi-close text-xl" aria-hidden="true" x-show="expanded" x-cloak></span>
             </button>
-            <ul x-show="expanded" x-cloak
+            <ul x-show="expanded" x-cloak id="mobile-overflow-menu"
                 x-transition:enter="transition ease-out duration-100"
                 x-transition:enter-start="opacity-0 scale-95"
                 x-transition:enter-end="opacity-100 scale-100"

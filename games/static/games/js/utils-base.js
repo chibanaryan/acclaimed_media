@@ -76,7 +76,15 @@ function readCsrfToken() {
 function replaceKeepingFocus(container, html) {
     const hadFocus = container.contains(document.activeElement);
     container.innerHTML = html;
-    if (!hadFocus) return;
+    if (hadFocus) focusLoadMore(container);
+}
+
+/**
+ * Put focus on a Load More container's button, or on the container itself
+ * at the end of the list.
+ * @param {Element} container
+ */
+function focusLoadMore(container) {
     const next = container.querySelector('button:not([disabled]), a[href]');
     if (next) {
         next.focus({ preventScroll: true });
@@ -85,6 +93,32 @@ function replaceKeepingFocus(container, html) {
     container.setAttribute('tabindex', '-1');
     container.focus({ preventScroll: true });
 }
+
+/**
+ * The same for a Load More the server answers. Music's, before its engine
+ * has loaded, appends the rows and replaces `#load-more-container` out of
+ * band, button and all, and focus fell to the top of the page. Asked of the
+ * document after the swap, not of the event's target, which by then is the
+ * element the swap replaced.
+ */
+(function keepFocusAcrossAServerLoadMore() {
+    if (typeof document === 'undefined' || !document.addEventListener) return;
+    let hadFocus = false;
+    document.addEventListener('htmx:beforeRequest', function(event) {
+        const source = event.detail && event.detail.elt;
+        hadFocus = Boolean(source && source === document.activeElement &&
+            source.classList && source.classList.contains('load-more-button'));
+    });
+    document.addEventListener('htmx:oobAfterSwap', function(event) {
+        const target = event.detail && event.detail.target;
+        if (!hadFocus || !target || target.id !== 'load-more-container') return;
+        hadFocus = false;
+        const active = document.activeElement;
+        if (active && active !== document.body) return;
+        const container = document.getElementById('load-more-container');
+        if (container) focusLoadMore(container);
+    });
+})();
 /**
  * How a scripted scroll should move: 'smooth', or 'auto' for a reader who
  * has asked their system for less motion. The stylesheet already turns

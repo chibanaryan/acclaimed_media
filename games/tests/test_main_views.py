@@ -8,6 +8,7 @@ import csv
 import io
 import re
 import zlib
+from pathlib import Path
 from unittest import mock
 
 from django.conf import settings
@@ -537,6 +538,27 @@ class ContactThankYouViewTest(TestCase):
                 self.assertContains(self.client.get(url), noindex)
         clear_all_caches()
         self.assertNotContains(self.client.get(reverse("home")), 'name="robots"')
+
+    def test_the_staff_import_pages_say_noindex(self):
+        """Linked from nowhere and staff-only, and said so to a crawler that
+        finds one all the same."""
+        noindex = (
+            '{% block robots %}<meta name="robots" content="noindex">{% endblock %}'
+        )
+        for template in (
+            "games/templates/import.html",
+            "music/templates/music/import.html",
+            "books/templates/books/import.html",
+        ):
+            with self.subTest(template=template):
+                source = (Path(settings.BASE_DIR) / template).read_text()
+                self.assertIn(noindex, source)
+
+    def test_the_contact_page_describes_itself(self):
+        """It carried the rankings' description, as every page without one
+        of its own does."""
+        response = self.client.get(reverse("contact"))
+        self.assertContains(response, '<meta name="description" content="Contact ')
 
 
 class GameListViewTest(TestCase):

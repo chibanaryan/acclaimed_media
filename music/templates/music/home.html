@@ -20,24 +20,8 @@
 <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/filter-subcomponents.min.js" %}');</script>
 <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/media-list-controls.min.js" %}');</script>
 <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/quick-mark.min.js" %}');</script>
-{# Keeps the tracking id Sets current after an HTMX button swap. Loaded here #}
-{# rather than in the filtering bundle because the album detail page swaps #}
-{# the same button and loads no bundle at all. #}
-{# Deferred: as a plain script it blocked the first paint (~300 ms in #}
-{# Lighthouse) for a listener nothing needs before someone clicks. #}
-<script defer src="{% static 'core/js/media-tracking.min.js' %}" nonce="{{ csp_nonce }}"></script>
-<script nonce="{{ csp_nonce }}">
-document.addEventListener('DOMContentLoaded', function() {
-    window.MediaTracking.register('album', {
-        sets: {
-            own: 'ownedAlbumIds',
-            listened: 'listenedAlbumIds',
-            want: 'wantToListenAlbumIds'
-        },
-        event: 'album-status-changed'
-    });
-});
-</script>
+{# Keeps the tracking id Sets, each row's other half and focus current after an HTMX button swap #}
+{% include 'music/includes/_album_tracking_script.html' %}
 {% endblock %}
 
 {% block extra_head %}

@@ -235,6 +235,60 @@ class FilterTreeMarkupTests(SimpleTestCase):
                 self.assertEqual(read(path).count(pressed(expression)), 1)
 
 
+class DisclosureButtonsSayTheirStateTests(SimpleTestCase):
+    """A button that opens a section says whether it is open.
+
+    The mobile sheet's Release Year header did; Genre, Platform, Series,
+    Playtime and Saved did not, so a screen reader heard five buttons that
+    did nothing it could tell and one that expanded.
+    """
+
+    TOGGLES = re.compile(r"""@click="(\w+) = !\1[;"]""")
+
+    @staticmethod
+    def _button_tags(html):
+        """Each ``<button ...>`` opening tag, whole: an attribute may hold a
+        ``>`` (an arrow function), which ends a naive match early."""
+        position = 0
+        while (start := html.find("<button", position)) != -1:
+            quote = None
+            for index in range(start, len(html)):
+                char = html[index]
+                if quote:
+                    quote = None if char == quote else quote
+                elif char in "\"'":
+                    quote = char
+                elif char == ">":
+                    break
+            yield html[start : index + 1]
+            position = index + 1
+
+    def test_every_toggle_in_the_filter_templates_has_aria_expanded(self):
+        found = 0
+        for directory in (
+            "core/templates/core/includes",
+            "games/templates/games/includes",
+            "games/templates/includes",
+            "music/templates/music/includes",
+        ):
+            for path in sorted((BASE / directory).glob("*.html")):
+                for tag in self._button_tags(path.read_text(encoding="utf-8")):
+                    if not self.TOGGLES.search(tag):
+                        continue
+                    found += 1
+                    with self.subTest(template=path.name, button=tag[:80]):
+                        self.assertIn("aria-expanded", tag)
+        # The six sheet sections and the mobile menu, at least
+        self.assertGreaterEqual(found, 7)
+
+    def test_the_mobile_menu_closes_on_escape_and_names_what_it_opens(self):
+        html = read("games/templates/includes/_nav_mobile.html")
+        self.assertIn('aria-controls="mobile-overflow-menu"', html)
+        self.assertIn('id="mobile-overflow-menu"', html)
+        self.assertIn("@keydown.escape.window=", html)
+        self.assertIn("$refs.menuButton.focus()", html)
+
+
 class AuthModalHeadingTests(SimpleTestCase):
     def test_every_screen_carries_the_heading_the_dialog_is_named_by(self):
         partials = sorted((BASE / "games/templates/auth/partials").glob("*.html"))

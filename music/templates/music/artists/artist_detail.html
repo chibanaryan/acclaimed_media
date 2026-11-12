@@ -13,6 +13,8 @@
 {% block pre_alpine %}
 {# The shared sort controls bind to this; it must load before Alpine core. #}
 <script nonce="{{ csp_nonce }}">window.alpineScripts.push('{% static "core/js/media-list-controls.min.js" %}');</script>
+{# The rows' listen buttons are HTMX-swapped, as the rankings' are #}
+{% include 'music/includes/_album_tracking_script.html' %}
 {% endblock %}
 
 {% block content %}

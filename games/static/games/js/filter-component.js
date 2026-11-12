@@ -579,8 +579,10 @@ document.addEventListener('alpine:init', () => {
             this.filters.sortDirection = f.sortDirection || 'asc';
             this.filters.played = Array.isArray(f.played) ? f.played : (f.played ? f.played.split(',').filter(s => s) : []);
             this.filters.hltb_mode = f.hltb_mode || 'main';
-            this.filters.hltb_min = f.hltb_min || null;
-            this.filters.hltb_max = f.hltb_max || null;
+            // `??`: the Short preset is stored as hltb_min 0, which `||`
+            // read as no minimum, so it came back as a custom range
+            this.filters.hltb_min = f.hltb_min ?? null;
+            this.filters.hltb_max = f.hltb_max ?? null;
             this.filters.hltb_preset = this.calculateHltbPreset(this.filters.hltb_min, this.filters.hltb_max);
             this.savedFiltersOpen = false;
             this.requestClientFilteringInit('saved-filter');

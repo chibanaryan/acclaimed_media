@@ -211,6 +211,42 @@ class SavedFilterSortDirectionRoundTripsTests(SimpleTestCase):
                 self.assertIn("sortDirection", self._source(minified))
 
 
+class ModalHandlersLoadWithinASecondTests(SimpleTestCase):
+    """Log In, Sign Up, Contact and "Send feedback" are plain buttons that
+    `modal-handlers.js` alone answers, and it was injected from a
+    `requestIdleCallback` with no timeout: a callback the browser may put
+    off for as long as the page is busy, and the rankings page is."""
+
+    def test_the_idle_callback_has_a_timeout(self):
+        source = (Path(settings.BASE_DIR) / "games/templates/base.html").read_text()
+        self.assertEqual(source.count("modal-handlers.min.js"), 1)
+        self.assertIn(
+            "requestIdleCallback(loadModalHandlers, { timeout: 1000 })", source
+        )
+
+
+class SavedShortPlaytimeRoundTripsTests(SimpleTestCase):
+    """A saved "Short (<10h)" filter comes back as Short.
+
+    The preset is stored as `hltb_min: 0`, and `f.hltb_min || null` read the
+    zero as nothing: the list was the same (a maximum alone starts at zero),
+    but the Short button was not lit and the heading read "<10 Hour" for a
+    custom range. Pinned in source and minified form, as the page loads the
+    minified copy.
+    """
+
+    def test_a_zero_is_kept_when_applying(self):
+        base = Path(settings.BASE_DIR) / "games/static/games/js"
+        source = (base / "filter-component.js").read_text()
+        applied = source.split("applySavedFilter(filter) {", 1)[1][:2000]
+        self.assertIn("f.hltb_min ?? null", applied)
+        self.assertIn("f.hltb_max ?? null", applied)
+        self.assertNotIn("|| null", applied)
+        minified = (base / "filter-component.min.js").read_text()
+        self.assertIn(".hltb_min??null", minified)
+        self.assertIn(".hltb_max??null", minified)
+
+
 class SavedFilterYearGridHookIsLiveTests(SimpleTestCase):
     """The shared year grid's saved-filter hook needs a flag to read.
 
@@ -2094,7 +2130,21 @@ class LoadMoreKeepsFocusTests(SimpleTestCase):
         self.assertIn(
             "const hadFocus = container.contains(document.activeElement);", helper
         )
-        self.assertIn("if (!hadFocus) return;", helper)
+        self.assertIn("if (hadFocus) focusLoadMore(container);", helper)
+
+    def test_a_server_load_more_keeps_focus_too(self):
+        """Music's, before its engine loads, replaces its own container out
+        of band (scripts/browser_smoke.js, "music server Load More keeps
+        focus"). The listener asks the document for the new container: the
+        event's target is by then the one the swap replaced."""
+        source = (
+            Path(settings.BASE_DIR) / "games/static/games/js/utils-base.js"
+        ).read_text()
+        listener = source.split("(function keepFocusAcrossAServerLoadMore() {", 1)[1]
+        listener = listener.split("\n})();", 1)[0]
+        self.assertIn("'htmx:oobAfterSwap'", listener)
+        self.assertIn("document.getElementById('load-more-container')", listener)
+        self.assertIn("focusLoadMore(container)", listener)
 
 
 class RenderedIconsAreHiddenTests(SimpleTestCase):

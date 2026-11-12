@@ -333,20 +333,20 @@
     {% include 'includes/_auth_modal.html' %}
 
     {# Modal handlers - deferred loading for better performance #}
+    {# With a timeout: Log In, Sign Up and Contact are buttons this script alone answers, and an idle moment is not promised. On the rankings page, busy rendering, a click before one came did nothing. #}
     <script nonce="{{ csp_nonce }}">
-        if ('requestIdleCallback' in window) {
-            requestIdleCallback(function() {
+        (function() {
+            function loadModalHandlers() {
                 var s = document.createElement('script');
                 s.src = '{% static "games/js/modal-handlers.min.js" %}';
                 document.head.appendChild(s);
-            });
-        } else {
-            setTimeout(function() {
-                var s = document.createElement('script');
-                s.src = '{% static "games/js/modal-handlers.min.js" %}';
-                document.head.appendChild(s);
-            }, 100);
-        }
+            }
+            if ('requestIdleCallback' in window) {
+                requestIdleCallback(loadModalHandlers, { timeout: 1000 });
+            } else {
+                setTimeout(loadModalHandlers, 100);
+            }
+        })();
     </script>
 
     {% block extra_scripts %}{% endblock %}
@@ -407,7 +407,9 @@
                     setTimeout(function() {
                         // On desktop (sidebar visible), scroll to top of page
                         // On mobile, scroll to header
-                        const isDesktop = window.matchMedia('(min-width: 962px)').matches;
+                        const isDesktop = window.isDesktopWidth
+                            ? window.isDesktopWidth()
+                            : window.matchMedia('(min-width: 962px)').matches;
                         if (isDesktop) {
                             window.scrollTo({ top: 0, behavior: window.scrollBehavior ? window.scrollBehavior() : 'auto' });
                         } else {

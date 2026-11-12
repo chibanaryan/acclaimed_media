@@ -5,6 +5,9 @@ job). Enough that the rankings pages render rows, the filters have options,
 and the detail pages exist; nothing else depends on it.
 """
 
+from allauth.account.models import EmailAddress
+
+from core.models import User
 from games.models import (
     Developer,
     Game,
@@ -74,5 +77,14 @@ for rank in range(1, 121):
     )
     album.artists.set([artist])
     album.genres.set([rock])
+
+# A reader who can sign in, for the checks of what only a signed-in page
+# has (the listen buttons): verified, since verification is mandatory
+reader = User.objects.create_user(
+    username="smoke-reader", email="smoke-reader@example.com", password="smoke-pass-1"
+)
+EmailAddress.objects.create(
+    user=reader, email=reader.email, verified=True, primary=True
+)
 
 print("seeded")

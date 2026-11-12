@@ -1351,6 +1351,154 @@ async function checkSignupRouteOpensTheModal(page, site) {
 }
 
 /**
+ * A year range written backwards (by hand: no control writes one) is the
+ * range. Each side listed nothing, under a heading reading "1999-1990". The
+ * server's rows are compared with the forward range's, then the engine's once
+ * it has taken over, which must add no history entry on the way. Answers as
+ * above.
+ */
+async function checkAReversedYearRange(page, { site, rows, start }, [first, last]) {
+    await page.setViewport({ width: 1440, height: 900 });
+    const list = async () => ({
+        ids: await page.$$eval(rows, found => found.map(row => row.id)),
+        heading: await page.$eval('h1', heading => heading.textContent.trim()),
+    });
+    await page.goto(`${site}/?start=${first}&end=${last}`, { waitUntil: 'load' });
+    const forward = await list();
+    if (!forward.ids.length) return `${site}: ${first}-${last} lists nothing`;
+    await page.goto(`${site}/?start=${last}&end=${first}`, { waitUntil: 'load' });
+    const served = await list();
+    if (served.ids.join() !== forward.ids.join()) {
+        return `${site}: the server listed ${served.ids.length} rows for ${last}-${first}`;
+    }
+    if (served.heading !== forward.heading) return `${site}: headed "${served.heading}"`;
+    const entries = await page.evaluate(() => history.length);
+    await start(page);
+    await sleep(800);
+    const taken = await list();
+    if (taken.ids.join() !== forward.ids.join()) {
+        return `${site}: the engine listed ${taken.ids.length} rows for ${last}-${first}`;
+    }
+    if (taken.heading !== forward.heading) return `${site}: the engine headed "${taken.heading}"`;
+    const added = await page.evaluate(() => history.length) - entries;
+    return added ? `${site}: taking over added ${added} history entries` : null;
+}
+
+/**
+ * Music's Load More before its engine has loaded is the server's: htmx
+ * appends the rows and replaces the button's container out of band, and a
+ * keyboard reader's focus, which was on the button, fell to the top of the
+ * page. It goes to the new button, or at the end of the list to the
+ * container, as the engine's own Load More leaves it. Answers as above.
+ */
+async function checkServerLoadMoreKeepsFocus(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    // The engine's data is held for good, so the server answers the button
+    await holdEngineLoad(page, { site: music, data: '/api/all/' }, () => false);
+    await page.goto(music + '/', { waitUntil: 'load' });
+    await page.waitForSelector('.load-more-button');
+    await sleep(1000);
+    const before = await page.$$eval(albumRows, found => found.length);
+    await page.focus('.load-more-button');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(
+        (selector, count) => document.querySelectorAll(selector).length > count,
+        {}, albumRows, before);
+    await sleep(300);
+    const focus = await page.evaluate(() => {
+        const container = document.getElementById('load-more-container');
+        const active = document.activeElement;
+        return {
+            inside: Boolean(container && active && container.contains(active)),
+            where: active ? active.tagName + (active.id ? '#' + active.id : '') : 'nothing',
+        };
+    });
+    return focus.inside ? null : `after a server Load More, focus was on ${focus.where}`;
+}
+
+/**
+ * Signs in as the reader `scripts/smoke_seed.py` makes, on `site`, through
+ * the modal's own route. From a page that renders the CSRF token, which is
+ * what sets its cookie.
+ */
+async function signIn(page, site) {
+    await page.goto(site + '/', { waitUntil: 'load' });
+    await page.waitForFunction(
+        () => typeof readCsrfToken === 'function' && Boolean(readCsrfToken()));
+    const answer = await page.evaluate(async () => {
+        const response = await fetch('/auth/modal/login/', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': readCsrfToken(), 'HX-Request': 'true' },
+            body: new URLSearchParams({ login: 'smoke-reader', password: 'smoke-pass-1' }),
+        });
+        return response.status + (response.headers.get('HX-Redirect') ? '' : ', no redirect');
+    });
+    return answer === '200' ? null : `${site}: signing in answered ${answer}`;
+}
+
+/**
+ * Each album row carries its listen button twice, for desktop and for
+ * phones, and `media-tracking.js` copies a status chosen in one onto the
+ * other. The artist page never loaded it: the hidden half kept its old icon
+ * until a reload, and focus fell to the top of the page. Answers as above.
+ */
+async function checkArtistPageMirrorsAStatus(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    const refused = await signIn(page, music);
+    if (refused) return refused;
+    await page.goto(music + '/artists/smoke-band/', { waitUntil: 'load' });
+    const wrapper = '[data-tracking-scope="album"]';
+    await page.waitForSelector(wrapper);
+    await page.waitForFunction(() => typeof readCsrfToken === 'function');
+    await sleep(1000);
+    const itemId = await page.$eval(wrapper, element => element.dataset.itemId);
+    const both = `${wrapper}[data-item-id="${itemId}"]`;
+    const twins = await page.$$eval(both, found => found.length);
+    if (twins !== 2) return `the artist page has ${twins} buttons for one album`;
+    // The visible half's own menu, by keyboard: Enter opens it and picks
+    const pressed = await page.evaluate(selector => {
+        const visible = [...document.querySelectorAll(selector)]
+            .find(element => element.offsetParent !== null);
+        const button = visible && visible.querySelector('.tracking-button');
+        if (!button) return false;
+        button.focus();
+        button.click();
+        return true;
+    }, both);
+    if (!pressed) return 'the artist page shows no listen button';
+    await sleep(300);
+    const chosen = await page.evaluate(selector => {
+        const visible = [...document.querySelectorAll(selector)]
+            .find(element => element.offsetParent !== null);
+        const item = visible && visible.querySelector('[hx-post*="status=listened"]');
+        if (!item) return false;
+        item.focus();
+        item.click();
+        return true;
+    }, both);
+    if (!chosen) return 'the listen menu offers no Heard';
+    await page.waitForFunction(selector =>
+        [...document.querySelectorAll(selector)].some(e => e.dataset.status === 'listened'),
+    {}, both);
+    await sleep(500);
+    const after = await page.evaluate(selector => ({
+        statuses: [...document.querySelectorAll(selector)].map(e => e.dataset.status),
+        focused: Boolean(document.activeElement &&
+            document.activeElement.closest('[data-tracking-scope="album"]')),
+    }), both);
+    // Put back, so the check can run again on the same database
+    await page.evaluate(async id => {
+        await fetch(`/${id}/toggle-listened/?status=none`, {
+            method: 'POST', headers: { 'X-CSRFToken': readCsrfToken() },
+        });
+    }, itemId);
+    if (after.statuses.join() !== 'listened,listened') {
+        return `the row's two buttons read ${after.statuses.join(' and ')}`;
+    }
+    return after.focused ? null : 'focus left the button after a status was chosen';
+}
+
+/**
  * A Back whose render failed leaves the list it left under the address it
  * went to, and the engine, arriving then, found the filters equal to the
  * address's and took the rows for that address's list: it left the 1990s on
@@ -2697,6 +2845,17 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     }
     await report('games failed Back without the engine', checkGamesFailedBackWithoutTheEngine);
     await report('games failed Back, then the engine', checkGamesFailedBackThenTheEngine);
+    await report('games a reversed year range', page => checkAReversedYearRange(page, {
+        site: games, rows: engines.games.rows, start: startGamesEngine,
+    }, [1990, 1999]));
+    await report('music a reversed year range', page => checkAReversedYearRange(page, {
+        site: music,
+        rows: albumRows,
+        start: async opened => opened.waitForFunction(
+            musicReady, {}, await opened.waitForSelector('.year-grid-decade')),
+    }, [1970, 1989]));
+    await report('music server Load More keeps focus', checkServerLoadMoreKeepsFocus);
+    await report('music artist page mirrors a status', checkArtistPageMirrorsAStatus);
     await report('games sign-up route opens the modal', page => checkSignupRouteOpensTheModal(page, games));
     await report('music sign-up route opens the modal', page => checkSignupRouteOpensTheModal(page, music));
     await report('games search box by keyboard', page => checkSearchBoxByKeyboard(page, games, 'smoke'));

@@ -115,6 +115,8 @@
                 if (active && active !== document.body) return;
                 const button = freshTrigger(wrapper);
                 if (button) button.focus();
+            }, function() {
+                // Failed or aborted: htmx has said so, and nothing was swapped
             });
         }
     }

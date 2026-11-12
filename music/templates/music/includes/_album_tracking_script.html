@@ -1,0 +1,17 @@
+{# The listener that keeps a page's album tracking in step after a button's HTMX swap: the id Sets, the row's other half (each row carries the button twice, for desktop and for phones) and keyboard focus. For a page's pre_alpine block. #}
+{# Every page that renders the listen button needs it. The artist page had none until 2026-11-12: a status chosen there left the hidden twin on its old icon and dropped focus to the top of the page. #}
+{# Not part of the filtering bundle, which the album and artist pages do not load. Deferred: as a plain script it blocked the first paint (~300 ms in Lighthouse) for a listener nothing needs before someone clicks. #}
+{% load static %}
+<script defer src="{% static 'core/js/media-tracking.min.js' %}" nonce="{{ csp_nonce }}"></script>
+<script nonce="{{ csp_nonce }}">
+document.addEventListener('DOMContentLoaded', function() {
+    window.MediaTracking.register('album', {
+        sets: {
+            own: 'ownedAlbumIds',
+            listened: 'listenedAlbumIds',
+            want: 'wantToListenAlbumIds'
+        },
+        event: 'album-status-changed'
+    });
+});
+</script>

@@ -2142,6 +2142,31 @@ class ArtistDetailListenButtonTests(MusicDataMixin, TestCase):
         self.assertTrue(albums)
         self.assertTrue(albums[0].is_listened_by_user)
 
+    def test_the_sync_listener_is_loaded_and_registered(self):
+        """Each row carries the button twice, for desktop and for phones.
+        Without the listener a status chosen here left the hidden twin on
+        its old icon until a reload, and keyboard focus fell to the top of
+        the page: the script was on the rankings and the album page only."""
+        self.client.force_login(self.user)
+        response = self.client.get(
+            reverse("music:artist-detail", args=[self.beatles.slug])
+        )
+        self.assertContains(response, 'data-tracking-scope="album"')
+        self.assertContains(response, "core/js/media-tracking", count=1)
+        self.assertContains(response, "MediaTracking.register('album'", count=1)
+
+    def test_the_three_pages_share_one_registration(self):
+        from pathlib import Path
+
+        from django.conf import settings
+
+        templates = Path(settings.BASE_DIR) / "music/templates/music"
+        for name in ("home.html", "album_detail.html", "artists/artist_detail.html"):
+            with self.subTest(template=name):
+                source = (templates / name).read_text()
+                self.assertIn("music/includes/_album_tracking_script.html", source)
+                self.assertNotIn("MediaTracking.register", source)
+
 
 class MusicQueryBudgetTests(MusicDataMixin, TestCase):
     """The music pages cost a constant number of queries, not one per row.

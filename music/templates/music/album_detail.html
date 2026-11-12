@@ -26,23 +26,8 @@
 {% endblock %}
 
 {% block pre_alpine %}
-{# The button here is HTMX-swapped like the rows', so the same listener has #}
-{# to keep the tracking Sets current. This page loads no filtering bundle. #}
-{# Deferred: as a plain script it blocked the first paint (~300 ms in #}
-{# Lighthouse) for a listener nothing needs before someone clicks. #}
-<script defer src="{% static 'core/js/media-tracking.min.js' %}" nonce="{{ csp_nonce }}"></script>
-<script nonce="{{ csp_nonce }}">
-document.addEventListener('DOMContentLoaded', function() {
-    window.MediaTracking.register('album', {
-        sets: {
-            own: 'ownedAlbumIds',
-            listened: 'listenedAlbumIds',
-            want: 'wantToListenAlbumIds'
-        },
-        event: 'album-status-changed'
-    });
-});
-</script>
+{# The button here is HTMX-swapped like the rows', so the same listener keeps it and the "More by" rows in step #}
+{% include 'music/includes/_album_tracking_script.html' %}
 {% endblock %}
 
 {% block content %}

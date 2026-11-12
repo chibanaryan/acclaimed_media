@@ -11,6 +11,7 @@
     <div class="flex items-center w-full text-base font-semibold">
         <button type="button"
                 @click="expanded = !expanded"
+                :aria-expanded="expanded ? 'true' : 'false'"
                 class="flex items-center gap-2">
             <span class="mdi mdi-mushroom text-lg text-base-content/70" aria-hidden="true"></span>
             Series
