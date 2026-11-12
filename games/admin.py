@@ -1,5 +1,7 @@
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.contrib.auth.forms import UserChangeForm
+from django.core.exceptions import ValidationError
 from allauth.account.models import EmailAddress
 from django.db.models import (
     BooleanField,
@@ -20,6 +22,7 @@ from django.utils import timezone
 from django.utils.html import format_html, format_html_join
 
 from core.models import User
+from core.services.account_email import sync_address_rows
 from music import models as music_models
 
 from . import igdb, models
@@ -689,10 +692,33 @@ def _tracking_count(model, **filters):
     )
 
 
+class UserAdminChangeForm(UserChangeForm):
+    """The change form, with the email as allauth keeps one."""
+
+    def clean_email(self):
+        """Lower-case, and not an address another account has verified.
+
+        allauth compares lower-case addresses, and one address is verified
+        by one account (``unique_verified_email``): the row this save makes
+        for it could never be verified, and a case-only change to one that
+        is would fail on that constraint.
+        """
+        email = (self.cleaned_data.get("email") or "").strip().lower()
+        if (
+            email
+            and EmailAddress.objects.filter(email__iexact=email, verified=True)
+            .exclude(user=self.instance)
+            .exists()
+        ):
+            raise ValidationError("Another account has verified this address.")
+        return email
+
+
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     """Admin interface for custom User model with subscription fields."""
 
+    form = UserAdminChangeForm
     list_display = [
         "username",
         "email",
@@ -762,6 +788,34 @@ class UserAdmin(BaseUserAdmin):
         "listened_albums_list",
         "want_to_listen_list",
     ]
+
+    def save_related(self, request, form, formsets, change):
+        """Put allauth's address rows in step with a changed email.
+
+        After the inline's formset has saved, which would otherwise write
+        back a row this removed. Only when the email changed: a secondary
+        address a reader added themselves is theirs to keep. See
+        ``sync_address_rows`` for why the old address's row has to go.
+        """
+        super().save_related(request, form, formsets, change)
+        if "email" not in form.changed_data:
+            return
+        row, removed = sync_address_rows(form.instance)
+        told = []
+        if removed:
+            told.append(
+                f"Removed this account's address rows for {', '.join(removed)}, "
+                "which can no longer reset its password. If the account was "
+                "taken over, set a new password too."
+            )
+        if row is not None and not row.verified:
+            told.append(
+                f"{row.email} is unverified: the reader confirms it at their "
+                "next sign-in, where Resend sends the link. Tick Verified "
+                "below only if you know they hold that inbox."
+            )
+        if told:
+            self.message_user(request, " ".join(told), messages.WARNING)
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
