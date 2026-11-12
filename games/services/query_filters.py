@@ -6,13 +6,12 @@ including genre, platform, and year filtering with caching support.
 """
 
 import re
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from django.db.models import Q, QuerySet
 
 from core.cache_helpers import cached
-from core.services.query_params import MAX_INT, ordered_range, parse_int
+from core.services.query_params import ordered_range, parse_int
 from games import config
 
 
@@ -253,41 +252,3 @@ def apply_year_filters(
         queryset = queryset.filter(year_of_release__lte=last)
 
     return queryset
-
-
-@dataclass
-class Filter:
-    """Generic filter class for API views."""
-
-    param: str
-    fields: List[str]
-    coerce: type = str
-    label: Callable[[str], str] = lambda x: x
-
-    def filter_queryset(self, qs: QuerySet, param_val: Optional[str]) -> QuerySet:
-        """
-        Filter a queryset based on parameter value.
-
-        Args:
-            qs: The Django queryset to filter
-            param_val: The parameter value to filter by
-
-        Returns:
-            The filtered queryset
-        """
-        if not param_val:
-            return qs
-
-        try:
-            param_val = self.coerce(param_val.strip())
-        except (TypeError, ValueError):
-            # A malformed value filters nothing rather than raising a 500.
-            return qs
-        if isinstance(param_val, int) and abs(param_val) > MAX_INT:
-            return qs
-        # Any field may match. A filter with none filters nothing: `query`
-        # was left unbound there, an UnboundLocalError
-        query = Q()
-        for field in self.fields:
-            query |= Q(**{field: param_val})
-        return qs.filter(query)

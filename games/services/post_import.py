@@ -20,6 +20,7 @@ from django.utils import timezone
 
 from core.services import post_import
 from games.models import Game
+from games.services import all_data_payload
 
 logger = logging.getLogger(__name__)
 
@@ -103,11 +104,8 @@ def payload_fingerprint():
     the version fingerprints the playtimes rather than reading
     ``updated_at`` (``data_version.py``).
     """
-    # Here, not at the top: the API layer imports the services
-    from games.api.views import GameAllDataView
-
     try:
-        payload = GameAllDataView()._payload("")
+        payload = all_data_payload.build("")
         text = json.dumps(payload, sort_keys=True, default=str)
     except Exception:
         logger.exception("Could not fingerprint the games payload")

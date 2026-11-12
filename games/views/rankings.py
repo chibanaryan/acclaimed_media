@@ -17,7 +17,7 @@ from core.cache_helpers import batched_cache_reads, cache_get, cache_set
 from core.mixins import AnonymousResponseCacheMixin, RobustPaginationMixin
 from core.services import ranking, seo
 from core.services.query_params import parse_id_list
-from games import config, models, utils
+from games import config, models
 from games.cache import (
     GENERATION_HERO,
     GENERATION_TRACKING,
@@ -25,7 +25,7 @@ from games.cache import (
     played_ids_cache_key,
     want_ids_cache_key,
 )
-from games.services import landing_pages, playtime
+from games.services import landing_pages, playtime, query_filters
 from games.services.data_version import compute_game_data_version
 from games.services.query_filters import resolve_year_range
 from games.services.game_filters import (
@@ -289,7 +289,7 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         A filtered page applies the genre filter to the list and again to each
         facet; uncached, each would otherwise fetch the hierarchy itself.
         """
-        return utils.genre_descendant_map()
+        return query_filters.genre_descendant_map()
 
     def get(self, request, *args, **kwargs):
         # Every cached value the page reads, in one shared-cache round trip

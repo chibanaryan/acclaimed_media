@@ -13,6 +13,7 @@ from core.tests.utils import clear_all_caches
 from .. import models
 from ..api import serializers, views
 from ..api.views import GameListView
+from ..services import all_data_payload
 
 
 class GameListApiTests(TestCase):
@@ -780,7 +781,7 @@ class GameAllDataViewTests(TestCase):
         new page beside the last import's payload repeated and dropped games.
         """
         with mock.patch.object(
-            views.GameAllDataView, "_payload", wraps=views.GameAllDataView()._payload
+            all_data_payload, "build", wraps=all_data_payload.build
         ) as payload:
             first = self.client.get("/api/games/all/").json()
             self.assertEqual(self.client.get("/api/games/all/").json(), first)
@@ -801,7 +802,7 @@ class GameAllDataViewTests(TestCase):
         self.assertEqual(response.json()["version"], "")
         self.assertNotIn("max-age", response.get("Cache-Control", ""))
         with mock.patch.object(
-            views.GameAllDataView, "_payload", wraps=views.GameAllDataView()._payload
+            all_data_payload, "build", wraps=all_data_payload.build
         ) as payload, mock.patch.object(
             views, "compute_game_data_version", return_value="before"
         ):
@@ -813,7 +814,7 @@ class GameAllDataViewTests(TestCase):
     def test_the_clients_version_parameter_cannot_fill_the_cache(self):
         """`?v=` keeps a browser's copy honest; the server keys on its own."""
         with mock.patch.object(
-            views.GameAllDataView, "_payload", wraps=views.GameAllDataView()._payload
+            all_data_payload, "build", wraps=all_data_payload.build
         ) as payload:
             for version in ("one", "two", "three"):
                 response = self.client.get("/api/games/all/", {"v": version})

@@ -11,8 +11,9 @@ from typing import Any, Dict, List, Optional, Tuple
 from django.db.models import Count
 
 from core.cache_helpers import cached
-from games import config, models, utils
+from games import config, models
 from games.cache import GENERATION_RELEASE
+from games.services import query_filters
 
 # Number of games shown on each landing page
 TOP_N = 25
@@ -45,9 +46,9 @@ def get_landing_genres() -> List[Dict[str, Any]]:
             "display_order", "name"
         )
         # One hierarchy fetch for every root, rather than one per root.
-        descendants = utils.genre_descendant_map()
+        descendants = query_filters.genre_descendant_map()
         for genre in roots:
-            game_count = utils.apply_genre_filter(
+            game_count = query_filters.apply_genre_filter(
                 models.Game.objects.all(),
                 [genre.id],
                 match_all=False,

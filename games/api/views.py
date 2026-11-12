@@ -24,13 +24,13 @@ from rest_framework.views import APIView, Response
 
 from core import sites
 from core.services import search_ranking
-from core.services.genre_tree import descendants_by_id
-from core.services.query_params import parse_id_list, parse_limit
+from core.services.query_params import Filter, parse_id_list, parse_limit
 from core.services.request_body import SavedFilterJSONParser, read_saved_filter
+from games.services import all_data_payload, query_filters
 from games.services.data_version import compute_game_data_version
 from games.services.developer_service import get_developer_game_counts
 
-from .. import config, models, utils
+from .. import config, models
 from . import serializers
 
 
@@ -140,13 +140,13 @@ class GameListView(ListAPIView):
             "name__search",
         ] + search_fields
     filters = [
-        utils.Filter(
+        Filter(
             param="q",
             fields=search_fields,
         ),
-        utils.Filter(param="developer", fields=["developers__igdb_id"], coerce=int),
-        utils.Filter(param="start", fields=["year_of_release__gte"], coerce=int),
-        utils.Filter(param="end", fields=["year_of_release__lte"], coerce=int),
+        Filter(param="developer", fields=["developers__igdb_id"], coerce=int),
+        Filter(param="start", fields=["year_of_release__gte"], coerce=int),
+        Filter(param="end", fields=["year_of_release__lte"], coerce=int),
     ]
 
     ORDERING_FIELDS = {"rank", "name", "year_of_release", "year_rank", "decade_rank"}
@@ -161,12 +161,12 @@ class GameListView(ListAPIView):
         # Genre filtering (single-select, so match_all doesn't matter)
         genre_ids = parse_id_list(self.request.GET.get("genres"))
         if genre_ids:
-            qs = utils.apply_genre_filter(qs, genre_ids, match_all=False)
+            qs = query_filters.apply_genre_filter(qs, genre_ids, match_all=False)
 
         # Platform filtering
         platform_ids = parse_id_list(self.request.GET.get("platforms"))
         if platform_ids:
-            qs = utils.apply_platform_filter(qs, platform_ids)
+            qs = query_filters.apply_platform_filter(qs, platform_ids)
 
         # Only the summary's own sortable columns: order_by() follows
         # relations, so passing the parameter through let a caller sort by
@@ -232,7 +232,7 @@ class DeveloperListAPIView(CountsThroughStudiosMixin, ListAPIView):
     if connection.vendor == "postgresql":
         search_fields = ["name__search"] + search_fields
     filters = [
-        utils.Filter(
+        Filter(
             param="q",
             fields=search_fields,
         )
@@ -277,9 +277,9 @@ class ListListView(ListAPIView):
     serializer_class = serializers.ListSerializer
 
     filters = [
-        utils.Filter(param="publisher", fields=["publisher_id"], coerce=int),
-        utils.Filter(param="year", fields=["year"], coerce=int),
-        utils.Filter(param="type", fields=["type"], coerce=str),
+        Filter(param="publisher", fields=["publisher_id"], coerce=int),
+        Filter(param="year", fields=["year"], coerce=int),
+        Filter(param="type", fields=["type"], coerce=str),
     ]
 
     def get_queryset(self):
@@ -724,24 +724,9 @@ class UnifiedSearchView(APIView):
 
 class GameAllDataView(APIView):
     """
-    Complete game data endpoint for client-side filtering.
+    Every game in one payload, for client-side filtering.
 
-    Returns all games with minimal payload for efficient client-side filtering:
-    - Compressed field names to minimize payload size
-    - Reference data (developers, platforms, genres) keyed by ID
-    - Genre hierarchy with descendant IDs for hierarchical filtering
-
-    Response format:
-    {
-        "version": "abc123def456",
-        "data": {
-            "games": [{id, n, s, r, y, a, dv, p, g, sr, lc}, ...],
-            "developers": {id: {n, pa, s}, ...},
-            "platforms": {id: {n, c, ys, ye}, ...},
-            "genres": [{id, n, s, p, l, d}, ...],
-            "series": {id: {n, s}, ...}
-        }
-    }
+    ``games.services.all_data_payload`` builds it and describes its shape.
     """
 
     def get(self, request):
@@ -758,7 +743,7 @@ class GameAllDataView(APIView):
         body = cache.get(key)
         if body is not None:
             return _json_response(body, config.CACHE_TIMEOUT_1_HOUR)
-        payload = self._payload(version)
+        payload = all_data_payload.build(version)
         # An import that committed while the rows were read leaves them of
         # either version, so they are labelled with none, which no page
         # names and no client keeps, and are kept by no cache
@@ -771,231 +756,6 @@ class GameAllDataView(APIView):
             cache.set(key, body, config.CACHE_TIMEOUT_1_HOUR)
             patch_response_headers(response, config.CACHE_TIMEOUT_1_HOUR)
         return response
-
-    def _payload(self, version):
-        # Fetch base game rows with scalar fields only (no model instantiation)
-        game_rows = list(
-            models.Game.objects.values(
-                "id",
-                "igdb_id",
-                "name",
-                "slug",
-                "rank",
-                "year_of_release",
-                "primary_igdb_game_data__artwork_id",
-                "primary_hltb_game_data__main_story_hours",
-                "primary_hltb_game_data__completionist_hours",
-                "primary_hltb_game_data__is_open_ended",
-            )
-            .annotate(list_count=Count("lists", distinct=True))
-            .order_by("rank")
-        )
-        game_ids = [row["id"] for row in game_rows]
-
-        # Group related IDs via through tables (ordered for deterministic output)
-        game_developer_ids = defaultdict(list)
-        used_developer_ids = set()
-        if game_ids:
-            for game_id, developer_id in (
-                models.Game.developers.through.objects.filter(game_id__in=game_ids)
-                .order_by("game_id", "developer__name", "developer_id")
-                .values_list("game_id", "developer_id")
-            ):
-                game_developer_ids[game_id].append(developer_id)
-                used_developer_ids.add(developer_id)
-
-        game_platform_ids = defaultdict(list)
-        used_platform_ids = set()
-        if game_ids:
-            for game_id, platform_id in (
-                models.Game.platforms.through.objects.filter(game_id__in=game_ids)
-                .order_by("game_id", "platform__name", "platform_id")
-                .values_list("game_id", "platform_id")
-            ):
-                game_platform_ids[game_id].append(platform_id)
-                used_platform_ids.add(platform_id)
-
-        game_genre_ids = defaultdict(list)
-        if game_ids:
-            genre_links = models.Game.wikipedia_genres.through.objects.filter(
-                game_id__in=game_ids
-            ).order_by(
-                "game_id",
-                "wikipediagenre__level",
-                "wikipediagenre__display_order",
-                "wikipediagenre__name",
-                "wikipediagenre_id",
-            )
-            for game_id, genre_id in genre_links.values_list(
-                "game_id", "wikipediagenre_id"
-            ):
-                game_genre_ids[game_id].append(genre_id)
-
-        game_series_ids = defaultdict(list)
-        used_series_ids = set()
-        if game_ids:
-            for game_id, series_id in (
-                models.Game.series.through.objects.filter(game_id__in=game_ids)
-                .order_by("game_id", "series__name", "series_id")
-                .values_list("game_id", "series_id")
-            ):
-                game_series_ids[game_id].append(series_id)
-                used_series_ids.add(series_id)
-
-        # Developers: fetch only game-linked developers + their immediate parents.
-        developer_rows = {}
-        pending_ids = set(used_developer_ids)
-        while pending_ids:
-            fetched_rows = list(
-                models.Developer.objects.filter(id__in=pending_ids).values(
-                    "id", "name", "parent_id", "slug"
-                )
-            )
-            for row in fetched_rows:
-                developer_rows[row["id"]] = row
-            pending_ids = {
-                row["parent_id"]
-                for row in fetched_rows
-                if row["parent_id"] and row["parent_id"] not in developer_rows
-            }
-
-        direct_parent_ids = {
-            developer_rows[dev_id]["parent_id"]
-            for dev_id in used_developer_ids
-            if dev_id in developer_rows and developer_rows[dev_id]["parent_id"]
-        }
-        response_developer_ids = used_developer_ids | direct_parent_ids
-
-        def _resolve_root_slug(dev_id):
-            current_id = dev_id
-            visited = set()
-            while current_id and current_id not in visited:
-                visited.add(current_id)
-                current = developer_rows.get(current_id)
-                if not current:
-                    break
-                if not current["parent_id"]:
-                    return current["slug"]
-                current_id = current["parent_id"]
-            current = developer_rows.get(dev_id)
-            return current["slug"] if current else None
-
-        developers_dict = {}
-        for dev_id in sorted(
-            response_developer_ids,
-            key=lambda pk: developer_rows.get(pk, {}).get("name", ""),
-        ):
-            row = developer_rows.get(dev_id)
-            if not row:
-                continue
-            developers_dict[dev_id] = {
-                "n": row["name"],
-                "pa": row["parent_id"],
-                "s": _resolve_root_slug(dev_id),
-            }
-
-        platform_rows = models.Platform.objects.filter(id__in=used_platform_ids).values(
-            "id", "name", "code", "year_start", "year_end"
-        )
-        platforms_dict = {
-            row["id"]: {
-                "n": row["name"],
-                "c": row["code"],
-                "ys": row["year_start"],
-                "ye": row["year_end"],
-            }
-            for row in platform_rows
-        }
-
-        series_rows = models.Series.objects.filter(id__in=used_series_ids).values(
-            "id", "name", "slug"
-        )
-        series_dict = {
-            row["id"]: {
-                "n": row["name"],
-                "s": row["slug"],
-            }
-            for row in series_rows
-        }
-
-        # Build all genres and descendants from one in-memory hierarchy map.
-        genre_rows = list(
-            models.WikipediaGenre.objects.values(
-                "id", "name", "slug", "parent_id", "level", "display_order"
-            ).order_by("level", "display_order", "name")
-        )
-        descendant_ids_by_genre_id = descendants_by_id(
-            (row["id"], row["parent_id"]) for row in genre_rows
-        )
-
-        genres_data = [
-            {
-                "id": row["id"],
-                "n": row["name"],
-                "s": row["slug"],
-                "p": row["parent_id"],
-                "l": row["level"],
-                "d": descendant_ids_by_genre_id[row["id"]],
-            }
-            for row in genre_rows
-        ]
-
-        # `ni` is each game's position in the server's own name order, which
-        # the client sorts by rather than comparing names itself: no
-        # JavaScript comparator reproduces a database collation (SQLite
-        # files "DOOM 64" before "Doom"; Postgres does not), as
-        # music's payload found first. Ties go to rank, as `_order_games`.
-        name_order = {
-            game_id: position
-            for position, game_id in enumerate(
-                models.Game.objects.order_by(Lower("name"), "rank").values_list(
-                    "id", flat=True
-                )
-            )
-        }
-
-        # Assemble games preserving existing compressed keys/semantics.
-        games_data = []
-        for row in game_rows:
-            playtime = row["primary_hltb_game_data__main_story_hours"]
-            completionist = row["primary_hltb_game_data__completionist_hours"]
-            if row["primary_hltb_game_data__is_open_ended"]:
-                # No finish line, so no time to beat (games.services.playtime)
-                playtime = completionist = None
-            games_data.append(
-                {
-                    "id": row["id"],
-                    "i": row["igdb_id"],  # IGDB ID for played game tracking
-                    "n": row["name"],
-                    "s": row["slug"],
-                    "r": row["rank"],
-                    "y": row["year_of_release"],
-                    "a": row["primary_igdb_game_data__artwork_id"],
-                    "dv": game_developer_ids.get(row["id"], []),
-                    "p": game_platform_ids.get(row["id"], []),
-                    "g": game_genre_ids.get(row["id"], []),
-                    "sr": game_series_ids.get(row["id"], []),
-                    "lc": row["list_count"],  # List count for display
-                    # A game deleted between the two queries sorts last
-                    # rather than failing the whole payload
-                    "ni": name_order.get(row["id"], len(name_order)),
-                    "pt": float(playtime) if playtime is not None else None,
-                    "ptc": (
-                        float(completionist) if completionist is not None else None
-                    ),
-                }
-            )
-
-        return {
-            "version": version,
-            "data": {
-                "games": games_data,
-                "developers": developers_dict,
-                "platforms": platforms_dict,
-                "genres": genres_data,
-                "series": series_dict,
-            },
-        }
 
 
 def _saved_filter_name_error(name, user, exclude_pk=None):

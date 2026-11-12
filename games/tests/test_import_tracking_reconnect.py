@@ -6,7 +6,8 @@ from unittest import mock
 from django.test import TestCase
 
 from core.models import User
-from games import models, utils
+from games import models
+from games.services import import_handler
 
 RECONNECT = "games.services.user_tracking_service.reconnect_tracking_records"
 
@@ -28,14 +29,14 @@ class ReconnectOnlyWhatIsTrackedTests(TestCase):
     def test_no_tracking_rows_means_no_reconnect_at_all(self):
         """It ran, with two locking queries, for every game in the file."""
         with mock.patch(RECONNECT) as reconnect:
-            success, _ = utils.import_games(release(*self.ROWS))
+            success, _ = import_handler.import_games(release(*self.ROWS))
         self.assertTrue(success)
         reconnect.assert_not_called()
 
     def test_only_the_game_a_row_names_is_reconnected(self):
         models.PlayedGame.objects.create(user=self.reader, igdb_id=101)
         with mock.patch(RECONNECT) as reconnect:
-            utils.import_games(release(*self.ROWS))
+            import_handler.import_games(release(*self.ROWS))
         self.assertEqual(
             [call.kwargs["primary_igdb_id"] for call in reconnect.call_args_list],
             [101],
@@ -45,7 +46,7 @@ class ReconnectOnlyWhatIsTrackedTests(TestCase):
         played = models.PlayedGame.objects.create(user=self.reader, igdb_id=202)
         want = models.WantToPlayGame.objects.create(user=self.reader, igdb_id=103)
 
-        utils.import_games(release(*self.ROWS))
+        import_handler.import_games(release(*self.ROWS))
 
         played.refresh_from_db()
         want.refresh_from_db()
@@ -54,6 +55,6 @@ class ReconnectOnlyWhatIsTrackedTests(TestCase):
 
     def test_a_row_for_a_game_the_release_drops_stays_orphaned(self):
         played = models.PlayedGame.objects.create(user=self.reader, igdb_id=999)
-        utils.import_games(release(*self.ROWS))
+        import_handler.import_games(release(*self.ROWS))
         played.refresh_from_db()
         self.assertIsNone(played.game)

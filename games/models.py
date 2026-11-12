@@ -9,6 +9,7 @@ from django.db import IntegrityError, models, transaction
 from django.utils.text import Truncator, slugify
 
 from core.loaded_values import RemembersLoaded
+from core.services.ranking import year_to_decade
 from core.models import (
     CreatorBase,
     ListBase,
@@ -1558,9 +1559,7 @@ class Game(RemembersLoaded, MediaItemBase):
     def decade(self) -> Optional[int]:
         """Get the decade the game was released (cached)."""
         if self.year_of_release:
-            from . import utils
-
-            return utils.year_to_decade(self.year_of_release)
+            return year_to_decade(self.year_of_release)
         return None
 
     def get_display_developers(self, max_count: int = None) -> list:

@@ -13,9 +13,9 @@ from django.views import View
 from django.views.generic import FormView
 
 from core.mixins import StaffOnlyMixin
-from games import models, utils
+from games import models
 from games.forms import ImportForm
-from games.services import post_import
+from games.services import import_handler, post_import
 
 logger = logging.getLogger(__name__)
 
@@ -222,7 +222,7 @@ class ImportView(StaffOnlyMixin, FormView):
                     opened_files[field] = open(path, "rb")
 
                 seed_payload = {**import_data, **opened_files}
-                res, message = utils.import_batch(seed_payload)
+                res, message = import_handler.import_batch(seed_payload)
             except FileNotFoundError:
                 res, message = (
                     False,
@@ -258,7 +258,7 @@ class ImportView(StaffOnlyMixin, FormView):
         # Uploaded batch files always take precedence over maintenance actions.
         if has_batch_files:
             # Process batch import immediately
-            res, message = utils.import_batch(import_data)
+            res, message = import_handler.import_batch(import_data)
             if res:
                 # A lists-only import leaves the games as they were.
                 if import_data.get("games_file"):
@@ -273,7 +273,7 @@ class ImportView(StaffOnlyMixin, FormView):
             return super().form_valid(form)
 
         # For maintenance operations, use the standard import flow
-        res, message = utils.import_data(import_data)
+        res, message = import_handler.import_data(import_data)
         if res:
             # Store success message in session (persist across redirect)
             self.request.session["import_success"] = message
@@ -321,7 +321,7 @@ class IGDBProgressView(StaffOnlyMixin, StreamFromThisSiteMixin, View):
         )
         force_refresh = request.GET.get("force", "false").lower() == "true"
         return StreamingHttpResponse(
-            utils.import_igdb_with_progress(
+            import_handler.import_igdb_with_progress(
                 update_relationships=update_relationships,
                 force_refresh=force_refresh,
             ),
@@ -343,7 +343,9 @@ class WikipediaPageProgressView(StaffOnlyMixin, StreamFromThisSiteMixin, View):
         """Stream Wikipedia page lookup progress as SSE events."""
         force_refresh = request.GET.get("force", "false").lower() == "true"
         return StreamingHttpResponse(
-            utils.import_wikipedia_pages_with_progress(force_refresh=force_refresh),
+            import_handler.import_wikipedia_pages_with_progress(
+                force_refresh=force_refresh
+            ),
             content_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -386,7 +388,7 @@ class BatchImportProgressView(StaffOnlyMixin, View):
             )
 
         return StreamingHttpResponse(
-            utils.import_batch_with_progress(import_data),
+            import_handler.import_batch_with_progress(import_data),
             content_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",

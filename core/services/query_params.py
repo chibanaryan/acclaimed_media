@@ -6,6 +6,11 @@ answers a malformed value the way an absent one would be answered, rather
 than letting a bare ``int()`` turn it into a 500.
 """
 
+from dataclasses import dataclass
+from typing import Callable, List, Optional
+
+from django.db.models import Q, QuerySet
+
 # SQLite stores integers in eight bytes and raises OverflowError on anything
 # wider, so a twenty-digit "id" crashed the query rather than matching nothing.
 MAX_INT = 2**63 - 1
@@ -62,3 +67,45 @@ def parse_limit(raw, default, maximum=20):
     if value is None:
         return default
     return max(1, min(value, maximum))
+
+
+@dataclass
+class Filter:
+    """One query parameter an API list view filters by.
+
+    Games' and books' list views both declare these; it lived in games'
+    ``query_filters`` until 2026-11-12, and books imported it from there.
+    """
+
+    param: str
+    fields: List[str]
+    coerce: type = str
+    label: Callable[[str], str] = lambda x: x
+
+    def filter_queryset(self, qs: QuerySet, param_val: Optional[str]) -> QuerySet:
+        """
+        Filter a queryset based on parameter value.
+
+        Args:
+            qs: The Django queryset to filter
+            param_val: The parameter value to filter by
+
+        Returns:
+            The filtered queryset
+        """
+        if not param_val:
+            return qs
+
+        try:
+            param_val = self.coerce(param_val.strip())
+        except (TypeError, ValueError):
+            # A malformed value filters nothing rather than raising a 500.
+            return qs
+        if isinstance(param_val, int) and abs(param_val) > MAX_INT:
+            return qs
+        # Any field may match. A filter with none filters nothing: `query`
+        # was left unbound there, an UnboundLocalError
+        query = Q()
+        for field in self.fields:
+            query |= Q(**{field: param_val})
+        return qs.filter(query)

@@ -1,59 +1,15 @@
 """
-Utility functions for Acclaimed Games.
+The contact form's email and the new-post notification.
 
-This module provides backward compatibility re-exports from the new
-service modules. New code should import directly from the service modules:
-
-- games.services.import_handler - Import functions
-- games.services.ranking_service - Ranking calculations
-- games.services.query_filters - Filter utilities
-
-This module also contains the send_contact_email function which doesn't
-fit into the service layer pattern.
+Until 2026-11-12 this module also re-exported the import handler, the
+ranking service and the query filters under their old names, so a test
+patched ``games.utils.import_batch`` and a view read it from here. Each
+is now read from the module that defines it.
 """
 
 import logging
 
 from games import constants
-
-# =============================================================================
-# Backward Compatibility Re-exports
-# =============================================================================
-
-# Import handler functions
-from games.services.import_handler import (  # noqa: F401
-    import_data,
-    import_igdb_with_progress,
-    import_wikipedia_pages_with_progress,
-    import_batch_with_progress,
-    import_batch,
-    delete_existing_data,
-    import_lists,
-    import_listmemberships,
-    import_games,
-    import_platforms,
-    _validate_prerequisites,
-)
-
-# Re-export dependencies that tests may patch
-from django.db import transaction  # noqa: F401
-
-# Ranking service functions
-from games.services.ranking_service import (  # noqa: F401
-    year_to_decade,
-    update_year_decade_ranks,
-)
-
-# Query filter utilities
-from games.services.query_filters import (  # noqa: F401
-    apply_genre_filter,
-    apply_platform_filter,
-    genre_descendant_map,
-    apply_series_filter,
-    get_or_set_cache,
-    apply_year_filters,
-    Filter,
-)
 
 logger = logging.getLogger(__name__)
 

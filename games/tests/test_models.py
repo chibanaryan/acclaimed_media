@@ -5,7 +5,8 @@ from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 
 from core.models import User
-from .. import constants, models, utils
+from .. import constants, models
+from ..services import ranking_service
 
 
 class RankingUtilsTests(TestCase):
@@ -28,7 +29,7 @@ class RankingUtilsTests(TestCase):
         )
 
         # Run the bulk ranking update
-        games_updated, years_processed = utils.update_year_decade_ranks()
+        games_updated, years_processed = ranking_service.update_year_decade_ranks()
 
         # Verify correct number of updates
         self.assertEqual(games_updated, 4)
@@ -62,7 +63,7 @@ class RankingUtilsTests(TestCase):
             for rank in (9, 8)
         ]
 
-        games_updated, years_processed = utils.update_year_decade_ranks()
+        games_updated, years_processed = ranking_service.update_year_decade_ranks()
 
         self.assertEqual((games_updated, years_processed), (3, 2))
         for game in (dated, *undated):
@@ -78,12 +79,12 @@ class RankingUtilsTests(TestCase):
                 name=f"Game {rank}", rank=rank, igdb_id=rank, year_of_release=2000
             )
         with CaptureQueriesContext(connection) as queries:
-            utils.update_year_decade_ranks()
+            ranking_service.update_year_decade_ranks()
         self.assertLess(len(queries), 10)
 
     def test_update_year_decade_ranks_empty_database(self):
         """Test that update_year_decade_ranks() handles empty database."""
-        games_updated, years_processed = utils.update_year_decade_ranks()
+        games_updated, years_processed = ranking_service.update_year_decade_ranks()
         self.assertEqual(games_updated, 0)
         self.assertEqual(years_processed, 0)
 

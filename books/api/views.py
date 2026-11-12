@@ -14,11 +14,10 @@ from rest_framework.authentication import SessionAuthentication
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.views import APIView, Response
 
-from games import utils  # Shared utilities
 
 from core.permissions import IsStaffOrHide
 from core.services import genre_tree
-from core.services.query_params import parse_id_list, parse_limit
+from core.services.query_params import Filter, parse_id_list, parse_limit
 
 from .. import models
 from . import serializers
@@ -73,13 +72,13 @@ class BookListView(StaffReadAPIMixin, ListAPIView):
             "name__search",
         ] + search_fields
     filters = [
-        utils.Filter(
+        Filter(
             param="q",
             fields=search_fields,
         ),
-        utils.Filter(param="author", fields=["authors__goodreads_id"], coerce=int),
-        utils.Filter(param="start", fields=["year_published__gte"], coerce=int),
-        utils.Filter(param="end", fields=["year_published__lte"], coerce=int),
+        Filter(param="author", fields=["authors__goodreads_id"], coerce=int),
+        Filter(param="start", fields=["year_published__gte"], coerce=int),
+        Filter(param="end", fields=["year_published__lte"], coerce=int),
     ]
 
     ORDERING_FIELDS = {"rank", "name", "year_published", "year_rank", "decade_rank"}
@@ -138,7 +137,7 @@ class AuthorListView(StaffReadAPIMixin, ListAPIView):
     if connection.vendor == "postgresql":
         search_fields = ["name__search"] + search_fields
     filters = [
-        utils.Filter(
+        Filter(
             param="q",
             fields=search_fields,
         )
@@ -176,9 +175,9 @@ class BookListListView(StaffReadAPIMixin, ListAPIView):
 
     serializer_class = serializers.BookListSerializer
     filters = [
-        utils.Filter(param="publisher", fields=["publisher_id"], coerce=int),
-        utils.Filter(param="year", fields=["year"], coerce=int),
-        utils.Filter(param="type", fields=["type"], coerce=str),
+        Filter(param="publisher", fields=["publisher_id"], coerce=int),
+        Filter(param="year", fields=["year"], coerce=int),
+        Filter(param="type", fields=["type"], coerce=str),
     ]
 
     def get_queryset(self):

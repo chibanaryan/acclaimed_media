@@ -8,7 +8,7 @@ from django.test import TestCase
 
 from core.models import User
 from core.tests.utils import NoHeartbeatMixin
-from .. import config, models, utils
+from .. import config, models
 from ..services import import_handler
 
 
@@ -40,7 +40,7 @@ class ImportGamesTests(TestCase):
 
     def test_import_games_creates_and_updates(self):
         data = "1\tFirst Game\t1990\tPC\t101\tQ12345\r\n"
-        success, message = utils.import_games(StringIO(data))
+        success, message = import_handler.import_games(StringIO(data))
 
         self.assertTrue(success)
         self.assertEqual(
@@ -52,7 +52,7 @@ class ImportGamesTests(TestCase):
         self.assertEqual(game.platforms.get().code, "PC")
 
         updated_data = "1\tFirst Game Deluxe\t1991\tPC,PS5\t101\tQ12345\r\n"
-        success, message = utils.import_games(StringIO(updated_data))
+        success, message = import_handler.import_games(StringIO(updated_data))
 
         self.assertTrue(success)
         self.assertEqual(
@@ -79,7 +79,9 @@ class ImportGamesTests(TestCase):
             data_lines.append(f"{i+1}\tGame {i+1}\t1990\tPC\t{i+100}\tQ{12345+i}")
         data = "\r\n".join(data_lines) + "\r\n"
 
-        success, message = utils.import_games(StringIO(data), progress_callback)
+        success, message = import_handler.import_games(
+            StringIO(data), progress_callback
+        )
 
         self.assertTrue(success)
         # Should have received progress events
@@ -107,14 +109,16 @@ class ImportGamesTests(TestCase):
             callback_events.append((event_type, data))
 
         with self.assertRaises(Exception):
-            utils.import_games(StringIO("invalid\tdata\r\n"), progress_callback)
+            import_handler.import_games(
+                StringIO("invalid\tdata\r\n"), progress_callback
+            )
 
         self.assertEqual([e for e in callback_events if e[0] == "error"], [])
 
     def test_import_games_with_wikidata_id(self):
         """Test that Wikidata IDs are imported correctly."""
         data = "1\tTest Game\t2024\tPC\t12345\tQ17185964\r\n"
-        success, message = utils.import_games(StringIO(data))
+        success, message = import_handler.import_games(StringIO(data))
 
         self.assertTrue(success)
         game = models.Game.objects.get()
@@ -123,7 +127,7 @@ class ImportGamesTests(TestCase):
     def test_import_games_with_multiple_wikidata_ids(self):
         """Test that all Wikidata IDs are stored and first is primary."""
         data = "1\tTest Game\t2024\tPC\t12345\tQ17185964,Q99999,Q88888\r\n"
-        success, message = utils.import_games(StringIO(data))
+        success, message = import_handler.import_games(StringIO(data))
 
         self.assertTrue(success)
         game = models.Game.objects.get()
@@ -135,7 +139,7 @@ class ImportGamesTests(TestCase):
     def test_import_games_with_empty_wikidata_id(self):
         """Test that empty Wikidata IDs are handled gracefully."""
         data = "1\tTest Game\t2024\tPC\t12345\t\r\n"
-        success, message = utils.import_games(StringIO(data))
+        success, message = import_handler.import_games(StringIO(data))
 
         self.assertTrue(success)
         game = models.Game.objects.get()
@@ -144,7 +148,7 @@ class ImportGamesTests(TestCase):
     def test_import_games_with_whitespace_wikidata_id(self):
         """Test that whitespace is stripped from Wikidata IDs."""
         data = "1\tTest Game\t2024\tPC\t12345\t  Q17185964  \r\n"
-        success, message = utils.import_games(StringIO(data))
+        success, message = import_handler.import_games(StringIO(data))
 
         self.assertTrue(success)
         game = models.Game.objects.get()
@@ -158,7 +162,7 @@ class ImportGamesTests(TestCase):
         """
         # First import: Create game
         data = "1\tTest Game\t2024\tPC\t12345\tQ17185964\r\n"
-        success, message = utils.import_games(StringIO(data))
+        success, message = import_handler.import_games(StringIO(data))
         self.assertTrue(success)
 
         game = models.Game.objects.get()
@@ -203,7 +207,7 @@ class ImportGamesTests(TestCase):
         )
 
         # Re-import the same game (deletes and recreates)
-        success, message = utils.import_games(StringIO(data))
+        success, message = import_handler.import_games(StringIO(data))
         self.assertTrue(success)
 
         # Get fresh game instance (old one was deleted)
@@ -224,7 +228,7 @@ class ImportGamesTests(TestCase):
         on re-import."""
         # First import: Create game
         data = "1\tTest Game\t2024\tPC\t12345\tQ17185964\r\n"
-        success, message = utils.import_games(StringIO(data))
+        success, message = import_handler.import_games(StringIO(data))
         self.assertTrue(success)
 
         game = models.Game.objects.get()
@@ -274,7 +278,7 @@ class ImportGamesTests(TestCase):
         self.assertIsNone(wiki_data.game)
 
         # Re-import the game
-        success, message = utils.import_games(StringIO(data))
+        success, message = import_handler.import_games(StringIO(data))
         self.assertTrue(success)
 
         # Verify game was recreated
@@ -300,7 +304,7 @@ class ImportGamesTests(TestCase):
         """Test that import reconnects orphaned IGDB metadata."""
         # Create game with IGDB metadata
         data = "1\tTest Game\t2024\tPC\t12345\tQ17185964\r\n"
-        success, message = utils.import_games(StringIO(data))
+        success, message = import_handler.import_games(StringIO(data))
         self.assertTrue(success)
 
         game = models.Game.objects.get()
@@ -328,7 +332,7 @@ class ImportGamesTests(TestCase):
         )
 
         # Re-import with same data (deletes and recreates game)
-        success, message = utils.import_games(StringIO(data))
+        success, message = import_handler.import_games(StringIO(data))
         self.assertTrue(success)
 
         # Game is recreated WITH IGDB metadata reconnected
@@ -349,7 +353,7 @@ class ImportGamesTests(TestCase):
             password="testpass123",
         )
         data = "1\tTest Game\t2024\tPC\t12345\tQ17185964\r\n"
-        success, _ = utils.import_games(StringIO(data))
+        success, _ = import_handler.import_games(StringIO(data))
         self.assertTrue(success)
         game = models.Game.objects.get()
 
@@ -362,7 +366,7 @@ class ImportGamesTests(TestCase):
 
         # Import without this game (should delete it)
         data2 = "1\tDifferent Game\t2024\tPC\t99999\tQ99999\r\n"
-        success, message = utils.import_games(StringIO(data2))
+        success, message = import_handler.import_games(StringIO(data2))
         self.assertTrue(success)
         self.assertIn("deleted 1 old", message)
 
@@ -387,7 +391,7 @@ class ImportGamesTests(TestCase):
 
         # Import game with matching igdb_id
         data = "1\tTest Game\t2024\tPC\t12345\tQ17185964\r\n"
-        success, _ = utils.import_games(StringIO(data))
+        success, _ = import_handler.import_games(StringIO(data))
         self.assertTrue(success)
 
         # PlayedGame should now be connected to the new game
@@ -399,7 +403,7 @@ class ImportGamesTests(TestCase):
     def test_import_games_with_multiple_igdb_ids(self):
         """Test that all IGDB IDs are stored and first is primary."""
         data = "1\tPokemon Red\t1996\tGB\t123,456,789\tQ12345\r\n"
-        success, message = utils.import_games(StringIO(data))
+        success, message = import_handler.import_games(StringIO(data))
 
         self.assertTrue(success)
         game = models.Game.objects.get()
@@ -411,7 +415,7 @@ class ImportGamesTests(TestCase):
     def test_import_games_single_id_backwards_compatible(self):
         """Test that single ID imports still work and populate array fields."""
         data = "1\tTest Game\t2024\tPC\t12345\tQ12345\r\n"
-        success, message = utils.import_games(StringIO(data))
+        success, message = import_handler.import_games(StringIO(data))
 
         self.assertTrue(success)
         game = models.Game.objects.get()
@@ -426,14 +430,14 @@ class ImportGamesTests(TestCase):
         """Test that multi-ID fields are updated when game is re-imported."""
         # First import with single IDs
         data1 = "1\tTest Game\t2024\tPC\t12345\tQ111\r\n"
-        utils.import_games(StringIO(data1))
+        import_handler.import_games(StringIO(data1))
         game = models.Game.objects.get()
         self.assertEqual(game.all_igdb_ids, [12345])
         self.assertEqual(game.all_wikidata_ids, ["Q111"])
 
         # Re-import with additional alternate IDs
         data2 = "1\tTest Game\t2024\tPC\t12345,67890\tQ111,Q222\r\n"
-        utils.import_games(StringIO(data2))
+        import_handler.import_games(StringIO(data2))
         game = models.Game.objects.get()  # Get fresh instance (old one deleted)
         # Arrays should be updated
         self.assertEqual(game.all_igdb_ids, [12345, 67890])
@@ -444,7 +448,7 @@ class ImportGamesTests(TestCase):
 
         # Re-import with fewer IDs (remove alternates)
         data3 = "1\tTest Game\t2024\tPC\t12345\tQ111\r\n"
-        utils.import_games(StringIO(data3))
+        import_handler.import_games(StringIO(data3))
         game = models.Game.objects.get()  # Get fresh instance (old one deleted)
         # Arrays should be reduced
         self.assertEqual(game.all_igdb_ids, [12345])
@@ -474,7 +478,7 @@ class ImportGamesTests(TestCase):
         # Import with 456 as new primary, 123 as alternate
         # IGDB metadata WILL be automatically reconnected via alternate ID
         data = "1\tTest Game\t2024\tPC\t456,123\tQ111\r\n"
-        utils.import_games(StringIO(data))
+        import_handler.import_games(StringIO(data))
 
         game = models.Game.objects.get()
         igdb_data.refresh_from_db()
@@ -494,7 +498,7 @@ class ImportGamesTests(TestCase):
         """
         # First import with Q111 as primary
         data1 = "1\tTest Game\t2024\tPC\t12345\tQ111,Q222\r\n"
-        utils.import_games(StringIO(data1))
+        import_handler.import_games(StringIO(data1))
         game = models.Game.objects.get()
 
         # Create Wikipedia metadata for original primary ID with genres
@@ -525,7 +529,7 @@ class ImportGamesTests(TestCase):
 
         # Second import with Q222 as new primary (order changed)
         data2 = "1\tTest Game\t2024\tPC\t12345\tQ222,Q111\r\n"
-        utils.import_games(StringIO(data2))
+        import_handler.import_games(StringIO(data2))
 
         game = models.Game.objects.get()  # Get fresh instance (old one deleted)
         wiki_data.refresh_from_db()
@@ -554,7 +558,7 @@ class ImportGamesTests(TestCase):
 
         # First import with Q111 as primary
         data1 = "1\tTest Game\t2024\tPC\t12345\tQ111\r\n"
-        utils.import_games(StringIO(data1))
+        import_handler.import_games(StringIO(data1))
         game = models.Game.objects.get()
 
         # Add genres for Q111
@@ -568,7 +572,7 @@ class ImportGamesTests(TestCase):
         # Second import with Q222 as new primary
         # Should reconnect to orphaned metadata and restore its genres
         data2 = "1\tTest Game\t2024\tPC\t12345\tQ222,Q111\r\n"
-        utils.import_games(StringIO(data2))
+        import_handler.import_games(StringIO(data2))
 
         game = models.Game.objects.get()  # Get fresh instance (old one deleted)
         new_wiki_data.refresh_from_db()
@@ -597,7 +601,7 @@ class ImportGamesTests(TestCase):
 
         # Import game with 123 as primary, 456 as alternate
         data = "1\tTest Game\t2024\tPC\t123,456\tQ111\r\n"
-        utils.import_games(StringIO(data))
+        import_handler.import_games(StringIO(data))
 
         game = models.Game.objects.get()
         orphan_data.refresh_from_db()
@@ -619,7 +623,7 @@ class ImportGamesTests(TestCase):
 
         # Import game with Q111 as primary, Q222 as alternate
         data = "1\tTest Game\t2024\tPC\t12345\tQ111,Q222\r\n"
-        utils.import_games(StringIO(data))
+        import_handler.import_games(StringIO(data))
 
         game = models.Game.objects.get()
         orphan_data.refresh_from_db()
@@ -644,7 +648,7 @@ class ImportGamesTests(TestCase):
 
         # Import game with 123 as primary, 456 as alternate
         data = "1\tTest Game\t2024\tPC\t123,456\tQ111\r\n"
-        success, _ = utils.import_games(StringIO(data))
+        success, _ = import_handler.import_games(StringIO(data))
         self.assertTrue(success)
 
         # PlayedGame should be reconnected via the alternate ID
@@ -669,7 +673,7 @@ class ImportGamesTests(TestCase):
 
         # Import game with 12345 as primary, 67890 as secondary
         data = "1\tTest Game\t2024\tPC\t12345,67890\tQ111\r\n"
-        success, _ = utils.import_games(StringIO(data))
+        success, _ = import_handler.import_games(StringIO(data))
         self.assertTrue(success)
 
         # PlayedGame should be reconnected and igdb_id normalized
@@ -702,7 +706,7 @@ class ImportGamesTests(TestCase):
 
         # Import game that merges both IDs
         data = "1\tTest Game\t2024\tPC\t12345,67890\tQ111\r\n"
-        success, _ = utils.import_games(StringIO(data))
+        success, _ = import_handler.import_games(StringIO(data))
         self.assertTrue(success)
 
         game = models.Game.objects.get()
@@ -729,7 +733,7 @@ class ImportGamesTests(TestCase):
 
         # Import game with 12345 as primary, 67890 as secondary
         data = "1\tTest Game\t2024\tPC\t12345,67890\tQ111\r\n"
-        success, _ = utils.import_games(StringIO(data))
+        success, _ = import_handler.import_games(StringIO(data))
         self.assertTrue(success)
 
         # WantToPlayGame should be reconnected and igdb_id normalized
@@ -747,7 +751,7 @@ class ImportCarriesIGDBFieldsTests(TestCase):
 
     def fetched(self, data):
         """Import ``data``, then do what an IGDB fetch does to its one game."""
-        self.assertTrue(utils.import_games(StringIO(data))[0])
+        self.assertTrue(import_handler.import_games(StringIO(data))[0])
         game = models.Game.objects.get()
         record = models.IGDBGameData.objects.create(
             game=game, igdb_id=game.igdb_id, is_primary=True
@@ -764,7 +768,7 @@ class ImportCarriesIGDBFieldsTests(TestCase):
     def test_a_kept_game_keeps_its_igdb_fields(self):
         data = "1\tTest Game\t2024\tPC\t12345\tQ1\r\n"
         self.fetched(data)
-        self.assertTrue(utils.import_games(StringIO(data))[0])
+        self.assertTrue(import_handler.import_games(StringIO(data))[0])
         game = models.Game.objects.get()
         self.assertEqual(game.slug, "test-game")
         self.assertEqual(list(game.developers.all()), [self.developer])
@@ -777,7 +781,9 @@ class ImportCarriesIGDBFieldsTests(TestCase):
         pass skips a game with a record and a slug."""
         self.fetched("1\tTest Game\t2024\tPC\t12345\tQ1\r\n")
         self.assertTrue(
-            utils.import_games(StringIO("1\tTest Game\t2024\tPC\t999,12345\tQ1\r\n"))[0]
+            import_handler.import_games(
+                StringIO("1\tTest Game\t2024\tPC\t999,12345\tQ1\r\n")
+            )[0]
         )
         game = models.Game.objects.get()
         self.assertEqual(game.primary_igdb_game_data.igdb_id, 12345)
@@ -796,7 +802,9 @@ class ImportCarriesIGDBFieldsTests(TestCase):
     def test_a_game_whose_record_did_not_return_carries_nothing(self):
         self.fetched("1\tTest Game\t2024\tPC\t12345\tQ1\r\n")
         self.assertTrue(
-            utils.import_games(StringIO("1\tOther Game\t2024\tPC\t777\tQ2\r\n"))[0]
+            import_handler.import_games(
+                StringIO("1\tOther Game\t2024\tPC\t777\tQ2\r\n")
+            )[0]
         )
         game = models.Game.objects.get()
         self.assertIsNone(game.slug)
@@ -809,7 +817,7 @@ class ImportCarriesIGDBFieldsTests(TestCase):
         data = "1\tTest Game\t2024\tPC\t12345\tQ1\r\n"
         self.fetched(data)
         models.Game.objects.update(slug=None)
-        self.assertTrue(utils.import_games(StringIO(data))[0])
+        self.assertTrue(import_handler.import_games(StringIO(data))[0])
         game = models.Game.objects.get()
         self.assertIsNotNone(game.primary_igdb_game_data)
         self.assertEqual(list(models.Game.objects.needing_igdb()), [game])
@@ -819,7 +827,7 @@ class ImportPlatformsTests(TestCase):
 
     def test_import_platforms_creates_and_updates(self):
         data = "PC\tPersonal Computer\r\n"
-        success, message = utils.import_platforms(StringIO(data))
+        success, message = import_handler.import_platforms(StringIO(data))
 
         self.assertTrue(success)
         self.assertEqual(message, "Platforms: 1 created, 0 updated (deleted 0 old)")
@@ -827,7 +835,7 @@ class ImportPlatformsTests(TestCase):
         self.assertEqual(platform.name, "Personal Computer")
 
         updated_data = "PC\tPC (Updated)\r\n"
-        success, message = utils.import_platforms(StringIO(updated_data))
+        success, message = import_handler.import_platforms(StringIO(updated_data))
 
         self.assertTrue(success)
         self.assertEqual(message, "Platforms: 0 created, 1 updated (deleted 0 old)")
@@ -843,7 +851,7 @@ class ImportPlatformsTests(TestCase):
 
         # Import with same code but different name
         data = "PS1\tPlayStation 1\r\n"
-        success, message = utils.import_platforms(StringIO(data))
+        success, message = import_handler.import_platforms(StringIO(data))
 
         self.assertTrue(success)
         # Refresh from database
@@ -855,7 +863,7 @@ class ImportPlatformsTests(TestCase):
     def test_import_platforms_fills_years_for_a_new_platform(self):
         """A platform an import creates takes its years from the table, so
         nobody has to re-run populate_platform_years after a release."""
-        success, _ = utils.import_platforms(StringIO("N64\tNintendo 64\r\n"))
+        success, _ = import_handler.import_platforms(StringIO("N64\tNintendo 64\r\n"))
 
         self.assertTrue(success)
         platform = models.Platform.objects.get(code="N64")
@@ -867,7 +875,9 @@ class ImportPlatformsTests(TestCase):
             code="SNES", name="Super Nintendo", year_start=1991, year_end=1999
         )
 
-        utils.import_platforms(StringIO("N64\tNintendo 64\r\nSNES\tSuper Nintendo\r\n"))
+        import_handler.import_platforms(
+            StringIO("N64\tNintendo 64\r\nSNES\tSuper Nintendo\r\n")
+        )
 
         n64 = models.Platform.objects.get(code="N64")
         snes = models.Platform.objects.get(code="SNES")
@@ -875,7 +885,7 @@ class ImportPlatformsTests(TestCase):
         self.assertEqual((snes.year_start, snes.year_end), (1991, 1999))
 
     def test_a_platform_unknown_to_the_table_gets_no_years(self):
-        utils.import_platforms(StringIO("ZZZ\tSomething New\r\n"))
+        import_handler.import_platforms(StringIO("ZZZ\tSomething New\r\n"))
 
         platform = models.Platform.objects.get(code="ZZZ")
         self.assertIsNone(platform.year_start)
@@ -885,8 +895,8 @@ class ImportPlatformsTests(TestCase):
             code="SNES", name="Super Nintendo", year_start=1991, year_end=1999
         )
 
-        utils.import_data({"delete": True})
-        utils.import_platforms(StringIO("SNES\tSuper Nintendo\r\n"))
+        import_handler.import_data({"delete": True})
+        import_handler.import_platforms(StringIO("SNES\tSuper Nintendo\r\n"))
 
         snes = models.Platform.objects.get(code="SNES")
         self.assertEqual((snes.year_start, snes.year_end), (1991, 1999))
@@ -904,7 +914,9 @@ class ImportPlatformsTests(TestCase):
             data_lines.append(f"PC{i}\tPlatform {i}\r\n")
         data = "".join(data_lines)
 
-        success, message = utils.import_platforms(StringIO(data), progress_callback)
+        success, message = import_handler.import_platforms(
+            StringIO(data), progress_callback
+        )
 
         self.assertTrue(success)
         # Should have received progress events at rows 10, 20
@@ -924,7 +936,9 @@ class ImportPlatformsTests(TestCase):
             callback_events.append((event_type, data))
 
         data = "PC\tPersonal Computer\r\nPS5\tPlayStation 5\r\n"
-        success, message = utils.import_platforms(StringIO(data), progress_callback)
+        success, message = import_handler.import_platforms(
+            StringIO(data), progress_callback
+        )
 
         self.assertTrue(success)
         # Should have received progress events
@@ -942,7 +956,7 @@ class ImportListsTests(TestCase):
             "Edge\t2021\tA\tBest Ever\thttps://example.com/edge\r\n"
         )
 
-        success, message = utils.import_lists(StringIO(data))
+        success, message = import_handler.import_lists(StringIO(data))
 
         self.assertTrue(success)
         self.assertEqual(
@@ -971,7 +985,9 @@ class ImportListsTests(TestCase):
             + "\r\n"
         )
 
-        success, message = utils.import_lists(StringIO(data), progress_callback)
+        success, message = import_handler.import_lists(
+            StringIO(data), progress_callback
+        )
 
         self.assertTrue(success)
         # Should have received progress events
@@ -993,7 +1009,9 @@ class ImportListsTests(TestCase):
             callback_events.append((event_type, data))
 
         with self.assertRaises(Exception):
-            utils.import_lists(StringIO("Invalid\tData\r\n"), progress_callback)
+            import_handler.import_lists(
+                StringIO("Invalid\tData\r\n"), progress_callback
+            )
 
         self.assertEqual([e for e in callback_events if e[0] == "error"], [])
 
@@ -1005,7 +1023,7 @@ class ImportListMembershipsTests(TestCase):
             "IGN\t2020\tE\tTop 10\thttps://example.com/ign\r\n"
             "Edge\t2021\tA\tBest Ever\thttps://example.com/edge\r\n"
         )
-        utils.import_lists(StringIO(list_data))
+        import_handler.import_lists(StringIO(list_data))
         models.Game.objects.create(
             name="Game 1", rank=1, igdb_id=1, year_of_release=1990
         )
@@ -1015,7 +1033,7 @@ class ImportListMembershipsTests(TestCase):
 
     def test_import_listmemberships_creates_entries(self):
         data = "0:1\t1:3\r\n0:2\r\n"
-        success, message = utils.import_listmemberships(StringIO(data))
+        success, message = import_handler.import_listmemberships(StringIO(data))
 
         self.assertTrue(success)
         self.assertEqual(message, "List memberships: 3 created")
@@ -1027,7 +1045,9 @@ class ImportListMembershipsTests(TestCase):
         """A row is a game, in rank order, so a blank one holds its place;
         and the file may end with one. Each was a ``ValueError`` on
         ``int("")``, shown to staff as a failed import with no row named."""
-        success, message = utils.import_listmemberships(StringIO("\r\n0:2\r\n\r\n"))
+        success, message = import_handler.import_listmemberships(
+            StringIO("\r\n0:2\r\n\r\n")
+        )
         self.assertTrue(success)
         self.assertEqual(
             list(models.ListMembership.objects.values_list("game__rank", "rank")),
@@ -1038,13 +1058,13 @@ class ImportListMembershipsTests(TestCase):
         with self.assertRaisesMessage(
             import_handler.ImportFileError, "Row 3 of the positions file"
         ):
-            utils.import_listmemberships(StringIO("0:1\r\n0:2\r\n0:3\r\n"))
+            import_handler.import_listmemberships(StringIO("0:1\r\n0:2\r\n0:3\r\n"))
 
     def test_a_pair_that_is_not_two_numbers_is_named(self):
         with self.assertRaisesMessage(
             import_handler.ImportFileError, "Row 2 of the positions file"
         ):
-            utils.import_listmemberships(StringIO("0:1\r\n0:two\r\n"))
+            import_handler.import_listmemberships(StringIO("0:1\r\n0:two\r\n"))
 
     def test_two_games_of_one_rank_fail_the_import(self):
         """A row is matched to its game by rank. `get()` raised on two; read
@@ -1053,21 +1073,23 @@ class ImportListMembershipsTests(TestCase):
         with self.assertRaisesMessage(
             import_handler.ImportFileError, "Two games are ranked 2"
         ):
-            utils.import_listmemberships(StringIO("0:1\r\n0:2\r\n"))
+            import_handler.import_listmemberships(StringIO("0:1\r\n0:2\r\n"))
         self.assertFalse(models.ListMembership.objects.exists())
 
     def test_a_shared_rank_no_row_reaches_fails_nothing(self):
         """As it never did: `get()` was only asked for a row's own rank."""
         models.Game.objects.create(name="Third", rank=3, igdb_id=3)
         models.Game.objects.create(name="Also third", rank=3, igdb_id=33)
-        success, _ = utils.import_listmemberships(StringIO("0:1\r\n0:2\r\n\r\n"))
+        success, _ = import_handler.import_listmemberships(
+            StringIO("0:1\r\n0:2\r\n\r\n")
+        )
         self.assertTrue(success)
         self.assertEqual(models.ListMembership.objects.count(), 2)
 
     def test_the_games_are_read_once_not_a_row_each(self):
         with self.assertNumQueries(4):
             # The delete, the lists, the games, one bulk insert
-            utils.import_listmemberships(StringIO("0:1\r\n0:2\r\n"))
+            import_handler.import_listmemberships(StringIO("0:1\r\n0:2\r\n"))
 
     def test_import_listmemberships_with_progress_callback(self):
         """Test import_listmemberships with progress callback."""
@@ -1089,7 +1111,7 @@ class ImportListMembershipsTests(TestCase):
             data_lines.append("0:1")
         data = "\r\n".join(data_lines) + "\r\n"
 
-        success, message = utils.import_listmemberships(
+        success, message = import_handler.import_listmemberships(
             StringIO(data), progress_callback
         )
 
@@ -1111,7 +1133,7 @@ class ImportListMembershipsTests(TestCase):
             callback_events.append((event_type, data))
 
         with self.assertRaises(Exception):
-            utils.import_listmemberships(
+            import_handler.import_listmemberships(
                 StringIO("invalid:format\r\n"), progress_callback
             )
 
@@ -1136,7 +1158,7 @@ class ImportListMembershipsTests(TestCase):
             data_lines.append(f"0:{i}")
         data = "\r\n".join(data_lines) + "\r\n"
 
-        success, message = utils.import_listmemberships(StringIO(data))
+        success, message = import_handler.import_listmemberships(StringIO(data))
 
         self.assertTrue(success)
         # Should have created 1100 memberships
@@ -1151,14 +1173,14 @@ class ValidatePrerequisitesTests(TestCase):
         """Test _validate_prerequisites for lists."""
         from games import constants
 
-        result = utils._validate_prerequisites(constants.TYPE_LIST)
+        result = import_handler._validate_prerequisites(constants.TYPE_LIST)
         self.assertIsNone(result)
 
     def test_validate_game_no_platforms(self):
         """Test _validate_prerequisites for games without platforms."""
         from games import constants
 
-        result = utils._validate_prerequisites(constants.TYPE_GAME)
+        result = import_handler._validate_prerequisites(constants.TYPE_GAME)
         self.assertIsNotNone(result)
         self.assertFalse(result[0])
         self.assertIn("platforms", result[1].lower())
@@ -1168,14 +1190,14 @@ class ValidatePrerequisitesTests(TestCase):
         from games import constants
 
         models.Platform.objects.create(code="PC", name="PC")
-        result = utils._validate_prerequisites(constants.TYPE_GAME)
+        result = import_handler._validate_prerequisites(constants.TYPE_GAME)
         self.assertIsNone(result)
 
     def test_validate_membership_no_lists(self):
         """Test _validate_prerequisites for memberships without lists."""
         from games import constants
 
-        result = utils._validate_prerequisites(constants.TYPE_LIST_MEMBERSHIP)
+        result = import_handler._validate_prerequisites(constants.TYPE_LIST_MEMBERSHIP)
         self.assertIsNotNone(result)
         self.assertFalse(result[0])
         self.assertIn("lists", result[1].lower())
@@ -1188,7 +1210,7 @@ class ValidatePrerequisitesTests(TestCase):
         pub = Publication.objects.create(name="Test")
         models.List.objects.create(publisher=pub, name="Test", year=2024, order=1)
 
-        result = utils._validate_prerequisites(constants.TYPE_LIST_MEMBERSHIP)
+        result = import_handler._validate_prerequisites(constants.TYPE_LIST_MEMBERSHIP)
         self.assertIsNotNone(result)
         self.assertFalse(result[0])
         self.assertIn("games", result[1].lower())
@@ -1204,7 +1226,7 @@ class ValidatePrerequisitesTests(TestCase):
         game = models.Game.objects.create(rank=1, name="Test", year_of_release=2024)
         game.platforms.add(platform)
 
-        result = utils._validate_prerequisites(constants.TYPE_LIST_MEMBERSHIP)
+        result = import_handler._validate_prerequisites(constants.TYPE_LIST_MEMBERSHIP)
         self.assertIsNone(result)
 
 
@@ -1222,7 +1244,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
         data = {"platforms_file": platform_file}
 
         # Get generator
-        generator = utils.import_batch_with_progress(data)
+        generator = import_handler.import_batch_with_progress(data)
 
         # Consume events
         events = []
@@ -1240,7 +1262,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
         invalid_file = SimpleUploadedFile("test.txt", b"invalid")
         data = {"platforms_file": invalid_file}
 
-        generator = utils.import_batch_with_progress(data)
+        generator = import_handler.import_batch_with_progress(data)
 
         # Consume events - should get error
         events = list(generator)
@@ -1260,7 +1282,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
         # Clear platforms
         models.Platform.objects.all().delete()
 
-        generator = utils.import_batch_with_progress(data)
+        generator = import_handler.import_batch_with_progress(data)
 
         # Consume events
         events = list(generator)
@@ -1279,7 +1301,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
         )
         data = {"platforms_file": invalid_file}
 
-        generator = utils.import_batch_with_progress(data)
+        generator = import_handler.import_batch_with_progress(data)
 
         # Consume events - get error from exception handler
         events = list(generator)
@@ -1298,7 +1320,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
         platform_file = SimpleUploadedFile("PlatformDB.txt", b"PC\tPC\r\n")
         data = {"platforms_file": platform_file}
 
-        generator = utils.import_batch_with_progress(data)
+        generator = import_handler.import_batch_with_progress(data)
 
         # Consume events - should get error event from exception handler
         events = list(generator)
@@ -1318,7 +1340,9 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
 
         with self.assertLogs("games.services.import_handler", "ERROR") as logs:
             events = list(
-                utils.import_batch_with_progress({"platforms_file": platform_file})
+                import_handler.import_batch_with_progress(
+                    {"platforms_file": platform_file}
+                )
             )
 
         self.assertFalse(any("secret detail" in e for e in events))
@@ -1334,7 +1358,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
         platform_file = SimpleUploadedFile("PlatformDB.txt", b"PC\tPC\r\n")
         data = {"platforms_file": platform_file}
 
-        generator = utils.import_batch_with_progress(data)
+        generator = import_handler.import_batch_with_progress(data)
 
         # Consume events - should get error event from exception handler
         events = list(generator)
@@ -1355,7 +1379,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
         platform_file = SimpleUploadedFile("PlatformDB.txt", b"PC\tPC\r\n")
         data = {"platforms_file": platform_file}
 
-        generator = utils.import_batch_with_progress(data)
+        generator = import_handler.import_batch_with_progress(data)
 
         # Consume events - should get error event from exception handler
         events = list(generator)
@@ -1378,7 +1402,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
         mock_queue.get.side_effect = queue.Empty()
         mock_queue_class.return_value = mock_queue
 
-        generator = utils.import_batch_with_progress(data)
+        generator = import_handler.import_batch_with_progress(data)
 
         # Consume events - should get timeout error
         events = list(generator)
@@ -1403,7 +1427,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
         # Clear platforms to trigger validation error
         models.Platform.objects.all().delete()
 
-        generator = utils.import_batch_with_progress(data)
+        generator = import_handler.import_batch_with_progress(data)
 
         # Consume events - should get validation error
         events = list(generator)
@@ -1429,7 +1453,7 @@ class ImportBatchWithProgressTests(InlineImportThreadMixin, TestCase):
         )
         data = {"games_file": games_file}
 
-        generator = utils.import_batch_with_progress(data)
+        generator = import_handler.import_batch_with_progress(data)
 
         # Consume events - should get validation error
         events = list(generator)
@@ -1467,7 +1491,7 @@ class ImportBatchTests(TestCase):
             "games_file": games_file,
         }
 
-        success, message = utils.import_batch(data)
+        success, message = import_handler.import_batch(data)
 
         self.assertTrue(success)
         self.assertIn("Platforms", message)
@@ -1495,7 +1519,7 @@ class ImportBatchTests(TestCase):
             ("\r\n".join(memberships_lines) + "\r\n").encode("utf-8"),
         )
 
-        success, message = utils.import_batch(
+        success, message = import_handler.import_batch(
             {
                 "platforms_file": platforms_file,
                 "lists_file": lists_file,
@@ -1519,7 +1543,7 @@ class ImportBatchTests(TestCase):
         """Test import_batch with no files returns error."""
         data = {}
 
-        success, message = utils.import_batch(data)
+        success, message = import_handler.import_batch(data)
 
         self.assertFalse(success)
         self.assertIn("No files were selected", message)
@@ -1535,7 +1559,7 @@ class ImportDataTests(TestCase):
 
         # import_data returns 2 values, but import_batch returns 3
         # So import_data should handle this internally
-        result = utils.import_data(data)
+        result = import_handler.import_data(data)
 
         # Should have imported platform
         self.assertTrue(result[0])
@@ -1552,7 +1576,7 @@ class ImportDataTests(TestCase):
         # Clear platforms
         models.Platform.objects.all().delete()
 
-        success, message = utils.import_batch(data)
+        success, message = import_handler.import_batch(data)
 
         # Should fail with validation error
         self.assertFalse(success)
@@ -1566,7 +1590,7 @@ class ImportDataTests(TestCase):
         )
         data = {"platforms_file": invalid_file}
 
-        success, message = utils.import_batch(data)
+        success, message = import_handler.import_batch(data)
 
         # Should fail with exception message
         self.assertFalse(success)
@@ -1576,11 +1600,11 @@ class ImportDataTests(TestCase):
         # import_games deletes every game before its first row, so a failure
         # that commits loses the stored games along with the new platform.
         models.Platform.objects.get_or_create(code="PC", defaults={"name": "PC"})
-        stored, _ = utils.import_batch(
+        stored, _ = import_handler.import_batch(
             {"games_file": SimpleUploadedFile("g", b"1\tKept\t1990\tPC\t1\tQ1\r\n")}
         )
         self.assertTrue(stored)
-        success, message = utils.import_batch(
+        success, message = import_handler.import_batch(
             {
                 "platforms_file": SimpleUploadedFile("p", b"N64\tNintendo 64\r\n"),
                 "games_file": SimpleUploadedFile(
@@ -1595,7 +1619,7 @@ class ImportDataTests(TestCase):
 
     def test_a_failed_prerequisite_rolls_back_the_files_before_it(self):
         models.Platform.objects.all().delete()
-        success, message = utils.import_batch(
+        success, message = import_handler.import_batch(
             {
                 "lists_file": SimpleUploadedFile(
                     "l", b"Edge\t2024\tAll Time\tTop 100\thttps://example.com\r\n"
@@ -1622,13 +1646,13 @@ class ImportDataTests(TestCase):
         bad_file = BadFile()
         data = {"platforms_file": bad_file}
 
-        success, message = utils.import_batch(data)
+        success, message = import_handler.import_batch(data)
 
         # Should fail with exception message
         self.assertFalse(success)
         self.assertIn("failed", message.lower())
 
-    @mock.patch("games.utils.transaction.atomic")
+    @mock.patch("games.services.import_handler.transaction.atomic")
     def test_import_batch_exception_transaction_atomic(self, mock_atomic):
         """Test import_batch exception when transaction.atomic raises (374-375)."""
         # Make transaction.atomic raise an exception
@@ -1637,7 +1661,7 @@ class ImportDataTests(TestCase):
         platform_file = SimpleUploadedFile("PlatformDB.txt", b"PC\tPC\r\n")
         data = {"platforms_file": platform_file}
 
-        success, message = utils.import_batch(data)
+        success, message = import_handler.import_batch(data)
 
         # Should fail with exception message
         self.assertFalse(success)
@@ -1649,7 +1673,7 @@ class ImportDataTests(TestCase):
         models.Platform.objects.create(code="PC", name="PC")
 
         data = {"delete": True}
-        success, message = utils.import_data(data)
+        success, message = import_handler.import_data(data)
 
         # Platforms survive: their years are in no import file
         self.assertTrue(success)
@@ -1657,7 +1681,7 @@ class ImportDataTests(TestCase):
 
     def test_a_form_that_asks_for_nothing_is_an_answer_not_none(self):
         """`None` was unpacked by the view: a 500 for a hand-made POST."""
-        success, message = utils.import_data({})
+        success, message = import_handler.import_data({})
         self.assertFalse(success)
         self.assertIn("Nothing was selected", message)
 
@@ -1665,7 +1689,7 @@ class ImportDataTests(TestCase):
         models.Platform.objects.create(code="PC", name="PC")
         self.assertIsNone(models.SiteMetadata.get_instance().last_full_update)
 
-        success, _ = utils.import_data(
+        success, _ = import_handler.import_data(
             {"games_file": SimpleUploadedFile("g", b"1\tGame\t2024\tPC\t1\tQ1\r\n")}
         )
 
@@ -1674,7 +1698,7 @@ class ImportDataTests(TestCase):
 
     def test_a_batch_that_fails_leaves_the_updated_date(self):
         models.Platform.objects.create(code="PC", name="PC")
-        success, _ = utils.import_batch(
+        success, _ = import_handler.import_batch(
             {
                 "games_file": SimpleUploadedFile("g", b"1\tGame\t2024\tPC\t1\tQ1\r\n"),
                 "memberships_file": SimpleUploadedFile("m", b"0:1\r\n"),
@@ -1694,7 +1718,7 @@ class ImportDataTests(TestCase):
             ),
             self.assertLogs("games.services.import_handler", "ERROR") as logs,
         ):
-            success, message = utils.import_batch(
+            success, message = import_handler.import_batch(
                 {"platforms_file": SimpleUploadedFile("p", b"PC\tPC\r\n")}
             )
         self.assertFalse(success)
@@ -1737,7 +1761,7 @@ class ImportIGDBWithProgressTests(NoHeartbeatMixin, InlineImportThreadMixin, Tes
 
         events = [
             json.loads(chunk.split("data: ", 1)[1].split("\n", 1)[0])
-            for chunk in utils.import_igdb_with_progress()
+            for chunk in import_handler.import_igdb_with_progress()
             if chunk.startswith("data: ")
         ]
 
@@ -1761,7 +1785,7 @@ class ImportIGDBWithProgressTests(NoHeartbeatMixin, InlineImportThreadMixin, Tes
         self.game.primary_igdb_game_data = igdb_data
         self.game.save(update_fields=["primary_igdb_game_data"])
 
-        list(utils.import_igdb_with_progress(force_refresh=True))
+        list(import_handler.import_igdb_with_progress(force_refresh=True))
 
         queryset = mock_service.import_games.call_args.args[0]
         self.assertEqual(list(queryset), [self.game])
@@ -1781,7 +1805,7 @@ class ImportIGDBWithProgressTests(NoHeartbeatMixin, InlineImportThreadMixin, Tes
         self.game.slug = "test-game"
         self.game.save(update_fields=["primary_igdb_game_data", "slug"])
 
-        list(utils.import_igdb_with_progress())
+        list(import_handler.import_igdb_with_progress())
 
         queryset = mock_service.import_games.call_args.args[0]
         self.assertEqual(list(queryset), [])
@@ -1797,7 +1821,7 @@ class ImportIGDBWithProgressTests(NoHeartbeatMixin, InlineImportThreadMixin, Tes
         self.game.primary_igdb_game_data = igdb_data
         self.game.save(update_fields=["primary_igdb_game_data"])
 
-        list(utils.import_igdb_with_progress())
+        list(import_handler.import_igdb_with_progress())
 
         queryset = mock_service.import_games.call_args.args[0]
         self.assertEqual(list(queryset), [self.game])
@@ -1826,7 +1850,7 @@ class ImportIGDBWithProgressTests(NoHeartbeatMixin, InlineImportThreadMixin, Tes
         mock_queue_class.return_value = mock_queue
 
         # Get generator
-        generator = utils.import_igdb_with_progress()
+        generator = import_handler.import_igdb_with_progress()
 
         # Consume events - should get timeout error
         events = list(generator)
@@ -1854,7 +1878,7 @@ class ImportIGDBWithProgressTests(NoHeartbeatMixin, InlineImportThreadMixin, Tes
         mock_service_class.side_effect = Exception("Test error")
 
         # Get generator
-        generator = utils.import_igdb_with_progress()
+        generator = import_handler.import_igdb_with_progress()
 
         # Consume events - should get error event
         events = list(generator)
@@ -1876,7 +1900,7 @@ class ImportIGDBWithProgressTests(NoHeartbeatMixin, InlineImportThreadMixin, Tes
         mock_service.import_games = mock_import_games
 
         # Get the generator
-        generator = utils.import_igdb_with_progress()
+        generator = import_handler.import_igdb_with_progress()
 
         # Consume events
         events = list(generator)
@@ -1921,7 +1945,9 @@ class ImportIGDBWithProgressTests(NoHeartbeatMixin, InlineImportThreadMixin, Tes
             mock_get_api.return_value = fake_api
 
             # Get generator with update_relationships=True
-            generator = utils.import_igdb_with_progress(update_relationships=True)
+            generator = import_handler.import_igdb_with_progress(
+                update_relationships=True
+            )
 
             # Consume events - this triggers the update path
             events = list(generator)
@@ -1935,7 +1961,7 @@ class ImportIGDBWithProgressTests(NoHeartbeatMixin, InlineImportThreadMixin, Tes
     ):
         """Test update_relationships=True with no games having IGDB data."""
         # Don't create any games with IGDB data
-        generator = utils.import_igdb_with_progress(update_relationships=True)
+        generator = import_handler.import_igdb_with_progress(update_relationships=True)
 
         # Consume events
         events = []
@@ -1968,7 +1994,7 @@ class ImportDropsReleaseCachesTests(TestCase):
             cache.set(key, "stale", 3600)
         models.Platform.objects.create(code="PC", name="Personal Computer")
         with self.captureOnCommitCallbacks(execute=True):
-            success, _ = utils.import_batch(
+            success, _ = import_handler.import_batch(
                 {
                     "games_file": SimpleUploadedFile(
                         "Top1400.txt", b"1\tTest Game\t2031\tPC\t12345\tQ66666\r\n"
@@ -1990,7 +2016,7 @@ class ImportDropsReleaseCachesTests(TestCase):
         # day a new test class moved them into this one's worker)
         self.addCleanup(cache.delete, config.CACHE_KEY_YEAR_STATS)
         with self.captureOnCommitCallbacks(execute=True):
-            success, _ = utils.import_batch(
+            success, _ = import_handler.import_batch(
                 {"games_file": SimpleUploadedFile("Top1400.txt", b"not\ta\tgame\r\n")}
             )
         self.assertFalse(success)

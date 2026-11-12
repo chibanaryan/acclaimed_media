@@ -13,7 +13,8 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 
-from games import models, utils
+from games import models
+from games.services import import_handler
 from games.services.import_handler import (
     BATCH_ROLLED_BACK,
     IMPORT_FAILED,
@@ -228,7 +229,7 @@ class ImportRefusesASharedIgdbIdTests(TestCase):
         """The constraint's own error names neither row."""
         events = []
         with self.assertRaises(ImportFileError) as raised, transaction.atomic():
-            utils.import_games(
+            import_handler.import_games(
                 StringIO(self.ROWS), lambda event, data: events.append((event, data))
             )
         message = str(raised.exception)
@@ -241,7 +242,7 @@ class ImportRefusesASharedIgdbIdTests(TestCase):
     def test_a_refused_file_leaves_the_games_that_were_there(self):
         models.Game.objects.create(name="Before", rank=1, igdb_id=9, slug="before")
         with self.assertRaises(ImportFileError), transaction.atomic():
-            utils.import_games(StringIO(self.ROWS))
+            import_handler.import_games(StringIO(self.ROWS))
         self.assertEqual(
             list(models.Game.objects.values_list("name", flat=True)), ["Before"]
         )
@@ -249,7 +250,7 @@ class ImportRefusesASharedIgdbIdTests(TestCase):
     def test_a_shared_secondary_id_is_not_refused(self):
         """Only the first id is a game's own: the others list every edition."""
         rows = "1\tAlpha\t2000\tPC\t101,900\tQ1\r\n2\tBeta\t2001\tPC\t102,900\tQ2\r\n"
-        success, _ = utils.import_games(StringIO(rows))
+        success, _ = import_handler.import_games(StringIO(rows))
         self.assertTrue(success)
         self.assertEqual(models.Game.objects.count(), 2)
 
@@ -295,7 +296,7 @@ class StreamedImportIsAllOrNothingTests(InlineImportThreadMixin, TestCase):
         ) as positions_import:
             events = [
                 json.loads(chunk.split("data: ", 1)[1].split("\n", 1)[0])
-                for chunk in utils.import_batch_with_progress(data)
+                for chunk in import_handler.import_batch_with_progress(data)
                 if chunk.startswith("data: ")
             ]
         return events, positions_import

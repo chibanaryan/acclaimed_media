@@ -6,7 +6,9 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 
 from core.models import User
+from core.services.query_params import Filter
 from games import constants, models, utils
+from games.services import import_handler, query_filters
 from games.models import Post
 
 
@@ -16,7 +18,7 @@ class ImportDataRoutingTests(TestCase):
         with mock.patch(
             "games.services.import_handler.delete_existing_data", return_value=("ok", 0)
         ) as delete_mock:
-            result = utils.import_data({"delete": True})
+            result = import_handler.import_data({"delete": True})
         delete_mock.assert_called_once()
         self.assertEqual(result, ("ok", 0))
 
@@ -31,7 +33,9 @@ class ImportDataRoutingTests(TestCase):
                 "games.services.import_handler.delete_existing_data",
                 return_value=(True, "Deleted"),
             ) as delete_mock:
-                result = utils.import_data({"delete": True, "platforms_file": upload})
+                result = import_handler.import_data(
+                    {"delete": True, "platforms_file": upload}
+                )
 
         batch_mock.assert_called_once()
         delete_mock.assert_not_called()
@@ -55,7 +59,7 @@ class ImportHelpersTests(TestCase):
         )
         models.ListMembership.objects.create(list=lst, game=game, rank=1)
 
-        success, message = utils.delete_existing_data()
+        success, message = import_handler.delete_existing_data()
 
         self.assertTrue(success)
         self.assertIn("objects deleted", message)
@@ -86,7 +90,7 @@ class ImportHelpersTests(TestCase):
         )
 
         # Delete game data
-        success, message = utils.delete_existing_data()
+        success, message = import_handler.delete_existing_data()
 
         self.assertTrue(success)
         self.assertEqual(models.Game.objects.count(), 0)
@@ -116,7 +120,7 @@ class ImportHelpersTests(TestCase):
             order=1,
         )
         stream = StringIO("IGN\t2020\tE\tTop\thttps://example.com\r\n")
-        success, message = utils.import_lists(stream)
+        success, message = import_handler.import_lists(stream)
         self.assertTrue(success)
         self.assertIn("1 created", message)
 
@@ -137,7 +141,7 @@ class ImportHelpersTests(TestCase):
         )
 
         stream = StringIO("0:1\t3:2\r\n")
-        success, message = utils.import_listmemberships(stream)
+        success, message = import_handler.import_listmemberships(stream)
         self.assertTrue(success)
         self.assertEqual(models.ListMembership.objects.count(), 1)
         membership = models.ListMembership.objects.first()
@@ -157,7 +161,7 @@ class FilterTests(TestCase):
         )
         game.platforms.add(platform)
 
-        filter = utils.Filter(param="year", fields=["year_of_release"], coerce=int)
+        filter = Filter(param="year", fields=["year_of_release"], coerce=int)
         qs = models.Game.objects.all()
         filtered_qs = filter.filter_queryset(qs, " 2020 ")
         self.assertEqual(filtered_qs.count(), 1)
@@ -190,13 +194,13 @@ class ApplyGenreFilterTests(TestCase):
     def test_empty_genre_list_returns_all(self):
         """Empty genre list should return all games."""
         qs = models.Game.objects.all()
-        result = utils.apply_genre_filter(qs, [])
+        result = query_filters.apply_genre_filter(qs, [])
         self.assertEqual(result.count(), 3)
 
     def test_match_all_requires_all_genres(self):
         """match_all=True should require games to have ALL genres."""
         qs = models.Game.objects.all()
-        result = utils.apply_genre_filter(
+        result = query_filters.apply_genre_filter(
             qs, [self.genre_action.id, self.genre_rpg.id], match_all=True
         )
         self.assertEqual(result.count(), 1)
@@ -205,7 +209,7 @@ class ApplyGenreFilterTests(TestCase):
     def test_match_any_accepts_any_genre(self):
         """match_all=False should return games with ANY of the genres."""
         qs = models.Game.objects.all()
-        result = utils.apply_genre_filter(
+        result = query_filters.apply_genre_filter(
             qs, [self.genre_action.id, self.genre_rpg.id], match_all=False
         )
         # Action Game, RPG Game, and Action RPG all match (use distinct)
@@ -214,7 +218,9 @@ class ApplyGenreFilterTests(TestCase):
     def test_single_genre_filter(self):
         """Single genre should work correctly."""
         qs = models.Game.objects.all()
-        result = utils.apply_genre_filter(qs, [self.genre_action.id], match_all=True)
+        result = query_filters.apply_genre_filter(
+            qs, [self.genre_action.id], match_all=True
+        )
         self.assertEqual(result.count(), 2)  # Action Game and Action RPG
 
 
@@ -237,19 +243,19 @@ class ApplyPlatformFilterTests(TestCase):
     def test_empty_platform_list_returns_all(self):
         """Empty platform list should return all games."""
         qs = models.Game.objects.all()
-        result = utils.apply_platform_filter(qs, [])
+        result = query_filters.apply_platform_filter(qs, [])
         self.assertEqual(result.count(), 3)
 
     def test_single_platform_filter(self):
         """Single platform should filter correctly."""
         qs = models.Game.objects.all()
-        result = utils.apply_platform_filter(qs, [self.pc.id])
+        result = query_filters.apply_platform_filter(qs, [self.pc.id])
         self.assertEqual(result.count(), 2)  # PC Game and Multi-platform
 
     def test_multiple_platforms_uses_any(self):
         """Multiple platforms should use ANY match."""
         qs = models.Game.objects.all()
-        result = utils.apply_platform_filter(qs, [self.pc.id, self.ps5.id])
+        result = query_filters.apply_platform_filter(qs, [self.pc.id, self.ps5.id])
         # All 3 games match (use distinct for unique count)
         self.assertEqual(result.distinct().count(), 3)
 
@@ -382,13 +388,13 @@ class ApplyYearFiltersTests(TestCase):
     def test_no_filters_returns_all(self):
         """Test that no filters returns all games."""
         qs = models.Game.objects.all()
-        result = utils.apply_year_filters(qs)
+        result = query_filters.apply_year_filters(qs)
         self.assertEqual(result.count(), 5)
 
     def test_decade_filter(self):
         """Test filtering by decade."""
         qs = models.Game.objects.all()
-        result = utils.apply_year_filters(qs, decade="1980-89")
+        result = query_filters.apply_year_filters(qs, decade="1980-89")
         self.assertEqual(result.count(), 2)
         names = list(result.values_list("name", flat=True))
         self.assertIn("Game 1980", names)
@@ -397,20 +403,20 @@ class ApplyYearFiltersTests(TestCase):
     def test_year_filter(self):
         """Test filtering by single year."""
         qs = models.Game.objects.all()
-        result = utils.apply_year_filters(qs, year="1990")
+        result = query_filters.apply_year_filters(qs, year="1990")
         self.assertEqual(result.count(), 1)
         self.assertEqual(result.first().name, "Game 1990")
 
     def test_start_end_filters(self):
         """Test filtering by year range."""
         qs = models.Game.objects.all()
-        result = utils.apply_year_filters(qs, start="1985", end="1995")
+        result = query_filters.apply_year_filters(qs, start="1985", end="1995")
         self.assertEqual(result.count(), 3)
 
     def test_invalid_year_ignored(self):
         """Test that invalid year values are ignored."""
         qs = models.Game.objects.all()
-        result = utils.apply_year_filters(qs, year="invalid")
+        result = query_filters.apply_year_filters(qs, year="invalid")
         self.assertEqual(result.count(), 5)
 
     def test_year_takes_precedence_over_decade(self):
@@ -419,25 +425,25 @@ class ApplyYearFiltersTests(TestCase):
         The list alone had it the other way (`resolve_year_range`).
         """
         qs = models.Game.objects.all()
-        result = utils.apply_year_filters(qs, decade="1990-99", year="1980")
+        result = query_filters.apply_year_filters(qs, decade="1990-99", year="1980")
         self.assertEqual([game.year_of_release for game in result], [1980])
 
     def test_invalid_start_year_ignored(self):
         """Test that invalid start year value is ignored."""
         qs = models.Game.objects.all()
-        result = utils.apply_year_filters(qs, start="invalid")
+        result = query_filters.apply_year_filters(qs, start="invalid")
         self.assertEqual(result.count(), 5)
 
     def test_invalid_end_year_ignored(self):
         """Test that invalid end year value is ignored."""
         qs = models.Game.objects.all()
-        result = utils.apply_year_filters(qs, end="invalid")
+        result = query_filters.apply_year_filters(qs, end="invalid")
         self.assertEqual(result.count(), 5)
 
     def test_mixed_valid_invalid_start_end(self):
         """Test that valid start with invalid end ignores only invalid."""
         qs = models.Game.objects.all()
-        result = utils.apply_year_filters(qs, start="1985", end="invalid")
+        result = query_filters.apply_year_filters(qs, start="1985", end="invalid")
         # Should filter by start >= 1985 but ignore invalid end
         self.assertEqual(result.count(), 4)  # 1985, 1990, 1995, 2000
 
@@ -459,7 +465,7 @@ class GetOrSetCacheTests(TestCase):
 
     def test_returns_list_from_queryset(self):
         """Test that function returns list of dicts from queryset."""
-        result = utils.get_or_set_cache(
+        result = query_filters.get_or_set_cache(
             "test_genres",
             models.WikipediaGenre.objects.filter(slug__startswith="test-"),
             ["id", "name"],
@@ -470,7 +476,7 @@ class GetOrSetCacheTests(TestCase):
 
     def test_transform_id(self):
         """Test that transform_id converts id to string."""
-        result = utils.get_or_set_cache(
+        result = query_filters.get_or_set_cache(
             "test_genres_str",
             models.WikipediaGenre.objects.filter(slug__startswith="test-"),
             ["id", "name"],
@@ -485,14 +491,14 @@ class GetOrSetCacheTests(TestCase):
         cache.delete("test_cache_key")
 
         # First call should query database
-        result1 = utils.get_or_set_cache(
+        result1 = query_filters.get_or_set_cache(
             "test_cache_key",
             models.WikipediaGenre.objects.filter(slug__startswith="test-"),
             ["id", "name"],
         )
 
         # Second call should return cached result
-        result2 = utils.get_or_set_cache(
+        result2 = query_filters.get_or_set_cache(
             "test_cache_key",
             models.WikipediaGenre.objects.none(),  # Different queryset
             ["id", "name"],

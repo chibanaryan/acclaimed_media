@@ -7,9 +7,11 @@ from django.test import TestCase
 from core.models import User
 
 STREAMS = {
-    "/import/igdb-progress/?force=true": "games.utils.import_igdb_with_progress",
+    "/import/igdb-progress/?force=true": (
+        "games.services.import_handler.import_igdb_with_progress"
+    ),
     "/import/wikipedia-page-progress/?force=true": (
-        "games.utils.import_wikipedia_pages_with_progress"
+        "games.services.import_handler.import_wikipedia_pages_with_progress"
     ),
 }
 

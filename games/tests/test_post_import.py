@@ -20,8 +20,8 @@ from django.utils.text import slugify
 
 from core.models import User
 from core.services import post_import as core_post_import
-from games import models, utils
-from games.services import post_import
+from games import models
+from games.services import import_handler, post_import
 from games.services.data_version import compute_game_data_version
 from games.tests.test_imports import InlineImportThreadMixin
 
@@ -295,7 +295,10 @@ class ImportPageStartsTheFetchTests(TestCase):
 
     def test_a_failed_import_starts_nothing(self):
         with (
-            mock.patch("games.utils.import_batch", return_value=(False, "bad row")),
+            mock.patch(
+                "games.services.import_handler.import_batch",
+                return_value=(False, "bad row"),
+            ),
             mock.patch(SCHEDULE) as schedule,
         ):
             session = self.post({"games_file": _games_file()})
@@ -304,7 +307,10 @@ class ImportPageStartsTheFetchTests(TestCase):
 
     def test_the_bundled_data_starts_it(self):
         with (
-            mock.patch("games.utils.import_batch", return_value=(True, "Loaded")),
+            mock.patch(
+                "games.services.import_handler.import_batch",
+                return_value=(True, "Loaded"),
+            ),
             mock.patch(SCHEDULE, return_value="Fetching now.") as schedule,
         ):
             session = self.post({"seed_test_data": True})
@@ -326,7 +332,7 @@ class StreamedImportStartsTheFetchTests(InlineImportThreadMixin, TestCase):
     def events(self, data):
         return [
             json.loads(line[len("data: ") :])
-            for chunk in utils.import_batch_with_progress(data)
+            for chunk in import_handler.import_batch_with_progress(data)
             for line in chunk.splitlines()
             if line.startswith("data: ")
         ]
@@ -466,8 +472,8 @@ class MetadataButtonsTakeTheLockTests(InlineImportThreadMixin, TestCase):
     def test_a_button_pressed_during_a_fetch_says_so_and_starts_nothing(self):
         cache.add(self.LOCK, "theirs")
         for stream in (
-            utils.import_igdb_with_progress,
-            utils.import_wikipedia_pages_with_progress,
+            import_handler.import_igdb_with_progress,
+            import_handler.import_wikipedia_pages_with_progress,
         ):
             with (
                 self.subTest(stream=stream.__name__),
@@ -489,7 +495,7 @@ class MetadataButtonsTakeTheLockTests(InlineImportThreadMixin, TestCase):
         service.return_value.import_games.side_effect = lambda games: held.append(
             cache.get(self.LOCK)
         )
-        self.events(utils.import_igdb_with_progress())
+        self.events(import_handler.import_igdb_with_progress())
         self.assertTrue(held[0])
         self.assertIsNone(cache.get(self.LOCK))
 
@@ -497,7 +503,7 @@ class MetadataButtonsTakeTheLockTests(InlineImportThreadMixin, TestCase):
     def test_a_stream_that_started_no_work_lets_go(self, service):
         service.side_effect = RuntimeError("Failed to initialize IGDB API client")
         with self.assertLogs("games.services.import_handler", "ERROR"):
-            events = self.events(utils.import_igdb_with_progress())
+            events = self.events(import_handler.import_igdb_with_progress())
         self.assertEqual(events[-1]["event"], "error")
         self.assertIsNone(cache.get(self.LOCK))
 
@@ -507,7 +513,7 @@ class MetadataButtonsTakeTheLockTests(InlineImportThreadMixin, TestCase):
             core_post_import._start("games", mock.Mock(), {})
         )
         with mock.patch(REFRESH, return_value=[]) as refresh:
-            self.events(utils.import_igdb_with_progress())
+            self.events(import_handler.import_igdb_with_progress())
         refresh.assert_called_once()
         self.assertIsNone(cache.get(self.LOCK))
 

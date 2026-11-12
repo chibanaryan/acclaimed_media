@@ -13,9 +13,9 @@ rule, as ``music.views.apply_album_filters`` is for albums.
 from django.db.models import Q
 
 from core.services.query_params import parse_id_list, parse_int
-from games import config, models, utils
+from games import config, models
 from games.cache import GENERATION_RELEASE
-from games.services import playtime
+from games.services import playtime, query_filters
 
 # Every dimension, and the query parameters that set it. A facet count
 # leaves its own dimension out (``skip``) and is cached on the others.
@@ -74,7 +74,7 @@ PLATFORMS_CACHE_KEY = f"search_platforms_list:{config.CACHE_VERSION}"
 
 def platforms_lookup():
     """Every platform, for the sidebar and the heading, cached."""
-    return utils.get_or_set_cache(
+    return query_filters.get_or_set_cache(
         PLATFORMS_CACHE_KEY,
         models.Platform.objects.all(),
         ["id", "name", "code", "year_start", "year_end"],
@@ -113,7 +113,7 @@ def apply_game_filters(queryset, params, *, skip=(), user=None, descendants=None
         )
 
     if "year" not in skip:
-        queryset = utils.apply_year_filters(
+        queryset = query_filters.apply_year_filters(
             queryset,
             decade=params.get("decade"),
             year=params.get("year"),
@@ -124,7 +124,7 @@ def apply_game_filters(queryset, params, *, skip=(), user=None, descendants=None
     genre_ids = parse_id_list(params.get("genres"))
     if genre_ids and "genres" not in skip:
         # Single-select, so match_all does not matter
-        queryset = utils.apply_genre_filter(
+        queryset = query_filters.apply_genre_filter(
             queryset,
             genre_ids,
             match_all=False,
@@ -133,11 +133,11 @@ def apply_game_filters(queryset, params, *, skip=(), user=None, descendants=None
 
     platform_ids = parse_id_list(params.get("platforms"))
     if platform_ids and "platforms" not in skip:
-        queryset = utils.apply_platform_filter(queryset, platform_ids)
+        queryset = query_filters.apply_platform_filter(queryset, platform_ids)
 
     series_ids = parse_id_list(params.get("series"))
     if series_ids and "series" not in skip:
-        queryset = utils.apply_series_filter(queryset, series_ids)
+        queryset = query_filters.apply_series_filter(queryset, series_ids)
 
     if "played" not in skip and wants_played_filter(params, user):
         if "is_played_by_user" not in queryset.query.annotations:

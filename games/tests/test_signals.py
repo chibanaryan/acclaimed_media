@@ -328,7 +328,7 @@ class GenreHierarchyChangesApplyImmediatelyTests(TestCase):
         clear_all_caches()
 
     def test_reparented_genre_moves_between_filters(self):
-        from games.utils import apply_genre_filter
+        from games.services.query_filters import apply_genre_filter
 
         strategy = WikipediaGenre.objects.create(name="Strategy Root")
         sports = WikipediaGenre.objects.create(name="Sports Root")

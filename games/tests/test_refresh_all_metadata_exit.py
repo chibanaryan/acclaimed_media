@@ -2,14 +2,16 @@
 
 from datetime import datetime, timedelta
 from io import StringIO
+from pathlib import Path
 from unittest import mock
 
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from games.management.commands import refresh_all_metadata
 from games.models import Game
+from games.services import all_data_payload, post_import
 from games.services.data_version import compute_game_data_version
 
 COMMAND = "games.management.commands.refresh_all_metadata"
@@ -148,7 +150,7 @@ class RefreshMovesTheDataVersionTests(TestCase):
         before = compute_game_data_version()
         with (
             mock.patch(
-                "games.api.views.GameAllDataView._payload",
+                "games.services.all_data_payload.build",
                 side_effect=RuntimeError("boom"),
             ),
             self.assertLogs("games.services.post_import", level="ERROR"),
@@ -171,3 +173,17 @@ class WikidataCredentialsTests(TestCase):
         for token in (None, "", "no-colon", ":password", "login:"):
             with self.subTest(token=token):
                 self.assertIsNone(refresh_all_metadata.wikidata_credentials(token))
+
+
+class TheFingerprintReadsTheSharedBuilderTests(SimpleTestCase):
+    """The job and the view build the payload with one function.
+
+    Until 2026-11-12 the fingerprint called ``GameAllDataView._payload``
+    through a lazy import. A view method that came to read its request would
+    have made every fingerprint None, and the version move every Sunday.
+    """
+
+    def test_no_service_reaches_into_the_api_layer_for_it(self):
+        source = Path(post_import.__file__).read_text()
+        self.assertNotIn("games.api", source)
+        self.assertIs(post_import.all_data_payload.build, all_data_payload.build)

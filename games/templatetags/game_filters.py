@@ -35,9 +35,8 @@ register.filter("markdown", markdown)
 
 @register.filter
 def get_list_type_label(type_code):
-    """Convert list type code to human-readable label."""
-    type_dict = dict(constants.LIST_TYPES)
-    return type_dict.get(type_code, type_code)
+    """Human-readable label for a list type code (A/D/E/M)."""
+    return constants.get_list_type_label(type_code)
 
 
 @register.simple_tag
