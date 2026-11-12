@@ -961,3 +961,35 @@ class GetIgdbCheckpointTests(TestCase):
         self.assertNotIn("Checkpoint", out.getvalue())
         command._handle_progress_event({"current": 2, "game_name": "B"}, 4)
         self.assertIn("Checkpoint: 2/4", out.getvalue())
+
+
+class PopulatePlatformYearsTests(TestCase):
+    """The one way to re-apply ``PLATFORM_YEAR_RANGES`` after editing it: an
+    import fills in only the years a platform lacks, and never overwrites.
+    It had no test, and so no measure, while every command was left out of
+    the coverage gate."""
+
+    def test_it_reapplies_the_table_and_names_what_the_table_lacks(self):
+        from games.models import Platform
+        from games.platform_years import PLATFORM_YEAR_RANGES
+
+        stale = Platform.objects.create(
+            code="N64", name="Nintendo 64", year_start=1990, year_end=1991
+        )
+        current = Platform.objects.create(code="SW", name="Switch")
+        unknown = Platform.objects.create(code="ZZZ", name="No Such Console")
+        out = StringIO()
+        call_command("populate_platform_years", stdout=out)
+        for platform in (stale, current, unknown):
+            platform.refresh_from_db()
+        self.assertEqual(
+            (stale.year_start, stale.year_end), PLATFORM_YEAR_RANGES["N64"]
+        )
+        self.assertEqual(
+            (current.year_start, current.year_end), PLATFORM_YEAR_RANGES["SW"]
+        )
+        self.assertIsNone(unknown.year_start)
+        output = out.getvalue()
+        self.assertIn("SW (Switch): 2017-present", output)
+        self.assertIn("ZZZ (No Such Console): No year data available", output)
+        self.assertIn("Updated 2 platforms, 1 missing year data", output)

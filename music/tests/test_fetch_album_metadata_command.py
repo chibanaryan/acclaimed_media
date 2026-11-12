@@ -127,6 +127,93 @@ class FetchAlbumMetadataCommandTests(NoHeartbeatMixin, TestCase):
         self.assertEqual(service.call_args.kwargs["refresh_stale"], 125)
 
 
+class SelectionAndReportingTests(NoHeartbeatMixin, TestCase):
+    """What the command says before and while it works, and which albums
+    its selectors pick: unmeasured while every management command was left
+    out of the coverage gate."""
+
+    def setUp(self):
+        self.pet = models.Album.objects.create(
+            name="Pet Sounds", rank=1, slug="pet-sounds"
+        )
+        self.revolver = models.Album.objects.create(
+            name="Revolver", rank=2, slug="revolver"
+        )
+
+    def _run(self, **kwargs):
+        out = StringIO()
+        call_command("fetch_album_metadata", stdout=out, **kwargs)
+        return out.getvalue()
+
+    def test_no_album_matched_says_so_and_does_nothing(self):
+        with mock.patch(f"{COMMAND}.AlbumMetadataService") as service:
+            output = self._run(slug="no-such-album")
+        self.assertIn("No albums matched.", output)
+        service.assert_not_called()
+
+    def test_each_selector_picks_its_album(self):
+        for options in (
+            {"album": "pet sounds"},
+            {"slug": "pet-sounds"},
+            {"id": self.pet.pk},
+            {"limit": 1},
+        ):
+            with self.subTest(**options):
+                output = self._run(dry_run=True, **options)
+                self.assertIn("Fetching metadata for 1 album(s)", output)
+        self.assertIn(
+            "Fetching metadata for 1 album(s)", self._run(dry_run=True, offset=1)
+        )
+
+    def test_skip_existing_leaves_out_albums_wikidata_has_answered_for(self):
+        record = models.WikipediaAlbumData.objects.create(
+            album=self.pet, page_title="Pet Sounds"
+        )
+        models.Album.objects.filter(pk=self.pet.pk).update(
+            primary_wikipedia_album_data=record
+        )
+        output = self._run(dry_run=True, skip_existing=True)
+        self.assertIn("Fetching metadata for 1 album(s)", output)
+        # Unless forced, which re-fetches them all
+        output = self._run(dry_run=True, skip_existing=True, force=True)
+        self.assertIn("Fetching metadata for 2 album(s)", output)
+
+    def test_force_and_the_discogs_token_are_announced(self):
+        output = self._run(dry_run=True, force=True)
+        self.assertIn("Force: re-fetching records that already have data", output)
+        self.assertIn("No DISCOGS_TOKEN", output)
+        with self.settings(DISCOGS_TOKEN="token"):
+            self.assertIn("Discogs token set", self._run(dry_run=True))
+
+    def test_progress_is_printed_every_twenty_five_albums(self):
+        from music.management.commands.fetch_album_metadata import Command
+
+        command = Command(stdout=StringIO())
+        for current in (24, 25, 26):
+            command._on_progress(
+                "progress", {"current": current, "total": 100, "name": "Pet Sounds"}
+            )
+        command._on_progress("start", {"total": 100})
+        self.assertEqual(command.stdout.getvalue().strip(), "[25/100] Pet Sounds")
+
+    @mock.patch(f"{COMMAND}.AlbumMetadataService")
+    def test_a_pass_with_many_errors_prints_ten_and_counts_the_rest(self, service):
+        service.return_value.run_musicbrainz.return_value = PassResult(
+            name="MusicBrainz",
+            processed=1,
+            errors=[f"Album {n}: boom" for n in range(12)],
+        )
+        with (
+            mock.patch(f"{COMMAND}.rebuild_album_genres"),
+            mock.patch(f"{COMMAND}.write_report"),
+            mock.patch(f"{COMMAND}.refresh_release_dates", return_value=0),
+        ):
+            output = self._run(musicbrainz=True)
+        self.assertIn("Album 9: boom", output)
+        self.assertNotIn("Album 10: boom", output)
+        self.assertIn("... and 2 more", output)
+
+
 class AnOutageFailsTheCommandTests(NoHeartbeatMixin, TestCase):
     """The Wikidata pass attempts every album on every run, so one that
     lands none could not run. The command exited 0 on it until 2026-11-10,

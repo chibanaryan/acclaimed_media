@@ -1059,6 +1059,11 @@ class ImportMusicDataCommandTests(TestCase):
             output = self.run_command()
         self.assertIn(caching.CACHES_NOT_CLEARED, output)
 
+    def test_a_file_that_is_not_there_is_named(self):
+        self.paths["lists"] = str(self.dir / "NoSuchFile.txt")
+        with self.assertRaisesMessage(CommandError, "--lists file not found"):
+            self.run_command(dry_run=True)
+
     def test_a_dry_run_names_a_bad_lists_file_without_a_traceback(self):
         (self.dir / "ListData.txt").write_text(
             "Mojo\t1995\tThe 100 Greatest Albums\t\n", encoding="utf-8"

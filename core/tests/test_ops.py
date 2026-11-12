@@ -211,3 +211,16 @@ class HealthzDroppedConnectionTests(TestCase):
             with self.assertLogs("core.views", "ERROR"):
                 response = self.client.get("/healthz/")
         self.assertEqual(response.status_code, 503)
+
+
+class TestsRunWithoutTheDebugToolbarTests(SimpleTestCase):
+    """`.env.development.local` sets DEBUG and beats the shell, so a local
+    test run had the toolbar's app and middleware installed. CI installs the
+    production lock, which has no toolbar: the two tested different stacks."""
+
+    def test_the_toolbar_is_out_under_test(self):
+        from django.conf import settings
+
+        self.assertFalse(settings.DEBUG_TOOLBAR)
+        self.assertNotIn("debug_toolbar", settings.INSTALLED_APPS)
+        self.assertFalse([m for m in settings.MIDDLEWARE if "debug_toolbar" in m])

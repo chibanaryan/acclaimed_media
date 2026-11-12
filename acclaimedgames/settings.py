@@ -194,7 +194,12 @@ MIDDLEWARE = [
 
 # Enable debug toolbar only in development. It is in requirements-dev.txt, not
 # the production lock, so DEBUG on a production install must not need it.
-DEBUG_TOOLBAR = DEBUG and importlib.util.find_spec("debug_toolbar") is not None
+# Not under test: `.env.development.local` sets DEBUG and beats the shell, so
+# a local run tested with the toolbar's app and middleware installed, which
+# CI's, on the production lock alone, never has.
+DEBUG_TOOLBAR = (
+    DEBUG and not TEST_MODE and importlib.util.find_spec("debug_toolbar") is not None
+)
 if DEBUG_TOOLBAR:
     INSTALLED_APPS.append("debug_toolbar")
     MIDDLEWARE.append("debug_toolbar.middleware.DebugToolbarMiddleware")
@@ -394,8 +399,9 @@ IGDB_CLIENT_ID = env("IGDB_CLIENT_ID", default="XXX")
 IGDB_CLIENT_SECRET = env("IGDB_CLIENT_SECRET", default="XXX")
 IGDB_USE_PRO_TIER = env.bool("IGDB_USE_PRO_TIER", default=False)
 
-# Wikidata API authentication (optional - for 10x faster rate limits)
-# Format: username@botname:password
+# Wikidata API authentication (optional - about 2.5x faster for
+# fetch_wikipedia_metadata, 4x for the weekly refresh)
+# Format: username@botname:password, sent as basic auth
 # (from https://meta.wikimedia.org/wiki/Special:BotPasswords)
 WIKIDATA_ACCESS_TOKEN = env("WIKIDATA_ACCESS_TOKEN", default=None)
 

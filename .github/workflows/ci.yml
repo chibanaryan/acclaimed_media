@@ -228,6 +228,10 @@ jobs:
         with:
           node-version: lts/*
       - run: scripts/minify_js.sh --check
+      # The two scripts terser never parses: it minifies each app's js/
+      # directory, not the admin's below it nor the smoke test itself
+      - run: node --check games/static/games/js/admin/markdown-preview.js
+      - run: node --check scripts/browser_smoke.js
 
   # Real Chrome over the main pages at desktop and phone widths: fails on an
   # uncaught error, an Alpine expression error or a CSP violation - the
