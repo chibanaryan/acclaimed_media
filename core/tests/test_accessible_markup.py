@@ -464,15 +464,15 @@ class ReadableTextTests(SimpleTestCase):
         ):
             with self.subTest(path=path):
                 self.assertIsNone(faint.search(read(path)))
-        # The one control left faint in each is disabled until a filter is on
-        for path in (
-            "games/templates/includes/_advanced_filters.html",
-            "core/templates/core/includes/_saved_filters_dropdown.html",
-        ):
-            with self.subTest(path=path):
-                lines = [line for line in read(path).splitlines() if faint.search(line)]
-                self.assertEqual(len(lines), 1)
-                self.assertIn("cursor-not-allowed", lines[0])
+        # The one control left faint is disabled until a filter is on. Games'
+        # sidebar had a copy of it until it took the shared partial.
+        self.assertIsNone(
+            faint.search(read("games/templates/includes/_advanced_filters.html"))
+        )
+        path = "core/templates/core/includes/_saved_filters_dropdown.html"
+        lines = [line for line in read(path).splitlines() if faint.search(line)]
+        self.assertEqual(len(lines), 1)
+        self.assertIn("cursor-not-allowed", lines[0])
         self.assertIn(
             '<span class="text-xs mt-2 text-base-content/65">No cover art yet</span>',
             read("music/templates/music/album_detail.html"),

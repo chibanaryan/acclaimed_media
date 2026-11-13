@@ -1527,6 +1527,98 @@ async function checkArtistPageMirrorsAStatus(page) {
 }
 
 /**
+ * A games reader's saved filters, through the page's own controls: the
+ * Saved menu, the save and delete dialogs, and applying one. The markup is
+ * the shared partials' (core/includes/_saved_filter*.html), which music had
+ * and games took in place of its own copies; nothing ran games' before.
+ * Answers as above.
+ */
+async function checkGamesSavedFilters(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    const refused = await signIn(page, games);
+    if (refused) return refused;
+    await page.goto(games + '/', { waitUntil: 'networkidle2' });
+    await startGamesEngine(page);
+    const sidebar = '#desktop-filter-sidebar';
+    const clickText = (scope, text) => page.evaluate((scope, text) => {
+        const button = [...document.querySelectorAll(scope + ' button')]
+            .find(found => found.offsetParent !== null && found.textContent.trim() === text);
+        if (button) button.click();
+        return Boolean(button);
+    }, scope, text);
+    const names = () => page.evaluate(scope =>
+        [...document.querySelectorAll(scope + ' ul.menu button.text-left')]
+            .map(found => found.textContent.trim()), sidebar);
+    const name = 'Smoke nineties';
+    // Whatever an earlier run that stopped part way left behind
+    await page.evaluate(async () => {
+        const headers = { 'X-CSRFToken': readCsrfToken() };
+        const kept = (await (await fetch('/api/saved-filters/')).json()).filter_sets || [];
+        for (const filter of kept) {
+            await fetch(`/api/saved-filters/${filter.id}/`, { method: 'DELETE', headers });
+        }
+    });
+
+    // A filter to save: the 1990s, newest first
+    const decade = await page.waitForSelector('.year-grid-decade[title^="1990s:"]');
+    await decade.click();
+    await sleep(600);
+    const component = await page.$('[x-data*="filterComponent"]');
+    await page.evaluate(element => Alpine.$data(element).updateSort('year'), component);
+    await sleep(600);
+    await page.evaluate(element => {
+        const data = Alpine.$data(element);
+        if ((data.filters.sortDirection || 'asc') !== 'desc') data.toggleSortDirection();
+    }, component);
+    await sleep(800);
+    const saved = new URL(page.url()).search;
+
+    if (!await clickText(sidebar, 'Saved')) return 'games shows no Saved button';
+    await sleep(600);
+    if (!await clickText(sidebar, 'Save current filters')) {
+        return 'the Saved menu offers no "Save current filters" with a filter on';
+    }
+    // The dialog offers the heading as a name: type over it
+    const field = await page.waitForSelector('#save-filter-name-input', { visible: true });
+    await field.evaluate(input => { input.focus(); input.select(); });
+    await field.type(name);
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => !document.querySelector('dialog[open]'));
+    await sleep(500);
+
+    // Start again from the unfiltered page, then apply it
+    await page.goto(games + '/', { waitUntil: 'networkidle2' });
+    await startGamesEngine(page);
+    if (!await clickText(sidebar, 'Saved')) return 'games shows no Saved button after a reload';
+    await page.waitForFunction(scope =>
+        document.querySelector(scope + ' ul.menu button.text-left'), {}, sidebar);
+    const listed = await names();
+    if (!listed.includes(name)) return `the Saved menu lists ${listed.join(', ') || 'nothing'}`;
+    await clickText(sidebar, name);
+    await sleep(1000);
+    const applied = new URL(page.url()).search;
+
+    // Take it away again, so the check can run twice on one database
+    if (!await clickText(sidebar, 'Saved')) return 'the Saved button went after applying';
+    await sleep(500);
+    const asked = await page.evaluate((scope, name) => {
+        const button = document.querySelector(scope + ` button[aria-label="Delete ${name}"]`);
+        if (button) button.click();
+        return Boolean(button);
+    }, sidebar, name);
+    if (!asked) return 'the saved filter has no Delete button';
+    await page.waitForSelector('dialog[open]');
+    if (!await clickText('dialog[open]', 'Delete')) return 'the delete dialog has no Delete';
+    await page.waitForFunction(() => !document.querySelector('dialog[open]'));
+    await sleep(500);
+    const left = await names();
+
+    if (applied !== saved) return `saved ${saved} and applying it gave ${applied}`;
+    if (!saved.includes('dir=desc')) return `the direction was not in what was saved: ${saved}`;
+    return left.includes(name) ? `"${name}" was still listed after deleting it` : null;
+}
+
+/**
  * The listen button's dropdown is a menu: Enter opens it on its first item,
  * the arrows walk it and wrap, and Tab closes it and returns to the button.
  * Its button said `aria-haspopup` and the list behind it had no role and
@@ -2955,6 +3047,7 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     await report('music server Load More keeps focus', checkServerLoadMoreKeepsFocus);
     await report('music artist page mirrors a status', checkArtistPageMirrorsAStatus);
     await report('music listen menu by keyboard', checkTrackingMenuByKeyboard);
+    await report('games saved filters', checkGamesSavedFilters);
     await report('games sign-up route opens the modal', page => checkSignupRouteOpensTheModal(page, games));
     await report('music sign-up route opens the modal', page => checkSignupRouteOpensTheModal(page, music));
     await report('games search box by keyboard', page => checkSearchBoxByKeyboard(page, games, 'smoke'));
