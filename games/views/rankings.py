@@ -486,13 +486,13 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         dir_param = self.request.GET.get("dir", "asc")
         if dir_param not in {"asc", "desc"}:
             dir_param = "asc"
-        genres_param = self.request.GET.get("genres")
         # Ids only, as the list is filtered: anything else was named raw in
-        # the heading over a list it had not narrowed
-        platform_ids = [
-            str(pk) for pk in parse_id_list(self.request.GET.get("platforms"))
-        ]
-        series_param = self.request.GET.get("series")
+        # the heading over a list it had not narrowed, and handed to the
+        # page's filter state as a genre or series that is none
+        genre_ids, platform_ids, series_ids = (
+            [str(pk) for pk in parse_id_list(self.request.GET.get(name))]
+            for name in ("genres", "platforms", "series")
+        )
         played_param = self.request.GET.get("played")
 
         # Parse HLTB parameters
@@ -512,9 +512,9 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
         has_any_filter = (
             q_param
             or has_year_filter
-            or genres_param
+            or genre_ids
             or platform_ids
-            or series_param
+            or series_ids
             or sort_param != "rank"
             or dir_param != "asc"
             or (played_param and self.request.user.is_authenticated)
@@ -526,9 +526,9 @@ class HomePageView(AnonymousResponseCacheMixin, RobustPaginationMixin, ListView)
             "q": q_param,
             "start": start_val,
             "end": end_val,
-            "genres": genres_param.split(",") if genres_param else [],
+            "genres": genre_ids,
             "platforms": platform_ids,
-            "series": series_param.split(",") if series_param else [],
+            "series": series_ids,
             "played": (
                 played_param
                 if played_param and self.request.user.is_authenticated

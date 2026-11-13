@@ -114,7 +114,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 <div class="article-container">
                     <article class="max-w-3xl mx-auto px-4 py-8">
                         <div class="prose prose-lg prose-invert max-w-none" id="content">
-                            <p class="text-base-content/50 italic">Start typing to see preview...</p>
+                            <p class="text-base-content/65 italic">Start typing to see preview...</p>
                         </div>
                     </article>
                 </div>
@@ -126,17 +126,10 @@ document.addEventListener("DOMContentLoaded", function() {
 
     initIframe();
 
-    // Load marked.js for markdown rendering
-    function loadMarked(callback) {
-        if (typeof marked !== "undefined") {
-            callback();
-            return;
-        }
-        const script = document.createElement("script");
-        script.src = "https://cdn.jsdelivr.net/npm/marked/marked.min.js";
-        script.onload = callback;
-        document.head.appendChild(script);
-    }
+    // `marked` is the vendored copy the admin page loads ahead of this file
+    // (ArticleAdmin.Media). Until 2026-11-12 it was fetched here from a CDN
+    // at whatever version the CDN gave, with no integrity hash, and its
+    // output goes into innerHTML below.
 
     function renderPreview() {
         if (typeof marked === "undefined") return;
@@ -148,18 +141,15 @@ document.addEventListener("DOMContentLoaded", function() {
         if (content) {
             target.innerHTML = marked.parse(content);
         } else {
-            target.innerHTML = "<p class='text-base-content/50 italic'>Start typing to see preview...</p>";
+            target.innerHTML = "<p class='text-base-content/65 italic'>Start typing to see preview...</p>";
         }
 
         // Auto-resize iframe to content height
         iframe.style.height = iframe.contentDocument.body.scrollHeight + "px";
     }
 
-    // Load marked and render initial preview
-    loadMarked(function() {
-        // Small delay to let iframe CSS load
-        setTimeout(renderPreview, 100);
-    });
+    // Render the initial preview, after a small delay to let iframe CSS load
+    setTimeout(renderPreview, 100);
 
     // Update preview on input (debounced)
     let timeout;

@@ -6,7 +6,7 @@ from django.utils.http import urlencode
 from django.views.generic import ListView
 
 from core.mixins import HTMXPartialMixin, RobustPaginationMixin
-from core.services.query_params import parse_direction
+from core.services.query_params import parse_direction, parse_int
 from games import config, constants, models
 
 # Each grouping's sorts and the one it takes when the URL names none
@@ -118,10 +118,7 @@ class ListListView(RobustPaginationMixin, HTMXPartialMixin, ListView):
         search_query = self.request.GET.get("q", "").strip()
         group_by_param = self.request.GET.get("group_by")
 
-        try:
-            year_value = int(year_value) if year_value else None
-        except (ValueError, TypeError):
-            year_value = None
+        year_value = parse_int(year_value)
 
         type_code = constants.LIST_TYPE_CODES.get(type_slug) if type_slug else None
 

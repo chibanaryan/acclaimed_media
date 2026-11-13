@@ -994,10 +994,14 @@ tr.entity-row:hover {
     @apply max-h-80 overflow-y-auto;
   }
 
-  /* Sidebar scroll styling - subtle thin scrollbar */
+  /* Sidebar scroll styling - subtle thin scrollbar. The colours are
+     DaisyUI 5's `--color-*` variables: these rules, the chart tooltip's
+     arrow and the untracked icon's hover named DaisyUI 4's (`--bc`,
+     `--b1`), which version 5 never defines, so each declaration was
+     dropped and the browser's default drawn (until 2026-11-12). */
   aside .sidebar-scroll {
     scrollbar-width: thin;
-    scrollbar-color: oklch(var(--bc) / 0.2) transparent;
+    scrollbar-color: color-mix(in oklab, var(--color-base-content) 20%, transparent) transparent;
   }
 
   aside .sidebar-scroll::-webkit-scrollbar {
@@ -1009,12 +1013,12 @@ tr.entity-row:hover {
   }
 
   aside .sidebar-scroll::-webkit-scrollbar-thumb {
-    background: oklch(var(--bc) / 0.2);
+    background: color-mix(in oklab, var(--color-base-content) 20%, transparent);
     border-radius: 2px;
   }
 
   aside .sidebar-scroll::-webkit-scrollbar-thumb:hover {
-    background: oklch(var(--bc) / 0.3);
+    background: color-mix(in oklab, var(--color-base-content) 30%, transparent);
   }
 
   /* Active nav item styling for mobile navbar buttons. `text-primary`
@@ -1099,7 +1103,8 @@ input[type="number"] {
     @apply absolute left-1/2 -bottom-1 transform -translate-x-1/2;
     border-left: 4px solid transparent;
     border-right: 4px solid transparent;
-    border-top: 4px solid var(--fallback-b3, oklch(var(--b1)));
+    /* The tooltip's own background, so the arrow reads as part of it */
+    border-top: 4px solid var(--color-base-100);
   }
 }
 
@@ -1200,7 +1205,7 @@ input[type="number"] {
    outline for games, an empty record for albums. */
 .played-button-wrapper:hover .mdi-star-outline,
 .tracking-button-wrapper:hover .mdi-record-circle-outline {
-  color: oklch(var(--bc) / 0.5);
+  color: color-mix(in oklab, var(--color-base-content) 50%, transparent);
 }
 
 /* "Want" for albums: the empty record with a plus, as games' Want is

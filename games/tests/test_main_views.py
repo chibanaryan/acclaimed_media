@@ -4866,6 +4866,26 @@ class PlatformGroupIdsAreNotFiltersTests(TestCase):
         self.assertEqual(response.content, bare.content)
         self.assertEqual(response["Content-Disposition"], bare["Content-Disposition"])
 
+    def test_genres_and_series_are_ids_and_nothing_else_too(self):
+        """Their raw text went into the page's filter state, so the
+        controls started on a genre and a series that are none, over a list
+        nothing had narrowed (until 2026-11-12)."""
+        response = self.client.get(
+            reverse("home"), {"genres": "abc,5", "series": "<x>,7", "platforms": "q"}
+        )
+        filters = response.context["filters"]
+        self.assertEqual(
+            (filters["genres"], filters["series"], filters["platforms"]),
+            (["5"], ["7"], []),
+        )
+        self.assertNotContains(response, "&lt;x&gt;")
+
+    def test_words_that_are_no_ids_are_no_filter(self):
+        """A filtered list numbers its rows by position; an unfiltered one
+        shows each game's rank."""
+        response = self.client.get(reverse("home"), {"genres": "abc", "series": "x"})
+        self.assertEqual(response.context["filters"]["rank_display"], "alltime")
+
 
 class HomePageDocumentTitleTest(TestCase):
     """The browser tab title tracks the filter state.

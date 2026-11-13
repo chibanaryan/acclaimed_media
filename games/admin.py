@@ -541,7 +541,11 @@ class ArticleAdmin(admin.ModelAdmin):
     )
 
     class Media:
-        js = ("games/js/admin/markdown-preview.js",)
+        # The renderer first: the preview script reads its `marked` global
+        js = (
+            "games/js/vendor/marked.min.js",
+            "games/js/admin/markdown-preview.js",
+        )
         css = {"all": ("games/css/admin-article.css",)}
 
     def formfield_for_dbfield(self, db_field, request, **kwargs):

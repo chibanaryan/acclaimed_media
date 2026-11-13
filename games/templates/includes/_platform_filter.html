@@ -47,7 +47,7 @@
                             :aria-pressed="isManufacturerSelected(mfrKey) ? 'true' : 'false'"
                             @click="toggleManufacturerSelection(mfrKey); debouncedFilterUpdate();">
                         <template x-if="platformHierarchy[mfrKey].svgFile">
-                            <img :src="platformHierarchy[mfrKey].svgFile" class="w-4 h-4" aria-hidden="true">
+                            <img :src="platformHierarchy[mfrKey].svgFile" class="w-4 h-4" alt="" aria-hidden="true">
                         </template>
                         <template x-if="platformHierarchy[mfrKey].svgIcon">
                             <svg class="w-4 h-4 fill-current" aria-hidden="true">

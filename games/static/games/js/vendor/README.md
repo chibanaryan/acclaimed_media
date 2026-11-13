@@ -9,7 +9,14 @@ the files.
 |---|---|---|
 | `htmx.min.js` | `htmx.org` | 1.9.10 |
 | `alpine.min.js` | `alpinejs` | 3.14.3 |
+| `marked.min.js` | `marked` | 15.0.12 |
 | `alpine-collapse.min.js` | `@alpinejs/collapse` | not recorded (the file carries no version); re-vendor it at Alpine's version on the next upgrade |
+
+`marked.min.js` renders the admin's article preview and nothing a reader
+loads. It is the build the CDN was serving for the unversioned URL the
+preview used until 2026-11-12 (byte for byte: marked 15 is the last
+release with a `marked.min.js` at the package root, so the URL had stopped
+moving). Later releases ship `lib/marked.umd.js` instead.
 
 To update one, download the package's own minified build at the new version
 (for example `https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js`), replace

@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, mock_open
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from games.services import game_filters
@@ -184,6 +184,21 @@ class ImportViewIntegrationTests(TestCase):
         self.assertContains(response, "Games File (e.g. Top1400.txt)")
         self.assertContains(response, "You do not need to delete data first.")
 
+    @mock.patch("games.services.import_handler.import_batch")
+    def test_seed_test_data_is_refused_outside_development(self, mock_import):
+        """The button is rendered only under DEBUG; the POST was taken
+        regardless, and replaced a live site's rankings with the files
+        checked in."""
+        self.client.login(username="tester", password="pass")
+
+        response = self.client.post(reverse("import"), {"seed_test_data": True})
+
+        self.assertEqual(response.status_code, 302)
+        mock_import.assert_not_called()
+        errors = response.wsgi_request.session.get("import_errors")
+        self.assertEqual(errors, [views.imports.SEED_IS_FOR_DEVELOPMENT])
+
+    @override_settings(DEBUG=True)
     @mock.patch(
         "games.services.import_handler.import_batch", return_value=(True, "Loaded")
     )
@@ -212,6 +227,7 @@ class ImportViewIntegrationTests(TestCase):
         )
         mock_import.assert_called_once()
 
+    @override_settings(DEBUG=True)
     @mock.patch("builtins.open", side_effect=FileNotFoundError)
     @mock.patch("games.views.imports.Path")
     def test_seed_test_data_file_not_found(self, mock_path, mock_file):

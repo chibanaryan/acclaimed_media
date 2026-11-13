@@ -471,6 +471,36 @@ class ReadableTextTests(SimpleTestCase):
             read("music/templates/music/album_detail.html"),
         )
 
+    def test_counts_and_help_text_are_not_at_sixty_percent(self):
+        """/60 is 4.3:1 on the light theme's base-300, under the 4.5:1 that
+        /65 clears: the source lists' count rows and two import pages' help
+        text were left at it until 2026-11-12."""
+        for path in (
+            "games/templates/lists/includes/_list_list_full.html",
+            "music/templates/music/lists/includes/_list_list_results.html",
+            "music/templates/music/import.html",
+            "books/templates/books/import.html",
+            "games/templates/import.html",
+        ):
+            with self.subTest(path=path):
+                source = read(path)
+                self.assertNotIn("text-base-content/60", source)
+                self.assertNotIn("var(--color-base-content) 60%", source)
+
+    def test_a_decorative_image_has_an_empty_alt(self):
+        """`aria-hidden` hides it from a screen reader; an `<img>` with no
+        `alt` at all is still invalid, and a reader that ignores
+        `aria-hidden` on an image reads its file name."""
+        for path in (
+            "games/templates/includes/_platform_filter.html",
+            "games/templates/games/includes/_mobile_filter_platforms.html",
+        ):
+            with self.subTest(path=path):
+                images = re.findall(r"<img\b[^>]*>", read(path))
+                self.assertTrue(images)
+                for image in images:
+                    self.assertIn('alt="', image)
+
 
 class ImportPageMessagesTests(SimpleTestCase):
     def test_no_message_is_interpolated_into_markup(self):

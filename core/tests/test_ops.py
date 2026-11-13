@@ -190,6 +190,29 @@ class AllowedHostsTests(SimpleTestCase):
         base = base[: base.index("]")]
         self.assertNotIn("testserver", base)
 
+    def test_loopback_names_are_only_allowed_in_development(self):
+        """Production's list is its three hosts. `localhost` and `127.0.0.1`
+        were in it too until 2026-11-12, so a dyno answered for them. Read
+        from the source, as above: a developer's own environment turns
+        DEBUG on as the settings load, which adds them back."""
+        from pathlib import Path
+
+        settings_source = (
+            Path(__file__).resolve().parents[2] / "acclaimedgames" / "settings.py"
+        ).read_text()
+        base = settings_source[settings_source.index("ALLOWED_HOSTS = [") :]
+        base = base[: base.index("]")]
+        self.assertNotIn("localhost", base)
+        self.assertNotIn("127.0.0.1", base)
+        self.assertEqual(base.count('"'), 6, base)
+        under_debug = settings_source[
+            settings_source.index("if DEBUG:\n    # The loopback") :
+        ]
+        self.assertIn(
+            'ALLOWED_HOSTS += ["127.0.0.1", "localhost", ".localhost"]',
+            under_debug[: under_debug.index("if TEST_MODE:")],
+        )
+
 
 class BackgroundThreadDaemonTests(SimpleTestCase):
     def test_a_thread_can_ask_to_be_waited_for(self):

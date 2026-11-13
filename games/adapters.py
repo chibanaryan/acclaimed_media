@@ -33,7 +33,8 @@ class ModalAccountAdapter(DefaultAccountAdapter):
         A name some row already holds, verified or not, cannot be taken:
         the column is unique. The modal has freed an abandoned one by now,
         so what is left is a real collision, and allauth generates a name
-        from the email, as it would with no adapter.
+        from the email, as it would with no adapter. It does the same for an
+        email too long for the column.
         """
         User = get_user_model()
 
@@ -50,7 +51,11 @@ class ModalAccountAdapter(DefaultAccountAdapter):
             and not held(posted)
         ):
             username = posted
-        if held(username):
+        # The email is the default, and an address can be longer (254
+        # characters) than the column holds (150): a DataError on Postgres,
+        # until 2026-11-12. One that long gets allauth's generated name too.
+        too_long = len(username) > User._meta.get_field("username").max_length
+        if too_long or held(username):
             user.username = ""
             return super().populate_username(request, user)
         user.username = username

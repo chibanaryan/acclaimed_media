@@ -92,16 +92,16 @@ SITE_URLCONFS = {
     "music": "acclaimedgames.urls_music",
 }
 ALLOWED_HOSTS = [
-    "127.0.0.1",
-    "localhost",
     "acclaimedmedia.org",
     "games.acclaimedmedia.org",
     "music.acclaimedmedia.org",
 ]
 if DEBUG:
-    # games.localhost:8000 and music.localhost:8000, which browsers resolve
-    # to loopback, are how the subdomains are reached in development
-    ALLOWED_HOSTS.append(".localhost")
+    # The loopback names, and games.localhost:8000 and music.localhost:8000,
+    # which browsers resolve to loopback and are how the subdomains are
+    # reached in development. The first two were in the list above until
+    # 2026-11-12, so a dyno answered a request naming them.
+    ALLOWED_HOSTS += ["127.0.0.1", "localhost", ".localhost"]
 if TEST_MODE:
     # The test client's host; it was listed unconditionally, so production
     # answered requests that named it
@@ -562,8 +562,6 @@ SECURE_CSP_REPORT_ONLY = {
         _CSP_STOP_PROPAGATION,
         "https://www.googletagmanager.com",
         "https://upload-widget.cloudinary.com",
-        # The admin article preview's markdown renderer, by path
-        "https://cdn.jsdelivr.net/npm/marked/",
     ],
     "style-src": [CSP.SELF, CSP.UNSAFE_INLINE],
     "img-src": _CSP_IMG_SRC,

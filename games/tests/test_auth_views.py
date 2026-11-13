@@ -78,6 +78,25 @@ class ModalAccountAdapterTest(TestCase):
         self.assertTrue(username)
         self.assertFalse(User.objects.filter(username__iexact=username).exists())
 
+    def test_an_email_too_long_for_the_column_gets_a_generated_username(self):
+        """An address may run to 254 characters and the username holds 150:
+        on Postgres the save was a DataError, a 500 (SQLite does not check
+        a length, so only production saw it)."""
+        limit = User._meta.get_field("username").max_length
+        email = "a" * (limit - len("@example.com") + 1) + "@example.com"
+        self.assertEqual(len(email), limit + 1)
+
+        username = self._populated("", email=email)
+
+        self.assertTrue(username)
+        self.assertLessEqual(len(username), limit)
+        self.assertNotEqual(username, email)
+
+    def test_an_email_that_just_fits_is_still_the_username(self):
+        limit = User._meta.get_field("username").max_length
+        email = "a" * (limit - len("@example.com")) + "@example.com"
+        self.assertEqual(self._populated("", email=email), email)
+
     def test_get_login_redirect_url_htmx_returns_root(self):
         """Test that HTMX login requests redirect to root."""
         request = self.factory.get("/", HTTP_HX_REQUEST="true")

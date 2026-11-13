@@ -19,6 +19,11 @@ from games.services import import_handler, post_import
 
 logger = logging.getLogger(__name__)
 
+SEED_IS_FOR_DEVELOPMENT = (
+    "Loading the bundled test data is for development. On a live site, "
+    "upload the release files, or run import_games_data."
+)
+
 
 def _with_metadata_note(message):
     """Start the post-import fetch, and say so under the import's message."""
@@ -205,7 +210,14 @@ class ImportView(StaffOnlyMixin, FormView):
         """Process the import form and handle file uploads."""
         import_data = form.cleaned_data
 
-        # Quick action: load bundled test data files from the repo
+        # Quick action: load bundled test data files from the repo. The page
+        # shows its button only under DEBUG; until 2026-11-12 the server
+        # took the POST all the same.
+        if import_data.get("seed_test_data") and not settings.DEBUG:
+            self.request.session["import_errors"] = [SEED_IS_FOR_DEVELOPMENT]
+            self.request.session.modified = True
+            return super().form_valid(form)
+
         if import_data.get("seed_test_data"):
             seed_dir = Path(settings.BASE_DIR) / "acclaimedgames" / "test_input_files"
             file_map = {

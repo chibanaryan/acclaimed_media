@@ -305,6 +305,7 @@ class ImportPageStartsTheFetchTests(TestCase):
         schedule.assert_not_called()
         self.assertEqual(session["import_errors"], ["bad row"])
 
+    @override_settings(DEBUG=True)
     def test_the_bundled_data_starts_it(self):
         with (
             mock.patch(

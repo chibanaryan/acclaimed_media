@@ -125,12 +125,23 @@ class VendoredLibraryVersionsTests(SimpleTestCase):
 
     def test_the_recorded_versions_are_the_shipped_ones(self):
         readme = (self.VENDOR / "README.md").read_text()
-        for filename, package in (
-            ("htmx.min.js", "htmx.org"),
-            ("alpine.min.js", "alpinejs"),
+        for filename, package, version in (
+            ("htmx.min.js", "htmx.org", r'version:"([0-9.]+)"'),
+            ("alpine.min.js", "alpinejs", r'version:"([0-9.]+)"'),
+            ("marked.min.js", "marked", r"marked v([0-9.]+) "),
         ):
             with self.subTest(filename=filename):
                 shipped = re.search(
-                    r'version:"([0-9.]+)"', (self.VENDOR / filename).read_text()
+                    version, (self.VENDOR / filename).read_text()
                 ).group(1)
                 self.assertIn(f"| `{package}` | {shipped} |", readme)
+
+    def test_the_admin_preview_loads_no_script_from_another_origin(self):
+        """Its markdown renderer came from a CDN, unpinned and unchecked,
+        and what it returns is written to `innerHTML`. The upload widget is
+        Cloudinary's own and stays theirs to serve."""
+        admin_js = Path(settings.BASE_DIR) / "games/static/games/js/admin"
+        source = (admin_js / "markdown-preview.js").read_text()
+        origins = set(re.findall(r'"(https://[^/"]+)', source))
+        self.assertEqual(origins, {"https://upload-widget.cloudinary.com"})
+        self.assertNotIn("jsdelivr", str(settings.SECURE_CSP_REPORT_ONLY["script-src"]))
