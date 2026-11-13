@@ -621,6 +621,11 @@ class IGDBGameData(models.Model):
         blank=True,
         help_text="YouTube video ID from IGDB (first video)",
     )
+    summary = models.TextField(
+        blank=True,
+        default="",
+        help_text="IGDB's summary of the game, for the page's description",
+    )
     is_primary = models.BooleanField(
         default=False,
         db_index=True,
@@ -1369,6 +1374,7 @@ class Game(RemembersLoaded, MediaItemBase):
                 orphaned_record.artwork_id = game_data.get("cover", "")
                 orphaned_record.url = game_data.get("url", "")
                 orphaned_record.youtube_video_id = game_data.get("youtube_video_id")
+                orphaned_record.summary = game_data.get("summary") or ""
                 orphaned_record.is_primary = idx == 0  # First record is primary
                 orphaned_record.save(
                     update_fields=[
@@ -1376,6 +1382,7 @@ class Game(RemembersLoaded, MediaItemBase):
                         "artwork_id",
                         "url",
                         "youtube_video_id",
+                        "summary",
                         "is_primary",
                     ]
                 )
@@ -1390,6 +1397,7 @@ class Game(RemembersLoaded, MediaItemBase):
                         "artwork_id": game_data.get("cover", ""),
                         "url": game_data.get("url", ""),
                         "youtube_video_id": game_data.get("youtube_video_id"),
+                        "summary": game_data.get("summary") or "",
                         "is_primary": (idx == 0),  # First record is primary
                     },
                 )
@@ -1534,6 +1542,13 @@ class Game(RemembersLoaded, MediaItemBase):
         if self.primary_igdb_game_data:
             return self.primary_igdb_game_data.image_og
         return None
+
+    @property
+    def igdb_summary(self) -> str:
+        """IGDB's summary of the game, or "" for a game it has none for."""
+        if self.primary_igdb_game_data:
+            return self.primary_igdb_game_data.summary
+        return ""
 
     @cached_property
     def homepage_thumb_small(self) -> Optional[str]:

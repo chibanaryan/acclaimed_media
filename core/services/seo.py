@@ -21,6 +21,24 @@ def json_ld(payload):
     return json.dumps(payload).replace("<", "\\u003c")
 
 
+def meta_description(text, limit=155):
+    """``text`` as a meta description: one line, cut at a word near ``limit``.
+
+    Search results show about 155 characters. Text over the limit is cut
+    at the last whole word that leaves room for an ellipsis, without the
+    comma or dash the cut would leave hanging; a single word longer than
+    the limit is cut through. Django's ``Truncator.chars`` cuts mid-word.
+    """
+    text = " ".join((text or "").split())
+    if len(text) <= limit:
+        return text
+    room = limit - 1
+    cut = text[:room]
+    if text[room] != " " and " " in cut:
+        cut = cut[: cut.rindex(" ")]
+    return cut.rstrip(" ,;:-\u2013\u2014") + "\u2026"
+
+
 def itemlist_json(name, entries, site):
     """A schema.org ItemList for ``entries``, an iterable of ``(name, path)``.
 

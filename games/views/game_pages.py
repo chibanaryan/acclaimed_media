@@ -116,7 +116,36 @@ class GameDetailView(DetailView):
             context["year_game_count"] = year_counts.get(game.year_of_release, 0)
 
         context["structured_data_json"] = _game_json_ld(game)
+        context["meta_description"] = _game_meta_description(game)
         return context
+
+
+# What a search result shows of a description
+META_DESCRIPTION_LENGTH = 160
+
+
+def _game_words(game):
+    """What is written of the game: staff's description, else IGDB's summary.
+
+    ``Game.description`` is the admin's to fill and nothing else writes it,
+    so it is blank for nearly every game; where staff have written one, it
+    is the one to use.
+    """
+    return game.description or game.igdb_summary
+
+
+def _game_meta_description(game):
+    """The page's description: its rank, then the game in a few words.
+
+    "" for a game nothing is written of, which keeps the template's stock
+    sentences. Until 2026-11-12 nearly every game had those: each fetch
+    asked IGDB for the summary and dropped it.
+    """
+    words = _game_words(game)
+    if not words:
+        return ""
+    lead = f"#{game.rank} of the most critically acclaimed video games. "
+    return lead + seo.meta_description(words, META_DESCRIPTION_LENGTH - len(lead))
 
 
 def _game_json_ld(game):
@@ -133,7 +162,7 @@ def _game_json_ld(game):
         "url": sites.canonical_url(
             sites.GAMES, reverse("game-detail", kwargs={"slug": game.slug})
         ),
-        "description": game.description
+        "description": _game_words(game)
         or "One of the most critically acclaimed video games of all time.",
     }
     if game.year_of_release:
