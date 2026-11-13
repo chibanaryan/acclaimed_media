@@ -74,6 +74,8 @@
   --color-error-content: oklch(25% 0.092 26.042);
     /* Heatmap color - golden amber for light theme */
   --color-heatmap: oklch(64% 0.14 70);
+    /* The year grid's tiles, which carry a label: the same amber here */
+  --color-heatmap-tile: oklch(64% 0.14 70);
   --radius-selector: 0.25rem;
   --radius-field: 2rem;
   --radius-box: 0.5rem;
@@ -116,6 +118,14 @@
   --color-error-content: oklch(0% 0 0);
     /* Heatmap color - golden amber for dark theme */
   --color-heatmap: oklch(72% 0.14 70);
+    /* The year grid's tiles, which carry a label in the text colour: a
+       darker amber than the chart draws with. On the chart's amber the
+       label was 2.0:1 on the busiest year and under 4.5:1 on every tile
+       past half heat, and no one label colour passes across the range
+       (dark text fails the cool tiles as light text fails the warm ones).
+       At 50% lightness the busiest tile is 4.85:1 and the rest more;
+       core/tests/test_theme_contrast.py says how light it may go. */
+  --color-heatmap-tile: oklch(50% 0.13 70);
   --radius-selector: 0.25rem;
   --radius-field: 2rem;
   --radius-box: 0.5rem;
@@ -399,7 +409,7 @@
   .year-grid-cell {
     @apply flex-1 min-w-0 h-7 flex items-center justify-center;
     /* Golden amber heatmap with opacity-based intensity */
-    --tile-heat: var(--color-heatmap);
+    --tile-heat: var(--color-heatmap-tile);
     background-color: color-mix(in oklch, var(--tile-heat) var(--heatmap-opacity, 10%), transparent);
   }
 
@@ -579,8 +589,8 @@
     @apply h-2.5 w-20 rounded-sm;
     background: linear-gradient(
       to right,
-      color-mix(in oklch, var(--color-heatmap) 20%, transparent),
-      var(--color-heatmap)
+      color-mix(in oklch, var(--color-heatmap-tile) 20%, transparent),
+      var(--color-heatmap-tile)
     );
   }
 }

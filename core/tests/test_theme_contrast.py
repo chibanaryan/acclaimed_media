@@ -176,6 +176,60 @@ class ThemeContrastTests(SimpleTestCase):
                     )
 
 
+class YearGridLabelTests(SimpleTestCase):
+    """A year tile's label is the text colour, over the tile's heat.
+
+    The tile is the heat colour at 5% (an empty year) or 20% to 100%
+    (`getOpacity` in filter-subcomponents.js) over the page. On the dark
+    theme's chart amber, axe-core measured the label at 2.9:1 to 4.4:1 on
+    85 tiles of two pages (2026-11-12), and the busiest year is 2.0:1. No
+    one label colour passes across the range, so the tiles have a heat
+    colour of their own, `--color-heatmap-tile`.
+    """
+
+    HEATS = (5, *range(20, 101))
+
+    def worst(self, theme, heat_colour):
+        colours = theme_colours(theme)
+        return min(
+            (
+                contrast(
+                    colours["base-content"],
+                    over(colours[heat_colour], colours[background], heat / 100),
+                ),
+                background,
+                heat,
+            )
+            for background in BACKGROUNDS
+            for heat in self.HEATS
+        )
+
+    def test_a_label_is_readable_on_every_tile_in_both_themes(self):
+        for theme in ("lofi", "forest"):
+            with self.subTest(theme=theme):
+                ratio, background, heat = self.worst(theme, "heatmap-tile")
+                self.assertGreaterEqual(
+                    ratio, READABLE, f"{ratio:.2f} on {background} at {heat}% heat"
+                )
+
+    def test_the_dark_themes_chart_amber_would_not_do(self):
+        """Why the tiles do not share the chart's colour, which stays as
+        bright as it was: it draws bars and carries no text."""
+        ratio, _background, heat = self.worst("forest", "heatmap")
+        self.assertLess(ratio, 2.1)
+        self.assertEqual(heat, 100)
+
+    def test_the_tiles_and_their_legend_read_the_tiles_colour(self):
+        source = STYLES.read_text(encoding="utf-8")
+        self.assertIn("--tile-heat: var(--color-heatmap-tile);", source)
+        legend = source[source.index(".year-grid-legend-bar {") :]
+        legend = legend[: legend.index("}")]
+        self.assertEqual(legend.count("var(--color-heatmap-tile)"), 2)
+        self.assertNotIn("var(--color-heatmap)", legend)
+        for needle in ("--color-heatmap-tile:", "var(--color-heatmap-tile)"):
+            self.assertIn(needle, COMPILED.read_text(encoding="utf-8"))
+
+
 class VisibleTextIsInTheSpokenNameTests(SimpleTestCase):
     """A control someone drives by voice is named by what it shows ("click
     SNES"): its accessible name has to hold that text (WCAG 2.5.3). The
