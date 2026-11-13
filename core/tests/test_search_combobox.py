@@ -5,8 +5,8 @@ Until 2026-11-10 each was a field followed by a list of links, with no way
 from the field to a result but Tab. The behaviour is `searchComboboxState`
 in utils-base.js, spread into both search components and run here under
 Node on the real files; the markup is the WAI-ARIA combobox pattern with a
-grouped listbox. Not yet heard on a real screen reader:
-docs/ASSISTIVE_TECH_CHECKLIST.md has the steps.
+grouped listbox. Never heard on a real screen reader, and not planned to
+be (ROADMAP, "Known, not planned").
 """
 
 import re

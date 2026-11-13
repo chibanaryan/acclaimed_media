@@ -185,8 +185,8 @@ Alpine and the bundles), each because the bare form failed for someone
   are a list of their own, since a listbox owns options alone. A keystroke,
   a new query or the clear button forgets the active option: a keyed loop
   reuses elements, and Enter within the search's 300 ms debounce would
-  otherwise follow the last query's option. Checked against Chrome's accessibility tree, not yet on
-  a screen reader (`docs/ASSISTIVE_TECH_CHECKLIST.md`).
+  otherwise follow the last query's option. Checked against Chrome's accessibility tree, never on
+  a screen reader.
 - **A script's POST reads the CSRF token through `readCsrfToken()`**, and
   a script asking whether the page is at desktop width through
   `isDesktopWidth()` (2026-11-11): three cookie readers had drifted (one

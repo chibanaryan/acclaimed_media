@@ -129,8 +129,8 @@ new reason.
 - **Nothing has been heard through a screen reader or run on a real
   iPhone**, and the owner will not be doing it (2026-11-13). The pages
   were checked by keyboard, with axe-core and against Chrome's
-  accessibility tree, which is what there is.
-  `docs/ASSISTIVE_TECH_CHECKLIST.md` is the script if anyone ever does.
+  accessibility tree, which is what there is. The checklist written for
+  the run was removed that day (`git log -- docs/ASSISTIVE_TECH_CHECKLIST.md`).
   Two things were waiting on it and stay as they are: the search boxes are
   comboboxes, and a year cell reads "10" while its name is "2010, 12
   albums" (WCAG 2.5.3 would have "10: 2010, 12 albums", about seventy
