@@ -106,6 +106,9 @@
             if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'Tab', 'Escape'].includes(key)) {
                 return;
             }
+            // A chord is the browser's or the system's: Cmd+Down is "the
+            // bottom of the page", not "the next item"
+            if (event.metaKey || event.ctrlKey || event.altKey) return;
             const target = event.target;
             const wrapper = target && target.closest &&
                 target.closest('.tracking-button-wrapper');
@@ -134,10 +137,8 @@
                 // Not in quick-mark mode, where a click on the button
                 // applies the picked status and opens nothing: the arrow
                 // would mark the item, and the next press clear it.
-                const marking = window.QuickMark && wrapper.dataset &&
-                    window.QuickMark.active(wrapper.dataset.trackingScope);
-                if (target === trigger && !marking &&
-                        (key === 'ArrowDown' || key === 'ArrowUp')) {
+                if (target === trigger && (key === 'ArrowDown' || key === 'ArrowUp') &&
+                        !this._marks(wrapper)) {
                     event.preventDefault();
                     trigger.click();
                 }
@@ -158,7 +159,15 @@
                 event.target.closest('.tracking-button');
             if (!trigger || trigger.getAttribute('aria-expanded') === 'true') return;
             const wrapper = trigger.closest('.tracking-button-wrapper');
-            if (wrapper) this._focusFirstItem(wrapper, 10);
+            // In quick-mark mode the click marks and no menu is coming
+            if (wrapper && !this._marks(wrapper)) this._focusFirstItem(wrapper, 10);
+        },
+
+        /** Whether a click on this wrapper's button marks, in quick-mark mode. */
+        _marks(wrapper) {
+            return Boolean(
+                window.QuickMark && window.QuickMark.active(wrapper.dataset.trackingScope)
+            );
         },
 
         /** Focus the first item once Alpine has shown the menu. */

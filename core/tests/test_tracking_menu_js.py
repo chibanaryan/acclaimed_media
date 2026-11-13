@@ -106,6 +106,16 @@ class TrackingMenuKeysTests(SimpleTestCase):
             {"focus": "trigger", "prevented": False, "dispatched": [], "clicks": 0},
         )
 
+    def test_a_click_that_marks_waits_for_no_menu(self):
+        self.assertEqual(self.out["framesWaitedForInQuickMark"], 0)
+
+    def test_a_chord_is_left_to_the_browser(self):
+        """Cmd+Down is "the bottom of the page" on a Mac, Ctrl+Home the
+        top: with a modifier held the menu takes nothing."""
+        self.assert_left_alone("commandDownInTheMenu", "item1")
+        self.assert_left_alone("controlHomeInTheMenu", "item1")
+        self.assert_left_alone("altUpOnTheButton", "trigger")
+
     def test_quick_mark_in_another_scope_does_not_stop_the_arrow(self):
         self.assertEqual(
             self.out["downOnAClosedButtonInAnotherScope"],
@@ -174,5 +184,12 @@ class TrackingMenuMarkupTests(SimpleTestCase):
     def test_the_minified_script_has_the_keys(self):
         """The pages load only the minified copy."""
         minified = (BASE / "core/static/core/js/media-tracking.min.js").read_text()
-        for needle in ('"ArrowDown"', '[role="menuitem"]', "close-tracking-dropdowns"):
+        for needle in (
+            '"ArrowDown"',
+            '[role="menuitem"]',
+            "close-tracking-dropdowns",
+            # An arrow in quick-mark mode, and a chord
+            "QuickMark.active",
+            "metaKey",
+        ):
             self.assertIn(needle, minified)

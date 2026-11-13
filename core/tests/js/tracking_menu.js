@@ -31,7 +31,7 @@ MediaTracking.register('album', { sets: {}, event: 'album-status-changed' });
 
 /** A wrapper with a trigger and `count` menu items, shown or not. */
 function build(count, { open = true } = {}) {
-    const wrapper = { shown: open };
+    const wrapper = { shown: open, dataset: { trackingScope: 'album' } };
     const element = (name) => ({
         name,
         clicks: 0,
@@ -60,11 +60,13 @@ function build(count, { open = true } = {}) {
 }
 
 /** Press `key` on `target`; what happened. */
-function press(key, target) {
+function press(key, target, modifiers = {}) {
     let prevented = false;
     document.activeElement = target;
     dispatched.length = 0;
-    listeners.keydown({ key, target, preventDefault: () => { prevented = true; } });
+    listeners.keydown({
+        key, target, preventDefault: () => { prevented = true; }, ...modifiers,
+    });
     return {
         focus: document.activeElement && document.activeElement.name,
         prevented,
@@ -105,6 +107,9 @@ out.escapeInTheMenu = press('Escape', menu.items[1]);
 out.tabOnTheButton = press('Tab', menu.trigger);
 out.escapeOnTheButton = press('Escape', menu.trigger);
 out.anotherKeyInTheMenu = press('a', menu.items[1]);
+out.commandDownInTheMenu = press('ArrowDown', menu.items[1], { metaKey: true });
+out.controlHomeInTheMenu = press('Home', menu.items[1], { ctrlKey: true });
+out.altUpOnTheButton = press('ArrowUp', menu.trigger, { altKey: true });
 
 // A menu that is closed
 menu = build(3, { open: false });
@@ -116,10 +121,12 @@ out.homeOnAClosedButton = { ...press('Home', menu.trigger), clicks: menu.trigger
 // arrow must not be turned into one
 globalThis.QuickMark = { active: scope => (scope === 'album' ? 'listened' : '') };
 menu = build(3, { open: false });
-menu.dataset = { trackingScope: 'album' };
 out.downOnAClosedButtonInQuickMark = {
     ...press('ArrowDown', menu.trigger), clicks: menu.trigger.clicks,
 };
+// Enter there is a click that marks: no menu is coming, so nothing waits
+click(menu.trigger, 0);
+out.framesWaitedForInQuickMark = frames.length;
 menu = build(3, { open: false });
 menu.dataset = { trackingScope: 'game' };
 out.downOnAClosedButtonInAnotherScope = {
