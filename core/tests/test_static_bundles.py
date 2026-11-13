@@ -22,6 +22,8 @@ BUNDLE_REFERENCE = re.compile(
     r"""{%\s*static\s*['"]([^'"]+\.bundle\.min\.js)['"]\s*%}"""
 )
 CLASS_DECLARATION = re.compile(r"class\s+(\w+)(?:\s+extends\s+(\w+))?")
+# What the pages load: CI's `css` job ties it to a rebuild of the source.
+BUILT_STYLESHEET = "theme/static/css/dist/styles.css"
 
 
 def read_source(relative_path):
@@ -1556,7 +1558,7 @@ class YearGridGapsFadeWithTheirTilesTests(SimpleTestCase):
 
     GRID_RULE = r"([^{}]*year-grid[^{}]*)\{([^{}]*)\}"
     SOURCE = "theme/static_src/src/styles.css"
-    BUILT = "theme/static/css/dist/styles.css"
+    BUILT = BUILT_STYLESHEET
 
     @classmethod
     def setUpClass(cls):
@@ -2161,3 +2163,44 @@ class RenderedIconsAreHiddenTests(SimpleTestCase):
                 self.assertEqual(
                     re.findall(r'<span class="mdi [^"]*"></span>', source), []
                 )
+
+
+class JoinedButtonsRiseOnFocusTests(SimpleTestCase):
+    """A joined button overlaps its neighbour by a pixel, so the one with
+    focus or the pointer is raised, or the next button draws over its ring:
+    the status filter's buttons and the playtime mode's.
+
+    DaisyUI writes both rules inside ``@scope (.join)`` with a leading
+    combinator, and lightningcss 1.33.0 (Tailwind 4.3.5) leaves them out
+    with "Invalid empty selector", so ``styles.css`` writes them out. Read
+    from the built stylesheet, the one the pages load, and wanted exactly
+    once: a build that keeps DaisyUI's own again has each twice, and the
+    copy in ``styles.css`` goes then.
+    """
+
+    # However the child is spelt: `.join > :where(...)` here, `:scope >
+    # :where(...)` in DaisyUI 5.7, `:where(:scope > ..., ...)` in 5.8
+    FOCUSED = r"[^{}]*:has\(:focus\)\)\{z-index:2\}"
+    HOVERED = r"[^{}]*:has\(\.btn:hover\)\)\{z-index:1\}"
+    ONCE = (
+        "Missing: the build dropped the rule. Twice: DaisyUI's own is back, "
+        "so delete the copy in theme/static_src/src/styles.css."
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.built = read_source(BUILT_STYLESHEET)
+
+    def _selectors(self, rule):
+        return re.findall(rule, self.built)
+
+    def test_a_focused_button_is_above_its_neighbours(self):
+        selectors = self._selectors(self.FOCUSED)
+        self.assertEqual(len(selectors), 1, self.ONCE)
+        self.assertRegex(selectors[0], r"\.join>|:scope>")
+
+    def test_a_hovered_button_is_above_its_neighbours(self):
+        selectors = self._selectors(self.HOVERED)
+        self.assertEqual(len(selectors), 1, self.ONCE)
+        self.assertRegex(selectors[0], r"\.join>|:scope>")

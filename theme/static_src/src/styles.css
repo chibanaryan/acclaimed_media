@@ -1550,6 +1550,26 @@ html.quick-mark-game .played-button-wrapper:hover .played-button {
   }
 }
 
+/* DaisyUI's own, written out. A joined button overlaps its neighbour by a
+   pixel, so the one with focus or the pointer is raised, or the next button
+   draws over its ring (the status filter's buttons, the playtime mode's).
+   DaisyUI 5.7 writes both inside `@scope (.join)` with a leading combinator,
+   and lightningcss 1.33.0 (Tailwind 4.3.5) leaves them out with "Invalid
+   empty selector". In DaisyUI's layer and at its specificity
+   (`:scope > ...`). JoinedButtonsRiseOnFocusTests reads the built
+   stylesheet for each rule exactly once: it fails when a build keeps
+   DaisyUI's own again, and this block goes then. */
+@layer utilities {
+  .join > :where(:focus, :has(:focus)) {
+    z-index: 2;
+  }
+  @media (hover: hover) {
+    .join > :where(.btn:hover, :has(.btn:hover)) {
+      z-index: 1;
+    }
+  }
+}
+
 /* Visitors who ask their OS for less motion get none: row and card entry
    animations, the played-star pop, the 404 moon and smooth scrolling all
    ran regardless. The rank distribution chart checks the setting in JS. */

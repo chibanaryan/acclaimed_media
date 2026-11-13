@@ -20,32 +20,20 @@ full text is in `git show 55f0be4e:ROADMAP.md`.
 
 ## Open bugs
 
-1. **Three name-searched games hold an HLTB entry a search no longer
-   gives.** The weekly job will move them: Call of Duty: Modern Warfare 2
-   (stored entry 109060, 8.2 h; a search gives 1477, 6.6 h), Puyo Puyo
-   (83379, 0.5 h; 9411, 1.2 h) and "Bomberman / Atomic Punk / Dynablaster"
-   (1230, 2.4 h; 1244, which is Bomberman II, 2.0 h). The last is a wrong
-   match by name. Giving each its HLTB id on Wikidata (P2816) settles it
-   for good, since an id is looked up before any name.
-2. **Tailwind 4.3.5 drops two of DaisyUI's rules** (Dependabot #30, left
-   open). Its build warns "Invalid empty selector" twice and leaves out
-   `.join > :where(:focus, :has(:focus)) { z-index: 2 }` and the hover
-   rule beside it, which put a focused or hovered button above the
-   neighbours it overlaps by a pixel: the status filter's buttons and the
-   playtime mode's. The bump brings lightningcss 1.33.0 for 1.32.0, and
-   4.3.5 was the newest release on 2026-11-13. The rest of the rebuilt
-   stylesheet reads as equivalent. Merge the release whose build has no
-   warning; or merge this one with the two rules written out in
-   `styles.css`, outside any `@scope`.
+None. The two that were here on 2026-11-13 closed that day: Tailwind 4.3.5
+is merged with the two rules its build drops written out; and of the three
+HLTB entries, Sunday's job corrects one (Modern Warfare 2), either entry
+is right for another (Puyo Puyo), and the third is under "Known, not
+planned".
 
 ## For the owner
 
-3. **New brand artwork.** The favicons still read "Acclaimed Video Games"
+1. **New brand artwork.** The favicons still read "Acclaimed Video Games"
    (`games/static/games/brand/`), and a page without artwork of its own has
    no `og:image`. A new default goes in `base.html`'s `og_image` block, and
    the five templates overriding that block need a `{{ block.super }}`
    branch for items with no art.
-4. **Look once, when the occasion comes.**
+2. **Look once, when the occasion comes.**
    - A sign-up, end to end: the confirmation link logs in only the browser
      that signed up. Open it there (logged in) and in another browser
      (verified, with a Log In button).
@@ -58,14 +46,21 @@ full text is in `git show 55f0be4e:ROADMAP.md`.
 
 ## After Sunday 2026-11-15's jobs
 
-5. **Read both weekly jobs once.** It is the first Sunday since five of
+3. **Read both weekly jobs once.** It is the first Sunday since five of
    the passes shipped. All of it can be read from Sentry and a one-off
    dyno:
    - `refresh-all-metadata` checked in green. It now fails when a phase
      could not run at all, and its output names the phase. Its Wikipedia
      phase sends the credentials it paces itself by, so it should see no
      429s.
-   - Its HLTB phase moved Wordle and the three games in bug 1.
+   - Its HLTB phase moved five games. Four are among the 53 it searches
+     for by name, as a search on 2026-11-13 gave them: Wordle to entry
+     103434 (the browser game), The Oregon Trail to 10123 (1985, for a
+     namesake's 5.8 h), Puyo Puyo to 9411 (HLTB has the game twice, by
+     platform) and the arcade Bomberman to 1244 (see "Known, not
+     planned"). The fifth is looked up by id: Call of Duty: Modern
+     Warfare 2 to 1477, the 2009 game, which Wikidata now holds. It had
+     the 2022 game's 8.2 h.
    - `/api/games/all/`'s data version moved only if a phase changed what
      the pages show.
    - `IGDBGameData.summary` is filled (0 of 1,400 on 2026-11-13; the
@@ -79,7 +74,7 @@ full text is in `git show 55f0be4e:ROADMAP.md`.
 
 ## After the next deploy
 
-6. **Drop two columns.** IGDB's first video and the Wikiquote title were
+4. **Drop two columns.** IGDB's first video and the Wikiquote title were
    fetched and shown nowhere; the code and the models stopped naming them
    on 2026-11-13 (`games.0126`, in Django's state only, so that the release
    before it and a rollback to it keep working). Once that release is
@@ -119,9 +114,16 @@ in ten; its counts are scaled.
   allauth address row is for its account's own email
   (`repair_email_rows` found nothing to repair).
 - **Migrations.** `games.0124`, `music.0015` and `games.0125` are applied.
-  `games.0126` goes with the next deploy and changes no table (entry 6).
+  `games.0126` goes with the next deploy and changes no table (entry 4).
 - **The shared venv** matches the locks (Django 6.1.3, allauth 65.21.1,
   soupsieve 4.1; Dependabot #31 merged 2026-11-13).
+- **The stylesheet** is built by Tailwind 4.3.5 (Dependabot #30's bump,
+  landed by hand on 2026-11-13) with DaisyUI 5.7.50. Its build still warns
+  "Invalid empty selector" twice, for the two `.join` rules `styles.css`
+  now writes out. DaisyUI 5.8.0, a day old then, builds without the
+  warning and makes the stylesheet 20 KB smaller, which nobody has looked
+  at; `JoinedButtonsRiseOnFocusTests` fails on it until the written-out
+  copy is deleted.
 
 ## Known, not planned
 
@@ -182,6 +184,13 @@ new reason.
   of the page save and of the infobox parser, and counts a failed save
   twice; `aiohttp.BasicAuth` goes in aiohttp 4.0; flag oddities in
   `fetch_wikipedia_metadata`, `get_wiki_genres` and `fetch_hltb_data`.
+- **The arcade Bomberman (rank 789) shows another Bomberman's playtime.**
+  HLTB has no entry for it, so there is no id to give Wikidata: a name
+  search gave it the 1983 game's 2.4 h, and gives it Bomberman II's 2.0 h
+  from 2026-11-15. Two stricter rules were run against all 53
+  name-searched games on 2026-11-13. Preferring an exact name sends
+  SingStar to the PlayStation 3 game; requiring a shared platform leaves
+  four games with no entry.
 - **`games/static/games/palestine-flag-xs.png`** is linked from nothing in
   the repository or in production's articles, posts, snippets and flat
   pages (2026-11-13). Kept: something outside the site may link it.

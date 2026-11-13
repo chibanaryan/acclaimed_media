@@ -17,6 +17,18 @@
 - **`sync_from_prod` skips a field production has and this checkout has
   dropped**, where it stopped at the first such row after minutes of
   download
+- **Tailwind 4.3.5** (Dependabot #30). Its build leaves out the two
+  DaisyUI rules that raise a joined button with focus or the pointer above
+  its neighbours; `styles.css` writes them out, and a test reads them from
+  the built stylesheet. In Chrome the six joined buttons compute what they
+  did, in both themes. The build also takes `:scope` off DaisyUI's four
+  corner and overlap rules, which matters only to a join inside a join,
+  and there is none
+- **The three HLTB entries of ROADMAP bug 1 are one.** Sunday's job
+  corrects Modern Warfare 2, by the id Wikidata now holds; either of
+  HLTB's two entries is right for Puyo Puyo; and the arcade Bomberman,
+  which HLTB does not have, goes from one wrong namesake to another. Two
+  stricter rules, run against all 53 name-searched games, each did worse
 
 ## 2026-11-12 (sixth improvement pass)
 
