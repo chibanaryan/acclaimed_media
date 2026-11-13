@@ -13,6 +13,7 @@ from datetime import datetime
 
 from django.core.management.base import BaseCommand
 
+from core.services.spreadsheet import SafeWriter
 from games import config
 from games.models import Game
 from games.services.genre_normalizer import canonicalize_genre_payload
@@ -172,7 +173,9 @@ class Command(BaseCommand):
             is_append = resume_path and processed_ranks
             file_mode = "a" if is_append else "w"
             csv_file = open(output_path, file_mode, newline="", encoding="utf-8")
-            csv_writer = csv.writer(csv_file)
+            # Names here are HLTB's, Wikipedia's and the release's: text,
+            # never a formula to whoever opens the file
+            csv_writer = SafeWriter(csv_file)
 
             # Only write header for new files
             if not is_append:

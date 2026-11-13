@@ -971,7 +971,10 @@ class AlbumMetadataService:
                 result.skipped += 1
             return
 
-        if master is None:
+        outcome = None
+        if master is not None:
+            outcome = self._store_discogs(album, master_id, master, client)
+        if outcome is None:
             result.errors.append(f"{album.name}: Discogs master {master_id} not found")
             self._notify(
                 "error",
@@ -983,7 +986,6 @@ class AlbumMetadataService:
             )
             return
 
-        outcome = self._store_discogs(album, master_id, master)
         setattr(result, outcome, getattr(result, outcome) + 1)
         if outcome == "processed":
             self._notify(
@@ -996,25 +998,37 @@ class AlbumMetadataService:
                 },
             )
 
-    def _store_discogs(self, album, master_id, master) -> str:
+    def _store_discogs(self, album, master_id, master, client) -> Optional[str]:
         """Link, adopt or store master ``master_id`` for this album.
 
         ``master`` is what ``_discogs_fetch`` got: Discogs' record, or
         ``STORED`` for a row already here, which is the album's own or an
-        orphan to adopt. Returns the ``PassResult`` counter it earned. The
-        album's ``discogs_master_id`` follows the master its data came from,
-        so the "Data provided by Discogs" link goes where the data is.
+        orphan to adopt. Returns the ``PassResult`` counter it earned, or
+        None when Discogs has no such master. The album's
+        ``discogs_master_id`` follows the master its data came from, so the
+        "Data provided by Discogs" link goes where the data is.
+
+        The rows are read again here, inside the savepoint: the fetch read
+        them before it, and another run beside this one (a manual command
+        takes no lock) can have adopted or deleted the one it saw. Then
+        Discogs is asked now, as the pass did before it fetched first.
         """
         existing = models.DiscogsAlbumData.objects.filter(
             album=album, master_id=master_id
         ).first()
+        orphan = None
+        if master is STORED and existing is None:
+            orphan = models.DiscogsAlbumData.objects.filter(
+                master_id=master_id, album__isnull=True
+            ).first()
+            if orphan is None:
+                master = client.fetch_master(master_id)
+                if master is None:
+                    return None
 
         if master is STORED and existing is not None:
             record, outcome = existing, "skipped"
         elif master is STORED:
-            orphan = models.DiscogsAlbumData.objects.filter(
-                master_id=master_id, album__isnull=True
-            ).first()
             orphan.album = album
             orphan.save()
             record, outcome = orphan, "adopted"
@@ -1101,6 +1115,11 @@ class AlbumMetadataService:
         """The MusicBrainz pass for one album; ``group`` is the fetch's."""
         record, adopted = self._musicbrainz_record(album)
         refreshing = album.pk in stale
+
+        if group is STORED and not record.title:
+            # The row the fetch read has gone since (another run beside
+            # this one): ask now, as the pass did before it fetched first
+            group = client.fetch_release_group(album.musicbrainz_release_group_id)
 
         if group is STORED:
             if adopted:

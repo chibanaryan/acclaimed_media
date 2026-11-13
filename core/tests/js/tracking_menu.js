@@ -112,6 +112,21 @@ out.downOnAClosedButton = { ...press('ArrowDown', menu.trigger), clicks: menu.tr
 out.upOnAClosedButton = { ...press('ArrowUp', menu.trigger), clicks: menu.trigger.clicks };
 out.homeOnAClosedButton = { ...press('Home', menu.trigger), clicks: menu.trigger.clicks };
 
+// Quick-mark mode: a click on the button applies the picked status, so an
+// arrow must not be turned into one
+globalThis.QuickMark = { active: scope => (scope === 'album' ? 'listened' : '') };
+menu = build(3, { open: false });
+menu.dataset = { trackingScope: 'album' };
+out.downOnAClosedButtonInQuickMark = {
+    ...press('ArrowDown', menu.trigger), clicks: menu.trigger.clicks,
+};
+menu = build(3, { open: false });
+menu.dataset = { trackingScope: 'game' };
+out.downOnAClosedButtonInAnotherScope = {
+    ...press('ArrowDown', menu.trigger), clicks: menu.trigger.clicks,
+};
+delete globalThis.QuickMark;
+
 // A key somewhere else on the page
 const elsewhere = { name: 'elsewhere', closest: () => null, focus() {} };
 out.keyOutsideAnyButton = press('ArrowDown', elsewhere);

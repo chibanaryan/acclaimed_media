@@ -44,7 +44,7 @@
             <img :src="album.thumbnail" alt="" width="90" height="90" class="w-6 h-6 rounded object-cover">
             <div class="flex-1 min-w-0">
                 <div class="font-semibold text-sm truncate" x-text="album.name"></div>
-                <div class="text-xs text-base-content/85" x-text="(album.year_released || '') + ' &bull; #' + album.rank"></div>
+                <div class="text-xs text-base-content/85" x-text="(album.year_released ? album.year_released + ' &bull; ' : '') + '#' + album.rank"></div>
             </div>
         </a>
         {% else %}

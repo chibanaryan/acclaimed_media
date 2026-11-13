@@ -10,7 +10,6 @@ Fetches:
 - Wikidata IDs
 """
 
-import csv
 import logging
 import time
 
@@ -18,6 +17,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db.models import Q
 
+from core.services.spreadsheet import SafeWriter
 from games import config
 from games.models import (
     Game,
@@ -152,7 +152,9 @@ class Command(BaseCommand):
         csv_path = options.get("output")
         if csv_path:
             csv_file = open(csv_path, "w", newline="", encoding="utf-8")
-            csv_writer = csv.writer(csv_file)
+            # Names here are HLTB's, Wikipedia's and the release's: text,
+            # never a formula to whoever opens the file
+            csv_writer = SafeWriter(csv_file)
             csv_writer.writerow(
                 [
                     "Rank",

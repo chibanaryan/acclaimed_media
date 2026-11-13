@@ -199,7 +199,7 @@ class RankingsListQueryTests(TestCase):
 
         A join lists a game once per matching platform, genre or series, so
         each filter added a ``DISTINCT`` over every column of every game,
-        ahead of the page's hundred rows (ROADMAP 5, until 2026-11-12).
+        ahead of the page's hundred rows (until 2026-11-12).
         """
         series = Series.objects.create(name="Query Series", slug="qs", igdb_id=1)
         self.both.series.add(series)

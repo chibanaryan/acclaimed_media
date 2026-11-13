@@ -1,7 +1,7 @@
 """A game page describes its game.
 
 Every fetch asked IGDB for `summary` and dropped it, so each game's meta
-description and JSON-LD were one stock sentence (ROADMAP 9, until
+description and JSON-LD were one stock sentence (until
 2026-11-12). The summary is stored on the IGDB record, which outlives an
 import, and the page leads with the rank and goes on in IGDB's words.
 """

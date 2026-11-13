@@ -71,14 +71,21 @@ class Command(BaseCommand):
             self.stdout.write("Every address row is for its account's own email.")
             return
 
+        # Each listed account's row for its own email, if it has one, and
+        # whether that row is its primary: one query for all of them
+        own_is_primary = {}
+        for row in EmailAddress.objects.filter(
+            user__in=list(by_user), email__iexact=F("user__email")
+        ):
+            own_is_primary[row.user_id] = own_is_primary.get(row.user_id) or row.primary
+
         for user, rows in by_user.items():
-            own = EmailAddress.objects.filter(user=user, email__iexact=user.email)
             self.stdout.write(f"{user.username}: email {user.email or '(none)'}")
-            if not own.exists():
+            if user.pk not in own_is_primary:
                 self.stdout.write("  no row for that email")
             for row in rows:
                 # The address allauth's login and reset would use first
-                if row.primary or not own.filter(primary=True).exists():
+                if row.primary or not own_is_primary.get(user.pk):
                     kind = "LEFTOVER? it is what a password reset is sent to"
                 else:
                     kind = "second address, likely the reader's own"

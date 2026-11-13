@@ -211,16 +211,27 @@ class SearchComboboxMarkupTests(SimpleTestCase):
                 )
                 self.assertFalse(soup.select(".disabled"))
 
-    def test_a_game_with_no_year_shows_none(self):
-        """The rows read "null • #12" and "Name (null)" for one."""
-        source = (BASE / "games/templates/includes/_search_options.html").read_text()
-        self.assertNotIn("result.year_of_release + ' &bull;", source)
-        self.assertNotIn("' (' + result.year_of_release + ')'\"", source)
-        self.assertIn("(result.year_of_release || '') + ' &bull; #'", source)
+    def test_an_item_with_no_year_shows_none_and_no_separator(self):
+        """A game's rows read "null • #12" and "Name (null)" for one; an
+        album's compact row, " • #12", a separator with nothing before it."""
+        games = (BASE / "games/templates/includes/_search_options.html").read_text()
+        music = next(BASE.glob("*/templates/music/includes/_search_options.html"))
+        self.assertIn(
+            "(result.year_of_release ? result.year_of_release + ' &bull; ' : '')"
+            " + '#' + result.rank",
+            games,
+        )
         self.assertIn(
             "(result.year_of_release ? ' (' + result.year_of_release + ')' : '')",
-            source,
+            games,
         )
+        self.assertIn(
+            "(album.year_released ? album.year_released + ' &bull; ' : '')"
+            " + '#' + album.rank",
+            music.read_text(),
+        )
+        for source in (games, music.read_text()):
+            self.assertNotIn("|| '') + ' &bull;", source)
 
 
 class SearchComboboxPageTests(TestCase):

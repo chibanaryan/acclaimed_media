@@ -15,6 +15,7 @@ from music.musicbrainz import CoverArt, ReleaseGroup
 from music.discogs import DiscogsMaster
 from music.services.import_handler import normalize_artist_name
 from music.services.metadata_service import (
+    STORED,
     AlbumMetadataService,
     PassResult,
     fit,
@@ -1890,3 +1891,79 @@ class RequestsRunOutsideTheSavepointTests(ServiceTestCase):
             result = self.service.run_musicbrainz([self.album, other])
         self.assertEqual(result.errors, ["Abbey Road: timed out"])
         self.assertEqual(result.processed, 1)
+
+
+class RowsThatChangedSinceTheFetchTests(ServiceTestCase):
+    """The fetch reads the rows before the savepoint and the step again
+    inside it. Another run beside this one (a manual command takes no lock)
+    can adopt or delete a row in between: the step then asks the network
+    itself, as it did before the passes fetched first, rather than fail
+    the album or count it done with nothing stored."""
+
+    def setUp(self):
+        super().setUp()
+        self.album.musicbrainz_release_group_id = RG_MBID
+        self.album.discogs_master_id = 24047
+        self.album.save()
+
+    def stub(self):
+        client = mock.MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        return client
+
+    def test_musicbrainz_asks_again_for_a_row_that_went(self):
+        client = self.stub()
+        client.fetch_release_group.return_value = ReleaseGroup(
+            mbid=RG_MBID,
+            title="Abbey Road",
+            primary_type="Album",
+            secondary_types=[],
+            first_release_date="1969-09-26",
+            rating=None,
+            rating_votes=0,
+            genres=[],
+        )
+        with (
+            mock.patch(
+                "music.services.metadata_service.MusicBrainzClient", return_value=client
+            ),
+            mock.patch.object(self.service, "_musicbrainz_fetch", return_value=STORED),
+        ):
+            result = self.service.run_musicbrainz([self.album])
+        self.assertEqual((result.processed, result.skipped, result.errors), (1, 0, []))
+        self.assertEqual(
+            self.album.musicbrainz_album_data_set.get().title, "Abbey Road"
+        )
+
+    def test_discogs_asks_again_for_a_row_that_went(self):
+        client = self.stub()
+        client.fetch_master.return_value = DiscogsMaster(
+            master_id=24047, title="Abbey Road", year=1969, genres=["Rock"], styles=[]
+        )
+        with (
+            mock.patch(
+                "music.services.metadata_service.DiscogsClient", return_value=client
+            ),
+            mock.patch.object(
+                self.service, "_discogs_fetch", return_value=(24047, STORED)
+            ),
+        ):
+            result = self.service.run_discogs([self.album])
+        self.assertEqual((result.processed, result.errors), (1, []))
+        self.assertEqual(self.album.discogs_album_data_set.get().genres, ["Rock"])
+
+    def test_discogs_says_so_when_the_master_has_gone_too(self):
+        client = self.stub()
+        client.fetch_master.return_value = None
+        with (
+            mock.patch(
+                "music.services.metadata_service.DiscogsClient", return_value=client
+            ),
+            mock.patch.object(
+                self.service, "_discogs_fetch", return_value=(24047, STORED)
+            ),
+        ):
+            result = self.service.run_discogs([self.album])
+        self.assertEqual(result.errors, ["Abbey Road: Discogs master 24047 not found"])
+        self.assertEqual(result.processed, 0)

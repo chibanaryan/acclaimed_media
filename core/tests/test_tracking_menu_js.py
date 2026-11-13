@@ -95,6 +95,23 @@ class TrackingMenuKeysTests(SimpleTestCase):
         )
         self.assertEqual(self.out["upOnAClosedButton"]["clicks"], 2)
 
+    def test_an_arrow_never_marks_in_quick_mark_mode(self):
+        """With a quick-mark mode on, a click on the button applies the
+        picked status and opens nothing. An arrow that opened the menu by
+        clicking would have marked the album Heard, and the next press
+        cleared it: the key scrolls the page, as it did before the menu
+        took keys."""
+        self.assertEqual(
+            self.out["downOnAClosedButtonInQuickMark"],
+            {"focus": "trigger", "prevented": False, "dispatched": [], "clicks": 0},
+        )
+
+    def test_quick_mark_in_another_scope_does_not_stop_the_arrow(self):
+        self.assertEqual(
+            self.out["downOnAClosedButtonInAnotherScope"],
+            {"focus": "trigger", "prevented": True, "dispatched": [], "clicks": 1},
+        )
+
     def test_home_on_a_closed_button_still_scrolls_the_page(self):
         self.assertEqual(
             self.out["homeOnAClosedButton"],

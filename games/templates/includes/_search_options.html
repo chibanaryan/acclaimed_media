@@ -1,6 +1,6 @@
 {# The games search box's option rows: games, developers and series. Included by core/includes/_search_combobox.html inside each group's list, for the sidebar (compact) and the mobile bar. #}
 {# The groups come in the order the response gives, so "Nintendo" leads with the developer and "Halo" with the series. #}
-{# A game with no year shows none: these read "null • #12" and "Name (null)" until 2026-11-12, as music's rows never did. #}
+{# A game with no year shows none, and no separator for it: these read "null • #12" and "Name (null)" until 2026-11-12. #}
 {# Keep every template comment on a single line. #}
 {# Games section #}
 <template x-if="group === 'games' && hasGameResults()">
@@ -13,7 +13,7 @@
             <img :src="result.thumbnail" alt="" width="90" height="128" class="w-6 h-auto rounded">
             <div class="flex-1 min-w-0">
                 <div class="font-semibold text-sm truncate" x-text="result.name"></div>
-                <div class="text-xs text-base-content/85" x-text="(result.year_of_release || '') + ' &bull; #' + result.rank"></div>
+                <div class="text-xs text-base-content/85" x-text="(result.year_of_release ? result.year_of_release + ' &bull; ' : '') + '#' + result.rank"></div>
             </div>
         </a>
         {% else %}

@@ -11,6 +11,7 @@ from datetime import datetime
 from django.db import connection
 from django.db.models import Count, F, Min, Prefetch
 from django.db.models.functions import Lower
+from django.utils.functional import cached_property
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.views import APIView, Response
@@ -298,13 +299,19 @@ class BookGenreTreeView(StaffReadAPIMixin, ListAPIView):
         """Return only root categories for tree building."""
         return self._counted().filter(parent=None)
 
-    def get_serializer_context(self):
-        """Every genre, counted, by parent: one query for the whole tree."""
-        context = super().get_serializer_context()
+    @cached_property
+    def _children_by_parent(self):
+        """Every genre below a root, counted, by parent: one query, once a
+        request (DRF asks for the serializer's context more than once when
+        it renders its own HTML page)."""
         children = defaultdict(list)
         for genre in self._counted().exclude(parent=None):
             children[genre.parent_id].append(genre)
-        context["genre_children"] = children
+        return children
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["genre_children"] = self._children_by_parent
         return context
 
 

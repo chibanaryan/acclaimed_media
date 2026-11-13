@@ -6,12 +6,12 @@ completion time estimates (main story, main+extras, completionist).
 """
 
 import asyncio
-import csv
 import logging
 import time
 
 from django.core.management.base import BaseCommand
 
+from core.services.spreadsheet import SafeWriter
 from games.models import Game
 from games.services import hltb_matching
 
@@ -204,7 +204,9 @@ class Command(BaseCommand):
         if options.get("output"):
             csv_path = options["output"]
             csv_file = open(csv_path, "w", newline="", encoding="utf-8")
-            csv_writer = csv.writer(csv_file)
+            # Names here are HLTB's, Wikipedia's and the release's: text,
+            # never a formula to whoever opens the file
+            csv_writer = SafeWriter(csv_file)
             csv_writer.writerow(
                 [
                     "Rank",

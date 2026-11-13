@@ -1676,8 +1676,35 @@ async function checkTrackingMenuByKeyboard(page) {
         'ArrowUp: item 3 of 3', 'End: item 3 of 3', 'Home: item 1 of 3',
         'Tab: button, closed', 'ArrowDown: item 1 of 3', 'Escape: button, closed',
     ];
-    return steps.join('; ') === expected.join('; ')
-        ? null : `the listen menu by keyboard went ${steps.join('; ')}`;
+    if (steps.join('; ') !== expected.join('; ')) {
+        return `the listen menu by keyboard went ${steps.join('; ')}`;
+    }
+
+    // With a quick-mark mode on, a click on the button applies the picked
+    // status and opens nothing. An arrow that opened the menu by clicking
+    // marked the album, and the next press cleared it.
+    await page.goto(music + '/', { waitUntil: 'load' });
+    await page.waitForSelector('[data-quick-mark-scope="album"]');
+    await page.waitForFunction(() => window.QuickMark && window.MediaTracking);
+    await sleep(1000);
+    await page.evaluate(() => window.QuickMark.set('album', 'listened'));
+    let posts = 0;
+    page.on('request', request => {
+        if (request.method() === 'POST' && request.url().includes('toggle-listened')) posts += 1;
+    });
+    const before = await page.evaluate(() => {
+        const button = [...document.querySelectorAll('.tracking-button')]
+            .find(element => element.offsetParent !== null);
+        button.focus();
+        return button.closest('.tracking-button-wrapper').dataset.status;
+    });
+    await page.keyboard.press('ArrowDown');
+    await sleep(600);
+    const after = await where();
+    await page.evaluate(() => window.QuickMark.set('album', ''));
+    if (posts) return 'an arrow key on a listen button marked the album in quick-mark mode';
+    return after === 'button, closed'
+        ? null : `in quick-mark mode an arrow left focus at ${after} (the status was ${before})`;
 }
 
 /**

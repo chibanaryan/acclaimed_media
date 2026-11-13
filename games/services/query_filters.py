@@ -92,7 +92,7 @@ def _related_to_any(queryset: QuerySet, relation: str, ids: List[int]) -> QueryS
     each filter ended in ``.distinct()``: every column of every matching
     game compared, ahead of the page's hundred rows. On a copy of
     production's data on 2026-11-12 that was most of what a filtered list
-    still cost after the unfiltered one was fixed (ROADMAP 5).
+    still cost after the unfiltered one was fixed.
     """
     field = queryset.model._meta.get_field(relation)
     links = field.remote_field.through._default_manager.filter(

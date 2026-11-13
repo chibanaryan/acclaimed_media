@@ -130,8 +130,14 @@
             }
 
             if (!items.length) {
-                // Closed: an arrow on the button opens it, as Enter does
-                if (target === trigger && (key === 'ArrowDown' || key === 'ArrowUp')) {
+                // Closed: an arrow on the button opens it, as Enter does.
+                // Not in quick-mark mode, where a click on the button
+                // applies the picked status and opens nothing: the arrow
+                // would mark the item, and the next press clear it.
+                const marking = window.QuickMark && wrapper.dataset &&
+                    window.QuickMark.active(wrapper.dataset.trackingScope);
+                if (target === trigger && !marking &&
+                        (key === 'ArrowDown' || key === 'ArrowUp')) {
                     event.preventDefault();
                     trigger.click();
                 }

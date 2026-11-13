@@ -21,10 +21,14 @@ def json_ld(payload):
     return json.dumps(payload).replace("<", "\\u003c")
 
 
-def meta_description(text, limit=155):
+# About what a search result shows of a page's description
+META_DESCRIPTION_LENGTH = 160
+
+
+def meta_description(text, limit=META_DESCRIPTION_LENGTH):
     """``text`` as a meta description: one line, cut at a word near ``limit``.
 
-    Search results show about 155 characters. Text over the limit is cut
+    Text over the limit is cut
     at the last whole word that leaves room for an ellipsis, without the
     comma or dash the cut would leave hanging; a single word longer than
     the limit is cut through. Django's ``Truncator.chars`` cuts mid-word.

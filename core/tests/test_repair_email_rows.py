@@ -72,6 +72,23 @@ class ListingTests(TestCase):
         )
         self.assertIn("old@example.com (verified): LEFTOVER?", run())
 
+    def test_the_listing_costs_the_same_however_many_accounts_it_lists(self):
+        for index in range(4):
+            user = User.objects.create_user(
+                username=f"reader{index}", email=f"new{index}@example.com"
+            )
+            EmailAddress.objects.create(
+                user=user, email=f"new{index}@example.com", primary=True
+            )
+            EmailAddress.objects.create(
+                user=user, email=f"old{index}@example.com", primary=False
+            )
+        # The rows that disagree, and the listed accounts' own
+        with self.assertNumQueries(2):
+            output = run()
+        self.assertIn("4 account(s).", output)
+        self.assertEqual(output.count("second address, likely the reader's own"), 4)
+
     def test_an_account_with_no_email_is_shown_as_having_none(self):
         user = User.objects.create_user(username="dee", email="")
         EmailAddress.objects.create(

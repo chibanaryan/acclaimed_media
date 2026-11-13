@@ -120,10 +120,6 @@ class GameDetailView(DetailView):
         return context
 
 
-# What a search result shows of a description
-META_DESCRIPTION_LENGTH = 160
-
-
 def _game_words(game):
     """What is written of the game: staff's description, else IGDB's summary.
 
@@ -145,7 +141,7 @@ def _game_meta_description(game):
     if not words:
         return ""
     lead = f"#{game.rank} of the most critically acclaimed video games. "
-    return lead + seo.meta_description(words, META_DESCRIPTION_LENGTH - len(lead))
+    return lead + seo.meta_description(words, seo.META_DESCRIPTION_LENGTH - len(lead))
 
 
 def _game_json_ld(game):
