@@ -89,8 +89,16 @@
             return (at + 1) % length;
         },
 
-        /** The menu's items that can be seen: none while it is closed. */
+        /**
+         * An open menu's items: none while it is closed, and none while it
+         * fades. A closed menu's items stay laid out for the 75 ms of its
+         * leave transition, so "open" is what its button says
+         * (`aria-expanded`, which Alpine writes from `open`) as well as
+         * what can be seen.
+         */
         _menuItems(wrapper) {
+            const trigger = wrapper.querySelector('.tracking-button');
+            if (!trigger || trigger.getAttribute('aria-expanded') !== 'true') return [];
             return Array.from(wrapper.querySelectorAll('[role="menuitem"]')).filter(
                 (item) => item.offsetParent !== null
             );
@@ -116,10 +124,15 @@
             const trigger = wrapper.querySelector('.tracking-button');
             const items = this._menuItems(wrapper);
             const at = items.indexOf(target);
+            // One of the menu's items, open or not: Alpine has closed the
+            // menu by the time its Escape reaches the document
+            const inMenu = Array.from(
+                wrapper.querySelectorAll('[role="menuitem"]')
+            ).includes(target);
 
             if (key === 'Escape' || key === 'Tab') {
                 // Only from inside the menu: on the button, Tab is Tab
-                if (at === -1) return;
+                if (!inMenu) return;
                 // Alpine closes on Escape itself. Tab leaves a menu: back to
                 // its button, from where the next Tab carries on. The menu's
                 // items are still on screen while it fades, so the browser's
@@ -133,14 +146,26 @@
             }
 
             if (!items.length) {
-                // Closed: an arrow on the button opens it, as Enter does.
+                // Closed, or fading. An item of a fading menu is about to
+                // vanish, and focus with it: back to the button.
+                if (inMenu) {
+                    event.preventDefault();
+                    if (trigger) trigger.focus();
+                    return;
+                }
+                // An arrow on the button opens it, as Enter does: Down on
+                // its first item, Up on its last.
                 // Not in quick-mark mode, where a click on the button
                 // applies the picked status and opens nothing: the arrow
                 // would mark the item, and the next press clear it.
                 if (target === trigger && (key === 'ArrowDown' || key === 'ArrowUp') &&
                         !this._marks(wrapper)) {
                     event.preventDefault();
-                    trigger.click();
+                    // Unless it is opening already: the button says so a
+                    // frame before the list is laid out, and a click then
+                    // would close it
+                    if (trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
+                    this._focusItem(wrapper, key === 'ArrowUp', 10);
                 }
                 return;
             }
@@ -150,17 +175,18 @@
         },
 
         /**
-         * A menu opened from the keyboard starts on its first item. A
-         * pointer's click leaves focus where it is.
+         * A menu opened with Enter or Space starts on its first item. A
+         * pointer's click leaves focus where it is, and so does the click
+         * an arrow makes above, which picks its own end.
          */
         _onTriggerClick(event) {
-            if (event.detail !== 0) return;
+            if (event.detail !== 0 || !event.isTrusted) return;
             const trigger = event.target && event.target.closest &&
                 event.target.closest('.tracking-button');
             if (!trigger || trigger.getAttribute('aria-expanded') === 'true') return;
             const wrapper = trigger.closest('.tracking-button-wrapper');
             // In quick-mark mode the click marks and no menu is coming
-            if (wrapper && !this._marks(wrapper)) this._focusFirstItem(wrapper, 10);
+            if (wrapper && !this._marks(wrapper)) this._focusItem(wrapper, false, 10);
         },
 
         /** Whether a click on this wrapper's button marks, in quick-mark mode. */
@@ -170,13 +196,13 @@
             );
         },
 
-        /** Focus the first item once Alpine has shown the menu. */
-        _focusFirstItem(wrapper, framesLeft) {
+        /** Focus the first item, or the last, once Alpine has shown the menu. */
+        _focusItem(wrapper, last, framesLeft) {
             const items = this._menuItems(wrapper);
             if (items.length) {
-                items[0].focus();
+                items[last ? items.length - 1 : 0].focus();
             } else if (framesLeft > 0) {
-                requestAnimationFrame(() => this._focusFirstItem(wrapper, framesLeft - 1));
+                requestAnimationFrame(() => this._focusItem(wrapper, last, framesLeft - 1));
             }
         },
 

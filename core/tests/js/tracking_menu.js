@@ -29,9 +29,15 @@ const file = 'core/static/core/js/media-tracking.js';
 vm.runInThisContext(fs.readFileSync(path.join(root, file), 'utf8'), { filename: file });
 MediaTracking.register('album', { sets: {}, event: 'album-status-changed' });
 
-/** A wrapper with a trigger and `count` menu items, shown or not. */
+/**
+ * A wrapper with a trigger and `count` menu items, shown or not. `shown` is
+ * whether the list is laid out and `expanded` what the button says, which
+ * differ for the 75 ms a closed menu takes to fade: set `expanded` to part
+ * them.
+ */
 function build(count, { open = true } = {}) {
     const wrapper = { shown: open, dataset: { trackingScope: 'album' } };
+    const expanded = () => (wrapper.expanded === undefined ? wrapper.shown : wrapper.expanded);
     const element = (name) => ({
         name,
         clicks: 0,
@@ -43,7 +49,7 @@ function build(count, { open = true } = {}) {
                     : null
         ),
         getAttribute: attribute => (
-            attribute === 'aria-expanded' ? String(wrapper.shown) : null
+            attribute === 'aria-expanded' ? String(expanded()) : null
         ),
         // Alpine hides the list; a hidden element has no offsetParent
         get offsetParent() { return wrapper.shown ? wrapper : null; },
@@ -74,10 +80,17 @@ function press(key, target, modifiers = {}) {
     };
 }
 
-function click(target, detail) {
+/** A click on `target`: the reader's own, unless `isTrusted` says a script's. */
+function click(target, detail, isTrusted = true) {
     document.activeElement = target;
     frames.length = 0;
-    listeners['click:capture']({ target, detail });
+    listeners['click:capture']({ target, detail, isTrusted });
+}
+
+/** Run the next frame the script asked for, if it asked for one. */
+function nextFrame() {
+    const frame = frames.shift();
+    if (frame) frame();
 }
 
 const out = {};
@@ -117,6 +130,50 @@ out.downOnAClosedButton = { ...press('ArrowDown', menu.trigger), clicks: menu.tr
 out.upOnAClosedButton = { ...press('ArrowUp', menu.trigger), clicks: menu.trigger.clicks };
 out.homeOnAClosedButton = { ...press('Home', menu.trigger), clicks: menu.trigger.clicks };
 
+// The arrow that opens a menu says which end to start on: the script's own
+// click opens it, and the wait for Alpine to show the list is the arrow's
+for (const [name, key] of [['downOpensOn', 'ArrowDown'], ['upOpensOn', 'ArrowUp']]) {
+    menu = build(3, { open: false });
+    frames.length = 0;
+    press(key, menu.trigger);
+    const waits = frames.length;
+    menu.shown = true;
+    nextFrame();
+    out[name] = { focus: document.activeElement.name, waits };
+}
+
+// A menu that is fading: Alpine has closed it, the button says so, and its
+// items are laid out for another 75 ms
+menu = build(3);
+menu.expanded = false;
+frames.length = 0;
+out.downOnTheButtonOfAFadingMenu = {
+    ...press('ArrowDown', menu.trigger), clicks: menu.trigger.clicks, waits: frames.length,
+};
+menu.expanded = true;  // the click reopened it
+nextFrame();
+out.aFadingMenuReopensOn = document.activeElement.name;
+menu = build(3);
+menu.expanded = false;
+out.downOnAnItemOfAFadingMenu = press('ArrowDown', menu.items[1]);
+out.endOnAnItemOfAFadingMenu = press('End', menu.items[1]);
+out.escapeInAFadingMenu = press('Escape', menu.items[1]);
+out.tabInAFadingMenu = press('Tab', menu.items[1]);
+frames.length = 0;
+
+// A menu that is opening: the button says so a frame before Alpine lays the
+// list out. A click then would close it again
+menu = build(3, { open: false });
+menu.expanded = true;
+frames.length = 0;
+out.upOnTheButtonOfAnOpeningMenu = {
+    ...press('ArrowUp', menu.trigger), clicks: menu.trigger.clicks, waits: frames.length,
+};
+menu.shown = true;
+nextFrame();
+out.anOpeningMenuIsEnteredOn = document.activeElement.name;
+frames.length = 0;
+
 // Quick-mark mode: a click on the button applies the picked status, so an
 // arrow must not be turned into one
 globalThis.QuickMark = { active: scope => (scope === 'album' ? 'listened' : '') };
@@ -151,6 +208,11 @@ out.framesWaitedFor = frames.length;
 menu.shown = true;  // Alpine shows the list
 frames.shift()();
 out.keyboardOpenFocuses = document.activeElement.name;
+
+// The click an arrow makes is the script's, and the arrow does the waiting
+menu = build(3, { open: false });
+click(menu.trigger, 0, false);
+out.framesWaitedForAScriptsClick = frames.length;
 
 menu = build(3, { open: false });
 click(menu.trigger, 1);

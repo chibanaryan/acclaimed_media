@@ -18,7 +18,20 @@
   no role and no keys; smoke: "music listen menu by keyboard"). An arrow on
   a closed button opens it by clicking the button, so not in quick-mark
   mode, where that click marks (`_marks`), and not with Cmd, Ctrl or Alt
-  held, which is the browser's chord. It resolves the route **positionally**
+  held, which is the browser's chord. Down opens on the first item and Up
+  on the last: the arrow waits for its own end, and `_onTriggerClick`
+  answers only a trusted click, so the script's click starts no second
+  wait. **A menu is open while its button says so** (`aria-expanded`), not
+  while its items are laid out: they stay laid out for the 75 ms it fades,
+  and until 2026-11-13 an arrow in that time put focus on an item about to
+  vanish. That arrow reopens the menu now, which is why the wrapper's
+  timer (it drops a closed menu's `z-[9999]` 100 ms on) asks `open` before
+  it acts: it fired on the reopened menu and left it under the rows below.
+  The other edge is a menu still opening, expanded a frame before its list
+  is laid out: an arrow then waits and does not click, since the click
+  would close it. Escape and Tab ask whether the target is one of the
+  menu's items, open or not, since Alpine has closed it by the time the key
+  reaches the document. It resolves the route **positionally**
   (`{% url toggle_url_name item.id %}`) because `{% url %}` cannot take a
   dynamic kwarg name - so a section's toggle route must take the item's pk as
   its one positional argument. Games has since gone its own way, to one
