@@ -8,7 +8,7 @@ including genre, platform, and year filtering with caching support.
 import re
 from typing import Any, Dict, List, Optional
 
-from django.db.models import Q, QuerySet
+from django.db.models import Exists, OuterRef, QuerySet
 
 from core.cache_helpers import cached
 from core.services.query_params import ordered_range, parse_int
@@ -59,47 +59,49 @@ def apply_genre_filter(
     if not genre_ids:
         return queryset
 
-    genre_field = "wikipedia_genres"
-
-    # For Wikipedia genres with hierarchy expansion
-    # Each selected genre expands to include its descendants
-    # match_all: game must have at least one from EACH expanded group
-    # match_any: game must have at least one from ANY expanded group
+    # Each selected genre is a group: itself and, with the hierarchy
+    # expanded, everything below it.
     if expand_hierarchy:
         if descendants is None:
             descendants = genre_descendant_map()
-        expanded_groups = [
+        groups = [
             _expand_single_genre_with_descendants(genre_id, descendants)
             for genre_id in genre_ids
         ]
-
-        if match_all:
-            # Game must have at least one genre from EACH group
-            for group in expanded_groups:
-                q = Q()
-                for gid in group:
-                    q |= Q(**{genre_field: gid})
-                queryset = queryset.filter(q)
-        else:
-            # Game must have at least one genre from ANY group
-            q = Q()
-            for group in expanded_groups:
-                for gid in group:
-                    q |= Q(**{genre_field: gid})
-            queryset = queryset.filter(q)
     else:
-        # No hierarchy expansion - exact matching
-        if match_all:
-            for genre_id in genre_ids:
-                queryset = queryset.filter(**{genre_field: genre_id})
-        else:
-            q = Q()
-            for genre_id in genre_ids:
-                q |= Q(**{genre_field: genre_id})
-            queryset = queryset.filter(q)
+        groups = [[genre_id] for genre_id in genre_ids]
 
-    # Use distinct() to avoid duplicate rows from M2M joins
-    return queryset.distinct()
+    if match_all:
+        # At least one genre from EACH group
+        for group in groups:
+            queryset = _related_to_any(queryset, "wikipedia_genres", group)
+        return queryset
+    # At least one genre from ANY group
+    return _related_to_any(
+        queryset,
+        "wikipedia_genres",
+        [genre_id for group in groups for genre_id in group],
+    )
+
+
+def _related_to_any(queryset: QuerySet, relation: str, ids: List[int]) -> QuerySet:
+    """The rows related to any of ``ids`` through a many-to-many ``relation``.
+
+    An ``EXISTS`` on the through table, not a join. A join lists a row once
+    for each id it matches (a game on two selected platforms, twice), so
+    each filter ended in ``.distinct()``: every column of every matching
+    game compared, ahead of the page's hundred rows. On a copy of
+    production's data on 2026-11-12 that was most of what a filtered list
+    still cost after the unfiltered one was fixed (ROADMAP 5).
+    """
+    field = queryset.model._meta.get_field(relation)
+    links = field.remote_field.through._default_manager.filter(
+        **{
+            field.m2m_field_name(): OuterRef("pk"),
+            f"{field.m2m_reverse_field_name()}__in": list(ids),
+        }
+    )
+    return queryset.filter(Exists(links))
 
 
 def _expand_single_genre_with_descendants(
@@ -135,7 +137,7 @@ def apply_platform_filter(queryset: QuerySet, platform_ids: List[int]) -> QueryS
     if not platform_ids:
         return queryset
 
-    return queryset.filter(platforms__in=platform_ids).distinct()
+    return _related_to_any(queryset, "platforms", platform_ids)
 
 
 def apply_series_filter(queryset: QuerySet, series_ids: List[int]) -> QuerySet:
@@ -147,12 +149,12 @@ def apply_series_filter(queryset: QuerySet, series_ids: List[int]) -> QuerySet:
         series_ids: List of series IDs to filter by
 
     Returns:
-        Filtered queryset with distinct() to avoid duplicates from M2M join
+        Filtered queryset
     """
     if not series_ids:
         return queryset
 
-    return queryset.filter(series__in=series_ids).distinct()
+    return _related_to_any(queryset, "series", series_ids)
 
 
 def get_or_set_cache(

@@ -206,10 +206,10 @@ def _order_games(qs, params):
     def sort_field(field_name):
         return f"-{field_name}" if sort_direction == "desc" else field_name
 
-    # No `distinct()` here: the filters that join many-to-many (genres,
-    # platforms, series) each add their own, and an unfiltered list has no
-    # row twice. Added to every sort, it made the database compare every
-    # column of every game before it took the page's hundred.
+    # No `distinct()` here, and none is needed: the many-to-many filters
+    # (genres, platforms, series) are each an EXISTS, so no list has a row
+    # twice. Added to every sort, it made the database compare every column
+    # of every game before it took the page's hundred.
     if sort == "year":
         return qs.order_by(sort_field("year_of_release"), "rank")
     elif sort == "name":
