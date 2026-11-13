@@ -1,3 +1,4 @@
+from datetime import timedelta
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -9,6 +10,19 @@ from django.test import TestCase
 
 from core.tests.utils import NoHeartbeatMixin
 from .. import models
+
+
+def _a_day_ago(game):
+    """Move a game's `modified` back a day, and answer what it now is.
+
+    For a test that a command leaves it alone: a save that did move it
+    lands on today, a day off. These tests slept a tenth of a second
+    before reading the timestamp instead, which made them slow and proved
+    less, since the stamp they read was already the creation's.
+    """
+    then = game.modified - timedelta(days=1)
+    models.Game.objects.filter(pk=game.pk).update(modified=then)
+    return then
 
 
 class GetIgdbCommandTests(TestCase):
@@ -65,8 +79,6 @@ class GetIgdbCommandTests(TestCase):
 
     def test_igdb_import_does_not_update_modified_timestamp(self):
         """Test that IGDB import does not update the modified timestamp"""
-        import time
-
         game = models.Game.objects.create(
             name="Halo 2",
             rank=1,
@@ -74,9 +86,7 @@ class GetIgdbCommandTests(TestCase):
             year_of_release=2004,
         )
 
-        # Wait a moment and record the original modified time
-        time.sleep(0.1)
-        original_modified = game.modified
+        original_modified = _a_day_ago(game)
 
         # Mock get_igdb_data to set some fields
         def mock_get_igdb(cache_results=True):
@@ -242,7 +252,6 @@ class GetIgdbCommandTests(TestCase):
 
     def test_batch_mode_does_not_update_modified_timestamp(self):
         """Test that batch mode does not update modified timestamp"""
-        import time
         from games import igdb
 
         game = models.Game.objects.create(
@@ -252,9 +261,7 @@ class GetIgdbCommandTests(TestCase):
             year_of_release=2000,
         )
 
-        # Wait and record original modified time
-        time.sleep(0.1)
-        original_modified = game.modified
+        original_modified = _a_day_ago(game)
 
         # Mock the API client to return game data
         mock_api = mock.MagicMock()
@@ -290,8 +297,6 @@ class GetIgdbCommandTests(TestCase):
 
     def test_concurrent_mode_does_not_update_modified_timestamp(self):
         """Test that concurrent processing does not update modified timestamp"""
-        import time
-
         game1 = models.Game.objects.create(
             name="Game 1",
             rank=1,
@@ -305,10 +310,8 @@ class GetIgdbCommandTests(TestCase):
             year_of_release=2001,
         )
 
-        # Wait and record original modified times
-        time.sleep(0.1)
-        original_modified_1 = game1.modified
-        original_modified_2 = game2.modified
+        original_modified_1 = _a_day_ago(game1)
+        original_modified_2 = _a_day_ago(game2)
 
         # Mock get_igdb_data to update fields
         def mock_get_igdb(cache_results=True):

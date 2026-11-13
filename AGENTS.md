@@ -2718,7 +2718,7 @@ manage.py ...`. `.env.example` lists them all.
 
 - **`.python-version`** - Specifies Python 3.14 for Heroku deployment; the local venv tracks production's patch release (see "Dependencies")
 - **`.pre-commit-config.yaml`** - Pre-commit hook configuration for code quality enforcement (Black, Flake8, tests)
-- **`.coveragerc`** - Coverage configuration. It omits migrations, the tests and six files by name: four games commands (`refresh_all_metadata`, `fetch_wikipedia_metadata`, `fetch_hltb_data`, `get_wiki_genres`) and `games/services/import_handler.py`, which have tests and are at 62% to 81%, and the books command, which has none. Every other command and music's import handler are under the 100% gate since 2026-11-12, and a new command is measured by default. Until then it left out every command and both handlers by pattern
+- **`.coveragerc`** - Coverage configuration. It omits migrations and the tests, and nothing else: every command and both import handlers are under the 100% gate since 2026-11-12, and a new file is measured by default. Until then it left out six files by name (four games commands, games' import handler and the books command, at 62% to 81% or untested), and before that every command and both handlers by pattern
 - **`.flake8`** - Flake8 linter configuration (max line length 88; excludes nothing of ours but migrations and `.context/`)
 - **`scripts/run_tests.sh`** - The same suites under Django's own test runner; see below
 

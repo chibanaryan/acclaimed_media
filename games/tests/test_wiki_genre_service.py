@@ -532,8 +532,8 @@ class WikiGenreServiceTests(SimpleTestCase):
     def test_notify_progress_handles_no_callback(self):
         """Test that no error occurs when callback is not set."""
         service = WikiGenreService(delay=0.0)
-        # Should not raise any exception
-        service._notify_progress("test_event", {"key": "value"})
+        self.assertIsNone(service.progress_callback)
+        self.assertIsNone(service._notify_progress("test_event", {"key": "value"}))
 
     def test_clean_genre_text_removes_references(self):
         """Test cleaning of reference markers."""

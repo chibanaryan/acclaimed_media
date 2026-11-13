@@ -130,8 +130,13 @@ Flag anything within six months of its end of life:
 |---|---|---|---|
 | Python | 3.14 (`.python-version`) | Oct 2030 | 3.15 |
 | Django | 6.1 | Dec 2027 | 6.2 LTS, due Apr 2027 |
+| Node (CI only) | 26 (`NODE_VERSION` in `.github/workflows/ci.yml`) | Apr 2029 | 28, LTS from Oct 2027 |
 | Heroku stack | `heroku stack -a acclaimedgames` | Heroku's stack page | |
 | Postgres | `heroku pg:info -a acclaimedgames` (18 on 2026-10-25) | | |
+
+Node is pinned in CI because its `js` job compares terser's output byte for
+byte and nothing bumps the pin by itself: when moving it, run
+`scripts/minify_js.sh --check` under the new version first.
 
 Django is uncapped in `requirements.in`, so Dependabot opens its majors
 like any other; fix what the deprecation list showed before merging one.

@@ -24,6 +24,14 @@ BUNDLE_REFERENCE = re.compile(
 CLASS_DECLARATION = re.compile(r"class\s+(\w+)(?:\s+extends\s+(\w+))?")
 
 
+def read_source(relative_path):
+    """A source file's text, by its path from the repository's root.
+
+    Fifteen test classes below each had a copy of this as a method.
+    """
+    return (Path(settings.BASE_DIR) / relative_path).read_text()
+
+
 def _referenced_bundles():
     """Every bundle path referenced from a template, with its template."""
     found = []
@@ -115,13 +123,8 @@ class RowGenreClickReachesTheHeadingTests(SimpleTestCase):
 
     EVENT = "genres-selected"
 
-    def _source(self, relative_path):
-        path = Path(settings.BASE_DIR) / relative_path
-        self.assertTrue(path.exists(), f"missing {relative_path}")
-        return path.read_text()
-
     def test_the_row_handler_announces_the_selection(self):
-        source = self._source("music/static/music/js/album-client-filtering.js")
+        source = read_source("music/static/music/js/album-client-filtering.js")
         handler = source.split("'add-genre'", 1)
         self.assertEqual(len(handler), 2, "no add-genre handler to check")
         self.assertIn(
@@ -132,7 +135,7 @@ class RowGenreClickReachesTheHeadingTests(SimpleTestCase):
         )
 
     def test_the_controls_component_listens_and_updates_the_title(self):
-        source = self._source("core/static/core/js/media-list-controls.js")
+        source = read_source("core/static/core/js/media-list-controls.js")
         self.assertIn(f"'{self.EVENT}'", source)
         listener = source.split("_genresSelectedListener = ", 1)
         self.assertEqual(len(listener), 2, "no listener to check")
@@ -141,7 +144,7 @@ class RowGenreClickReachesTheHeadingTests(SimpleTestCase):
         self.assertIn("_applyTitle", body)
 
     def test_the_listener_is_registered_and_torn_down(self):
-        source = self._source("core/static/core/js/media-list-controls.js")
+        source = read_source("core/static/core/js/media-list-controls.js")
         self.assertIn(f"addEventListener(\n                '{self.EVENT}'", source)
         self.assertIn(
             f"removeEventListener(\n                    '{self.EVENT}'", source
@@ -156,7 +159,7 @@ class RowGenreClickReachesTheHeadingTests(SimpleTestCase):
             "music/static/music/js/music-client-side-filtering.bundle.min.js",
         ):
             with self.subTest(path=path):
-                self.assertIn(self.EVENT, self._source(path))
+                self.assertIn(self.EVENT, read_source(path))
 
 
 class SavedFilterSortDirectionRoundTripsTests(SimpleTestCase):
@@ -177,15 +180,10 @@ class SavedFilterSortDirectionRoundTripsTests(SimpleTestCase):
         "games/static/games/js/filter-component.js",
     )
 
-    def _source(self, relative_path):
-        path = Path(settings.BASE_DIR) / relative_path
-        self.assertTrue(path.exists(), f"missing {relative_path}")
-        return path.read_text()
-
     def test_each_component_writes_the_direction_when_applying(self):
         for relative_path in self.COMPONENTS:
             with self.subTest(component=relative_path):
-                source = self._source(relative_path)
+                source = read_source(relative_path)
                 applied = source.split("applySavedFilter(filter) {", 1)
                 self.assertEqual(len(applied), 2, "no applySavedFilter to check")
                 # The body ends at the next method; 2000 characters covers
@@ -202,13 +200,13 @@ class SavedFilterSortDirectionRoundTripsTests(SimpleTestCase):
         # would be just as broken, and reads as correct in isolation.
         for relative_path in self.COMPONENTS:
             with self.subTest(component=relative_path):
-                self.assertIn("sortDirection", self._source(relative_path))
+                self.assertIn("sortDirection", read_source(relative_path))
 
     def test_the_minified_copies_carry_it(self):
         for relative_path in self.COMPONENTS:
             minified = relative_path.replace(".js", ".min.js")
             with self.subTest(component=minified):
-                self.assertIn("sortDirection", self._source(minified))
+                self.assertIn("sortDirection", read_source(minified))
 
 
 class ChartScriptIsQueuedWhereThereIsAChartTests(SimpleTestCase):
@@ -299,18 +297,15 @@ class SavedFilterYearGridHookIsLiveTests(SimpleTestCase):
     cannot throw, which is exactly why it needs a test.
     """
 
-    def _source(self, relative_path):
-        return (Path(settings.BASE_DIR) / relative_path).read_text()
-
     def test_the_grid_still_asks_for_the_flag(self):
-        template = self._source("core/templates/core/includes/_year_grid.html")
+        template = read_source("core/templates/core/includes/_year_grid.html")
         self.assertIn("isApplyingSavedFilter", template)
         self.assertIn("applyingSavedFilter", template)
 
     def test_the_subcomponent_consults_it(self):
         self.assertIn(
             "isApplyingSavedFilter",
-            self._source("core/static/core/js/filter-subcomponents.js"),
+            read_source("core/static/core/js/filter-subcomponents.js"),
         )
 
     def test_both_filter_components_define_the_flag(self):
@@ -321,7 +316,7 @@ class SavedFilterYearGridHookIsLiveTests(SimpleTestCase):
             with self.subTest(component=relative_path):
                 self.assertIn(
                     "applyingSavedFilter:",
-                    self._source(relative_path),
+                    read_source(relative_path),
                     "the component defines no applyingSavedFilter, so the "
                     "year grid's guard resolves to false and the grid "
                     "previews a range while a saved filter is applied",
@@ -879,33 +874,30 @@ class LandingPagesPushOntoTheRankingsUrlTests(SimpleTestCase):
     page's bare path as the params it stands for.
     """
 
-    def _source(self, relative_path):
-        return (Path(settings.BASE_DIR) / relative_path).read_text()
-
     def test_the_url_push_uses_the_rankings_url(self):
-        source = self._source("music/static/music/js/album-client-filtering.js")
+        source = read_source("music/static/music/js/album-client-filtering.js")
         push = source.split("pushUrl(filters, { replace = false } = {}) {", 1)[1][:1400]
         self.assertIn("window.albumRankingsUrl", push)
         self.assertNotIn("query ? `?${query}`", push)
 
     def test_both_popstate_readers_know_the_landing_path(self):
         # One rule, in utils-base.js, rather than a copy in each reader.
-        helper = self._source("games/static/games/js/utils-base.js")
+        helper = read_source("games/static/games/js/utils-base.js")
         self.assertIn(
             "function landingFilterParams(landingPath, landingSearch)", helper
         )
-        filtering = self._source("music/static/music/js/album-client-filtering.js")
+        filtering = read_source("music/static/music/js/album-client-filtering.js")
         popstate = filtering.split("addEventListener('popstate'", 1)[1][:600]
         self.assertIn("landingFilterParams(", popstate)
         self.assertIn("window.albumLandingSearch", popstate)
-        controls = self._source("core/static/core/js/media-list-controls.js")
+        controls = read_source("core/static/core/js/media-list-controls.js")
         sync = controls.split("_syncFromUrl() {", 1)[1][:700]
         self.assertIn("landingFilterParams(", sync)
         self.assertIn("settings.landingSearch", sync)
 
     def test_the_landing_path_is_rendered_once(self):
         # The controls take the page's globals rather than a second copy
-        template = self._source("music/templates/music/home.html")
+        template = read_source("music/templates/music/home.html")
         self.assertEqual(template.count("landing_path"), 1)
         self.assertEqual(template.count("landing_search"), 1)
         self.assertIn("landingPath: window.albumLandingPath,", template)
@@ -922,7 +914,7 @@ class LandingPagesPushOntoTheRankingsUrlTests(SimpleTestCase):
             ("games/static/games/js/utils-base.min.js", "landingFilterParams"),
         ):
             with self.subTest(path=path):
-                self.assertIn(needle, self._source(path))
+                self.assertIn(needle, read_source(path))
 
 
 class MusicHighlightScrollsOnLoadTests(SimpleTestCase):
@@ -936,18 +928,15 @@ class MusicHighlightScrollsOnLoadTests(SimpleTestCase):
 
     SOURCE = "music/static/music/js/album-client-filtering.js"
 
-    def _source(self, relative_path):
-        return (Path(settings.BASE_DIR) / relative_path).read_text()
-
     def test_the_highlight_is_read_and_scrolled_to_on_load(self):
-        source = self._source(self.SOURCE)
+        source = read_source(self.SOURCE)
         init = source.split("function initAlbumFiltering() {", 1)[1]
         self.assertIn("const highlightOnLoad = currentHighlight();", init)
         self.assertIn("scrollToAlbumById(highlightOnLoad, ", init)
 
     def test_an_album_past_the_rendered_rows_is_jumped_to(self):
         # A window around it, not every row above it.
-        source = self._source(self.SOURCE)
+        source = read_source(self.SOURCE)
         init = source.split("function initAlbumFiltering() {", 1)[1]
         self.assertIn("csf.jumpTo(position);", init)
 
@@ -957,7 +946,7 @@ class MusicHighlightScrollsOnLoadTests(SimpleTestCase):
             "music/static/music/js/music-client-side-filtering.bundle.min.js",
         ):
             with self.subTest(path=path):
-                minified = self._source(path)
+                minified = read_source(path)
                 self.assertIn("scrollToAlbumById", minified)
                 self.assertIn("jumpTo(", minified)
 
@@ -975,11 +964,8 @@ class JumpToRankRendersAWindowTests(SimpleTestCase):
 
     BASE = "core/static/core/js/base-renderer.js"
 
-    def _source(self, relative_path):
-        return (Path(settings.BASE_DIR) / relative_path).read_text()
-
     def test_the_renderer_keeps_a_window_and_plans_jumps(self):
-        source = self._source(self.BASE)
+        source = read_source(self.BASE)
         self.assertIn("this.JUMP_RADIUS = 50;", source)
         for method in (
             "planJump(index)",
@@ -998,18 +984,18 @@ class JumpToRankRendersAWindowTests(SimpleTestCase):
     def test_the_games_renderer_pages_through_the_base_class(self):
         # Its own copy of render/loadMore was what the window would have
         # had to be added to twice.
-        source = self._source("games/static/games/js/game-list-renderer.js")
+        source = read_source("games/static/games/js/game-list-renderer.js")
         self.assertNotRegex(source, r"\n    loadMore\(")
         self.assertNotRegex(source, r"\n    render\(")
         self.assertIn("this.GRID_CLASS = 'game-grid';", source)
 
     def test_both_pages_jump_through_the_plan(self):
-        games = self._source("games/static/games/js/utils-loadmore.js")
+        games = read_source("games/static/games/js/utils-loadmore.js")
         jump = games.split("function jumpToRankClientSide(", 1)[1]
         self.assertIn("renderer.planJump(targetRank - 1)", jump)
         self.assertIn("renderer.showRange(", jump)
 
-        music = self._source("music/static/music/js/album-client-filtering.js")
+        music = read_source("music/static/music/js/album-client-filtering.js")
         jump = music.split("    jumpTo(position) {", 1)[1]
         self.assertIn("this.renderer.planJump(position - 1)", jump)
         self.assertIn("this.renderer.showRange(", jump)
@@ -1025,18 +1011,18 @@ class JumpToRankRendersAWindowTests(SimpleTestCase):
         ):
             with self.subTest(path=path):
                 self.assertRegex(
-                    self._source(path),
+                    read_source(path),
                     r"addEventListener\(\s*[\"']acclaimed:need-csf[\"']",
                 )
 
     def test_scrolling_to_a_position_allows_for_the_window(self):
         # Positions are absolute, but the Nth row on the page is not rank N
         # once the window starts part-way down.
-        games = self._source("games/static/games/js/utils-loadmore.js")
+        games = read_source("games/static/games/js/utils-loadmore.js")
         scroll = games.split("function scrollToAndHighlightRank(", 1)[1]
         self.assertIn("position - 1 - renderedWindowStart()", scroll)
 
-        music = self._source("music/static/music/js/album-client-filtering.js")
+        music = read_source("music/static/music/js/album-client-filtering.js")
         scroll = music.split("function scrollToAlbumPosition(", 1)[1]
         self.assertIn("position - 1 - offset", scroll)
 
@@ -1046,7 +1032,7 @@ class JumpToRankRendersAWindowTests(SimpleTestCase):
             "music/static/music/js/album-client-filtering.js",
         ):
             with self.subTest(path=path):
-                self.assertIn("'.load-previous-button'", self._source(path))
+                self.assertIn("'.load-previous-button'", read_source(path))
 
     def test_the_minified_copies_carry_it(self):
         for path in (
@@ -1056,14 +1042,14 @@ class JumpToRankRendersAWindowTests(SimpleTestCase):
             "games/static/games/js/utils-loadmore.min.js",
         ):
             with self.subTest(path=path):
-                minified = self._source(path)
+                minified = read_source(path)
                 self.assertIn("load-previous-", minified)
         for path in (
             "games/static/games/js/client-side-filtering.bundle.min.js",
             "music/static/music/js/music-client-side-filtering.bundle.min.js",
         ):
             with self.subTest(path=path):
-                self.assertIn("planJump", self._source(path))
+                self.assertIn("planJump", read_source(path))
 
     def test_both_results_partials_place_load_previous_above_the_list(self):
         for path, container in (
@@ -1079,7 +1065,7 @@ class JumpToRankRendersAWindowTests(SimpleTestCase):
             with self.subTest(path=path):
                 self.assertIn(
                     "{% include 'core/includes/_load_previous.html' %}\n" + container,
-                    self._source(path),
+                    read_source(path),
                 )
 
 
@@ -1106,11 +1092,8 @@ class HighlightSurvivesTheScrollTests(SimpleTestCase):
         "games/templates/games/home.html",
     )
 
-    def _source(self, relative_path):
-        return (Path(settings.BASE_DIR) / relative_path).read_text()
-
     def test_the_helper_waits_for_the_scroll_and_a_real_pointer_move(self):
-        helper = self._source(self.HELPER).split("function flashHighlight(", 1)[1]
+        helper = read_source(self.HELPER).split("function flashHighlight(", 1)[1]
         self.assertIn("whenScrollSettles(", helper)
         self.assertIn("addEventListener('mousemove'", helper)
         self.assertNotIn("mouseenter'", helper)
@@ -1120,7 +1103,7 @@ class HighlightSurvivesTheScrollTests(SimpleTestCase):
     def test_every_highlight_goes_through_it(self):
         for path in self.CALLERS:
             with self.subTest(path=path):
-                source = self._source(path)
+                source = read_source(path)
                 self.assertIn("flashHighlight(", source)
                 self.assertNotRegex(
                     source, r"addEventListener\('mouseenter'[^\n]*\n[^\n]*fade"
@@ -1136,7 +1119,7 @@ class HighlightSurvivesTheScrollTests(SimpleTestCase):
             "music/static/music/js/music-client-side-filtering.bundle.min.js",
         ):
             with self.subTest(path=path):
-                self.assertIn("flashHighlight", self._source(path))
+                self.assertIn("flashHighlight", read_source(path))
 
 
 class RankDistributionMorphsInEveryBrowserTests(SimpleTestCase):
@@ -1194,26 +1177,23 @@ class FilterSidebarLookupsAreIndexedTests(SimpleTestCase):
     read, writing every index and re-triggering its own readers.
     """
 
-    def _source(self, relative_path):
-        return (Path(settings.BASE_DIR) / relative_path).read_text()
-
     def test_platform_and_series_lookups_use_an_index(self):
-        source = self._source("games/static/games/js/filter-subcomponents.js")
+        source = read_source("games/static/games/js/filter-subcomponents.js")
         self.assertIn("indexBy(platforms,", source)
         self.assertIn(
-            "function indexBy(", self._source("games/static/games/js/utils-base.js")
+            "function indexBy(", read_source("games/static/games/js/utils-base.js")
         )
         self.assertNotIn("platforms.find(", source)
         self.assertNotIn("seriesList.find(", source)
 
     def test_series_list_is_sorted_on_a_copy(self):
-        source = self._source("games/static/games/js/filter-subcomponents.js")
+        source = read_source("games/static/games/js/filter-subcomponents.js")
         getter = source[source.index("get filteredSeries()") :]
         getter = getter[: getter.index("toggleSeries")]
         self.assertIn("(seriesList || []).slice()", getter)
 
     def test_genre_tree_lookups_use_an_index(self):
-        source = self._source("core/static/core/js/filter-subcomponents.js")
+        source = read_source("core/static/core/js/filter-subcomponents.js")
         self.assertIn("function buildGenreIndex(", source)
         code = "\n".join(
             line for line in source.splitlines() if not line.strip().startswith("*")
@@ -1226,7 +1206,7 @@ class FilterSidebarLookupsAreIndexedTests(SimpleTestCase):
             "core/static/core/js/filter-subcomponents.min.js",
         ):
             with self.subTest(path=minified):
-                self.assertIn("indexBy(", self._source(minified))
+                self.assertIn("indexBy(", read_source(minified))
 
 
 class DiscreteFilterChangesApplyAtOnceTests(SimpleTestCase):
@@ -1268,15 +1248,12 @@ class LeadingFilterUpdatesCannotBeOverwrittenTests(SimpleTestCase):
     for the engine; until then a burst is the old trailing debounce.
     """
 
-    def _source(self, relative_path):
-        return (Path(settings.BASE_DIR) / relative_path).read_text()
-
     def test_leading_edge_waits_for_the_client_engine(self):
-        source = self._source("games/static/games/js/filter-component.js")
+        source = read_source("games/static/games/js/filter-component.js")
         self.assertIn("canLead: () => this.clientFilterReady", source)
 
     def test_back_restores_without_pushing_a_new_entry(self):
-        source = self._source("games/static/games/js/filter-component.js")
+        source = read_source("games/static/games/js/filter-component.js")
         popstate = source[source.index("requestClientFilteringInit('popstate')") :]
         self.assertIn(
             "this.performClientUpdate({ historyMethod: null });",
@@ -1284,7 +1261,7 @@ class LeadingFilterUpdatesCannotBeOverwrittenTests(SimpleTestCase):
         )
 
     def test_a_burst_replaces_rather_than_adds_a_history_entry(self):
-        source = self._source("games/static/games/js/filter-component.js")
+        source = read_source("games/static/games/js/filter-component.js")
         self.assertIn(
             "historyMethod: burst.followsLeading ? 'replaceState' : 'pushState'",
             source,
@@ -1301,30 +1278,27 @@ class AlbumFilterClicksApplyAtOnceTests(SimpleTestCase):
     components created after the last update.
     """
 
-    def _source(self, relative_path):
-        return (Path(settings.BASE_DIR) / relative_path).read_text()
-
     def test_commit_is_leading_edge_once_the_engine_is_ready(self):
         for path in (
             "core/static/core/js/media-list-controls.js",
             "core/static/core/js/media-list-controls.min.js",
         ):
             with self.subTest(path=path):
-                source = self._source(path)
+                source = read_source(path)
                 self.assertIn("debounceLeading(", source)
                 self.assertIn("_clientEngineReady()", source)
 
     def test_late_components_get_the_counts(self):
-        controls = self._source("core/static/core/js/media-list-controls.js")
+        controls = read_source("core/static/core/js/media-list-controls.js")
         self.assertIn("window.addEventListener('mobile-filter-opened'", controls)
-        engine = self._source("music/static/music/js/album-client-filtering.js")
+        engine = read_source("music/static/music/js/album-client-filtering.js")
         self.assertIn("republishFacets() {", engine)
 
     def test_a_burst_replaces_its_history_entry(self):
-        engine = self._source("music/static/music/js/album-client-filtering.js")
+        engine = read_source("music/static/music/js/album-client-filtering.js")
         self.assertIn("Boolean(event.detail.historyReplace)", engine)
         self.assertIn("window.history[replace ? 'replaceState' : 'pushState']", engine)
-        bundle = self._source(
+        bundle = read_source(
             "music/static/music/js/music-client-side-filtering.bundle.min.js"
         )
         self.assertIn("historyReplace", bundle)
@@ -1332,7 +1306,7 @@ class AlbumFilterClicksApplyAtOnceTests(SimpleTestCase):
     def test_the_takeover_finds_requests_by_their_events(self):
         # It read the spinner's htmx-request class, so moving the spinner
         # would have silently stopped it aborting an overtaken request.
-        engine = self._source("music/static/music/js/album-client-filtering.js")
+        engine = read_source("music/static/music/js/album-client-filtering.js")
         self.assertNotIn(".htmx-request", engine)
         self.assertIn("element[method]('htmx:afterRequest', untrack);", engine)
         self.assertIn("element[method]('htmx:beforeSend', track);", engine)
@@ -1345,7 +1319,7 @@ class AlbumFilterClicksApplyAtOnceTests(SimpleTestCase):
         # own abort cannot reach it (scripts/browser_smoke.js runs both).
         self.assertIn("xhr.readyState !== XMLHttpRequest.DONE", engine)
         self.assertIn("inFlight.forEach(([xhr]) => xhr.abort());", engine)
-        bundle = self._source(
+        bundle = read_source(
             "music/static/music/js/music-client-side-filtering.bundle.min.js"
         )
         self.assertIn("htmx:afterRequest", bundle)
@@ -1354,7 +1328,7 @@ class AlbumFilterClicksApplyAtOnceTests(SimpleTestCase):
         # Case by case in scripts/browser_smoke.js ("music failed ..."): the
         # engine renders a failed search as it takes over, focus or not, and
         # with no engine to come the controls go back to the list's filters.
-        engine = self._source("music/static/music/js/album-client-filtering.js")
+        engine = read_source("music/static/music/js/album-client-filtering.js")
         self.assertIn("if (filterRequest || formAhead) {", engine)
         self.assertIn("csf.failed = true;", engine)
         # A failed search is rendered even with focus in the box, without
@@ -1371,7 +1345,7 @@ class AlbumFilterClicksApplyAtOnceTests(SimpleTestCase):
             "element === form && xhr.readyState !== XMLHttpRequest.DONE", engine
         )
         self.assertIn("new CustomEvent('client-engine-failed', {", engine)
-        controls = self._source("core/static/core/js/media-list-controls.js")
+        controls = read_source("core/static/core/js/media-list-controls.js")
         self.assertIn("if (engine && !engine.failed) return;", controls)
         # A newer change, still in a debounce or queued, answers for itself:
         # what was sent is read back into the controls' own terms and
@@ -1392,7 +1366,7 @@ class AlbumFilterClicksApplyAtOnceTests(SimpleTestCase):
         # "... with string years" in scripts/browser_smoke.js. Ahead of both
         # what was sent and the list, in the controls or in the form: a
         # request sent before Alpine left the controls on the list
-        controls = self._source("core/static/core/js/media-list-controls.js")
+        controls = read_source("core/static/core/js/media-list-controls.js")
         self.assertIn(
             "const ahead = differs => "
             "differs(asSent) && (!asListed || differs(asListed));",
@@ -1402,7 +1376,7 @@ class AlbumFilterClicksApplyAtOnceTests(SimpleTestCase):
         self.assertIn("ahead(get => this._formDiffers(form, get));", controls)
         # Answered as the controls start if the engine failed before them
         self.assertIn("this._answerFailedRequest(engine.failedParams);", controls)
-        engine = self._source("music/static/music/js/album-client-filtering.js")
+        engine = read_source("music/static/music/js/album-client-filtering.js")
         self.assertIn("csf.failedParams = failedParams;", engine)
         self.assertNotIn("tracking(false);\n            pending.clear();", engine)
         # The genre ids the server reads, and years as numbers
@@ -1413,9 +1387,9 @@ class AlbumFilterClicksApplyAtOnceTests(SimpleTestCase):
             "music/static/music/js/music-client-side-filtering.bundle.min.js",
         ):
             with self.subTest(minified=minified):
-                source = self._source(minified)
+                source = read_source(minified)
                 self.assertIn("failedParams", source)
-        minified = self._source("core/static/core/js/media-list-controls.min.js")
+        minified = read_source("core/static/core/js/media-list-controls.min.js")
         self.assertIn("_controlsDiffer", minified)
         self.assertIn("parseInt(t.start,10)||this.minYear", minified)
 
@@ -1492,18 +1466,13 @@ class JumpToRankReadsLandingPagePathsTests(SimpleTestCase):
     source and the minified copy the page loads.
     """
 
-    def _source(self, relative_path):
-        path = Path(settings.BASE_DIR) / relative_path
-        self.assertTrue(path.exists(), f"missing {relative_path}")
-        return path.read_text()
-
     def test_the_filters_are_read_from_a_landing_path(self):
         for path in (
             "games/static/games/js/utils-base.js",
             "games/static/games/js/utils-base.min.js",
         ):
             with self.subTest(path=path):
-                source = self._source(path)
+                source = read_source(path)
                 body = source[source.index("function getFiltersFromURL") :]
                 # Through the helper, which reads the page's address when
                 # it is handed no query of its own (the minified copy
@@ -1516,7 +1485,7 @@ class JumpToRankReadsLandingPagePathsTests(SimpleTestCase):
             "games/static/games/js/client-side-filtering.bundle.min.js",
         ):
             with self.subTest(path=path):
-                source = self._source(path)
+                source = read_source(path)
                 start = re.search(r"_computeShowRank\(\)\s*\{", source).start()
                 self.assertIn("currentFilterParams()", source[start : start + 300])
 
@@ -1526,7 +1495,7 @@ class JumpToRankReadsLandingPagePathsTests(SimpleTestCase):
             "games/static/games/js/utils-base.min.js",
         ):
             with self.subTest(path=path):
-                source = self._source(path)
+                source = read_source(path)
                 body = source[source.index("function currentFilterParams") :]
                 self.assertIn("seoPathSearch(window.location.pathname)", body[:400])
 
@@ -1536,16 +1505,13 @@ class AFullYearRangeStaysOutOfTheAddressTests(SimpleTestCase):
     year left the visitor on /games/?start=1971&end=2025 rather than /.
     Checked in Chrome with the mouse and the keyboard on 2026-10-26."""
 
-    def _source(self, relative_path):
-        return (Path(settings.BASE_DIR) / relative_path).read_text()
-
     def test_the_pushed_url_drops_the_whole_range(self):
         for path in (
             "games/static/games/js/filter-component.js",
             "games/static/games/js/filter-component.min.js",
         ):
             with self.subTest(path=path):
-                source = self._source(path)
+                source = read_source(path)
                 # The definition, not the first call
                 start = re.search(r"_filterUrl\(\)\s*\{", source).start()
                 body = source[start : start + 900]
@@ -1592,9 +1558,6 @@ class YearGridGapsFadeWithTheirTilesTests(SimpleTestCase):
     SOURCE = "theme/static_src/src/styles.css"
     BUILT = "theme/static/css/dist/styles.css"
 
-    def _source(self, relative_path):
-        return (Path(settings.BASE_DIR) / relative_path).read_text()
-
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -1604,7 +1567,7 @@ class YearGridGapsFadeWithTheirTilesTests(SimpleTestCase):
     def _compact_source(self):
         # Neither the formatting nor the minifier's spelling is the contract,
         # and CI's `css` job ties this file to the built one.
-        return re.sub(r"\s+", "", self._source(self.SOURCE))
+        return re.sub(r"\s+", "", read_source(self.SOURCE))
 
     def _declarations(self, selector):
         return " ".join(
@@ -1755,7 +1718,7 @@ class YearGridGapsFadeWithTheirTilesTests(SimpleTestCase):
     def test_a_range_has_its_own_state_class(self):
         # The shared `.is-selected` brings a ring and a tint that only source
         # order kept off, at the same specificity.
-        template = self._source("core/templates/core/includes/_year_grid.html")
+        template = read_source("core/templates/core/includes/_year_grid.html")
         self.assertIn("'is-in-range':", template)
         self.assertNotIn("is-selected", template)
 
@@ -1763,7 +1726,7 @@ class YearGridGapsFadeWithTheirTilesTests(SimpleTestCase):
         # The delays are on generated boxes, and would split a snap in two.
         block = re.search(
             r"@media \(prefers-reduced-motion: reduce\) \{(.*?)\n\}",
-            self._source(self.SOURCE),
+            read_source(self.SOURCE),
             re.S,
         ).group(1)
         self.assertIn("*::before", block)
@@ -1773,7 +1736,7 @@ class YearGridGapsFadeWithTheirTilesTests(SimpleTestCase):
     def test_keyboard_focus_shows_inside_a_range(self):
         # The shared ring is primary, as the fill and everything around it are.
         self.assertRegex(
-            self._source(self.BUILT),
+            read_source(self.BUILT),
             r"\.year-grid-tile\.is-in-range:focus-visible\{[^}]*"
             r"outline-color:var\(--color-primary-content\)",
         )
@@ -1782,7 +1745,7 @@ class YearGridGapsFadeWithTheirTilesTests(SimpleTestCase):
         # They drop every background and shadow, which is all a range is.
         block = re.search(
             r"@media \(forced-colors: active\) \{(.*?)\n\}",
-            self._source(self.SOURCE),
+            read_source(self.SOURCE),
             re.S,
         ).group(1)
         self.assertIn("--color-primary: Highlight", block)
@@ -1798,7 +1761,7 @@ class YearGridGapsFadeWithTheirTilesTests(SimpleTestCase):
     def test_both_kinds_of_tile_carry_the_shared_classes(self):
         # Every part of a range hangs off these two, and a tile without them
         # loses its fill or its gaps with no error anywhere.
-        template = self._source("core/templates/core/includes/_year_grid.html")
+        template = read_source("core/templates/core/includes/_year_grid.html")
         self.assertIn('class="year-grid-tile year-grid-decade"', template)
         self.assertIn('class="year-grid-tile year-grid-cell"', template)
         self.assertIn('<span class="year-grid-tile-label"', template)
@@ -1819,18 +1782,18 @@ class YearGridGapsFadeWithTheirTilesTests(SimpleTestCase):
         self.assertIn("var(--color-primary-content)", hover)
         self.assertIn("outline-offset", hover)
         self.assertRegex(
-            self._source(self.SOURCE),
+            read_source(self.SOURCE),
             r"@media \(hover: hover\) \{\s*\.year-grid-tile\.is-in-range:hover",
         )
 
     def test_a_junction_is_filled_from_the_sides_alone(self):
         # A range has no holes, so no class has to say so: a tile sharing its
         # left and top sides has the tile between them in range too.
-        template = self._source("core/templates/core/includes/_year_grid.html")
+        template = read_source("core/templates/core/includes/_year_grid.html")
         self.assertNotIn("corner-", template)
         self.assertIn(
             "--gap: calc(var(--side-left) * var(--side-top));",
-            self._source(self.SOURCE),
+            read_source(self.SOURCE),
         )
 
 
@@ -1857,16 +1820,13 @@ class NothingAnnouncesAYearResetTests(SimpleTestCase):
 class FiltersBadgeCountsWhatNarrowsTheListTests(SimpleTestCase):
     """The mobile badge said nothing for a status or playtime filter alone."""
 
-    def _source(self, relative_path):
-        return (Path(settings.BASE_DIR) / relative_path).read_text()
-
     def test_the_badge_and_the_year_clear_ask_the_component(self):
-        template = self._source("games/templates/includes/_advanced_filters.html")
+        template = read_source("games/templates/includes/_advanced_filters.html")
         self.assertIn('<template x-if="hasNarrowingFilters()">', template)
         self.assertIn('x-show="hasYearFilter()"', template)
 
     def test_every_narrowing_filter_counts_and_no_sort_does(self):
-        source = self._source("games/static/games/js/filter-component.js")
+        source = read_source("games/static/games/js/filter-component.js")
         body = source[source.index("hasNarrowingFilters() {") :]
         body = body[: body.index("hasActiveFilters() {")]
         for name in ("played", "genres", "platforms", "series"):
@@ -2020,26 +1980,23 @@ class AlbumEngineTakesThePageOverCleanlyTests(SimpleTestCase):
     ENGINE = "music/static/music/js/album-client-filtering.js"
     BUNDLE = "music/static/music/js/music-client-side-filtering.bundle.min.js"
 
-    def _source(self, relative_path):
-        return (Path(settings.BASE_DIR) / relative_path).read_text()
-
     def test_only_a_commit_re_renders(self):
         # The search box's own change fires as it loses focus, and a re-render during
         # the next mousedown swallowed that click.
-        engine = self._source(self.ENGINE)
+        engine = read_source(self.ENGINE)
         listener = engine.split("form.addEventListener('change',", 1)[1][:200]
         self.assertIn("if (!event.detail) return;", listener)
 
     def test_one_search_renders_once(self):
         # Alpine's debounced commit answers a search; a typing timer of the
         # bundle's own answered it a second time.
-        engine = self._source(self.ENGINE)
+        engine = read_source(self.ENGINE)
         self.assertNotIn("typingTimer", engine)
         self.assertNotIn("addEventListener('input'", engine)
-        self.assertNotIn('addEventListener("input"', self._source(self.BUNDLE))
+        self.assertNotIn('addEventListener("input"', read_source(self.BUNDLE))
 
     def test_a_status_change_takes_out_only_its_row(self):
-        engine = self._source(self.ENGINE)
+        engine = read_source(self.ENGINE)
         listener = engine.split("window.addEventListener('album-status-changed'", 1)[1]
         self.assertIn("csf.dropIfFilteredOut(filters, albumId);", listener[:500])
         # One row out and the later positions moved up, not the page
@@ -2048,9 +2005,9 @@ class AlbumEngineTakesThePageOverCleanlyTests(SimpleTestCase):
         method = method[: method.index("\n    }\n")]
         self.assertIn("this.renderer.removeItem(", method)
         self.assertNotIn("showRange(", method)
-        renderer = self._source("music/static/music/js/album-list-renderer.js")
+        renderer = read_source("music/static/music/js/album-list-renderer.js")
         self.assertIn("    removeItem(container, albumId, showRank) {", renderer)
-        bundle = self._source(self.BUNDLE)
+        bundle = read_source(self.BUNDLE)
         self.assertIn("dropIfFilteredOut(", bundle)
         self.assertIn("removeItem(", bundle)
 
@@ -2059,14 +2016,14 @@ class AlbumEngineTakesThePageOverCleanlyTests(SimpleTestCase):
         # on its filters and the list on the URL's; Load More mixed the two.
         # Against what the server rendered, not the URL, which it echoes
         # cleaned up; and not a search still being typed.
-        engine = self._source(self.ENGINE)
+        engine = read_source(self.ENGINE)
         self.assertIn(
             "comparable(csf.readFilters(form)) !== comparable(rendered)", engine
         )
         self.assertIn("const rendered = csf.renderedFilters();", engine)
         self.assertIn("matches('[data-filter-search]')", engine)
         self.assertIn("if (filterRequest || formAhead) {", engine)
-        bundle = self._source(self.BUNDLE)
+        bundle = read_source(self.BUNDLE)
         self.assertIn("album-rendered-filters", bundle)
         self.assertIn("[data-filter-search]", bundle)
 
@@ -2074,14 +2031,14 @@ class AlbumEngineTakesThePageOverCleanlyTests(SimpleTestCase):
         # music/home.html keeps htmx from answering Back by swallowing its
         # `window.onpopstate` assignment. An htmx that listened instead would
         # restore its snapshots again, and nothing else would fail.
-        htmx = self._source("games/static/games/js/vendor/htmx.min.js")
+        htmx = read_source("games/static/games/js/vendor/htmx.min.js")
         self.assertIn("window.onpopstate=function(e){if(e.state&&e.state.htmx)", htmx)
         self.assertNotIn('addEventListener("popstate"', htmx)
 
     def test_the_engine_switches_the_jump_box_on(self):
         for path in (self.ENGINE, self.BUNDLE):
             with self.subTest(path=path):
-                self.assertIn("[data-awaits-engine]", self._source(path))
+                self.assertIn("[data-awaits-engine]", read_source(path))
 
 
 class ServerRenderedCountsAreAllDispatchedTests(SimpleTestCase):

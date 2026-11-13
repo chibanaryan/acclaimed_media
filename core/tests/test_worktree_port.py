@@ -11,8 +11,10 @@ functions are run here as the script defines them, with a path of the
 test's own, rather than through `--print-port`.
 """
 
+import os
 import socket
 import subprocess
+import tempfile
 from pathlib import Path
 
 from django.conf import settings
@@ -27,6 +29,20 @@ def port_functions():
     start = source.index("port_in_use() {")
     end = source.index("\n}\n", source.index("worktree_port() {")) + len("\n}\n")
     return source[start:end]
+
+
+def between(start, end):
+    """The script's source from ``start`` up to and including ``end``."""
+    source = SCRIPT.read_text()
+    at = source.index(start)
+    return source[at : source.index(end, at) + len(end)]
+
+
+def without_claude(**extra):
+    """This environment as Conductor's setup runs the script: no CLAUDE_*."""
+    env = {key: value for key, value in os.environ.items() if "CLAUDE" not in key}
+    env.update(extra)
+    return env
 
 
 def worktree_port(name):
@@ -79,3 +95,71 @@ class WorktreePortTests(SimpleTestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertGreaterEqual(int(result.stdout.strip()), 8000)
+
+
+class UnsetVariablesTests(SimpleTestCase):
+    """The script runs under `set -eu`, in sessions that set Claude Code's
+    variables and in ones that do not (Conductor's setup, a terminal).
+
+    Its parts are run here as the script defines them, not the script
+    itself, which provisions the worktree it stands in. An unset variable
+    read bare is "unbound variable" and exit 1 under `-u`, and the EXIT
+    trap runs on every path out, so a slip there fails every run.
+    """
+
+    def run_bash(self, script, **kwargs):
+        return subprocess.run(
+            ["bash", "-c", "set -eu\n" + script],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env=without_claude(),
+            **kwargs,
+        )
+
+    def test_the_script_is_strict_about_unset_variables(self):
+        self.assertIn("\nset -eu\n", SCRIPT.read_text())
+
+    def test_the_exit_trap_runs_with_no_env_file(self):
+        """Outside Claude Code there is no $CLAUDE_ENV_FILE to write to."""
+        trap = between("activate_venv() {", "\ntrap activate_venv EXIT\n")
+        result = self.run_bash(f'WORKTREE="{settings.BASE_DIR}"\n{trap}\nexit 0\n')
+        self.assertEqual((result.returncode, result.stderr), (0, ""))
+
+    def test_the_exit_trap_writes_the_venv_when_there_is_one(self):
+        """The other branch: the file Claude Code sources before each command."""
+        trap = between("activate_venv() {", "\ntrap activate_venv EXIT\n")
+        with tempfile.TemporaryDirectory() as scratch:
+            fake = Path(scratch) / "tree"
+            (fake / "venv" / "bin").mkdir(parents=True)
+            python = fake / "venv" / "bin" / "python"
+            python.write_text("#!/bin/sh\n")
+            python.chmod(0o755)
+            env_file = Path(scratch) / "env"
+            result = subprocess.run(
+                ["bash", "-c", f'set -eu\nWORKTREE="{fake}"\n{trap}\nexit 0\n'],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                env=without_claude(CLAUDE_ENV_FILE=str(env_file)),
+            )
+            self.assertEqual((result.returncode, result.stderr), (0, ""))
+            written = env_file.read_text()
+        self.assertIn(f"export VIRTUAL_ENV={fake}/venv", written)
+        self.assertIn(f"export PATH={fake}/venv/bin:", written)
+
+    def test_the_hook_branch_runs_with_no_project_dir(self):
+        """A hook whose input names no directory, in a session that set no
+        $CLAUDE_PROJECT_DIR: it stays where it is."""
+        functions = between("common_dir() {", "\n}\n")
+        branch = between('if [ "$HOOK_INPUT" = 1 ]; then', "\nfi\n")
+        result = self.run_bash(
+            f"HOOK_INPUT=1\n{functions}\n{branch}\npwd\n",
+            input="{}",
+            cwd=settings.BASE_DIR,
+        )
+        self.assertEqual(result.stderr, "")
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(
+            Path(result.stdout.strip()).resolve(), Path(settings.BASE_DIR).resolve()
+        )

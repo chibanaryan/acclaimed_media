@@ -1,6 +1,6 @@
 """Tests for user tracking service reconnection and merging."""
 
-import time
+from datetime import timedelta
 
 from django.test import TestCase
 
@@ -8,6 +8,14 @@ from core.models import User
 from core.tests.utils import clear_all_caches
 from games.models import Game, PlayedGame, WantToPlayGame
 from games.services.user_tracking_service import reconnect_tracking_records
+
+
+def made_a_day_earlier(row):
+    """Set a tracking row's `created` a day back: the earliest is the one
+    a merge keeps. Two rows made a hundredth of a second apart, as these
+    tests made them, are in the order they were made only if the clock
+    ticked in between."""
+    type(row).objects.filter(pk=row.pk).update(created=row.created - timedelta(days=1))
 
 
 class ReconnectTrackingRecordsTests(TestCase):
@@ -97,8 +105,8 @@ class ReconnectTrackingRecordsTests(TestCase):
             name="Test Game", rank=1, igdb_id=12345, all_igdb_ids=[12345, 67890]
         )
         earliest = PlayedGame.objects.create(user=self.user, game=None, igdb_id=67890)
-        time.sleep(0.01)
         PlayedGame.objects.create(user=self.user, game=None, igdb_id=12345)
+        made_a_day_earlier(earliest)
 
         stats = reconnect_tracking_records(
             game=game, igdb_ids=[12345, 67890], primary_igdb_id=12345
@@ -124,13 +132,12 @@ class ReconnectTrackingRecordsTests(TestCase):
             game=None,
             igdb_id=12345,
         )
-        # Force a later created timestamp
-        time.sleep(0.01)
         PlayedGame.objects.create(
             user=self.user,
             game=None,
             igdb_id=67890,
         )
+        made_a_day_earlier(played1)
 
         # Reconnect - should merge and keep played1
         stats = reconnect_tracking_records(

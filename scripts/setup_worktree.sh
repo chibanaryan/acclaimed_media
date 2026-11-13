@@ -21,7 +21,11 @@
 #                                           passes as JSON on stdin
 #   scripts/setup_worktree.sh --print-port  the dev-server port for this worktree
 
-set -e
+# -u as well as -e, as the other scripts here have: a variable Claude Code
+# sets and Conductor does not is read as "${NAME:-}". Under -e alone a
+# misspelt name was an empty string, silently. No pipefail: this file has
+# no pipeline whose first command's failure should end it.
+set -eu
 
 # Whether runserver could not bind a port, asked the way runserver will: by
 # binding it. lsof was asked before, and shows only this user's sockets, so a
@@ -101,7 +105,7 @@ if [ "$HOOK_INPUT" = 1 ]; then
     if [ -n "$HOOK_CWD" ] && [ -d "$HOOK_CWD" ] && [ -n "$HOME_REPO" ] \
         && [ "$(common_dir "$HOOK_CWD")" = "$HOME_REPO" ]; then
         cd "$HOOK_CWD"
-    elif [ -n "$CLAUDE_PROJECT_DIR" ]; then
+    elif [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
         cd "$CLAUDE_PROJECT_DIR"
     fi
 fi
@@ -135,7 +139,7 @@ say() {
 # main checkout and every worktree alike. Done at the end, once the link
 # exists, but registered here so the main checkout's early exit runs it too.
 activate_venv() {
-    if [ -n "$CLAUDE_ENV_FILE" ] && [ -x "$WORKTREE/venv/bin/python" ]; then
+    if [ -n "${CLAUDE_ENV_FILE:-}" ] && [ -x "$WORKTREE/venv/bin/python" ]; then
         # Guarded, because every start, resume, /clear and /compact runs the
         # hook again and the file runs before every Bash command.
         local bin

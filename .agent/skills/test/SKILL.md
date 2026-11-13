@@ -60,10 +60,11 @@ a test that reaches an API the next release removes fails here first.
 
 ## Coverage
 
-`.coveragerc` measures `games`, `books`, `core` and `music`, and omits
-migrations, the tests themselves, every management command and both
-`import_handler.py` modules. So the 100% gate does not cover the scheduled
-jobs or the import pipelines; their tests still run.
+`.coveragerc` measures `games`, `books`, `core` and `music`, and omits only
+migrations and the tests themselves. The 100% gate covers every management
+command and both import handlers since 2026-11-12; until then it left out
+six files by name, and before that every command by pattern. A new file is
+measured from its first commit, so it arrives with its tests.
 
 ## Pre-commit Hooks
 

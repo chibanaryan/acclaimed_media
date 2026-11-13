@@ -1,5 +1,7 @@
 """Tests for Django signals in the games app."""
 
+from unittest import mock
+
 from django.core.cache import cache
 from django.test import TestCase
 
@@ -280,14 +282,22 @@ class GameDeveloperM2MSignalTests(CommitHooksRunNowMixin, TestCase):
         # Manually trigger the signal with a pk_set containing a nonexistent ID
         # This simulates the scenario where a developer is deleted but its ID
         # is still in the pk_set during M2M change processing
-        invalidate_developer_cache_on_game_change(
-            sender=Game.developers.through,
-            instance=game,
-            pk_set={99999},  # Nonexistent developer ID
-            action="post_add",
-        )
-        # Nothing to assert but that it returns: the handler looks the ids
-        # up with a filter, so one that names no row drops nothing
+        with (
+            mock.patch("games.cache.invalidate_developer_detail") as detail,
+            mock.patch(
+                "games.services.developer_service.invalidate_developer_cache"
+            ) as hierarchy,
+        ):
+            invalidate_developer_cache_on_game_change(
+                sender=Game.developers.through,
+                instance=game,
+                pk_set={99999},  # Nonexistent developer ID
+                action="post_add",
+            )
+        # The id's own page is dropped all the same, and the hierarchy once;
+        # its parents are looked up with a filter, so a missing row has none
+        detail.assert_called_once_with(99999)
+        hierarchy.assert_called_once_with()
 
 
 class GameDeleteSignalTests(CommitHooksRunNowMixin, TestCase):
@@ -389,8 +399,6 @@ class GameDeveloperM2MSignalCostTests(CommitHooksRunNowMixin, TestCase):
         self.assertEqual(len(large), len(small))
 
     def test_nothing_is_dropped_before_the_change(self):
-        from unittest import mock
-
         (studio,) = self.studios(1)
         with mock.patch("games.cache.invalidate_developer_detail") as drop:
             for action in ("pre_add", "pre_remove"):

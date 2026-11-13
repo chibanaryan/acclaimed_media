@@ -22,7 +22,9 @@ class FailedPhasesFailTheCommandTests(TestCase):
         Game.objects.create(name="Alpha Quest", rank=1, igdb_id=7)
 
     def run_command(self, **options):
-        call_command("refresh_all_metadata", stdout=StringIO(), **options)
+        out = StringIO()
+        call_command("refresh_all_metadata", stdout=out, **options)
+        return out.getvalue()
 
     @mock.patch(f"{COMMAND}.IGDBImportService")
     def test_a_refresh_that_raises_fails_the_command(self, service):
@@ -44,7 +46,9 @@ class FailedPhasesFailTheCommandTests(TestCase):
         instance.api_client.use_pro_tier = False
         instance.processed_count = 3
         instance.error_count = 1
-        self.run_command(igdb_only=True)
+        output = self.run_command(igdb_only=True)
+        self.assertIn("Overall Status: SUCCESS", output)
+        self.assertNotIn("FAILED", output)
 
     @mock.patch(f"{COMMAND}.IGDBImportService")
     def test_the_weekly_run_fails_after_it_lets_the_lock_go(self, service):

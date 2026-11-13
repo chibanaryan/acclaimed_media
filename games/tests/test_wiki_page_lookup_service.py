@@ -470,8 +470,8 @@ class WikiPageLookupServiceUnitTests(SimpleTestCase):
 
     def test_notify_progress_without_callback(self):
         service, _, _ = self._build_service(delay=0, progress_callback=None)
-        # Should not raise when callback is absent
-        service._notify_progress("progress", {"ok": True})
+        self.assertIsNone(service.progress_callback)
+        self.assertIsNone(service._notify_progress("progress", {"ok": True}))
 
 
 class ExternalIdsFromClaimsTests(SimpleTestCase):

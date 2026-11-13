@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 from io import StringIO
 from unittest import mock
 
@@ -695,13 +696,14 @@ class ImportGamesTests(TestCase):
             game=None,
             igdb_id=12345,
         )
-        import time
-
-        time.sleep(0.01)
         models.PlayedGame.objects.create(
             user=user,
             game=None,
             igdb_id=67890,
+        )
+        # The earliest is kept: a day apart, not a clock tick
+        models.PlayedGame.objects.filter(pk=played1.pk).update(
+            created=played1.created - timedelta(days=1)
         )
 
         # Import game that merges both IDs

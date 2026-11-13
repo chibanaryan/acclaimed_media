@@ -31,8 +31,9 @@ def _is_loopback(host):
 def pytest_configure(config):
     """Refuse every connection and DNS lookup that leaves this machine.
 
-    Six modules call outside APIs (IGDB, Wikipedia, Wikidata, MusicBrainz,
-    Discogs, Open Library, Hardcover). A test that forgot to patch one used
+    Nine services are called from here (IGDB, Wikipedia, Wikidata,
+    HowLongToBeat, MusicBrainz, the Cover Art Archive, Discogs, Open
+    Library, Hardcover). A test that forgot to patch one used
     to make the real call - from CI too - and pass or fail on whatever the
     service said that day. Loopback stays open for the Postgres job, and
     Unix sockets are untouched. Installed here rather than as a fixture so
