@@ -582,6 +582,9 @@ class NoPathAssumesTheOldLayoutTests(SimpleTestCase):
             *base.glob("core/static/core/js/*.js"),
             base / "games/templates/includes/_sidebar.html",
             base / "games/templates/includes/_nav_mobile.html",
+            base / "games/templates/includes/_search_options.html",
+            base / "music/templates/music/includes/_search_options.html",
+            base / "core/templates/core/includes/_search_combobox.html",
         ]
         for path in sources:
             if path.name.endswith(".min.js"):

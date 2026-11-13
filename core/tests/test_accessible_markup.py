@@ -338,15 +338,22 @@ class SearchBoxesCancelTests(SimpleTestCase):
     where a request in flight is cancelled, so its results came back."""
 
     def test_every_search_input_goes_through_load_results(self):
+        """One field for all four boxes since 2026-11-12, in the include."""
+        self.assertEqual(
+            read("core/templates/core/includes/_search_combobox.html").count(
+                '@input.debounce.300ms="loadResults()"'
+            ),
+            1,
+        )
         for path in (
             "games/templates/includes/_sidebar.html",
             "games/templates/includes/_nav_mobile.html",
+            "games/templates/includes/_search_options.html",
+            "music/templates/music/includes/_search_options.html",
         ):
             with self.subTest(path=path):
                 source = read(path)
-                self.assertEqual(
-                    source.count('@input.debounce.300ms="loadResults()"'), 2
-                )
+                self.assertNotIn("loadResults()", source)
                 self.assertNotIn("developers = []", source)
 
 

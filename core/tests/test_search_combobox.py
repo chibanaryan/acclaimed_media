@@ -26,6 +26,9 @@ TEMPLATES = (
     "games/templates/includes/_sidebar.html",
     "games/templates/includes/_nav_mobile.html",
 )
+COMBOBOX = "core/templates/core/includes/_search_combobox.html"
+# Each site's option rows, by the name the include is given
+OPTIONS = ("includes/_search_options.html", "music/includes/_search_options.html")
 
 
 class SearchComboboxBehaviourTests(SimpleTestCase):
@@ -101,77 +104,123 @@ class SearchComboboxBehaviourTests(SimpleTestCase):
 
 
 class SearchComboboxMarkupTests(SimpleTestCase):
-    """Each template holds two boxes, one a site: the same pattern in all."""
+    """The pattern is written once, in `core/includes/_search_combobox.html`,
+    for all four boxes. Each of the two templates carried two copies of it
+    until 2026-11-12: every attribute below, four times."""
 
-    def boxes(self):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.include = (BASE / COMBOBOX).read_text(encoding="utf-8")
+        # Up to the attribute it ends on: the handlers hold a ">"
+        cls.fields = re.findall(r'<input .*?autocomplete="off">', cls.include, re.S)
+
+    def test_there_is_one_field_and_it_is_the_shared_one(self):
+        self.assertEqual(len(self.fields), 1)
+        self.assertIn('role="combobox"', self.fields[0])
         for path in TEMPLATES:
-            source = (BASE / path).read_text(encoding="utf-8")
-            # Up to the attribute each ends on: the handlers hold a ">"
-            inputs = [
-                tag
-                for tag in re.findall(r'<input .*?autocomplete="off">', source, re.S)
-                if 'role="combobox"' in tag
-            ]
             with self.subTest(path=path):
-                self.assertEqual(len(inputs), 2)
-                yield source, inputs
+                source = (BASE / path).read_text(encoding="utf-8")
+                self.assertNotIn('role="combobox"', source)
+                self.assertNotIn('role="listbox"', source)
+                self.assertEqual(
+                    source.count("{% include 'core/includes/_search_combobox.html'"), 2
+                )
+
+    def test_each_box_is_given_its_own_id_and_its_sites_options(self):
+        for path, input_id in zip(TEMPLATES, ("sidebar-search", "nav-search-mobile")):
+            source = (BASE / path).read_text(encoding="utf-8")
+            includes = re.findall(
+                r"{% include 'core/includes/_search_combobox.html' with (.*?) %}",
+                source,
+            )
+            with self.subTest(path=path):
+                self.assertEqual(
+                    [f"input_id='{input_id}'" in props for props in includes],
+                    [True, True],
+                )
+                self.assertEqual(
+                    sorted(
+                        re.search(r"options_template='([^']+)'", props).group(1)
+                        for props in includes
+                    ),
+                    sorted(OPTIONS),
+                )
 
     def test_the_field_is_a_combobox_that_names_its_listbox(self):
-        for source, inputs in self.boxes():
-            for field in inputs:
-                controls = re.search(r'aria-controls="([^"]+)"', field).group(1)
-                self.assertEqual(source.count(f'role="listbox" id="{controls}"'), 2)
-                self.assertIn('aria-autocomplete="list"', field)
-                self.assertIn(":aria-expanded=", field)
-                self.assertIn(':aria-activedescendant="activeOption || false"', field)
+        field = self.fields[0]
+        self.assertIn('aria-controls="{{ input_id }}-results"', field)
+        self.assertEqual(
+            self.include.count('role="listbox" id="{{ input_id }}-results"'), 1
+        )
+        self.assertIn('aria-autocomplete="list"', field)
+        self.assertIn(":aria-expanded=", field)
+        self.assertIn(':aria-activedescendant="activeOption || false"', field)
 
     def test_the_arrow_keys_escape_and_enter_are_bound(self):
-        for _source, inputs in self.boxes():
-            for field in inputs:
-                self.assertIn(
-                    '@keydown.down.prevent="showMenu = true; moveOption(1)"', field
-                )
-                self.assertIn(
-                    '@keydown.up.prevent="showMenu = true; moveOption(-1)"', field
-                )
-                self.assertIn("@keydown.escape=", field)
-                # Typing forgets the active option at once. Left to the
-                # debounced search, Enter within 300 ms of the last key
-                # followed the option of the query before
-                self.assertIn('@input="showMenu = true; clearActiveOption()"', field)
-                # Enter with nothing active is still the full search
-                self.assertRegex(
-                    field,
-                    r'@keydown\.enter="if \(!activateOption\(\$event\) && '
-                    r"q\.trim\(\)\.length >= 2\) window\.location\.href = ",
-                )
+        field = self.fields[0]
+        self.assertIn('@keydown.down.prevent="showMenu = true; moveOption(1)"', field)
+        self.assertIn('@keydown.up.prevent="showMenu = true; moveOption(-1)"', field)
+        self.assertIn("@keydown.escape=", field)
+        # Typing forgets the active option at once. Left to the
+        # debounced search, Enter within 300 ms of the last key
+        # followed the option of the query before
+        self.assertIn('@input="showMenu = true; clearActiveOption()"', field)
+        # Enter with nothing active is still the full search
+        self.assertRegex(
+            field,
+            r'@keydown\.enter="if \(!activateOption\(\$event\) && '
+            r"q\.trim\(\)\.length >= 2\) window\.location\.href = ",
+        )
 
-    def test_a_listbox_holds_groups_of_options_and_nothing_else(self):
-        for path in TEMPLATES:
-            soup = BeautifulSoup(
-                (BASE / path).read_text(encoding="utf-8"), "html.parser"
-            )
-            listboxes = soup.select('[role="listbox"]')
+    def test_where_enter_goes_is_written_as_code_not_text(self):
+        """The address sits inside an Alpine expression (AGENTS.md, "A value
+        in an Alpine expression is code")."""
+        self.assertIn("'{{ enter_url|escapejs }}?q='", self.fields[0])
+
+    def test_the_listbox_holds_one_group_looped_over(self):
+        soup = BeautifulSoup(self.include, "html.parser")
+        listboxes = soup.select('[role="listbox"]')
+        self.assertEqual(len(listboxes), 1)
+        groups = listboxes[0].select('ul[role="group"]')
+        self.assertEqual(len(groups), 1)
+        self.assertTrue(groups[0].has_attr(":aria-label"))
+        self.assertIn("{% include options_template %}", str(groups[0]))
+        # The hints ("Enter 2+ characters") are a list of their own
+        self.assertFalse(listboxes[0].select(".disabled"))
+        self.assertEqual(len(soup.select(".disabled")), 3)
+
+    def test_a_sites_options_are_options_and_nothing_else(self):
+        """Nothing in a listbox is a bare list item, which it may not own:
+        wrappers are role="none", titles hidden."""
+        for path in OPTIONS:
             with self.subTest(path=path):
-                self.assertEqual(len(listboxes), 2)
-            for listbox in listboxes:
-                with self.subTest(path=path, listbox=listbox["id"]):
-                    links = listbox.find_all("a")
-                    self.assertGreaterEqual(len(links), 4)
-                    self.assertEqual(
-                        [link.get("role") for link in links], ["option"] * len(links)
-                    )
-                    groups = listbox.select('ul[role="group"]')
-                    self.assertEqual(len(groups), 1)  # one, looped over
-                    self.assertTrue(groups[0].has_attr(":aria-label"))
-                    # Nothing in it is a bare list item, which a listbox
-                    # may not own: wrappers are role="none", titles hidden
-                    self.assertEqual(
-                        {item.get("role") for item in listbox.find_all("li")},
-                        {"none", "presentation"},
-                    )
-                    # The hints ("Enter 2+ characters") are a list of their own
-                    self.assertFalse(listbox.select(".disabled"))
+                source = next(
+                    found.read_text(encoding="utf-8")
+                    for found in BASE.glob(f"*/templates/{path}")
+                )
+                soup = BeautifulSoup(source, "html.parser")
+                links = soup.find_all("a")
+                self.assertGreaterEqual(len(links), 4)
+                self.assertEqual(
+                    [link.get("role") for link in links], ["option"] * len(links)
+                )
+                self.assertEqual(
+                    {item.get("role") for item in soup.find_all("li")},
+                    {"none", "presentation"},
+                )
+                self.assertFalse(soup.select(".disabled"))
+
+    def test_a_game_with_no_year_shows_none(self):
+        """The rows read "null • #12" and "Name (null)" for one."""
+        source = (BASE / "games/templates/includes/_search_options.html").read_text()
+        self.assertNotIn("result.year_of_release + ' &bull;", source)
+        self.assertNotIn("' (' + result.year_of_release + ')'\"", source)
+        self.assertIn("(result.year_of_release || '') + ' &bull; #'", source)
+        self.assertIn(
+            "(result.year_of_release ? ' (' + result.year_of_release + ')' : '')",
+            source,
+        )
 
 
 class SearchComboboxPageTests(TestCase):

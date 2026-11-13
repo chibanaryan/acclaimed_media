@@ -1,0 +1,81 @@
+{# A section's search box: the field, its hints and the listbox of results. #}
+{# #}
+{# The four of them (the sidebar's and the mobile bar's, for games and for music) each carried a copy of this until 2026-11-12: every attribute of the WAI-ARIA combobox pattern, four times. #}
+{# The state and the keys are `searchComboboxState` in utils-base.js, spread into the search component the caller's x-data names; this is only the markup that component is bound to. #}
+{# #}
+{# Props: #}
+{#   input_id - the field's id; the listbox is `<input_id>-results`, which the field's aria-controls names #}
+{#   label - the field's accessible name #}
+{#   placeholder #}
+{#   enter_url - where Enter with no option chosen goes, as `<enter_url>?q=...` #}
+{#   options_template - the section's option rows, included inside each group's list #}
+{#   compact - the sidebar's box: a small menu in a dropdown below the field. Without it, the mobile bar's: the results in the panel the field is in. #}
+{#   input_ref - an x-ref for the field, so the mobile bar's button can focus it #}
+{# The wrapper (x-data, @click.away) and, on phones, the button and panel around this stay with the caller. #}
+{# Keep every template comment on a single line. #}
+<label for="{{ input_id }}" class="sr-only">{{ label }}</label>
+<label class="input input-bordered input-sm w-full bg-base-100{% if compact %} border-base-content/20{% endif %}">
+    <svg class="h-4 w-4 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor">
+            <circle cx="11" cy="11" r="8"></circle>
+            <path d="m21 21-4.3-4.3"></path>
+        </g>
+    </svg>
+    <input type="text"
+           id="{{ input_id }}"
+           name="q"
+           aria-label="{{ label }}"
+           placeholder="{{ placeholder }}"
+           class="grow"
+           {% if input_ref %}x-ref="{{ input_ref }}"{% endif %}
+           x-model="q"
+           @focus="showMenu = true"
+           @input="showMenu = true; clearActiveOption()"
+           @input.debounce.300ms="loadResults()"
+           @keydown.down.prevent="showMenu = true; moveOption(1)"
+           @keydown.up.prevent="showMenu = true; moveOption(-1)"
+           @keydown.escape="clearActiveOption(); showMenu = false"
+           @keydown.enter="if (!activateOption($event) && q.trim().length >= 2) window.location.href = '{{ enter_url|escapejs }}?q=' + encodeURIComponent(q.trim())"
+           role="combobox"
+           aria-autocomplete="list"
+           aria-controls="{{ input_id }}-results"
+           :aria-expanded="showMenu && hasResults() ? 'true' : 'false'"
+           :aria-activedescendant="activeOption || false"
+           autocomplete="off">
+    {# reset() closes the menu too, in both search components #}
+    <button type="button"
+            @click="reset()"
+            class="btn btn-ghost btn-xs btn-circle"
+            style="display: none"
+            :style="{ display: q.length > 0 ? 'flex' : 'none' }"
+            aria-label="Clear search">
+        <span class="mdi mdi-close" aria-hidden="true"></span>
+    </button>
+</label>
+{# The sidebar's results drop below the field, out of the sidebar's bounds #}
+<div x-show="showMenu" x-cloak
+     class="{% if compact %}absolute left-0 top-full mt-1 bg-base-200 rounded-box w-80 p-2 shadow-lg z-[9999] max-h-80 overflow-y-auto{% else %}mt-2 max-h-80 overflow-y-auto{% endif %}">
+    {# DaisyUI sizes a menu, and each item in it, to its content, so a long title overran the dropdown instead of truncating. #}
+    {# The hints sit outside the listbox, which holds options alone #}
+    <ul class="menu{% if compact %} menu-sm{% endif %} p-0 w-full flex-nowrap [&>li>*]:w-full [&>li>*]:min-w-0">
+        <template x-if="!q || q.trim().length < 2">
+            <li class="disabled"><span class="text-base-content/85 text-sm">{% if compact %}Enter 2+ characters{% else %}Please enter two or more characters{% endif %}</span></li>
+        </template>
+        <template x-if="q && q.trim().length >= 2 && !loading && !hasResults() && !failed">
+            <li class="disabled"><span class="text-base-content/85 text-sm">No results found</span></li>
+        </template>
+        <template x-if="q && q.trim().length >= 2 && !loading && failed">
+            <li class="disabled"><span class="text-base-content/85 text-sm">Search failed. Try again.</span></li>
+        </template>
+    </ul>
+    <ul class="menu{% if compact %} menu-sm{% endif %} p-0 w-full flex-nowrap [&>li>*]:w-full [&>li>*]:min-w-0" role="listbox" id="{{ input_id }}-results" x-ref="listbox" aria-label="Search results" x-show="hasResults()">
+        {# One nested list per group, in the order the response gives: the group holding the better match leads (core/services/search_ranking.py). #}
+        <template x-for="group in order" :key="group">
+            <li class="search-group" role="none">
+                <ul class="w-full flex-nowrap [&>li>*]:w-full [&>li>*]:min-w-0" role="group" :aria-label="group.charAt(0).toUpperCase() + group.slice(1)">
+                    {% include options_template %}
+                </ul>
+            </li>
+        </template>
+    </ul>
+</div>
