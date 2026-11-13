@@ -27,34 +27,15 @@ full text is in `git show 55f0be4e:ROADMAP.md`.
    (1230, 2.4 h; 1244, which is Bomberman II, 2.0 h). The last is a wrong
    match by name. Giving each its HLTB id on Wikidata (P2816) settles it
    for good, since an id is looked up before any name.
-2. **The listen menu's keys, two edges.** A key pressed in the 75 ms a
-   closing menu takes to fade is read as if it were open, and focus can
-   land on an item about to vanish; and ArrowUp on a closed button opens on
-   the first item, where the menu button pattern suggests the last
-   (`core/static/core/js/media-tracking.js`).
 
 ## For the owner
 
-3. **Sentry's cron monitor for the music job is disabled** and has never
-   had a check-in (`fetch-album-metadata`; read 2026-11-13). The job runs:
-   its error of 2026-11-02 reached Sentry. But a Sunday it does not run at
-   all, or fails, alerts nobody, which is what the monitor was for. The
-   games job's monitor is on and was green on 2026-11-08. Sentry's free
-   plan includes one cron monitor, which may be why: enable it (and pay
-   for it), or accept that the music job is watched by its errors alone.
-4. **Merge the Dependabot queue.** #31 (five Python minor and patch bumps)
-   is green. #30 (npm) fails two checks: it needs its CSS rebuilt and
-   read.
-5. **New brand artwork.** The favicons still read "Acclaimed Video Games"
+2. **New brand artwork.** The favicons still read "Acclaimed Video Games"
    (`games/static/games/brand/`), and a page without artwork of its own has
    no `og:image`. A new default goes in `base.html`'s `og_image` block, and
    the five templates overriding that block need a `{{ block.super }}`
    branch for items with no art.
-6. **Two things are fetched and shown nowhere**: IGDB's first video
-   (`IGDBGameData.youtube_video_id`) and the Wikiquote title
-   (`WikipediaGameData.wikiquote_page_title`). Show them or stop fetching
-   them.
-7. **Look once, when the occasion comes.**
+3. **Look once, when the occasion comes.**
    - A sign-up, end to end: the confirmation link logs in only the browser
      that signed up. Open it there (logged in) and in another browser
      (verified, with a Log In button).
@@ -67,7 +48,7 @@ full text is in `git show 55f0be4e:ROADMAP.md`.
 
 ## After Sunday 2026-11-15's jobs
 
-8. **Read both weekly jobs once.** It is the first Sunday since five of
+4. **Read both weekly jobs once.** It is the first Sunday since five of
    the passes shipped. All of it can be read from Sentry and a one-off
    dyno:
    - `refresh-all-metadata` checked in green. It now fails when a phase
@@ -85,6 +66,17 @@ full text is in `git show 55f0be4e:ROADMAP.md`.
    - The music job's log: an album's failure in the cover, Discogs or
      MusicBrainz pass is an error line and the pass goes on. Many of them
      are a source down, not many bad albums.
+
+## After the next deploy
+
+5. **Drop two columns.** IGDB's first video and the Wikiquote title were
+   fetched and shown nowhere; the code and the models stopped naming them
+   on 2026-11-13 (`games.0126`, in Django's state only, so that the release
+   before it and a rollback to it keep working). Once that release is
+   live, a migration drops `games_igdbgamedata.youtube_video_id` and
+   `games_wikipediagamedata.wikiquote_page_title` (`RunSQL`: the state no
+   longer has them). It checks that each column is there first: SQLite
+   drops them by itself the next time a migration remakes either table.
 
 ## Production, as read on 2026-11-13
 
@@ -117,6 +109,7 @@ in ten; its counts are scaled.
   allauth address row is for its account's own email
   (`repair_email_rows` found nothing to repair).
 - **Migrations.** `games.0124`, `music.0015` and `games.0125` are applied.
+  `games.0126` goes with the next deploy and changes no table (entry 5).
 - **The shared venv** matches the locks again (Django 6.1.3, allauth
   65.21.0, soupsieve 4.1).
 
@@ -135,6 +128,10 @@ new reason.
   comboboxes, and a year cell reads "10" while its name is "2010, 12
   albums" (WCAG 2.5.3 would have "10: 2010, 12 albums", about seventy
   longer announcements a page).
+- **The music job has no cron monitor in Sentry**, by the owner's choice
+  (2026-11-13): the free plan includes one, and the games job has it. The
+  music job's errors reach Sentry; a Sunday it does not run at all alerts
+  nobody.
 - **Books**, all of it: parked by the owner. Its client engine was removed
   on 2026-11-12 and the server renders its list. The sort dropdown, the
   direction flip, the jump box and an author's Load More are inert; the
