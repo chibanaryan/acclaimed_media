@@ -50,9 +50,6 @@ class PageLookupResult:
     error_message: Optional[str] = None
     hltb_id: Optional[str] = None  # HowLongToBeat ID from Wikidata P2816
     steam_app_id: Optional[str] = None  # Steam AppID from Wikidata P1733
-    wikiquote_page_title: Optional[str] = (
-        None  # Wikiquote page from enwikiquote sitelink
-    )
 
     @property
     def success(self) -> bool:
@@ -299,23 +296,18 @@ class WikiPageLookupService:
             logger.warning("Failed to get Wikidata ID for page '%s': %s", page_title, e)
             return None
 
-    def _lookup_via_wikidata(self, wikidata_id: str) -> Optional[
-        tuple[
-            str,
-            Optional[str],
-            Optional[str],
-            Optional[str],
-        ]
-    ]:
+    def _lookup_via_wikidata(
+        self, wikidata_id: str
+    ) -> Optional[tuple[Optional[str], Optional[str], Optional[str]]]:
         """
-        Look up Wikipedia/Wikiquote page titles and metadata via Wikidata API.
+        Look up the Wikipedia page title and metadata via Wikidata API.
 
         Args:
             wikidata_id: Wikidata ID (e.g., "Q12345")
 
         Returns:
-            Tuple of (page_title, hltb_id, steam_app_id, wikiquote_title),
-            or None if not found.
+            Tuple of (page_title, hltb_id, steam_app_id), or None if not
+            found.
             page_title may be None if no enwiki sitelink exists.
         """
         if not wikidata_id:
@@ -326,7 +318,7 @@ class WikiPageLookupService:
             "format": "json",
             "props": "sitelinks|claims",
             "ids": wikidata_id,
-            "sitefilter": "enwiki|enwikiquote",
+            "sitefilter": "enwiki",
         }
 
         response = self._make_request(
@@ -345,10 +337,6 @@ class WikiPageLookupService:
             sitelinks = entity.get("sitelinks", {})
             enwiki = sitelinks.get("enwiki", {})
             page_title = enwiki.get("title")
-
-            # Extract enwikiquote sitelink
-            enwikiquote = sitelinks.get("enwikiquote", {})
-            wikiquote_title = enwikiquote.get("title")
 
             claims = entity.get("claims", {})
 
@@ -377,12 +365,7 @@ class WikiPageLookupService:
 
             # Return metadata even without enwiki sitelink
             # (page_title may be None, but we still want HLTB ID, etc.)
-            return (
-                page_title,
-                hltb_id,
-                steam_app_id,
-                wikiquote_title,
-            )
+            return (page_title, hltb_id, steam_app_id)
 
         except (ValueError, KeyError) as e:
             logger.warning(
@@ -597,17 +580,11 @@ class WikiPageLookupService:
         if wikidata_id:
             wikidata_result = self._lookup_via_wikidata(wikidata_id)
             if wikidata_result:
-                (
-                    stored_page_title,
-                    hltb_id,
-                    steam_app_id,
-                    wikiquote_title,
-                ) = wikidata_result
+                stored_page_title, hltb_id, steam_app_id = wikidata_result
 
                 stored_metadata = {
                     "hltb_id": hltb_id,
                     "steam_app_id": steam_app_id,
-                    "wikiquote_page_title": wikiquote_title,
                 }
 
                 # If stored Wikidata has enwiki sitelink, use it directly
@@ -640,16 +617,11 @@ class WikiPageLookupService:
                 # Different Wikidata ID - get its metadata too
                 page_result = self._lookup_via_wikidata(page_wikidata_id)
                 if page_result:
-                    (
-                        _,  # page_title already known
-                        hltb_id,
-                        steam_app_id,
-                        wikiquote_title,
-                    ) = page_result
+                    # The page title is already known
+                    _, hltb_id, steam_app_id = page_result
                     page_metadata = {
                         "hltb_id": hltb_id,
                         "steam_app_id": steam_app_id,
-                        "wikiquote_page_title": wikiquote_title,
                     }
                     logger.info(
                         "Merging metadata from two Wikidata IDs for %s: "

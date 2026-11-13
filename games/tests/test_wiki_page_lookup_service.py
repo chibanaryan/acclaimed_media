@@ -244,7 +244,7 @@ class WikiPageLookupServiceUnitTests(SimpleTestCase):
         response.json.return_value = {
             "entities": {
                 "Q1": {
-                    "sitelinks": {"enwikiquote": {"title": "Quote Page"}},
+                    "sitelinks": {},
                     "claims": {
                         "P1733": [
                             {
@@ -256,15 +256,17 @@ class WikiPageLookupServiceUnitTests(SimpleTestCase):
                 }
             }
         }
-        with mock.patch.object(service, "_make_request", return_value=response):
-            page_title, hltb_id, steam_app_id, wikiquote_title = (
-                service._lookup_via_wikidata("Q1")
-            )
+        with mock.patch.object(
+            service, "_make_request", return_value=response
+        ) as request:
+            page_title, hltb_id, steam_app_id = service._lookup_via_wikidata("Q1")
 
         self.assertIsNone(page_title)
         self.assertIsNone(hltb_id)
         self.assertEqual(steam_app_id, "480")
-        self.assertEqual(wikiquote_title, "Quote Page")
+        # The Wikiquote sitelink was asked for and kept until 2026-11-13,
+        # and shown nowhere
+        self.assertEqual(request.call_args.kwargs["params"]["sitefilter"], "enwiki")
 
         bad_response = mock.MagicMock()
         bad_response.json.side_effect = ValueError("bad json")
@@ -291,7 +293,7 @@ class WikiPageLookupServiceUnitTests(SimpleTestCase):
             }
         }
         with mock.patch.object(service, "_make_request", return_value=response):
-            page_title, hltb_id, _, _ = service._lookup_via_wikidata("Q1")
+            page_title, hltb_id, _ = service._lookup_via_wikidata("Q1")
 
         self.assertEqual(page_title, "Portal")
         self.assertEqual(hltb_id, "123")
@@ -354,11 +356,11 @@ class WikiPageLookupServiceUnitTests(SimpleTestCase):
 
         merged = service._merge_wikidata_metadata(
             {"hltb_id": "10", "steam_app_id": "20"},
-            {"hltb_id": "11", "wikiquote_page_title": "Portal"},
+            {"hltb_id": "11", "page_only": "Portal"},
         )
         self.assertEqual(merged["hltb_id"], "10")
         self.assertEqual(merged["steam_app_id"], "20")
-        self.assertEqual(merged["wikiquote_page_title"], "Portal")
+        self.assertEqual(merged["page_only"], "Portal")
 
     def test_lookup_page_uses_wikidata_when_page_exists(self):
         service, _, _ = self._build_service(delay=0)
@@ -366,7 +368,7 @@ class WikiPageLookupServiceUnitTests(SimpleTestCase):
         with mock.patch.object(
             service,
             "_lookup_via_wikidata",
-            return_value=("Portal", "1", "2", "Quote"),
+            return_value=("Portal", "1", "2"),
         ):
             result = service.lookup_page("Portal", wikidata_id="Q1", year=2007)
 
@@ -375,7 +377,6 @@ class WikiPageLookupServiceUnitTests(SimpleTestCase):
         self.assertEqual(result.page_title, "Portal")
         self.assertEqual(result.hltb_id, "1")
         self.assertEqual(result.steam_app_id, "2")
-        self.assertEqual(result.wikiquote_page_title, "Quote")
 
     def test_lookup_page_merges_stored_and_page_metadata(self):
         service, _, _ = self._build_service(delay=0)
@@ -385,8 +386,8 @@ class WikiPageLookupServiceUnitTests(SimpleTestCase):
                 service,
                 "_lookup_via_wikidata",
                 side_effect=[
-                    (None, "stored-hltb", None, "StoredQuote"),
-                    (None, "page-hltb", "400", "PageQuote"),
+                    (None, "stored-hltb", None),
+                    (None, "page-hltb", "400"),
                 ],
             ),
             mock.patch.object(
@@ -406,7 +407,6 @@ class WikiPageLookupServiceUnitTests(SimpleTestCase):
         # Stored metadata should win when both are present
         self.assertEqual(result.hltb_id, "stored-hltb")
         self.assertEqual(result.steam_app_id, "400")
-        self.assertEqual(result.wikiquote_page_title, "StoredQuote")
 
     def test_lookup_page_uses_fallback_source_without_year(self):
         service, _, _ = self._build_service(delay=0)

@@ -272,7 +272,6 @@ class WikipediaGameDataAdmin(admin.ModelAdmin):
         "page_title",
         "wikidata_id",
         "hltb_id",
-        "wikiquote_page_title",
         "primary_genre",
         "_all_genres_preview",
         "lookup_source",
@@ -287,7 +286,6 @@ class WikipediaGameDataAdmin(admin.ModelAdmin):
         "page_title",
         "wikidata_id",
         "hltb_id",
-        "wikiquote_page_title",
         "primary_genre",
         "lookup_source",
     ]

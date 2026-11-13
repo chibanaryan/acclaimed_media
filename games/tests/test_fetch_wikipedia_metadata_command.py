@@ -774,7 +774,7 @@ class WhichGamesTests(StandInServicesMixin, TestCase):
     def test_without_save_nothing_is_stored(self):
         """The default is a dry run: the page is printed and that is all."""
         output, page_service = self.run_command(
-            alternates={"Q2": ("Alpha Quest II", "9", None, None)}
+            alternates={"Q2": ("Alpha Quest II", "9", None)}
         )
         self.assertIn("Alpha Quest: Alpha Quest (wikidata)", output)
         self.assertNotIn("Results saved to database", output)
@@ -890,7 +890,7 @@ class AlternateWikidataRecordTests(StandInServicesMixin, TestCase):
         )
 
     def records(self):
-        """Each of the game's records as (id, page, primary, hltb, steam, quote)."""
+        """Each of the game's records as (id, page, primary, hltb, steam)."""
         return list(
             WikipediaGameData.objects.filter(game=self.game)
             .order_by("wikidata_id")
@@ -900,7 +900,6 @@ class AlternateWikidataRecordTests(StandInServicesMixin, TestCase):
                 "is_primary",
                 "hltb_id",
                 "steam_app_id",
-                "wikiquote_page_title",
             )
         )
 
@@ -913,14 +912,14 @@ class AlternateWikidataRecordTests(StandInServicesMixin, TestCase):
     def test_an_alternate_id_gets_a_record_beside_the_primary(self):
         output, page_service = self.run_command(
             "--save",
-            alternates={"Q2": ("Alpha Quest Remake", "15544", "620", "Alpha Quest")},
+            alternates={"Q2": ("Alpha Quest Remake", "15544", "620")},
         )
 
         self.assertEqual(
             self.records(),
             [
-                ("Q1", "Alpha Quest", True, None, None, None),
-                ("Q2", "Alpha Quest Remake", False, "15544", "620", "Alpha Quest"),
+                ("Q1", "Alpha Quest", True, None, None),
+                ("Q2", "Alpha Quest Remake", False, "15544", "620"),
             ],
         )
         self.game.refresh_from_db()
@@ -933,21 +932,21 @@ class AlternateWikidataRecordTests(StandInServicesMixin, TestCase):
 
     def test_an_alternate_with_no_wikipedia_page_still_keeps_its_ids(self):
         """An entity with no English article can still hold the HLTB id."""
-        self.run_command("--save", alternates={"Q2": (None, "15544", None, None)})
+        self.run_command("--save", alternates={"Q2": (None, "15544", None)})
         self.assertEqual(
             self.records(),
             [
-                ("Q1", "Alpha Quest", True, None, None, None),
-                ("Q2", "", False, "15544", None, None),
+                ("Q1", "Alpha Quest", True, None, None),
+                ("Q2", "", False, "15544", None),
             ],
         )
 
     def test_an_alternate_without_an_hltb_id_is_not_counted_as_having_one(self):
         output, _ = self.run_command(
-            "--save", alternates={"Q2": ("Alpha Quest Remake", None, "620", None)}
+            "--save", alternates={"Q2": ("Alpha Quest Remake", None, "620")}
         )
         self.assertEqual(
-            self.records()[1], ("Q2", "Alpha Quest Remake", False, None, "620", None)
+            self.records()[1], ("Q2", "Alpha Quest Remake", False, None, "620")
         )
         self.assertIn("Refreshed 1 alternate Wikidata record(s)\n", output)
         self.assertNotIn("with HLTB ID", output)
@@ -956,9 +955,7 @@ class AlternateWikidataRecordTests(StandInServicesMixin, TestCase):
         """A failed lookup is ``None``: nothing is stored, nothing claimed."""
         output, page_service = self.run_command("--save", alternates={})
         page_service._lookup_via_wikidata.assert_called_once_with("Q2")
-        self.assertEqual(
-            self.records(), [("Q1", "Alpha Quest", True, None, None, None)]
-        )
+        self.assertEqual(self.records(), [("Q1", "Alpha Quest", True, None, None)])
         self.assertNotIn("alternate Wikidata record", output)
 
     def test_blank_ids_are_not_looked_up(self):
@@ -966,7 +963,7 @@ class AlternateWikidataRecordTests(StandInServicesMixin, TestCase):
         self.game.all_wikidata_ids = ["Q1", "", "   ", None, "Q2"]
         self.game.save()
         _, page_service = self.run_command(
-            "--save", alternates={"Q2": ("Alpha Quest Remake", None, None, None)}
+            "--save", alternates={"Q2": ("Alpha Quest Remake", None, None)}
         )
         page_service._lookup_via_wikidata.assert_called_once_with("Q2")
         self.assertEqual([record[0] for record in self.records()], ["Q1", "Q2"])
@@ -980,7 +977,7 @@ class AlternateWikidataRecordTests(StandInServicesMixin, TestCase):
                 output, page_service = self.run_command("--save", "--force")
                 page_service._lookup_via_wikidata.assert_not_called()
                 self.assertEqual(
-                    self.records(), [("Q1", "Alpha Quest", True, None, None, None)]
+                    self.records(), [("Q1", "Alpha Quest", True, None, None)]
                 )
                 self.assertNotIn("alternate Wikidata record", output)
 
@@ -989,14 +986,14 @@ class AlternateWikidataRecordTests(StandInServicesMixin, TestCase):
         stored = self.stored_alternate(page_title="Alpha Quest HD", hltb_id="6571")
         output, _ = self.run_command(
             "--save",
-            alternates={"Q2": ("Alpha Quest Remake", "15544", "620", "Alpha Quest")},
+            alternates={"Q2": ("Alpha Quest Remake", "15544", "620")},
         )
 
         self.assertEqual(
             self.records(),
             [
-                ("Q1", "Alpha Quest", True, None, None, None),
-                ("Q2", "Alpha Quest Remake", False, "15544", "620", "Alpha Quest"),
+                ("Q1", "Alpha Quest", True, None, None),
+                ("Q2", "Alpha Quest Remake", False, "15544", "620"),
             ],
         )
         self.assertEqual(WikipediaGameData.objects.get(wikidata_id="Q2").pk, stored.pk)
@@ -1008,22 +1005,20 @@ class AlternateWikidataRecordTests(StandInServicesMixin, TestCase):
         self.stored_alternate(hltb_id="15544")
         output, _ = self.run_command(
             "--save",
-            alternates={"Q2": ("Alpha Quest Remake", "15544", "620", None)},
+            alternates={"Q2": ("Alpha Quest Remake", "15544", "620")},
         )
         self.assertEqual(
             self.records()[1],
-            ("Q2", "Alpha Quest Remake", False, "15544", "620", None),
+            ("Q2", "Alpha Quest Remake", False, "15544", "620"),
         )
         self.assertIn("Refreshed 1 alternate Wikidata record(s)\n", output)
         self.assertNotIn("with HLTB ID", output)
 
     def test_a_stored_alternate_that_has_not_changed_is_not_saved(self):
-        stored = self.stored_alternate(
-            hltb_id="15544", steam_app_id="620", wikiquote_page_title="Alpha Quest"
-        )
+        stored = self.stored_alternate(hltb_id="15544", steam_app_id="620")
         output, _ = self.run_command(
             "--save",
-            alternates={"Q2": ("Alpha Quest Remake", "15544", "620", "Alpha Quest")},
+            alternates={"Q2": ("Alpha Quest Remake", "15544", "620")},
         )
         saved_at = stored.updated_at
         stored.refresh_from_db()
@@ -1032,15 +1027,11 @@ class AlternateWikidataRecordTests(StandInServicesMixin, TestCase):
 
     def test_what_wikidata_no_longer_holds_is_left_as_stored(self):
         """As for the primary: a lookup that finds less erases nothing."""
-        self.stored_alternate(
-            hltb_id="15544", steam_app_id="620", wikiquote_page_title="Alpha Quest"
-        )
-        output, _ = self.run_command(
-            "--save", alternates={"Q2": (None, None, None, None)}
-        )
+        self.stored_alternate(hltb_id="15544", steam_app_id="620")
+        output, _ = self.run_command("--save", alternates={"Q2": (None, None, None)})
         self.assertEqual(
             self.records()[1],
-            ("Q2", "Alpha Quest Remake", False, "15544", "620", "Alpha Quest"),
+            ("Q2", "Alpha Quest Remake", False, "15544", "620"),
         )
         self.assertNotIn("alternate Wikidata record", output)
 
@@ -1050,11 +1041,11 @@ class AlternateWikidataRecordTests(StandInServicesMixin, TestCase):
         output, _ = self.run_command(
             "--save",
             pages={"Alpha Quest": page_missing("Alpha Quest")},
-            alternates={"Q2": ("Alpha Quest Remake", "15544", None, None)},
+            alternates={"Q2": ("Alpha Quest Remake", "15544", None)},
         )
 
         self.assertEqual(
-            self.records(), [("Q2", "Alpha Quest Remake", False, "15544", None, None)]
+            self.records(), [("Q2", "Alpha Quest Remake", False, "15544", None)]
         )
         # Still without a primary, so the next run tries its page again
         self.game.refresh_from_db()
@@ -1069,7 +1060,7 @@ class AlternateWikidataRecordTests(StandInServicesMixin, TestCase):
         output, _ = self.run_command(
             "--save",
             pages={"Alpha Quest": page_missing("Alpha Quest")},
-            alternates={"Q2": ("Alpha Quest Remake", "15544", None, None)},
+            alternates={"Q2": ("Alpha Quest Remake", "15544", None)},
         )
         self.assertNotIn("alternate Wikidata record", output)
 
@@ -1081,7 +1072,7 @@ class AlternateWikidataRecordTests(StandInServicesMixin, TestCase):
                     "--force",
                     "--skip-alternate-wikidata",
                     pages=pages,
-                    alternates={"Q2": ("Alpha Quest Remake", "15544", None, None)},
+                    alternates={"Q2": ("Alpha Quest Remake", "15544", None)},
                 )
                 page_service._lookup_via_wikidata.assert_not_called()
                 self.assertFalse(
@@ -1093,7 +1084,7 @@ class AlternateWikidataRecordTests(StandInServicesMixin, TestCase):
             with self.subTest(found=not pages):
                 _, page_service = self.run_command(
                     pages=pages,
-                    alternates={"Q2": ("Alpha Quest Remake", "15544", None, None)},
+                    alternates={"Q2": ("Alpha Quest Remake", "15544", None)},
                 )
                 page_service._lookup_via_wikidata.assert_not_called()
                 self.assertFalse(WikipediaGameData.objects.exists())
@@ -1105,16 +1096,16 @@ class AlternateWikidataRecordTests(StandInServicesMixin, TestCase):
         output, _ = self.run_command(
             "--save",
             alternates={
-                "Q2": ("Alpha Quest Collection", "15544", None, None),
-                "Q3": ("Alpha Quest Collection", None, "620", None),
+                "Q2": ("Alpha Quest Collection", "15544", None),
+                "Q3": ("Alpha Quest Collection", None, "620"),
             },
         )
         self.assertEqual(
             self.records(),
             [
-                ("Q1", "Alpha Quest", True, None, None, None),
-                ("Q2", "Alpha Quest Collection", False, "15544", None, None),
-                ("Q3", "Alpha Quest Collection", False, None, "620", None),
+                ("Q1", "Alpha Quest", True, None, None),
+                ("Q2", "Alpha Quest Collection", False, "15544", None),
+                ("Q3", "Alpha Quest Collection", False, None, "620"),
             ],
         )
         self.assertIn(
@@ -1126,7 +1117,7 @@ class AlternateWikidataRecordTests(StandInServicesMixin, TestCase):
         alternate's. A second run then meets two records of one page:
         ``attach_page`` keeps the older, the primary, and the alternate's
         is made again with its ids."""
-        alternates = {"Q2": ("Alpha Quest", "15544", None, None)}
+        alternates = {"Q2": ("Alpha Quest", "15544", None)}
         self.run_command("--save", alternates=alternates)
         primary = WikipediaGameData.objects.get(wikidata_id="Q1")
 
@@ -1135,8 +1126,8 @@ class AlternateWikidataRecordTests(StandInServicesMixin, TestCase):
         self.assertEqual(
             self.records(),
             [
-                ("Q1", "Alpha Quest", True, None, None, None),
-                ("Q2", "Alpha Quest", False, "15544", None, None),
+                ("Q1", "Alpha Quest", True, None, None),
+                ("Q2", "Alpha Quest", False, "15544", None),
             ],
         )
         self.game.refresh_from_db()
@@ -1153,11 +1144,11 @@ class AlternateWikidataRecordTests(StandInServicesMixin, TestCase):
         other.save()
 
         self.run_command(
-            "--save", alternates={"Q2": ("Alpha Quest Remake", "15544", None, None)}
+            "--save", alternates={"Q2": ("Alpha Quest Remake", "15544", None)}
         )
 
         self.assertEqual(
-            self.records()[1], ("Q2", "Alpha Quest Remake", False, "15544", None, None)
+            self.records()[1], ("Q2", "Alpha Quest Remake", False, "15544", None)
         )
         theirs.refresh_from_db()
         self.assertEqual(
@@ -1218,7 +1209,7 @@ class WikiPageLookupServiceTests(TestCase):
 
         # Should return the normal (non-deprecated) HLTB ID
         self.assertIsNotNone(result)
-        page_title, hltb_id, steam_app_id, wikiquote = result
+        page_title, hltb_id, steam_app_id = result
         self.assertEqual(page_title, "NHL 94")
         self.assertEqual(hltb_id, "15544")  # The normal rank ID, not deprecated
 
@@ -1263,7 +1254,7 @@ class WikiPageLookupServiceTests(TestCase):
 
         # Should return the preferred HLTB ID
         self.assertIsNotNone(result)
-        page_title, hltb_id, steam_app_id, wikiquote = result
+        page_title, hltb_id, steam_app_id = result
         self.assertEqual(hltb_id, "222")  # Preferred rank
 
     def test_returns_none_when_all_hltb_ids_deprecated(self):
@@ -1307,6 +1298,6 @@ class WikiPageLookupServiceTests(TestCase):
 
         # Page should be found but HLTB ID should be None
         self.assertIsNotNone(result)
-        page_title, hltb_id, steam_app_id, wikiquote = result
+        page_title, hltb_id, steam_app_id = result
         self.assertEqual(page_title, "All Deprecated Game")
         self.assertIsNone(hltb_id)  # No valid HLTB ID

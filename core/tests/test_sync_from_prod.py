@@ -1,5 +1,6 @@
 """Tests for sync_from_prod management command"""
 
+import json
 import os
 import tempfile
 from unittest import mock
@@ -348,6 +349,44 @@ class SyncFromProdCommandTests(TestCase):
         self.assertEqual(models.Platform.objects.count(), 0)
         self.assertEqual(models.WikipediaGenre.objects.count(), 0)
         self.assertEqual(models.Developer.objects.count(), 0)
+
+    @mock.patch("subprocess.run")
+    def test_a_column_production_still_has_does_not_stop_the_load(
+        self, mock_subprocess
+    ):
+        """Between a commit that drops a field and its deploy, production's
+        dump still carries the field. The load stopped at the first such
+        row, after minutes of download; the field is skipped."""
+        from io import StringIO
+
+        games_dump = json.dumps(
+            [
+                {
+                    "model": "games.snippet",
+                    "pk": 7,
+                    "fields": {
+                        "slug": "from-production",
+                        "text": "Loaded",
+                        "a_column_local_has_dropped": "x",
+                    },
+                }
+            ]
+        )
+
+        def dump(command, **kwargs):
+            music = any("dumpdata music" in part for part in command)
+            return mock.Mock(
+                stdout="[]" if music else games_dump, stderr="", returncode=0
+            )
+
+        mock_subprocess.side_effect = dump
+
+        out = StringIO()
+        call_command("sync_from_prod", no_input=True, stdout=out)
+
+        self.assertIn("Sync complete!", out.getvalue())
+        self.assertEqual(models.Snippet.objects.get(pk=7).text, "Loaded")
+        self.assertFalse(models.Game.objects.exists())
 
     @mock.patch("subprocess.run")
     def test_heroku_command_error(self, mock_subprocess):
