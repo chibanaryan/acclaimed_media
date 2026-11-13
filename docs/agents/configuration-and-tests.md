@@ -117,6 +117,24 @@ empty in-memory database with blank credentials, on a dyno too, until
 `.update()`), and does not sleep between two saves: six did until
 2026-11-12, which was slow and at the mercy of the clock's resolution.
 
+**`soup.select()` does not look inside a `<template>`**, from soupsieve 4.0
+(the lock went from 3.0.4 to 4.1 on 2026-11-12, for CVE-2026-126190: a
+selector matched in quadratic time against deeply nested HTML. Nothing in
+production calls `select`; the scrapers use `find` and `find_all`, so only
+the tests were ever exposed). A template's contents are no longer part of
+the document, as in a browser, and most of what these tests ask about is in
+one: an Alpine `x-for` or `x-if` body, a renderer's clone row. Six
+assertions failed on the upgrade. The ones that did not fail were the
+trouble: an `assertFalse(soup.select(...))` passes whatever a template
+holds, an icon check went from 107 icons to 69, and a count of one status
+menu a page stopped counting the row template it exists to keep a menu out
+of. `core.tests.utils.select_all` selects with the templates seen into;
+every absence and exact count over rendered markup uses it, and so do the
+tests of template bodies. Three tests were left on `select` on purpose,
+because seeing less is what their names say: "the rendered row carries the
+same slots" used to be satisfied by the clone template's slots alone.
+`find` and `find_all` are not soupsieve and see everything.
+
 **Tests pick a site the way a request does.** The test client's
 `testserver` host gets `ROOT_URLCONF`, the games site, so games tests need
 nothing. A module of music tests imports the module fixtures

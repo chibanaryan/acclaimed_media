@@ -99,7 +99,7 @@ requests==2.34.2
     #   howlongtobeatpy
 sentry-sdk==2.73.0
     # via -r requirements.in
-soupsieve==3.0.4
+soupsieve==4.1
     # via beautifulsoup4
 sqlparse==0.6.0
     # via django

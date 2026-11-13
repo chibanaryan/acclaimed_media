@@ -13,6 +13,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from core.models import User
+from core.tests.utils import select_all
 from music import models, views
 from music.tests.test_views import MusicDataMixin
 from music.tests.site import setUpModule, tearDownModule  # noqa: F401
@@ -39,7 +40,7 @@ class GenreTreeDataTests(MusicDataMixin, TestCase):
         soup = BeautifulSoup(page, "html.parser")
         self.assertTrue(soup.select(".genre-filter"))
         self.assertTrue(soup.select(".genre-tree"))
-        self.assertIsNone(soup.select_one('select[name="genres"]'))
+        self.assertFalse(select_all(soup, 'select[name="genres"]'))
         # The form still carries the selection, as a field HTMX can send.
         self.assertEqual(
             soup.select_one('#album-filters [name="genres"]')["type"], "hidden"

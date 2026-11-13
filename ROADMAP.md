@@ -200,9 +200,12 @@ variables and `games/utils.py`'s re-exports. Left of the fifth's list:
     - **The shared venv is behind the locks**: django-allauth 65.20.1
       where the lock pins 65.21.0, and Django 6.1.2 where it pins 6.1.3
       (2026-11-12; the migration the sixth pass generated says 6.1.2 in
-      its header). CI installs the lock; a local run does not test what
-      ships until `pip install -r requirements.txt -r requirements-dev.txt`
-      is run in the main checkout.
+      its header), and soupsieve 3.0.4 where it pins 4.1, under which a
+      test's `soup.select()` still looks inside a `<template>` as CI's does
+      not: a test can pass the hook and fail CI. CI installs the lock; a
+      local run does not test what ships until
+      `pip install -r requirements.txt -r requirements-dev.txt` is run in
+      the main checkout.
     - **Two `theme` cookies the toggle cannot reach still win where they
       exist**, neither of which this site writes: one with a longer path
       than `/` (another app on a shared address such as `127.0.0.1`), and a

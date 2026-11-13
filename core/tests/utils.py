@@ -125,3 +125,34 @@ def get_on_site(client, site, viewname, *, query=None, **kwargs):
 
     path = sites.site_reverse(site, viewname, kwargs=kwargs or None)
     return client.get(path, query, HTTP_HOST=site_host(site), secure=True)
+
+
+def select_all(node, selector):
+    """``node.select(selector)``, looking inside ``<template>`` elements too.
+
+    soupsieve 4 reads a ``<template>``'s contents as a browser does: not part
+    of the document, so a selector finds nothing in one. Alpine's ``x-for``
+    and ``x-if`` bodies and the renderers' clone rows are all in templates,
+    and a test of that markup asks for it by name, here: with a plain
+    ``select`` an ``assertFalse`` over it passes whatever the template holds,
+    and a count leaves it out. Matches come back in document order.
+
+    It selects twice: as the document stands, and with every template
+    renamed for the moment, which is what lets a selector cross a template's
+    edge (``#list .row`` with the list outside and the row inside). The one
+    selector neither pass answers names a template and something in it
+    (``template > li``): start from the template instead.
+    """
+    root = node
+    while root.parent is not None:
+        root = root.parent
+    templates = root.find_all("template")
+    found = {id(tag): tag for tag in node.select(selector)}
+    try:
+        for template in templates:
+            template.name = "template-seen-into"
+        found.update((id(tag), tag) for tag in node.select(selector))
+    finally:
+        for template in templates:
+            template.name = "template"
+    return [tag for tag in node.find_all(True) if id(tag) in found]
