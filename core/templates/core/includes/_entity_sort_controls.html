@@ -39,7 +39,7 @@
                 class="flex items-center gap-1 text-base-content/70 hover:text-base-content transition-colors cursor-pointer"
                 @click="toggleSortDirection()"
                 :title="sortDirection === 'asc' ? 'Ascending order' : 'Descending order'"
-                :aria-label="sortDirection === 'asc' ? 'Ascending order: switch to descending' : 'Descending order: switch to ascending'">
+                :aria-label="sortDirection === 'asc' ? 'Asc: sort ascending, click to change' : 'Desc: sort descending, click to change'">
             <span class="mdi text-base" aria-hidden="true" :class="sortDirection === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending'"></span>
             <span class="text-xs" x-text="sortDirection === 'asc' ? 'Asc' : 'Desc'"></span>
         </button>

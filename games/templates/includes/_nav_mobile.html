@@ -165,8 +165,10 @@
             </a>
             {% endif %}
 
-            {# The Music icon carries the beta badge beside it, as the sidebar tab does #}
-            <a href="{% site_url 'music' 'music:home' %}" class="btn btn-ghost btn-sm shrink-0 nav-item gap-1 px-2" data-nav-item="music" data-menu-label="Music{% if MUSIC_BETA %} (beta){% endif %}" aria-label="Music{% if MUSIC_BETA %} (beta){% endif %}">
+            {# The Music icon carries the beta badge beside it, as the sidebar tab does. #}
+            {# Its name holds the badge's word as shown ("Music, Beta"): a name's #}
+            {# parenthesis is not matched against the visible text (WCAG 2.5.3). #}
+            <a href="{% site_url 'music' 'music:home' %}" class="btn btn-ghost btn-sm shrink-0 nav-item gap-1 px-2" data-nav-item="music" data-menu-label="Music{% if MUSIC_BETA %} (beta){% endif %}" aria-label="Music{% if MUSIC_BETA %}, Beta{% endif %}">
                 <span class="mdi mdi-album text-xl" aria-hidden="true"></span>
                 <span aria-hidden="true">{% include 'music/includes/_beta_badge.html' with size='badge-xs' %}</span>
             </a>

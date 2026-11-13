@@ -14,6 +14,7 @@
 {# #}
 {# The dropdown opens upward (bottom-full), the list-row position; the #}
 {# detail page renders the real partial at size='large' instead. #}
+{# The menu's roles are the real partial's, so a cloned row's menu reads and is walked as a server row's is. #}
 {# Keep every template comment on a single line. #}
 {% load static %}
 <div class="tracking-button-wrapper relative"
@@ -60,7 +61,7 @@
             <span class="mdi {{ untracked_icon }} text-2xl {{ untracked_icon_class }}" aria-hidden="true"></span>
         </span>
     </button>
-    <ul x-show="open" x-cloak
+    <ul x-show="open" x-cloak role="menu" aria-label="Change status"
         x-transition:enter="transition ease-out duration-100"
         x-transition:enter-start="opacity-0 scale-95"
         x-transition:enter-end="opacity-100 scale-100"
@@ -70,8 +71,8 @@
         class="absolute bottom-full mb-1 left-0 menu bg-base-100 rounded-box shadow-lg p-1 min-w-max"
         data-slot="dropdown-menu">
         {% if owned_label %}
-        <li data-slot="menu-owned">
-            <button type="button"
+        <li data-slot="menu-owned" role="none">
+            <button type="button" role="menuitem"
                 class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
                 data-slot="btn-owned"
                 hx-swap="outerHTML"
@@ -87,8 +88,8 @@
             </button>
         </li>
         {% endif %}
-        <li data-slot="menu-tracked">
-            <button type="button"
+        <li data-slot="menu-tracked" role="none">
+            <button type="button" role="menuitem"
                 class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
                 data-slot="btn-tracked"
                 hx-swap="outerHTML"
@@ -103,8 +104,8 @@
                 <span>{{ tracked_label }}</span>
             </button>
         </li>
-        <li data-slot="menu-wanted">
-            <button type="button"
+        <li data-slot="menu-wanted" role="none">
+            <button type="button" role="menuitem"
                 class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
                 data-slot="btn-wanted"
                 hx-swap="outerHTML"
@@ -115,8 +116,8 @@
                 <span>{{ wanted_label }}</span>
             </button>
         </li>
-        <li data-slot="menu-untracked" class="hidden">
-            <button type="button"
+        <li data-slot="menu-untracked" class="hidden" role="none">
+            <button type="button" role="menuitem"
                 class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
                 data-slot="btn-untracked"
                 hx-swap="outerHTML"

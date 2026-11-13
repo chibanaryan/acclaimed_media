@@ -1527,6 +1527,68 @@ async function checkArtistPageMirrorsAStatus(page) {
 }
 
 /**
+ * The listen button's dropdown is a menu: Enter opens it on its first item,
+ * the arrows walk it and wrap, and Tab closes it and returns to the button.
+ * Its button said `aria-haspopup` and the list behind it had no role and
+ * took no key (`media-tracking.js`). Real key presses, since the wiring is
+ * Alpine's show, a capture-phase click and a document keydown together.
+ * Answers as above.
+ */
+async function checkTrackingMenuByKeyboard(page) {
+    await page.setViewport({ width: 1440, height: 900 });
+    const refused = await signIn(page, music);
+    if (refused) return refused;
+    await page.goto(music + '/artists/smoke-band/', { waitUntil: 'load' });
+    await page.waitForSelector('[data-tracking-scope="album"]');
+    await page.waitForFunction(() => window.Alpine && window.MediaTracking);
+    await sleep(1000);
+    const where = () => page.evaluate(() => {
+        const active = document.activeElement;
+        const wrapper = active && active.closest('.tracking-button-wrapper');
+        if (!wrapper) return 'outside';
+        const items = [...wrapper.querySelectorAll('[role="menuitem"]')]
+            .filter(item => item.offsetParent !== null);
+        if (active.classList.contains('tracking-button')) {
+            return 'button, ' + (items.length ? 'open' : 'closed');
+        }
+        return `item ${items.indexOf(active) + 1} of ${items.length}`;
+    });
+    const focused = await page.evaluate(() => {
+        const button = [...document.querySelectorAll('.tracking-button')]
+            .find(element => element.offsetParent !== null);
+        if (button) button.focus();
+        return Boolean(button);
+    });
+    if (!focused) return 'the artist page shows no listen button';
+    const roles = await page.evaluate(() => {
+        const wrapper = document.activeElement.closest('.tracking-button-wrapper');
+        return [wrapper.querySelector('ul').getAttribute('role'),
+            wrapper.querySelectorAll('[role="menuitem"]').length].join();
+    });
+    if (roles !== 'menu,3') return `the dropdown's roles read ${roles}`;
+    const steps = [];
+    for (const key of ['Enter', 'ArrowDown', 'ArrowUp', 'ArrowUp', 'End', 'Home', 'Tab']) {
+        await page.keyboard.press(key);
+        await sleep(250);
+        steps.push(`${key}: ${await where()}`);
+    }
+    // An arrow on the closed button opens it too, and Escape hands focus back
+    await page.keyboard.press('ArrowDown');
+    await sleep(250);
+    steps.push(`ArrowDown: ${await where()}`);
+    await page.keyboard.press('Escape');
+    await sleep(250);
+    steps.push(`Escape: ${await where()}`);
+    const expected = [
+        'Enter: item 1 of 3', 'ArrowDown: item 2 of 3', 'ArrowUp: item 1 of 3',
+        'ArrowUp: item 3 of 3', 'End: item 3 of 3', 'Home: item 1 of 3',
+        'Tab: button, closed', 'ArrowDown: item 1 of 3', 'Escape: button, closed',
+    ];
+    return steps.join('; ') === expected.join('; ')
+        ? null : `the listen menu by keyboard went ${steps.join('; ')}`;
+}
+
+/**
  * A Back whose render failed leaves the list it left under the address it
  * went to, and the engine, arriving then, found the filters equal to the
  * address's and took the rows for that address's list: it left the 1990s on
@@ -2892,6 +2954,7 @@ async function checkTabTitleMatchesAReload(page, site, path, steps) {
     await report('a theme chosen on 127.0.0.1 stays', checkAThemeChosenOnAnAddressStays);
     await report('music server Load More keeps focus', checkServerLoadMoreKeepsFocus);
     await report('music artist page mirrors a status', checkArtistPageMirrorsAStatus);
+    await report('music listen menu by keyboard', checkTrackingMenuByKeyboard);
     await report('games sign-up route opens the modal', page => checkSignupRouteOpensTheModal(page, games));
     await report('music sign-up route opens the modal', page => checkSignupRouteOpensTheModal(page, music));
     await report('games search box by keyboard', page => checkSearchBoxByKeyboard(page, games, 'smoke'));

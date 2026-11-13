@@ -29,6 +29,7 @@
 {# data-toggle-url is the bare route, for core/js/quick-mark.js to post to. #}
 {# Unlike games' and books' versions this ships no inline <script>. The #}
 {# global Sets are kept up to date by one delegated listener instead. #}
+{# The dropdown is a menu (role="menu", its rows role="menuitem"), as the trigger's aria-haspopup has always said; core/js/media-tracking.js walks it with the arrow keys. #}
 {# Keep every template comment on a single line - Django only strips those. #}
 {% load static %}
 {% if user.is_authenticated and external_id %}
@@ -78,7 +79,7 @@
     {# The dropdown offers only the states this item is not already in. #}
     {# It opens upward in a list row and downward on a detail page, where #}
     {# the button sits in the heading and has nothing above it. #}
-    <ul x-show="open" x-cloak
+    <ul x-show="open" x-cloak role="menu" aria-label="Change status"
         x-transition:enter="transition ease-out duration-100"
         x-transition:enter-start="opacity-0 scale-95"
         x-transition:enter-end="opacity-100 scale-100"
@@ -87,8 +88,8 @@
         x-transition:leave-end="opacity-0 scale-95"
         class="absolute {% if size == 'large' %}top-full mt-1{% else %}bottom-full mb-1{% endif %} left-0 menu bg-base-100 rounded-box shadow-lg p-1 min-w-max">
         {% if owned_status and not is_owned %}
-        <li>
-            <button type="button"
+        <li role="none">
+            <button type="button" role="menuitem"
                 class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
                 hx-post="{% url toggle_url_name item.id %}?status={{ owned_status }}{% if size == 'large' %}&size=large{% endif %}"
                 hx-target="closest .tracking-button-wrapper"
@@ -105,8 +106,8 @@
         </li>
         {% endif %}
         {% if not is_tracked %}
-        <li>
-            <button type="button"
+        <li role="none">
+            <button type="button" role="menuitem"
                 class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
                 hx-post="{% url toggle_url_name item.id %}?status={{ tracked_status }}{% if size == 'large' %}&size=large{% endif %}"
                 hx-target="closest .tracking-button-wrapper"
@@ -123,8 +124,8 @@
         </li>
         {% endif %}
         {% if not is_wanted %}
-        <li>
-            <button type="button"
+        <li role="none">
+            <button type="button" role="menuitem"
                 class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
                 hx-post="{% url toggle_url_name item.id %}?status=want{% if size == 'large' %}&size=large{% endif %}"
                 hx-target="closest .tracking-button-wrapper"
@@ -137,8 +138,8 @@
         </li>
         {% endif %}
         {% if is_tracked or is_wanted or owned_status and is_owned %}
-        <li>
-            <button type="button"
+        <li role="none">
+            <button type="button" role="menuitem"
                 class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap"
                 hx-post="{% url toggle_url_name item.id %}?status=none{% if size == 'large' %}&size=large{% endif %}"
                 hx-target="closest .tracking-button-wrapper"

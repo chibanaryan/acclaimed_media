@@ -198,6 +198,33 @@ class VisibleTextIsInTheSpokenNameTests(SimpleTestCase):
             renderer,
         )
 
+    def test_a_sort_direction_button_is_named_from_what_it_shows(self):
+        """It reads "Asc" or "Desc". The rankings' button was named from
+        that already; the entity lists' and the developer page's said
+        "Ascending order: switch to descending", which holds neither. The
+        phone's button is an icon alone and keeps that name."""
+        for path in (
+            "core/templates/core/includes/_media_list_controls.html",
+            "core/templates/core/includes/_entity_sort_controls.html",
+            "games/templates/developers/includes/_filtered_game_list.html",
+        ):
+            with self.subTest(path=path):
+                source = " ".join((BASE / path).read_text().split())
+                shown = source.index("? 'Asc' : 'Desc'\"></span>")
+                button = source[source.rindex("<button", 0, shown) : shown]
+                self.assertIn(
+                    "? 'Asc: sort ascending, click to change' "
+                    ": 'Desc: sort descending, click to change'\">",
+                    button,
+                )
+
+    def test_the_music_icon_is_named_with_its_badge(self):
+        """The games mobile bar's Music link shows only "Beta". A name of
+        "Music (beta)" does not count as holding it: a parenthesis is taken
+        out of a name before the two are compared."""
+        bar = (BASE / "games/templates/includes/_nav_mobile.html").read_text()
+        self.assertIn('aria-label="Music{% if MUSIC_BETA %}, Beta{% endif %}">', bar)
+
     def test_the_site_menu_is_named_for_the_site_it_shows(self):
         menu = (BASE / "core/templates/core/includes/_site_menu.html").read_text()
         self.assertNotIn('aria-label="Acclaimed Media: switch site"', menu)

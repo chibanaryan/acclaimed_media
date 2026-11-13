@@ -65,6 +65,104 @@
                     target.contains(document.activeElement)
                 );
             });
+            // The dropdown is a menu, and a menu is walked with the arrow
+            // keys. Its button said aria-haspopup from the start; until
+            // 2026-11-12 nothing behind it had a role or took a key.
+            document.addEventListener('keydown', (event) => {
+                this._onMenuKey(event);
+            });
+            // Capture: the wrapper stops a click's propagation, so that a
+            // mobile row does not navigate
+            document.addEventListener('click', (event) => {
+                this._onTriggerClick(event);
+            }, true);
+        },
+
+        /**
+         * Where an arrow, Home or End takes focus among `length` menu items
+         * from index `at` (-1 on the button, above the first).
+         */
+        nextIndex(key, at, length) {
+            if (key === 'Home') return 0;
+            if (key === 'End') return length - 1;
+            if (key === 'ArrowUp') return at <= 0 ? length - 1 : at - 1;
+            return (at + 1) % length;
+        },
+
+        /** The menu's items that can be seen: none while it is closed. */
+        _menuItems(wrapper) {
+            return Array.from(wrapper.querySelectorAll('[role="menuitem"]')).filter(
+                (item) => item.offsetParent !== null
+            );
+        },
+
+        /**
+         * The keys of a menu button and its menu (WAI-ARIA's pattern), for
+         * whichever wrapper holds the key's target. Nothing is remembered
+         * between keys.
+         */
+        _onMenuKey(event) {
+            const key = event.key;
+            if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'Tab', 'Escape'].includes(key)) {
+                return;
+            }
+            const target = event.target;
+            const wrapper = target && target.closest &&
+                target.closest('.tracking-button-wrapper');
+            if (!wrapper) return;
+            const trigger = wrapper.querySelector('.tracking-button');
+            const items = this._menuItems(wrapper);
+            const at = items.indexOf(target);
+
+            if (key === 'Escape' || key === 'Tab') {
+                // Only from inside the menu: on the button, Tab is Tab
+                if (at === -1) return;
+                // Alpine closes on Escape itself. Tab leaves a menu: back to
+                // its button, from where the next Tab carries on. The menu's
+                // items are still on screen while it fades, so the browser's
+                // own Tab would land on the next of them.
+                if (key === 'Tab') {
+                    event.preventDefault();
+                    window.dispatchEvent(new CustomEvent('close-tracking-dropdowns'));
+                }
+                if (trigger) trigger.focus();
+                return;
+            }
+
+            if (!items.length) {
+                // Closed: an arrow on the button opens it, as Enter does
+                if (target === trigger && (key === 'ArrowDown' || key === 'ArrowUp')) {
+                    event.preventDefault();
+                    trigger.click();
+                }
+                return;
+            }
+            if (at === -1 && target !== trigger) return;
+            event.preventDefault();
+            items[this.nextIndex(key, at, items.length)].focus();
+        },
+
+        /**
+         * A menu opened from the keyboard starts on its first item. A
+         * pointer's click leaves focus where it is.
+         */
+        _onTriggerClick(event) {
+            if (event.detail !== 0) return;
+            const trigger = event.target && event.target.closest &&
+                event.target.closest('.tracking-button');
+            if (!trigger || trigger.getAttribute('aria-expanded') === 'true') return;
+            const wrapper = trigger.closest('.tracking-button-wrapper');
+            if (wrapper) this._focusFirstItem(wrapper, 10);
+        },
+
+        /** Focus the first item once Alpine has shown the menu. */
+        _focusFirstItem(wrapper, framesLeft) {
+            const items = this._menuItems(wrapper);
+            if (items.length) {
+                items[0].focus();
+            } else if (framesLeft > 0) {
+                requestAnimationFrame(() => this._focusFirstItem(wrapper, framesLeft - 1));
+            }
         },
 
         /**

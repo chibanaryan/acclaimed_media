@@ -216,7 +216,7 @@ class BetaIsClearThroughoutTests(HostClientMixin, TestCase):
         self.assertIn(BETA_BADGE, menu[menu.index(MUSIC_HOME) :])
         # The games mobile bar's Music icon, and its overflow-menu label
         self.assertIn('data-menu-label="Music (beta)"', games)
-        self.assertIn('aria-label="Music (beta)"', games)
+        self.assertIn('aria-label="Music, Beta"', games)
         # The landing page's Music card
         landing = self.get_on(sites.ROOT, "landing").content.decode()
         card = landing[landing.index('<span class="mdi mdi-album') :]
