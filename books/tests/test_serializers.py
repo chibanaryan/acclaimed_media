@@ -24,3 +24,17 @@ class BookGenreTreeSerializerTests(TestCase):
         data = serializers.BookGenreTreeSerializer(annotated_genre).data
 
         self.assertEqual(data["book_count"], 1)
+
+    def test_a_genre_serialized_on_its_own_asks_for_its_children(self):
+        """The tree view hands the serializer every genre by parent; with
+        no such map it reads each node's children, in display order."""
+        root = models.BookGenre.objects.create(name="Fiction")
+        models.BookGenre.objects.create(name="Second", parent=root, display_order=2)
+        models.BookGenre.objects.create(name="First", parent=root, display_order=1)
+
+        data = serializers.BookGenreTreeSerializer(root).data
+
+        self.assertEqual(
+            [child["name"] for child in data["children"]], ["First", "Second"]
+        )
+        self.assertEqual(data["children"][0]["children"], [])

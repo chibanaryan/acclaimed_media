@@ -5,6 +5,7 @@ These views follow the same patterns as games/api/views.py, and are
 staff-only (``StaffReadAPIMixin``).
 """
 
+from collections import defaultdict
 from datetime import datetime
 
 from django.db import connection
@@ -288,11 +289,23 @@ class BookGenreTreeView(StaffReadAPIMixin, ListAPIView):
 
     serializer_class = serializers.BookGenreTreeSerializer
 
+    def _counted(self):
+        return models.BookGenre.objects.annotate(
+            book_count_annotated=Count("books")
+        ).order_by("display_order", "name")
+
     def get_queryset(self):
         """Return only root categories for tree building."""
-        return models.BookGenre.objects.filter(parent=None).order_by(
-            "display_order", "name"
-        )
+        return self._counted().filter(parent=None)
+
+    def get_serializer_context(self):
+        """Every genre, counted, by parent: one query for the whole tree."""
+        context = super().get_serializer_context()
+        children = defaultdict(list)
+        for genre in self._counted().exclude(parent=None):
+            children[genre.parent_id].append(genre)
+        context["genre_children"] = children
+        return context
 
 
 class BookSearchAPIView(StaffReadAPIMixin, APIView):

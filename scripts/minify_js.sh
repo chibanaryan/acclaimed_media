@@ -36,7 +36,6 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 TERSER_BIN="$(npx --yes -p "$TERSER" -c 'command -v terser')"
 
 GAMES_JS_DIR="games/static/games/js"
-BOOKS_JS_DIR="books/static/books/js"
 MUSIC_JS_DIR="music/static/music/js"
 CORE_JS_DIR="core/static/core/js"
 
@@ -136,7 +135,6 @@ build_bundle() {
 }
 
 minify_dir "$GAMES_JS_DIR"
-minify_dir "$BOOKS_JS_DIR"
 minify_dir "$MUSIC_JS_DIR"
 minify_dir "$CORE_JS_DIR"
 
@@ -146,13 +144,6 @@ build_bundle "$GAMES_JS_DIR/client-side-filtering.bundle.min.js" \
     "$GAMES_JS_DIR/client-filter.min.js" \
     "$GAMES_JS_DIR/game-list-renderer.min.js" \
     "$GAMES_JS_DIR/client-filtering.min.js"
-
-build_bundle "$BOOKS_JS_DIR/book-client-side-filtering.bundle.min.js" \
-    "$CORE_JS_DIR/base-renderer.min.js" \
-    "$BOOKS_JS_DIR/book-cache.min.js" \
-    "$BOOKS_JS_DIR/book-client-filter.min.js" \
-    "$BOOKS_JS_DIR/book-list-renderer.min.js" \
-    "$BOOKS_JS_DIR/book-client-filtering.min.js"
 
 build_bundle "$MUSIC_JS_DIR/music-client-side-filtering.bundle.min.js" \
     "$CORE_JS_DIR/base-renderer.min.js" \

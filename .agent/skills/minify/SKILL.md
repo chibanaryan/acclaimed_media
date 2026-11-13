@@ -16,18 +16,16 @@ Minify JavaScript source files and regenerate bundles for production.
 ## What It Does
 
 1. **Minifies source files**: every `.js` file in `games/static/games/js/`,
-   `books/static/books/js/`, `music/static/music/js/` and
-   `core/static/core/js/`, with terser pinned at 5.51.2, replacing any
+   `music/static/music/js/` and `core/static/core/js/`, with terser pinned at 5.51.2, replacing any
    `.min.js` whose content differs. Content, not timestamps: a checkout gives
    every file the same mtime, so the old "older than the source" test missed
    stale files in any fresh worktree
 
-2. **Regenerates the three bundles**, in dependency order:
+2. **Regenerates the two bundles**, in dependency order:
 
    | Bundle | Members |
    |---|---|
    | `games/static/games/js/client-side-filtering.bundle.min.js` | `core/base-renderer`, `game-cache`, `client-filter`, `game-list-renderer`, `client-filtering` |
-   | `books/static/books/js/book-client-side-filtering.bundle.min.js` | `core/base-renderer`, `book-cache`, `book-client-filter`, `book-list-renderer`, `book-client-filtering` |
    | `music/static/music/js/music-client-side-filtering.bundle.min.js` | `core/base-renderer`, `album-filter`, `album-list-renderer`, `album-client-filtering` |
 
 3. **Stages files for git**: Automatically runs `git add` on updated files
@@ -41,7 +39,7 @@ stale file. CI's `js` job runs it, as the `css` job rebuilds the CSS.
   extends `BaseMediaListRenderer`. Omit it and the bundle throws a
   `ReferenceError` as it loads, so nothing declared after that point registers
   either - the books bundle shipped that way and its whole client layer was
-  dead.
+  dead. (Books has no bundle since 2026-11-12: nothing ever started it.)
 - **The bundle filename in the template must match the one the script writes.**
   Under production's manifest static storage a `{% static %}` name that is not
   in the manifest raises while rendering rather than 404ing.
@@ -53,7 +51,7 @@ stale file. CI's `js` job runs it, as the `css` job rebuilds the CSS.
 
 | Type | Location |
 |------|----------|
-| Source files | `{games,books,music}/static/*/js/*.js`, `core/static/core/js/*.js` |
+| Source files | `{games,music}/static/*/js/*.js`, `core/static/core/js/*.js` |
 | Minified files | the same paths with `.min.js` |
 | Bundles | see the table above |
 | Script | `scripts/minify_js.sh` |

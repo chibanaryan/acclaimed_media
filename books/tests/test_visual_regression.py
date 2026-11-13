@@ -1,19 +1,13 @@
 """
-Visual regression tests for books app dual-rendering architecture.
+The structure of a books row as the server renders it.
 
-These tests verify that server-rendered HTML (Django templates) is structurally
-consistent with what the client-side JavaScript renderer expects. This ensures
-the dual-rendering architecture stays in sync.
+Written when a client renderer cloned these rows, to keep the two in step.
+That renderer was never started and was removed on 2026-11-12; the tests
+stay as a pin on the rows' markup and their `data-slot`s, which the
+templates still carry.
 
-Key verification areas:
-1. Template structure - All required data-slot attributes are present
-2. Server-rendered output - HTML contains expected elements and values
-3. Data transformations - Python formatting matches JavaScript expectations
-
-Reference files that must stay in sync:
 - books/templates/books/includes/_book_row_desktop.html
 - books/templates/books/includes/_book_row_mobile.html
-- books/static/books/js/book-list-renderer.js
 """
 
 from bs4 import BeautifulSoup

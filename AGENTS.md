@@ -177,7 +177,6 @@ heroku run -- python manage.py shell
   - **book_metadata.py** - Unified metadata service combining multiple sources
   - **management/commands/** - Book metadata commands (fetch_book_metadata.py)
   - **templates/books/** - Book templates
-  - **static/books/js/** - Book list renderer and client-side filtering
 
 - **music/** - Music app for album rankings:
   - **models.py** - Album, Artist, MusicGenre, MusicPublication, MusicList, AlbumListMembership
@@ -2967,7 +2966,7 @@ not one that re-exports it.
 - WhiteNoise serves static files in production
 - Static files are located in:
   - `games/static/` - Game app static files (icons, fonts, images, JS)
-  - `core/static/`, `music/static/`, `books/static/` - Each app's own JS, and music's images
+  - `core/static/`, `music/static/` - Each app's own JS, and music's images
   - `theme/static/` - Tailwind CSS compiled output
 
 ### CSS Workflow (Tailwind CSS)
@@ -3056,22 +3055,21 @@ Take codepoints from the official CSS, as the `/icons` skill says.
 
 ### JavaScript Workflow
 
-JavaScript files in each app's `static/<app>/js/` (`games`, `core`, `music`,
-`books`) follow a specific workflow:
+JavaScript files in each app's `static/<app>/js/` (`games`, `core`, `music`)
+follow a specific workflow:
 
 **Source and Minified Files:**
 - Source files (e.g., `game-list-renderer.js`) contain the readable code
 - Minified files (e.g., `game-list-renderer.min.js`) are generated from source files
 - **Always edit the source `.js` file, never the `.min.js` file directly**
 
-**Bundle Files:** three, each built by `scripts/minify_js.sh` from minified
+**Bundle Files:** two, each built by `scripts/minify_js.sh` from minified
 sources in dependency order, and each starting with
 `core/static/core/js/base-renderer.min.js` - a bundle whose renderer extends
 `BaseMediaListRenderer` without it throws a `ReferenceError` as it loads, so
 nothing declared after that point registers either:
 
 - `games/static/games/js/client-side-filtering.bundle.min.js` - `base-renderer`, `game-cache`, `client-filter`, `game-list-renderer`, `client-filtering`
-- `books/static/books/js/book-client-side-filtering.bundle.min.js` - `base-renderer`, `book-cache`, `book-client-filter`, `book-list-renderer`, `book-client-filtering`
 - `music/static/music/js/music-client-side-filtering.bundle.min.js` - `base-renderer`, `album-filter`, `album-list-renderer`, `album-client-filtering`
 
 `core/static/core/js/` also holds three files loaded on their own rather than
@@ -3090,7 +3088,11 @@ test fails on a chart with no script.
 
 `core/tests/test_static_bundles.py` asserts that every bundle a template
 references exists and that each defines the base classes its members extend.
-Both of those failed silently in the books bundle until 2026-10-17.
+Both of those failed silently in the books bundle until 2026-10-17. Books
+has had no bundle since 2026-11-12: its page loaded one that nothing
+started, with a renderer that posted to routes that do not exist, and the
+whole client stack (four scripts, three `<template>`s) was removed. The
+server renders the books list.
 
 **After Editing JavaScript:**
 Run `/minify` or `./scripts/minify_js.sh`

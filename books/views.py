@@ -24,6 +24,7 @@ from core import constants as core_constants
 from core.cache_helpers import get_year_bounds
 from core.mixins import HTMXPartialMixin, RobustPaginationMixin, StaffOnlyMixin
 from core.models import User
+from core.services.query_params import parse_id_list, parse_int
 
 
 def _get_year_bounds():
@@ -47,7 +48,7 @@ def _get_read_book_ids(user):
                 "goodreads_id", flat=True
             )
         )
-        cache.set(cache_key, ids, 300)  # 5 minutes
+        cache.set(cache_key, ids, config.CACHE_TIMEOUT_5_MINUTES)
     return ids
 
 
@@ -66,7 +67,7 @@ def _get_want_to_read_book_ids(user):
                 "goodreads_id", flat=True
             )
         )
-        cache.set(cache_key, ids, 300)  # 5 minutes
+        cache.set(cache_key, ids, config.CACHE_TIMEOUT_5_MINUTES)
     return ids
 
 
@@ -158,48 +159,28 @@ class BookHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
         if q:
             qs = qs.filter(Q(name__icontains=q) | Q(name_normalized__icontains=q))
 
-        # Year range filtering
-        start = self.request.GET.get("start")
-        end = self.request.GET.get("end")
-        if start:
-            try:
-                qs = qs.filter(year_published__gte=int(start))
-            except (TypeError, ValueError):
-                pass
-        if end:
-            try:
-                qs = qs.filter(year_published__lte=int(end))
-            except (TypeError, ValueError):
-                pass
+        # Each through `core.services.query_params`, as games and music read
+        # theirs: a word is no filter, and neither is a number too wide for
+        # the database, which raised as the query ran (a 500, until
+        # 2026-11-12). A word among the ids no longer drops the others.
+        start = parse_int(self.request.GET.get("start"))
+        end = parse_int(self.request.GET.get("end"))
+        if start is not None:
+            qs = qs.filter(year_published__gte=start)
+        if end is not None:
+            qs = qs.filter(year_published__lte=end)
 
-        # Genre filtering
-        genres = self.request.GET.get("genres")
-        if genres:
-            try:
-                genre_ids = [int(x) for x in genres.split(",") if x.strip()]
-                if genre_ids:
-                    qs = qs.filter(genres__id__in=genre_ids).distinct()
-            except (TypeError, ValueError):
-                pass
+        genre_ids = parse_id_list(self.request.GET.get("genres"))
+        if genre_ids:
+            qs = qs.filter(genres__id__in=genre_ids).distinct()
 
-        # Author filtering
-        authors = self.request.GET.get("authors")
-        if authors:
-            try:
-                author_ids = [int(x) for x in authors.split(",") if x.strip()]
-                if author_ids:
-                    qs = qs.filter(authors__id__in=author_ids).distinct()
-            except (TypeError, ValueError):
-                pass
+        author_ids = parse_id_list(self.request.GET.get("authors"))
+        if author_ids:
+            qs = qs.filter(authors__id__in=author_ids).distinct()
 
-        # Series filtering
-        series = self.request.GET.get("series")
-        if series:
-            try:
-                series_id = int(series)
-                qs = qs.filter(series_id=series_id)
-            except (TypeError, ValueError):
-                pass
+        series_id = parse_int(self.request.GET.get("series"))
+        if series_id is not None:
+            qs = qs.filter(series_id=series_id)
 
         # Read status filtering (authenticated users only)
         read_param = self.request.GET.get("read")
@@ -280,27 +261,6 @@ class BookHomePageView(StaffOnlyMixin, RobustPaginationMixin, ListView):
             }
             cache.set(stats_cache_key, stats, config.CACHE_TIMEOUT_24_HOURS)
         context.update(stats)
-
-        # The client-side filtering bundle and the <template> elements it
-        # clones are both gated on this flag.
-        context["enable_client_filtering"] = True
-
-        # Read state for the client-side renderer's read/want-to-read
-        # buttons. No anonymous branch: the view is StaffOnlyMixin, so there
-        # is always a logged-in user here.
-        context["read_book_ids"] = _get_read_book_ids(self.request.user)
-        context["want_to_read_book_ids"] = _get_want_to_read_book_ids(self.request.user)
-
-        # Current filter state for UI
-        context["current_q"] = self.request.GET.get("q", "")
-        context["current_start"] = self.request.GET.get("start", "")
-        context["current_end"] = self.request.GET.get("end", "")
-        context["current_genres"] = self.request.GET.get("genres", "")
-        context["current_authors"] = self.request.GET.get("authors", "")
-        context["current_series"] = self.request.GET.get("series", "")
-        context["current_read"] = self.request.GET.get("read", "")
-        context["current_sort"] = self.request.GET.get("sort", "rank")
-        context["current_dir"] = self.request.GET.get("dir", "asc")
 
         return context
 
@@ -517,11 +477,6 @@ class AuthorListView(StaffOnlyMixin, RobustPaginationMixin, HTMXPartialMixin, Li
             loaded_count=page_obj.end_index(),
             remaining_count=total_count - page_obj.end_index(),
         )
-
-        # Current filter state
-        context["current_q"] = self.request.GET.get("q", "")
-        context["current_sort"] = self.request.GET.get("sort", "books")
-        context["current_dir"] = self.request.GET.get("dir", "desc")
 
         return context
 

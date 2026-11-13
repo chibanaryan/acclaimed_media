@@ -140,20 +140,41 @@ class BookHomePageViewTests(StaffUserTestMixin, TestCase):
         self.assertEqual(response.context["list_count"], 1)
         self.assertEqual(response.context["publication_count"], 1)
 
-    def test_context_enables_client_side_filtering(self):
-        # The bundle's <script> and the <template> elements it clones are
-        # both gated on this flag, so without it the whole client layer is
-        # dead markup.
+    def test_the_page_ships_no_client_engine(self):
+        """It loaded a filtering bundle that nothing started, three
+        `<template>`s for it to clone, and the reader's book ids for its
+        buttons: about 1,900 lines of script whose renderer posted to
+        routes that do not exist. The server renders the list, as it
+        always did (removed 2026-11-12)."""
         response = self.client.get(reverse("books:home"))
-        self.assertTrue(response.context["enable_client_filtering"])
+        html = response.content.decode()
+        self.assertNotIn("book-client-side-filtering", html)
+        self.assertNotIn("<template id=", html)
+        self.assertNotIn("readBookIds", html.split("<body", 1)[0])
+        for key in ("enable_client_filtering", "read_book_ids", "current_q"):
+            self.assertNotIn(key, response.context)
 
-    def test_context_includes_the_reader_s_book_ids(self):
-        # window.readBookIds / wantToReadBookIds are built from these.
-        models.ReadBook.objects.create(user=self.staff_user, goodreads_id="111")
-        models.WantToReadBook.objects.create(user=self.staff_user, goodreads_id="222")
-        response = self.client.get(reverse("books:home"))
-        self.assertEqual(list(response.context["read_book_ids"]), ["111"])
-        self.assertEqual(list(response.context["want_to_read_book_ids"]), ["222"])
+    def test_an_id_too_wide_for_the_database_is_no_filter(self):
+        """SQLite holds an integer in eight bytes and raises on a wider
+        one as the query runs, which is after the `try` that caught a
+        word: a 500. `core.services.query_params` is the bound games and
+        music read these by."""
+        huge = "9" * 20
+        for name in ("start", "end", "genres", "authors", "series"):
+            with self.subTest(parameter=name):
+                response = self.client.get(reverse("books:home"), {name: huge})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(len(response.context["books"]), 2)
+
+    def test_a_word_among_the_ids_does_not_drop_the_filter(self):
+        """`?genres=abc,<id>` filtered nothing at all: one bad part threw
+        the whole list away."""
+        response = self.client.get(
+            reverse("books:home"), {"genres": f"abc,{self.genre.id}"}
+        )
+        self.assertEqual(
+            [book.name for book in response.context["books"]], ["Alpha Book"]
+        )
 
     def test_search_filter(self):
         """Test search by name filter."""

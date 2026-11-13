@@ -329,6 +329,22 @@ class BookGenreListAPITests(StaffAPITestMixin, TestCase):
         data = response.json()
         self.assertEqual(data["count"], 2)
 
+    def test_a_genre_names_its_parent_without_loading_it(self):
+        """`parent_id` was read as `parent.id`: a query for every genre
+        that has a parent."""
+        for name in ("Fantasy", "Horror", "Romance"):
+            models.BookGenre.objects.create(name=name, parent=self.fiction)
+        with CaptureQueriesContext(connection) as captured:
+            data = self.client.get("/api/books/genres/").json()
+        parents = {row["name"]: row["parent_id"] for row in data["results"]}
+        self.assertEqual(parents["Fiction"], None)
+        self.assertEqual(parents["Horror"], self.fiction.id)
+        genre_queries = [
+            query["sql"] for query in captured if '"books_bookgenre"' in query["sql"]
+        ]
+        # The page of genres and its count
+        self.assertEqual(len(genre_queries), 2, genre_queries)
+
 
 class BookGenreTreeAPITests(StaffAPITestMixin, TestCase):
     """Tests for the BookGenreTreeView API endpoint."""
@@ -348,6 +364,41 @@ class BookGenreTreeAPITests(StaffAPITestMixin, TestCase):
         # Should only return root genres
         self.assertEqual(data["count"], 1)
         self.assertEqual(data["results"][0]["name"], "Fiction")
+
+    def test_the_tree_nests_children_in_display_order_with_their_counts(self):
+        fantasy = models.BookGenre.objects.create(
+            name="Fantasy", parent=self.fiction, display_order=1
+        )
+        models.BookGenre.objects.create(name="Epic", parent=fantasy)
+        self.scifi.display_order = 2
+        self.scifi.save()
+        book = models.Book.objects.create(name="Dune", rank=1, slug="dune")
+        book.genres.add(self.scifi)
+
+        root = self.client.get("/api/books/genres/tree/").json()["results"][0]
+
+        self.assertEqual(
+            [child["name"] for child in root["children"]],
+            ["Fantasy", "Science Fiction"],
+        )
+        self.assertEqual(root["children"][0]["children"][0]["name"], "Epic")
+        self.assertEqual([child["book_count"] for child in root["children"]], [0, 1])
+        self.assertEqual(root["book_count"], 0)
+
+    def test_the_tree_costs_the_same_however_many_genres_it_holds(self):
+        """It asked each genre for its children and its count: two queries
+        a genre. Games' tree was fixed the same way."""
+
+        def genre_queries():
+            with CaptureQueriesContext(connection) as captured:
+                self.client.get("/api/books/genres/tree/")
+            return sum('"books_bookgenre"' in query["sql"] for query in captured)
+
+        before = genre_queries()
+        for index in range(6):
+            parent = models.BookGenre.objects.create(name=f"Root {index}")
+            models.BookGenre.objects.create(name=f"Leaf {index}", parent=parent)
+        self.assertEqual(genre_queries(), before)
 
 
 class BookSearchAPITests(StaffAPITestMixin, TestCase):

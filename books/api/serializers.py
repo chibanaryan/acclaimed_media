@@ -2,7 +2,6 @@
 Books API serializers.
 
 These serializers follow the same patterns as games/api/serializers.py.
-They will be fully functional once the books models are created in Phase 4.2.
 """
 
 from django.db.models import F
@@ -122,7 +121,8 @@ class AuthorSerializer(serializers.ModelSerializer):
 class BookGenreSerializer(serializers.ModelSerializer):
     """Basic book genre serializer with hierarchy fields."""
 
-    parent_id = serializers.IntegerField(source="parent.id", allow_null=True)
+    # The column itself: `parent.id` loaded each genre's parent to read it
+    parent_id = serializers.IntegerField(allow_null=True)
 
     class Meta:
         model = models.BookGenre
@@ -163,9 +163,20 @@ class BookGenreTreeSerializer(serializers.ModelSerializer):
         ]
 
     def get_children(self, obj):
-        """Recursively serialize child genres."""
-        children = obj.children.all().order_by("display_order", "name")
-        return BookGenreTreeSerializer(children, many=True).data
+        """Recursively serialize child genres.
+
+        `BookGenreTreeView` passes every genre, already counted, as
+        ``genre_children`` (parent id to children, in display order), as
+        games' tree view does: asking each node for its children and its
+        count was two queries a genre. Without that map (a genre serialized
+        on its own), each node is asked.
+        """
+        children_by_parent = self.context.get("genre_children")
+        if children_by_parent is not None:
+            children = children_by_parent.get(obj.id, [])
+        else:
+            children = obj.children.all().order_by("display_order", "name")
+        return BookGenreTreeSerializer(children, many=True, context=self.context).data
 
     def get_book_count(self, obj):
         """Get count of books with this genre."""
@@ -190,19 +201,4 @@ class BookListSerializer(serializers.ModelSerializer):
             "year",
             "type",
             "url",
-        ]
-
-
-class AuthorSearchSerializer(serializers.ModelSerializer):
-    """Lightweight serializer for author search results."""
-
-    books_count = serializers.IntegerField()
-
-    class Meta:
-        model = models.Author
-        fields = [
-            "id",
-            "name",
-            "slug",
-            "books_count",
         ]
