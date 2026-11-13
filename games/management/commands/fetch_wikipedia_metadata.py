@@ -13,7 +13,6 @@ Fetches:
 import csv
 import logging
 import time
-from datetime import datetime
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -80,10 +79,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--output",
             type=str,
-            help=(
-                "Output CSV file path "
-                "(optional, default: wikipedia_metadata_TIMESTAMP.csv)"
-            ),
+            help="Output CSV file path (optional: without it no CSV is written)",
         )
         parser.add_argument(
             "--save",
@@ -153,9 +149,8 @@ class Command(BaseCommand):
         # Prepare CSV output (only if --output is specified)
         csv_file = None
         csv_writer = None
-        csv_path = None
-        if options.get("output"):
-            csv_path = self._get_csv_path(options.get("output"))
+        csv_path = options.get("output")
+        if csv_path:
             csv_file = open(csv_path, "w", newline="", encoding="utf-8")
             csv_writer = csv.writer(csv_file)
             csv_writer.writerow(
@@ -417,14 +412,6 @@ class Command(BaseCommand):
 
         return games
 
-    def _get_csv_path(self, output_path):
-        """Get CSV output path (use provided or generate timestamp-based)."""
-        if output_path:
-            return output_path
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        return f"wikipedia_metadata_{timestamp}.csv"
-
     def _refresh_alternate_wikidata_records(self, game, page_service):
         """
         Process all Wikidata IDs from game.all_wikidata_ids.
@@ -442,15 +429,11 @@ class Command(BaseCommand):
         records_updated = 0
         records_with_hltb_id = 0
 
-        # Get all Wikidata IDs for this game
-        all_wikidata_ids = game.all_wikidata_ids or []
-        if not all_wikidata_ids and game.wikidata_id:
-            # Fallback to single wikidata_id if all_wikidata_ids is empty
-            all_wikidata_ids = [game.wikidata_id]
-
         # Skip the primary ID (already processed in main loop)
         primary_wikidata_id = game.wikidata_id
-        alternate_ids = [wid for wid in all_wikidata_ids if wid != primary_wikidata_id]
+        alternate_ids = [
+            wid for wid in game.all_wikidata_ids or [] if wid != primary_wikidata_id
+        ]
 
         # Process each alternate Wikidata ID
         for wikidata_id in alternate_ids:

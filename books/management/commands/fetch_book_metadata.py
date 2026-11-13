@@ -6,9 +6,11 @@ It prints what it finds, or writes it to a CSV; it saves nothing. Until
 ``--force``, ``--concurrency`` and ``--delay``: the first two reached a stub
 that said "not yet implemented" and exited 0, and the rest were read by
 nothing.
+
+The CSV is written through ``SafeWriter``: titles and names are Open Library's
+and Hardcover's, and one starting ``=`` or ``+`` is a formula to a spreadsheet.
 """
 
-import csv
 import logging
 import time
 from typing import Any, Dict, List
@@ -16,6 +18,7 @@ from typing import Any, Dict, List
 from django.core.management.base import BaseCommand
 
 from books import book_metadata
+from core.services.spreadsheet import SafeWriter
 
 logger = logging.getLogger(__name__)
 
@@ -112,10 +115,12 @@ class Command(BaseCommand):
         limit = options.get("limit", 10)
         source = options.get("source", "openlibrary")
 
-        self.stdout.write(f"\nSearching for: {query}")
-        if author:
-            self.stdout.write(f" by {author}")
-        self.stdout.write(f" (source: {source}, limit: {limit})\n\n")
+        # One write: each write ends its line, and this is one line
+        by_author = f" by {author}" if author else ""
+        self.stdout.write(
+            f"\nSearching for: {query}{by_author}"
+            f" (source: {source}, limit: {limit})\n\n"
+        )
 
         if author:
             # Use get_book_info for title + author search
@@ -206,7 +211,7 @@ class Command(BaseCommand):
     def _write_csv(self, results: List[Dict[str, Any]], output_path: str):
         """Write results to CSV file."""
         with open(output_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
+            writer = SafeWriter(f)
             writer.writerow(
                 [
                     "Title",

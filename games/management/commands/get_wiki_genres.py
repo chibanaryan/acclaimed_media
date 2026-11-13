@@ -64,7 +64,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--output",
             type=str,
-            help="Output CSV file path (default: game_genres_ordered_TIMESTAMP.csv)",
+            help="Output CSV file path (default: wiki_genres_TIMESTAMP.csv)",
         )
         parser.add_argument(
             "--resume",
@@ -123,8 +123,6 @@ class Command(BaseCommand):
         if game_name or game_slug or game_id:
             # Single game mode
             games = self._get_single_game_queryset(game_name, game_slug, game_id)
-            if games is None:
-                return
         else:
             # Batch mode
             games = Game.objects.all()
@@ -137,7 +135,7 @@ class Command(BaseCommand):
             elif offset:
                 games = games[offset:]
 
-        total_games = games.count() if hasattr(games, "count") else len(games)
+        total_games = games.count()
 
         if total_games == 0:
             self.stdout.write(
@@ -157,19 +155,7 @@ class Command(BaseCommand):
         success_count = 0
         failure_count = 0
 
-        def progress_callback(event_type: str, data: dict) -> None:
-            """Handle progress events from service."""
-            if event_type == "progress":
-                self._handle_progress_event(data)
-            elif event_type == "error":
-                self._handle_error_event(data)
-            elif event_type == "complete":
-                self._handle_complete_event(data)
-
-        service = WikiGenreService(
-            delay=delay,
-            progress_callback=progress_callback,
-        )
+        service = WikiGenreService(delay=delay)
 
         # Process games - prefetch wikipedia_genres for display
         game_list = list(games.prefetch_related("wikipedia_genres"))
@@ -309,24 +295,16 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(f"Results saved to: {output_path}"))
 
     def _get_single_game_queryset(self, game_name, game_slug, game_id):
-        """Get queryset for a single game."""
-        try:
-            if game_id:
-                return Game.objects.filter(id=game_id)
-            elif game_slug:
-                return Game.objects.filter(slug=game_slug)
-            elif game_name:
-                return Game.objects.filter(name__iexact=game_name)
-        except Game.DoesNotExist:
-            self.stdout.write(
-                self.style.ERROR(
-                    f"Game not found with "
-                    f"{'id=' + str(game_id) if game_id else ''}"
-                    f"{'slug=' + game_slug if game_slug else ''}"
-                    f"{'name=' + game_name if game_name else ''}"
-                )
-            )
-            return None
+        """The one game named: by id, else by slug, else by name.
+
+        The caller has checked that one of the three was given. A game that
+        does not exist is an empty queryset, which the caller reports.
+        """
+        if game_id:
+            return Game.objects.filter(id=game_id)
+        if game_slug:
+            return Game.objects.filter(slug=game_slug)
+        return Game.objects.filter(name__iexact=game_name)
 
     def _read_processed_ranks(self, csv_path: str) -> set:
         """Read already-processed game ranks from CSV file."""
@@ -348,54 +326,3 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(f"Error reading {csv_path}: {e}"))
 
         return processed_ranks
-
-    def _handle_progress_event(self, data: dict) -> None:
-        """Handle progress event from service."""
-        # Progress is handled inline in the main loop for better control
-        pass
-
-    def _handle_error_event(self, data: dict) -> None:
-        """Handle error event from service."""
-        # Errors are handled inline in the main loop for better control
-        pass
-
-    def _handle_complete_event(self, data: dict) -> None:
-        """Handle completion event from service."""
-        # Completion is handled inline in the main loop for better control
-        pass
-
-    def _write_csv(self, results, output_path):
-        """Write results to CSV file."""
-        if output_path is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_path = f"game_genres_ordered_{timestamp}.csv"
-
-        with open(output_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(
-                [
-                    "Rank",
-                    "Original Title",
-                    "Primary Genre",
-                    "All Genres",
-                    "IGDB Genres",
-                    "Source URL",
-                    "Error",
-                ]
-            )
-            for result in results:
-                # IGDB genres column removed - keeping empty for CSV compatibility
-                igdb_genres = ""
-                writer.writerow(
-                    [
-                        result.game.rank if hasattr(result, "game") else "",
-                        result.game_name,
-                        result.primary_genre or "",
-                        result.all_genres_str,
-                        igdb_genres,
-                        result.source_url or "",
-                        result.error_message or "",
-                    ]
-                )
-
-        self.stdout.write(self.style.SUCCESS(f"Results written to: {output_path}"))

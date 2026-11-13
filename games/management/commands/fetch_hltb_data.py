@@ -9,7 +9,6 @@ import asyncio
 import csv
 import logging
 import time
-from datetime import datetime
 
 from django.core.management.base import BaseCommand
 
@@ -203,7 +202,7 @@ class Command(BaseCommand):
         csv_writer = None
         csv_path = None
         if options.get("output"):
-            csv_path = self._get_csv_path(options.get("output"))
+            csv_path = options["output"]
             csv_file = open(csv_path, "w", newline="", encoding="utf-8")
             csv_writer = csv.writer(csv_file)
             csv_writer.writerow(
@@ -279,17 +278,11 @@ class Command(BaseCommand):
                             if direct_result:
                                 best_match = direct_result
                                 fetch_method = "wikidata"
-                                used_wikidata_id = (
-                                    all_wikidata_ids[idx_hltb]
-                                    if idx_hltb < len(all_wikidata_ids)
-                                    else None
-                                )
-                                # Check if this HLTB ID is from primary or alternate
-                                is_from_primary = (
-                                    is_from_primary_list[idx_hltb]
-                                    if idx_hltb < len(is_from_primary_list)
-                                    else True
-                                )
+                                # `handle` lists an id, the Wikidata record
+                                # it came from and whether that is the
+                                # primary one side by side
+                                used_wikidata_id = all_wikidata_ids[idx_hltb]
+                                is_from_primary = is_from_primary_list[idx_hltb]
                                 # Log which Wikidata ID was used (especially useful
                                 # when it's not the primary)
                                 extra_info = ""
@@ -334,8 +327,6 @@ class Command(BaseCommand):
                                 break
 
                     if best_match:
-                        async with counter_lock:
-                            success_count += 1
                         hltb_id = str(best_match.game_id)
                         hltb_name = best_match.game_name
                         similarity = getattr(best_match, "similarity", 1.0)
@@ -347,8 +338,11 @@ class Command(BaseCommand):
                             best_match, "completionist"
                         )
 
-                        # Only print match details if not from direct Wikidata lookup
-                        if not all_wikidata_hltb_ids:
+                        # Only print match details if not from direct Wikidata
+                        # lookup, which has printed its own line. Asked of the
+                        # game's ids until 2026-11-12, so a game whose ids all
+                        # failed and whose name then matched printed nothing
+                        if fetch_method != "wikidata":
                             self.stdout.write(
                                 f"[{idx}/{game_count}] \u2713 {game_name}: "
                                 f"{hltb_name} ({similarity:.2f}) - "
@@ -370,6 +364,11 @@ class Command(BaseCommand):
                                 completionist,
                                 profile=hltb_matching.entry_profile(best_match),
                             )
+
+                        # Counted once it is saved: a save that raises is
+                        # counted below, and was counted here as well
+                        async with counter_lock:
+                            success_count += 1
                     else:
                         async with counter_lock:
                             failure_count += 1
@@ -486,11 +485,3 @@ class Command(BaseCommand):
             games = games[: options["limit"]]
 
         return games
-
-    def _get_csv_path(self, output_path):
-        """Get CSV output path (use provided or generate timestamp-based)."""
-        if output_path:
-            return output_path
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        return f"hltb_data_{timestamp}.csv"

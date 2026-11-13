@@ -18,6 +18,7 @@ import time
 from datetime import datetime
 
 from asgiref.sync import sync_to_async
+from bs4 import BeautifulSoup
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Case, IntegerField, Value, When
@@ -55,6 +56,86 @@ def wikidata_credentials(token):
     if not login or not password:
         return None
     return (login, password)
+
+
+def page_from_entity(entity):
+    """What a Wikidata entity says of a game's Wikipedia page: its English
+    title, the HLTB id and the Steam AppID, or None for an entity with no
+    English Wikipedia article.
+
+    No I/O: the entity is one of ``wbgetentities``' ``entities``, as a dict.
+    """
+    sitelinks = entity.get("sitelinks", {})
+    enwiki = sitelinks.get("enwiki", {})
+    page_title = enwiki.get("title")
+
+    if not page_title:
+        return None
+
+    hltb_id, steam_app_id = external_ids(entity.get("claims", {}))
+
+    return {
+        "page_title": page_title,
+        "hltb_id": hltb_id,
+        "steam_app_id": steam_app_id,
+        "lookup_source": config.WIKI_LOOKUP_SOURCE_WIKIDATA,
+    }
+
+
+def infobox_genres(html):
+    """The genres a Wikipedia page's infobox lists, in its order, or None
+    when the page has no infobox, the infobox no Genre row, or the row
+    nothing to read.
+
+    No I/O: ``html`` is the page's source.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Find infobox
+    infobox = soup.find("table", class_="infobox")
+    if not infobox:
+        return None
+
+    # Find Genre row
+    for row in infobox.find_all("tr"):
+        header = row.find("th")
+        if header and "genre" in header.get_text().lower():
+            data_cell = row.find("td")
+            if not data_cell:
+                continue
+
+            # Remove reference markers
+            for sup in data_cell.find_all("sup"):
+                sup.decompose()
+            for ref in data_cell.find_all(class_="reference"):
+                ref.decompose()
+
+            # Check for list items
+            list_items = data_cell.find_all("li")
+            if list_items:
+                genres = [
+                    li.get_text(strip=True)
+                    for li in list_items
+                    if li.get_text(strip=True)
+                ]
+                if genres:
+                    return genres
+
+            # Fall back to text parsing
+            raw_text = data_cell.get_text(separator="|", strip=True)
+            if "|" in raw_text:
+                parts = raw_text.split("|")
+            else:
+                parts = raw_text.split(",")
+
+            genres = [
+                p.strip().strip(",").strip()
+                for p in parts
+                if p.strip() and len(p.strip()) > 1
+            ]
+            return genres if genres else None
+
+    return None
 
 
 class Command(BaseCommand):
@@ -426,7 +507,6 @@ class Command(BaseCommand):
         """
         import aiohttp
         import urllib.parse
-        from bs4 import BeautifulSoup
 
         self.stdout.write("\n[2/3] Refreshing Wikipedia Data (async)")
         self.stdout.write("-" * 40)
@@ -502,24 +582,7 @@ class Command(BaseCommand):
                     data = await response.json()
 
                     entities = data.get("entities", {})
-                    entity = entities.get(wikidata_id, {})
-
-                    # Get Wikipedia page title
-                    sitelinks = entity.get("sitelinks", {})
-                    enwiki = sitelinks.get("enwiki", {})
-                    page_title = enwiki.get("title")
-
-                    if not page_title:
-                        return None
-
-                    hltb_id, steam_app_id = external_ids(entity.get("claims", {}))
-
-                    return {
-                        "page_title": page_title,
-                        "hltb_id": hltb_id,
-                        "steam_app_id": steam_app_id,
-                        "lookup_source": config.WIKI_LOOKUP_SOURCE_WIKIDATA,
-                    }
+                    return page_from_entity(entities.get(wikidata_id, {}))
             except Exception as e:
                 logger.debug("Wikidata fetch failed for %s: %s", wikidata_id, e)
                 return None
@@ -532,53 +595,7 @@ class Command(BaseCommand):
                         return None
                     html = await response.text()
 
-                soup = BeautifulSoup(html, "html.parser")
-
-                # Find infobox
-                infobox = soup.find("table", class_="infobox")
-                if not infobox:
-                    return None
-
-                # Find Genre row
-                for row in infobox.find_all("tr"):
-                    header = row.find("th")
-                    if header and "genre" in header.get_text().lower():
-                        data_cell = row.find("td")
-                        if not data_cell:
-                            continue
-
-                        # Remove reference markers
-                        for sup in data_cell.find_all("sup"):
-                            sup.decompose()
-                        for ref in data_cell.find_all(class_="reference"):
-                            ref.decompose()
-
-                        # Check for list items
-                        list_items = data_cell.find_all("li")
-                        if list_items:
-                            genres = [
-                                li.get_text(strip=True)
-                                for li in list_items
-                                if li.get_text(strip=True)
-                            ]
-                            if genres:
-                                return genres
-
-                        # Fall back to text parsing
-                        raw_text = data_cell.get_text(separator="|", strip=True)
-                        if "|" in raw_text:
-                            parts = raw_text.split("|")
-                        else:
-                            parts = raw_text.split(",")
-
-                        genres = [
-                            p.strip().strip(",").strip()
-                            for p in parts
-                            if p.strip() and len(p.strip()) > 1
-                        ]
-                        return genres if genres else None
-
-                return None
+                return infobox_genres(html)
             except Exception as e:
                 logger.debug("Genre scraping failed for %s: %s", wikipedia_url, e)
                 return None

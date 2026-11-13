@@ -1,16 +1,74 @@
 """Tests for the fetch_wikipedia_metadata management command."""
 
+import csv
 import os
 import tempfile
 from io import StringIO
 from unittest import mock
 
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from games.models import Game, WikipediaGameData, WikipediaGenre
 from games.services.wiki_genre_service import GenreResult, GenreSource
 from games.services.wiki_page_lookup_service import PageLookupResult
+
+COMMAND = "games.management.commands.fetch_wikipedia_metadata"
+
+
+def page_found(name, title=None, **fields):
+    """The lookup's answer for a game whose page it found."""
+    return PageLookupResult(
+        game_name=name, page_title=title or name, lookup_source="wikidata", **fields
+    )
+
+
+def page_missing(name):
+    """The lookup's answer for a game with no page."""
+    return PageLookupResult(game_name=name, error_message="Page not found on Wikipedia")
+
+
+class StandInServicesMixin:
+    """Runs the command against stand-ins for the two services it reads.
+
+    The network is closed under test, and what these tests are about is
+    what the command does with an answer, not how the answer is fetched.
+    """
+
+    def run_command(self, *args, pages=None, alternates=None, genres=None):
+        """Run the command; return what it printed and the page service.
+
+        ``pages`` maps a game's name to its ``PageLookupResult`` (a game
+        not named is found under its own name), ``alternates`` a Wikidata
+        id to what ``_lookup_via_wikidata`` answers for it (an id not
+        named gets ``None``, a failed lookup), and ``genres`` a game's
+        name to the genres its page lists (none by default).
+        """
+        pages = pages or {}
+        genres = genres or {}
+
+        def lookup_page(name, wikidata_id, year):
+            return pages.get(name) or page_found(name)
+
+        def genre_from_url(name, url):
+            found = genres.get(name, [])
+            return GenreResult(
+                game_name=name,
+                source=GenreSource.WIKIPEDIA if found else GenreSource.FAILED,
+                primary_genre=found[0] if found else None,
+                all_genres=found,
+            )
+
+        out = StringIO()
+        with mock.patch(f"{COMMAND}.WikiPageLookupService") as page_class, mock.patch(
+            f"{COMMAND}.WikiGenreService"
+        ) as genre_class:
+            page_service = page_class.return_value
+            page_service.lookup_page.side_effect = lookup_page
+            page_service._lookup_via_wikidata.side_effect = (alternates or {}).get
+            genre_class.return_value.get_genre_from_url.side_effect = genre_from_url
+            call_command("fetch_wikipedia_metadata", *args, stdout=out)
+        return out.getvalue(), page_service
 
 
 class FetchWikipediaMetadataCommandTests(TestCase):
@@ -683,6 +741,429 @@ class FetchWikipediaMetadataCommandTests(TestCase):
 
         output = out.getvalue()
         self.assertIn("No orphan WikipediaGenre records found", output)
+
+
+class WhichGamesTests(StandInServicesMixin, TestCase):
+    """The options that pick the games, and what the run says of itself."""
+
+    def setUp(self):
+        self.first = Game.objects.create(name="Alpha Quest", rank=1, slug="alpha-quest")
+        self.second = Game.objects.create(name="Beta Racer", rank=2, slug="beta-racer")
+        self.third = Game.objects.create(name="Gamma Golf", rank=3, slug="gamma-golf")
+
+    def looked_up(self, page_service):
+        return [call.args[0] for call in page_service.lookup_page.call_args_list]
+
+    def test_slug_picks_the_game_with_that_slug(self):
+        output, page_service = self.run_command("--slug", "beta-racer")
+        self.assertEqual(self.looked_up(page_service), ["Beta Racer"])
+        self.assertIn("Processing 1 games", output)
+
+    def test_id_picks_the_game_with_that_pk(self):
+        output, page_service = self.run_command("--id", str(self.third.pk))
+        self.assertEqual(self.looked_up(page_service), ["Gamma Golf"])
+
+    def test_offset_skips_that_many_games_from_the_top_of_the_ranking(self):
+        """With --limit it is how a long run is taken a slice at a time."""
+        output, page_service = self.run_command("--offset", "1")
+        self.assertEqual(self.looked_up(page_service), ["Beta Racer", "Gamma Golf"])
+
+        output, page_service = self.run_command("--offset", "1", "--limit", "1")
+        self.assertEqual(self.looked_up(page_service), ["Beta Racer"])
+
+    def test_without_save_nothing_is_stored(self):
+        """The default is a dry run: the page is printed and that is all."""
+        output, page_service = self.run_command(
+            alternates={"Q2": ("Alpha Quest II", "9", None, None)}
+        )
+        self.assertIn("Alpha Quest: Alpha Quest (wikidata)", output)
+        self.assertNotIn("Results saved to database", output)
+        self.assertFalse(WikipediaGameData.objects.exists())
+
+    @override_settings(WIKIDATA_ACCESS_TOKEN="reader:secret")
+    def test_says_when_its_requests_are_authenticated(self):
+        """The delay between requests depends on it, so the run names it."""
+        output, _ = self.run_command("--limit", "1")
+        self.assertIn("Using authenticated Wikidata requests", output)
+        self.assertNotIn("Set WIKIDATA_ACCESS_TOKEN", output)
+
+    def test_says_when_its_requests_are_not_authenticated(self):
+        output, _ = self.run_command("--limit", "1")
+        self.assertIn("Using unauthenticated Wikidata requests", output)
+        self.assertIn("Set WIKIDATA_ACCESS_TOKEN", output)
+
+    def test_the_summary_counts_pages_found_and_not_found(self):
+        output, _ = self.run_command(
+            "--save",
+            pages={"Beta Racer": page_missing("Beta Racer")},
+            genres={"Alpha Quest": ["Action"]},
+        )
+        self.assertIn("Total games: 3", output)
+        self.assertIn("Wikipedia pages found: 2", output)
+        self.assertIn("Wikipedia pages not found: 1", output)
+        self.assertIn("Genres found: 1", output)
+        self.assertIn("Genres not found: 1", output)
+
+
+class CsvOutputTests(StandInServicesMixin, TestCase):
+    """--output writes a row a game; without it no file is written."""
+
+    def setUp(self):
+        Game.objects.create(name="Alpha Quest", rank=1, wikidata_id="Q1")
+        Game.objects.create(name="Beta Racer", rank=2)
+
+    def test_each_game_is_a_row_found_or_not(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "pages.csv")
+            output, _ = self.run_command(
+                "--save",
+                "--output",
+                path,
+                pages={
+                    "Alpha Quest": page_found(
+                        "Alpha Quest", "Alpha Quest (video game)"
+                    ),
+                    "Beta Racer": page_missing("Beta Racer"),
+                },
+                genres={"Alpha Quest": ["Puzzle", "Strategy"]},
+            )
+            with open(path, newline="", encoding="utf-8") as handle:
+                rows = list(csv.reader(handle))
+
+        self.assertEqual(
+            rows,
+            [
+                [
+                    "Rank",
+                    "Game Name",
+                    "Wikipedia Page Title",
+                    "Lookup Source",
+                    "Primary Genre",
+                    "All Genres",
+                    "Wikipedia URL",
+                    "Error",
+                ],
+                [
+                    "1",
+                    "Alpha Quest",
+                    "Alpha Quest (video game)",
+                    "wikidata",
+                    "Puzzle",
+                    "Puzzle, Strategy",
+                    "https://en.wikipedia.org/wiki/Alpha_Quest_(video_game)",
+                    "",
+                ],
+                ["2", "Beta Racer", "", "", "", "", "", "Page not found on Wikipedia"],
+            ],
+        )
+        self.assertIn(f"Writing results to: {path}", output)
+        self.assertIn(f"Results written to {path}", output)
+
+    def test_without_output_no_file_is_opened(self):
+        """The help once promised a timestamped file by default.
+
+        No run ever wrote one: the path was only worked out once --output
+        had been given.
+        """
+        with mock.patch(f"{COMMAND}.open", create=True) as opened:
+            output, _ = self.run_command("--save")
+        opened.assert_not_called()
+        self.assertNotIn("Results written", output)
+        self.assertIn("Results saved to database", output)
+
+
+class AlternateWikidataRecordTests(StandInServicesMixin, TestCase):
+    """A game's other Wikidata ids each get a record of their own.
+
+    The release lists every Wikidata entity a game has (a remake's, a
+    compilation's), the first being its own. HowLongToBeat ids are often
+    on one of the others, and ``fetch_hltb_data`` reads every record a game
+    has, so each alternate id is looked up and kept beside the primary.
+    """
+
+    def setUp(self):
+        self.game = Game.objects.create(
+            name="Alpha Quest",
+            rank=1,
+            wikidata_id="Q1",
+            all_wikidata_ids=["Q1", "Q2"],
+        )
+
+    def records(self):
+        """Each of the game's records as (id, page, primary, hltb, steam, quote)."""
+        return list(
+            WikipediaGameData.objects.filter(game=self.game)
+            .order_by("wikidata_id")
+            .values_list(
+                "wikidata_id",
+                "page_title",
+                "is_primary",
+                "hltb_id",
+                "steam_app_id",
+                "wikiquote_page_title",
+            )
+        )
+
+    def stored_alternate(self, **fields):
+        fields.setdefault("page_title", "Alpha Quest Remake")
+        return WikipediaGameData.objects.create(
+            game=self.game, wikidata_id="Q2", is_primary=False, **fields
+        )
+
+    def test_an_alternate_id_gets_a_record_beside_the_primary(self):
+        output, page_service = self.run_command(
+            "--save",
+            alternates={"Q2": ("Alpha Quest Remake", "15544", "620", "Alpha Quest")},
+        )
+
+        self.assertEqual(
+            self.records(),
+            [
+                ("Q1", "Alpha Quest", True, None, None, None),
+                ("Q2", "Alpha Quest Remake", False, "15544", "620", "Alpha Quest"),
+            ],
+        )
+        self.game.refresh_from_db()
+        self.assertEqual(self.game.primary_wikipedia_game_data.wikidata_id, "Q1")
+        # The primary id was the page lookup's: it is not read a second time
+        page_service._lookup_via_wikidata.assert_called_once_with("Q2")
+        self.assertIn(
+            "Refreshed 1 alternate Wikidata record(s) (1 with HLTB ID)", output
+        )
+
+    def test_an_alternate_with_no_wikipedia_page_still_keeps_its_ids(self):
+        """An entity with no English article can still hold the HLTB id."""
+        self.run_command("--save", alternates={"Q2": (None, "15544", None, None)})
+        self.assertEqual(
+            self.records(),
+            [
+                ("Q1", "Alpha Quest", True, None, None, None),
+                ("Q2", "", False, "15544", None, None),
+            ],
+        )
+
+    def test_an_alternate_without_an_hltb_id_is_not_counted_as_having_one(self):
+        output, _ = self.run_command(
+            "--save", alternates={"Q2": ("Alpha Quest Remake", None, "620", None)}
+        )
+        self.assertEqual(
+            self.records()[1], ("Q2", "Alpha Quest Remake", False, None, "620", None)
+        )
+        self.assertIn("Refreshed 1 alternate Wikidata record(s)\n", output)
+        self.assertNotIn("with HLTB ID", output)
+
+    def test_an_alternate_wikidata_does_not_answer_for_gets_no_record(self):
+        """A failed lookup is ``None``: nothing is stored, nothing claimed."""
+        output, page_service = self.run_command("--save", alternates={})
+        page_service._lookup_via_wikidata.assert_called_once_with("Q2")
+        self.assertEqual(
+            self.records(), [("Q1", "Alpha Quest", True, None, None, None)]
+        )
+        self.assertNotIn("alternate Wikidata record", output)
+
+    def test_blank_ids_are_not_looked_up(self):
+        """The import strips them; the admin's JSON field can hold anything."""
+        self.game.all_wikidata_ids = ["Q1", "", "   ", None, "Q2"]
+        self.game.save()
+        _, page_service = self.run_command(
+            "--save", alternates={"Q2": ("Alpha Quest Remake", None, None, None)}
+        )
+        page_service._lookup_via_wikidata.assert_called_once_with("Q2")
+        self.assertEqual([record[0] for record in self.records()], ["Q1", "Q2"])
+
+    def test_a_game_with_one_id_has_no_alternates(self):
+        for ids in (["Q1"], []):
+            with self.subTest(all_wikidata_ids=ids):
+                WikipediaGameData.objects.all().delete()
+                self.game.all_wikidata_ids = ids
+                self.game.save()
+                output, page_service = self.run_command("--save", "--force")
+                page_service._lookup_via_wikidata.assert_not_called()
+                self.assertEqual(
+                    self.records(), [("Q1", "Alpha Quest", True, None, None, None)]
+                )
+                self.assertNotIn("alternate Wikidata record", output)
+
+    def test_a_stored_alternate_takes_what_wikidata_now_says(self):
+        """Updated in place: a second run must not make a second record."""
+        stored = self.stored_alternate(page_title="Alpha Quest HD", hltb_id="6571")
+        output, _ = self.run_command(
+            "--save",
+            alternates={"Q2": ("Alpha Quest Remake", "15544", "620", "Alpha Quest")},
+        )
+
+        self.assertEqual(
+            self.records(),
+            [
+                ("Q1", "Alpha Quest", True, None, None, None),
+                ("Q2", "Alpha Quest Remake", False, "15544", "620", "Alpha Quest"),
+            ],
+        )
+        self.assertEqual(WikipediaGameData.objects.get(wikidata_id="Q2").pk, stored.pk)
+        self.assertIn(
+            "Refreshed 1 alternate Wikidata record(s) (1 with HLTB ID)", output
+        )
+
+    def test_a_change_that_is_not_the_hltb_id_claims_no_hltb_id(self):
+        self.stored_alternate(hltb_id="15544")
+        output, _ = self.run_command(
+            "--save",
+            alternates={"Q2": ("Alpha Quest Remake", "15544", "620", None)},
+        )
+        self.assertEqual(
+            self.records()[1],
+            ("Q2", "Alpha Quest Remake", False, "15544", "620", None),
+        )
+        self.assertIn("Refreshed 1 alternate Wikidata record(s)\n", output)
+        self.assertNotIn("with HLTB ID", output)
+
+    def test_a_stored_alternate_that_has_not_changed_is_not_saved(self):
+        stored = self.stored_alternate(
+            hltb_id="15544", steam_app_id="620", wikiquote_page_title="Alpha Quest"
+        )
+        output, _ = self.run_command(
+            "--save",
+            alternates={"Q2": ("Alpha Quest Remake", "15544", "620", "Alpha Quest")},
+        )
+        saved_at = stored.updated_at
+        stored.refresh_from_db()
+        self.assertEqual(stored.updated_at, saved_at)
+        self.assertNotIn("alternate Wikidata record", output)
+
+    def test_what_wikidata_no_longer_holds_is_left_as_stored(self):
+        """As for the primary: a lookup that finds less erases nothing."""
+        self.stored_alternate(
+            hltb_id="15544", steam_app_id="620", wikiquote_page_title="Alpha Quest"
+        )
+        output, _ = self.run_command(
+            "--save", alternates={"Q2": (None, None, None, None)}
+        )
+        self.assertEqual(
+            self.records()[1],
+            ("Q2", "Alpha Quest Remake", False, "15544", "620", "Alpha Quest"),
+        )
+        self.assertNotIn("alternate Wikidata record", output)
+
+    def test_alternates_are_read_when_the_primary_has_no_page(self):
+        """The game's own entity may have no article while another has the
+        HLTB id, and that is the id the playtime fetch needs."""
+        output, _ = self.run_command(
+            "--save",
+            pages={"Alpha Quest": page_missing("Alpha Quest")},
+            alternates={"Q2": ("Alpha Quest Remake", "15544", None, None)},
+        )
+
+        self.assertEqual(
+            self.records(), [("Q2", "Alpha Quest Remake", False, "15544", None, None)]
+        )
+        # Still without a primary, so the next run tries its page again
+        self.game.refresh_from_db()
+        self.assertIsNone(self.game.primary_wikipedia_game_data)
+        self.assertIn("✗ Alpha Quest: Page not found on Wikipedia", output)
+        self.assertIn(
+            "Refreshed 1 alternate Wikidata record(s) (1 with HLTB ID)", output
+        )
+
+    def test_a_missing_page_and_an_unchanged_alternate_claim_nothing(self):
+        self.stored_alternate(hltb_id="15544")
+        output, _ = self.run_command(
+            "--save",
+            pages={"Alpha Quest": page_missing("Alpha Quest")},
+            alternates={"Q2": ("Alpha Quest Remake", "15544", None, None)},
+        )
+        self.assertNotIn("alternate Wikidata record", output)
+
+    def test_skip_alternate_wikidata_reads_none(self):
+        for pages in ({}, {"Alpha Quest": page_missing("Alpha Quest")}):
+            with self.subTest(found=not pages):
+                _, page_service = self.run_command(
+                    "--save",
+                    "--force",
+                    "--skip-alternate-wikidata",
+                    pages=pages,
+                    alternates={"Q2": ("Alpha Quest Remake", "15544", None, None)},
+                )
+                page_service._lookup_via_wikidata.assert_not_called()
+                self.assertFalse(
+                    WikipediaGameData.objects.filter(wikidata_id="Q2").exists()
+                )
+
+    def test_without_save_no_alternate_is_read(self):
+        for pages in ({}, {"Alpha Quest": page_missing("Alpha Quest")}):
+            with self.subTest(found=not pages):
+                _, page_service = self.run_command(
+                    pages=pages,
+                    alternates={"Q2": ("Alpha Quest Remake", "15544", None, None)},
+                )
+                page_service._lookup_via_wikidata.assert_not_called()
+                self.assertFalse(WikipediaGameData.objects.exists())
+
+    def test_two_alternates_on_one_page_each_keep_a_record(self):
+        """Records are kept by Wikidata id, so a shared title merges nothing."""
+        self.game.all_wikidata_ids = ["Q1", "Q2", "Q3"]
+        self.game.save()
+        output, _ = self.run_command(
+            "--save",
+            alternates={
+                "Q2": ("Alpha Quest Collection", "15544", None, None),
+                "Q3": ("Alpha Quest Collection", None, "620", None),
+            },
+        )
+        self.assertEqual(
+            self.records(),
+            [
+                ("Q1", "Alpha Quest", True, None, None, None),
+                ("Q2", "Alpha Quest Collection", False, "15544", None, None),
+                ("Q3", "Alpha Quest Collection", False, None, "620", None),
+            ],
+        )
+        self.assertIn(
+            "Refreshed 2 alternate Wikidata record(s) (1 with HLTB ID)", output
+        )
+
+    def test_an_alternate_on_the_primarys_page_does_not_take_its_place(self):
+        """The game's own entity has no article, and the search finds the
+        alternate's. A second run then meets two records of one page:
+        ``attach_page`` keeps the older, the primary, and the alternate's
+        is made again with its ids."""
+        alternates = {"Q2": ("Alpha Quest", "15544", None, None)}
+        self.run_command("--save", alternates=alternates)
+        primary = WikipediaGameData.objects.get(wikidata_id="Q1")
+
+        self.run_command("--save", "--force", alternates=alternates)
+
+        self.assertEqual(
+            self.records(),
+            [
+                ("Q1", "Alpha Quest", True, None, None, None),
+                ("Q2", "Alpha Quest", False, "15544", None, None),
+            ],
+        )
+        self.game.refresh_from_db()
+        self.assertEqual(self.game.primary_wikipedia_game_data_id, primary.pk)
+
+    def test_another_games_record_of_the_id_is_left_with_that_game(self):
+        """Two games can list one entity (a compilation's). Each has its own
+        record of it: the second game's must not be taken from the first."""
+        other = Game.objects.create(name="Beta Racer", rank=2, wikidata_id="Q2")
+        theirs = WikipediaGameData.objects.create(
+            game=other, wikidata_id="Q2", page_title="Old title", is_primary=True
+        )
+        other.primary_wikipedia_game_data = theirs
+        other.save()
+
+        self.run_command(
+            "--save", alternates={"Q2": ("Alpha Quest Remake", "15544", None, None)}
+        )
+
+        self.assertEqual(
+            self.records()[1], ("Q2", "Alpha Quest Remake", False, "15544", None, None)
+        )
+        theirs.refresh_from_db()
+        self.assertEqual(
+            (theirs.game, theirs.page_title, theirs.is_primary, theirs.hltb_id),
+            (other, "Old title", True, None),
+        )
 
 
 class WikiPageLookupServiceTests(TestCase):

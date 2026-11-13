@@ -3,14 +3,6 @@ source = games,books,core,music
 omit =
     */migrations/*
     */tests/*
-    # Each by name, so that a new command or handler is measured. These have
-    # tests and are short of the gate (ROADMAP has the numbers); the books
-    # command has none, and books is parked.
-    games/management/commands/fetch_hltb_data.py
-    games/management/commands/fetch_wikipedia_metadata.py
-    games/management/commands/get_wiki_genres.py
-    games/management/commands/refresh_all_metadata.py
-    books/management/commands/fetch_book_metadata.py
 
 [report]
 exclude_lines =
