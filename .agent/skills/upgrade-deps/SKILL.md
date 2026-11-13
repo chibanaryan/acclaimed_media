@@ -6,7 +6,7 @@ description: Monthly dependency, security and performance upkeep. Use when asked
 # Dependency upkeep
 
 Dependabot opens weekly PRs and CI checks them (see "Keeping dependencies
-current" in AGENTS.md). This is the monthly pass for what that leaves over:
+current" in `docs/agents/dependencies.md`). This is the monthly pass for what that leaves over:
 reviewing those PRs, upgrades a grouped PR cannot make, and the checks no
 bot runs.
 
@@ -116,7 +116,8 @@ Nothing below runs in CI except the query budgets.
   `curl -s https://games.acclaimedmedia.org/ | wc -c`. Growth spends from
   the dyno's 512 MB (see "Production memory budget" in AGENTS.md).
 - **Memory:** `heroku ps -a acclaimedgames`, and `memory.rss.bytes.max` /
-  `memory.swap.bytes.max` from the metrics API URL in AGENTS.md over the
+  `memory.swap.bytes.max` from the metrics API URL in
+  `docs/agents/memory-budget.md` over the
   last week. Any swap, or a max near 512 MB, needs a look before anything
   ships that adds weight.
 - **Slow transactions:** Sentry's Performance view (traces sample at 10%),
@@ -147,7 +148,7 @@ Keep the local venv on production's Python patch release:
 compare `venv/bin/python --version` with `heroku run -a acclaimedgames -- python --version` (a one-off dyno),
 and if it is behind, `brew upgrade python@$(cat .python-version)` - the venv follows
 Homebrew's symlink, so a patch needs no rebuild. A new minor version does:
-see the rebuild command under "Dependencies" in AGENTS.md.
+see the rebuild command in `docs/agents/dependencies.md`.
 
 ## 7. Ship
 

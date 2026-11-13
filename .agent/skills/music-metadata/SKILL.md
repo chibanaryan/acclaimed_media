@@ -226,7 +226,8 @@ python manage.py import_music_data --no-metadata   # the import alone
 ```
 
 An import from the staff page starts the same fetch on a background thread
-once it commits; see "Imports start their metadata fetch" in `AGENTS.md`.
+once it commits; see "Imports start their metadata fetch" in
+`docs/agents/music-import.md`.
 
 ## Result Format
 

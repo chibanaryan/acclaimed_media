@@ -72,7 +72,7 @@ python3 manage.py get_igdb --game "The Legend of Zelda" --force
 - Genre classifications
 
 An import runs this fetch itself, for the games missing IGDB data (see
-"Imports start their metadata fetch" in AGENTS.md), so a manual run is for a
+"Imports start their metadata fetch" in `docs/agents/music-import.md`), so a manual run is for a
 forced refresh or a fetch that failed.
 
 ## Programmatic Usage

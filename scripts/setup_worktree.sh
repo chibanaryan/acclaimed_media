@@ -218,7 +218,7 @@ want_py="$(cut -d. -f1,2 .python-version 2>/dev/null || true)"
 have_py="$(venv/bin/python -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || true)"
 if [ -n "$want_py" ] && [ -n "$have_py" ] && [ "$want_py" != "$have_py" ]; then
     echo "  WARNING: venv is Python $have_py but .python-version says $want_py;" \
-        "rebuild it (AGENTS.md \"Dependencies\")"
+        "rebuild it (docs/agents/dependencies.md)"
 fi
 
 copy_untracked .env

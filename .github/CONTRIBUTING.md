@@ -35,8 +35,10 @@ For an agreed change:
 - Change Python dependencies in the `.in` files and recompile the locks with
   `pip-compile`. Never edit `requirements*.txt` by hand.
 - A row template and its JavaScript renderer have to change together. See
-  "Home Page Client/Server Rendering Consistency" in [AGENTS.md](../AGENTS.md),
-  which also covers the rest of the architecture.
+  "Home Page Client/Server Rendering Consistency" in
+  [docs/agents/application.md](../docs/agents/application.md).
+  [AGENTS.md](../AGENTS.md) has the rules for the rest of the architecture
+  and points to the file behind each.
 
 By contributing, you agree that your contribution is licensed under the
 project's [MIT License](../LICENSE).

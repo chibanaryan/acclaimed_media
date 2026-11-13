@@ -273,7 +273,7 @@ and as staff, on a copy of production's data: no 5xx).
       2 KB of markup a button and an Alpine component each, some 400 KB
       of a signed-in rankings page by a rough count. Games moved to one
       shared menu a page for this reason ("Rankings page weight" in
-      AGENTS.md). It would rewrite the shared button, its clone twin, the
+      `docs/agents/memory-budget.md`). It would rewrite the shared button, its clone twin, the
       renderer's slots and quick-mark; measure first.
     - **Games' tracking button is still its own**, where music's is the
       shared partial. The saved filters moved this pass and the status

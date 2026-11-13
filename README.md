@@ -11,7 +11,9 @@ aggregating critics' lists. One Django app serves three hosts:
 - **Tailwind CSS v4** - Utility-first CSS framework
 - **DaisyUI v5** - Component library for Tailwind
 
-For detailed documentation, see [AGENTS.md](AGENTS.md).
+For detailed documentation, see [AGENTS.md](AGENTS.md): the rules, with a
+pointer under each heading to the file in [docs/agents/](docs/agents/) that
+holds the reasoning and history behind them.
 
 ## Setup Local Development Environment
 

@@ -1,6 +1,6 @@
 # Weekly update PRs, checked by .github/workflows/ci.yml. Security updates
 # are separate: GitHub opens those as soon as an advisory lands, ungrouped.
-# See "Keeping dependencies current" in AGENTS.md.
+# See "Keeping dependencies current" in docs/agents/dependencies.md.
 version: 2
 updates:
   # Dependabot edits requirements*.in and re-runs pip-compile on both locks.

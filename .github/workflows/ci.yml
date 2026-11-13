@@ -1,7 +1,7 @@
 # Every push to main and every PR (Dependabot's included). The Monday run
 # only re-audits the locks against advisories published since the last push;
 # every other job skips it.
-# See "Keeping dependencies current" in AGENTS.md.
+# See "Keeping dependencies current" in docs/agents/dependencies.md.
 name: CI
 
 on:
