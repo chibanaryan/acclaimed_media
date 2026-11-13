@@ -316,15 +316,9 @@ class IGDBProgressView(StaffOnlyMixin, StreamFromThisSiteMixin, View):
 
     def get(self, request, *args, **kwargs):
         """Stream IGDB fetch progress as SSE events."""
-        update_relationships = (
-            request.GET.get("update_relationships", "false").lower() == "true"
-        )
         force_refresh = request.GET.get("force", "false").lower() == "true"
         return StreamingHttpResponse(
-            import_handler.import_igdb_with_progress(
-                update_relationships=update_relationships,
-                force_refresh=force_refresh,
-            ),
+            import_handler.import_igdb_with_progress(force_refresh=force_refresh),
             content_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",

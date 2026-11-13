@@ -1499,38 +1499,6 @@ class Game(RemembersLoaded, MediaItemBase):
         series_list = [Series.from_igdb(s) for s in game_data.get("series", [])]
         self.series.set(series_list)
 
-    def update_igdb_relationships(self, api_client=None) -> bool:
-        """
-        Update Company/Studio relationships from IGDB API without
-        modifying IGDBGameData records.
-
-        Used when games are re-imported after deletion - the IGDBGameData
-        is preserved as orphaned records, but M2M relationships need to be
-        recreated.
-
-        Args:
-            api_client: Optional API client for dependency injection
-
-        Returns:
-            True if successful, False otherwise
-        """
-        if not self.igdb_id:
-            return False
-
-        api_client = api_client or igdb.get_api()
-        if not api_client:
-            logger.warning("IGDB API unavailable; skipping update for %s", self)
-            return False
-
-        # Fetch game data from API
-        game_data = api_client.get_game_info_by_id(self.igdb_id, cache_results=True)
-        if not game_data:
-            return False
-
-        # Update relationships from fetched data
-        self._update_relationships_from_data(game_data)
-        return True
-
     # Delegation properties for IGDB image URLs (backward compatibility)
     @cached_property
     def thumbnail(self) -> Optional[str]:

@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 IGDB_FAILED = "IGDB import failed; see the server logs."
 WIKIPEDIA_FAILED = "Wikipedia lookup failed; see the server logs."
 IMPORT_FAILED = "Import failed; see the server logs."
+GAME_FAILED = "Unexpected error; see the server logs."
 IMPORT_CANCELLED = "Import cancelled: the page that started it has gone."
 BATCH_ROLLED_BACK = (
     "Nothing was imported: a batch is all or nothing, so any file imported "
@@ -123,20 +124,16 @@ def _holding_the_fetch_lock(events):
             taken.end(LogStream(), owed=RUN_ON_A_THREAD)
 
 
-def import_igdb_with_progress(
-    update_relationships: bool = False, force_refresh: bool = False
-):
+def import_igdb_with_progress(force_refresh: bool = False):
     """Fetch IGDB data with progress events, never beside another fetch."""
     return _holding_the_fetch_lock(
-        lambda start_thread: _igdb_progress(
-            update_relationships, force_refresh, start_thread
-        )
+        lambda start_thread: _igdb_progress(force_refresh, start_thread)
     )
 
 
-def _igdb_progress(update_relationships, force_refresh, start_thread):
+def _igdb_progress(force_refresh, start_thread):
     """
-    Fetch IGDB data for all games with progress updates.
+    Fetch IGDB data for games with progress updates.
     Yields JSON progress events for streaming to SSE client in real-time.
 
     Uses optimized IGDBImportService with concurrent + batched processing:
@@ -145,153 +142,50 @@ def _igdb_progress(update_relationships, force_refresh, start_thread):
     - Performance: ~100 games/sec (25-500x faster than sequential)
 
     Args:
-        update_relationships: If True, update Developer/Genre relationships
-            for games that already have IGDB metadata, without modifying the
-            metadata records. Used after re-importing games.
         force_refresh: If True, re-fetch every game instead of only the games
             that have no IGDB metadata yet. Avoids having to clear IGDB
             metadata to pick up changed cover art, developers, or genres.
+
+    Until 2026-11-12 it had a second mode, ``update_relationships``, which
+    re-read developers and series for games that kept their IGDB record
+    across an import. Its button went long before; an import has carried
+    those across itself since 2026-11-03, and only a hand-typed
+    ``?update_relationships=true`` reached it.
     """
-    from games import igdb
     from games.services.igdb_importer import IGDBImportService
 
     events = ProgressEvents()
     progress_callback = events.emit
 
     try:
-        if update_relationships:
-            # Update relationships for games with existing IGDB data
-            games = models.Game.objects.filter(
-                primary_igdb_game_data__isnull=False
-            ).order_by("rank")
+        # Standard IGDB data import
+        # Create service with optimizations enabled
+        service = IGDBImportService(
+            concurrency=8,  # Use 8 concurrent workers for speed
+            batch_size=None,  # Auto-detect from tier (50 free, 500 Pro)
+            use_pro_tier=None,  # Auto-detect from settings
+            progress_callback=progress_callback,
+        )
 
-            total_games = games.count()
-            if total_games == 0:
-                events.send("error", error="No games with IGDB data found")
-                events.finish()
-            else:
-                # Run relationship update in a thread
-                def run_update():
-                    try:
-                        api_client = igdb.get_api()
-                        if not api_client:
-                            events.send("error", error="IGDB API unavailable")
-                            return
-
-                        progress_callback("start", {"total": total_games})
-
-                        success_count = 0
-                        error_count = 0
-                        processed_count = 0
-
-                        # Use batch API calls like regular IGDB import for speed
-                        # Process in batches based on tier (50 free, 500 Pro)
-                        batch_size = api_client.max_batch_size
-                        game_list = list(games)
-
-                        for batch_start in range(0, len(game_list), batch_size):
-                            batch_games = game_list[
-                                batch_start : batch_start + batch_size
-                            ]
-
-                            # Collect IGDB IDs for this batch
-                            igdb_ids = [g.igdb_id for g in batch_games if g.igdb_id]
-                            if not igdb_ids:
-                                continue
-
-                            # Fetch all games in batch (single API call)
-                            games_data = api_client.get_games_info_by_ids(
-                                igdb_ids, cache_results=True
-                            )
-
-                            # Update relationships for each game in batch
-                            for game in batch_games:
-                                processed_count += 1
-
-                                if not game.igdb_id or game.igdb_id not in games_data:
-                                    error_count += 1
-                                    progress_callback(
-                                        "progress",
-                                        {
-                                            "current": processed_count,
-                                            "total": total_games,
-                                            "game": game.name,
-                                            "successful": success_count,
-                                            "failed": error_count,
-                                        },
-                                    )
-                                    continue
-
-                                try:
-                                    # Update relationships using pre-fetched data
-                                    game_data = games_data[game.igdb_id]
-                                    game._update_relationships_from_data(game_data)
-                                    success_count += 1
-                                except Exception as game_error:
-                                    error_count += 1
-                                    logger.error(
-                                        "Error updating relationships for '%s': %s",
-                                        game.name,
-                                        game_error,
-                                        exc_info=True,
-                                    )
-
-                                # Send progress update
-                                progress_callback(
-                                    "progress",
-                                    {
-                                        "current": processed_count,
-                                        "total": total_games,
-                                        "game": game.name,
-                                        "successful": success_count,
-                                        "failed": error_count,
-                                    },
-                                )
-
-                        progress_callback(
-                            "complete",
-                            {
-                                "total": total_games,
-                                "successful": success_count,
-                                "failed": error_count,
-                            },
-                        )
-                    except Exception:
-                        logger.exception("IGDB relationship update failed")
-                        events.send("error", error=IGDB_FAILED)
-                    finally:
-                        events.finish()
-
-                start_thread(run_update)
+        # Get games: every game on a force refresh, otherwise only the
+        # games that are still missing IGDB data
+        if force_refresh:
+            games = models.Game.objects.all().order_by("rank")
         else:
-            # Standard IGDB data import
-            # Create service with optimizations enabled
-            service = IGDBImportService(
-                concurrency=8,  # Use 8 concurrent workers for speed
-                batch_size=None,  # Auto-detect from tier (50 free, 500 Pro)
-                use_pro_tier=None,  # Auto-detect from settings
-                progress_callback=progress_callback,
-            )
+            games = models.Game.objects.needing_igdb().order_by("rank")
 
-            # Get games: every game on a force refresh, otherwise only the
-            # games that are still missing IGDB data
-            if force_refresh:
-                games = models.Game.objects.all().order_by("rank")
-            else:
-                games = models.Game.objects.needing_igdb().order_by("rank")
+        # Run import in a thread to avoid blocking the generator
+        def run_import():
+            try:
+                service.import_games(games)
+            except Exception:
+                logger.exception("IGDB import failed")
+                events.send("error", error=IGDB_FAILED)
+            finally:
+                # Signal that we're done
+                events.finish()
 
-            # Run import in a thread to avoid blocking the generator
-            def run_import():
-                try:
-                    service.import_games(games)
-                except Exception:
-                    logger.exception("IGDB import failed")
-                    events.send("error", error=IGDB_FAILED)
-                finally:
-                    # Signal that we're done
-                    events.finish()
-
-            start_thread(run_import)
+        start_thread(run_import)
 
         # IGDB answers a batch at a time, so two minutes with nothing
         # reported is a stuck fetch
@@ -483,7 +377,7 @@ def _wikipedia_progress(force_refresh, start_thread):
                                 "current": idx,
                                 "total": total,
                                 "game_name": game_name,
-                                "error": f"Unexpected error: {str(game_error)}",
+                                "error": GAME_FAILED,
                                 "successful": successful_count,
                                 "failed": failed_count,
                             },
