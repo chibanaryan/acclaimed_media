@@ -12,8 +12,8 @@
 - **Two things were fetched and shown nowhere** (ROADMAP 6): IGDB's first
   video and the Wikiquote title. Neither is asked for or stored. The
   models forget them in `games.0126`, which changes no table, so the
-  release before it and a rollback to it keep working; the columns go
-  after the deploy
+  release before it and a rollback to it keep working. That release is
+  v925, and `games.0127` drops the columns with the one after it
 - **`sync_from_prod` skips a field production has and this checkout has
   dropped**, where it stopped at the first such row after minutes of
   download

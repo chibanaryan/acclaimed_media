@@ -72,17 +72,6 @@ planned".
      MusicBrainz pass is an error line and the pass goes on. Many of them
      are a source down, not many bad albums.
 
-## After the next deploy
-
-4. **Drop two columns.** IGDB's first video and the Wikiquote title were
-   fetched and shown nowhere; the code and the models stopped naming them
-   on 2026-11-13 (`games.0126`, in Django's state only, so that the release
-   before it and a rollback to it keep working). Once that release is
-   live, a migration drops `games_igdbgamedata.youtube_video_id` and
-   `games_wikipediagamedata.wikiquote_page_title` (`RunSQL`: the state no
-   longer has them). It checks that each column is there first: SQLite
-   drops them by itself the next time a migration remakes either table.
-
 ## Production, as read on 2026-11-13
 
 The numbers the next reading is compared with. Sentry samples one request
@@ -113,8 +102,12 @@ in ten; its counts are scaled.
   own email, so the old sign-up page left no squatted address; and every
   allauth address row is for its account's own email
   (`repair_email_rows` found nothing to repair).
-- **Migrations.** `games.0124`, `music.0015` and `games.0125` are applied.
-  `games.0126` goes with the next deploy and changes no table (entry 4).
+- **Migrations.** All are applied through `games.0126`, which went out
+  with v925 on 2026-11-13 and changed no table. `games.0127` goes with
+  the next deploy and drops the two columns `0126` stopped naming
+  (IGDB's first video, the Wikiquote title). Once it has run, a rollback
+  to v924 or earlier fails on every game page; v925 and later do not read
+  them. Backup `b018` was taken before v925.
 - **The shared venv** matches the locks (Django 6.1.3, allauth 65.21.1,
   soupsieve 4.1; Dependabot #31 merged 2026-11-13).
 - **The stylesheet** is built by Tailwind 4.3.5 (Dependabot #30's bump,
