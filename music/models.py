@@ -222,16 +222,6 @@ class MusicGenre(models.Model):
     def is_leaf(self) -> bool:
         return not self.children.exists()
 
-    def get_descendants(self, include_self: bool = False) -> List["MusicGenre"]:
-        """Return every genre below this one, depth first."""
-        descendants = []
-        if include_self:
-            descendants.append(self)
-        for child in self.children.all():
-            descendants.append(child)
-            descendants.extend(child.get_descendants(include_self=False))
-        return descendants
-
     def get_descendant_ids(self, include_self: bool = False) -> List[int]:
         """Return the ids of every genre below this one (for filtering)."""
         ids = []

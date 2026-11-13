@@ -96,29 +96,6 @@ class BookGenreModelTests(TestCase):
         self.assertEqual(scifi.path, "Fiction > Science Fiction")
         self.assertEqual(space.path, "Fiction > Science Fiction > Space Opera")
 
-    def test_get_descendants(self):
-        """Test get_descendants returns all child genres."""
-        root = models.BookGenre.objects.create(name="Root")
-        child1 = models.BookGenre.objects.create(name="Child1", parent=root)
-        child2 = models.BookGenre.objects.create(name="Child2", parent=root)
-        grandchild = models.BookGenre.objects.create(name="Grandchild", parent=child1)
-
-        descendants = root.get_descendants()
-        self.assertEqual(len(descendants), 3)
-        self.assertIn(child1, descendants)
-        self.assertIn(child2, descendants)
-        self.assertIn(grandchild, descendants)
-
-    def test_get_descendants_include_self(self):
-        """Test get_descendants with include_self=True."""
-        root = models.BookGenre.objects.create(name="Root")
-        child = models.BookGenre.objects.create(name="Child", parent=root)
-
-        descendants = root.get_descendants(include_self=True)
-        self.assertEqual(len(descendants), 2)
-        self.assertIn(root, descendants)
-        self.assertIn(child, descendants)
-
     def test_get_descendant_ids(self):
         """Test get_descendant_ids returns correct IDs."""
         root = models.BookGenre.objects.create(name="Root")

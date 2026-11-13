@@ -514,26 +514,6 @@ class WikipediaGenreHierarchyTest(TestCase):
         self.assertTrue(self.fighting.is_leaf)
         self.assertTrue(self.fps.is_leaf)
 
-    def test_get_descendants_include_self_false(self):
-        """Test get_descendants without including self."""
-        descendants = list(self.action_root.get_descendants(include_self=False))
-        self.assertEqual(len(descendants), 3)  # shooter, fighting, fps
-        self.assertNotIn(self.action_root, descendants)
-        self.assertIn(self.shooter, descendants)
-        self.assertIn(self.fighting, descendants)
-        self.assertIn(self.fps, descendants)
-
-    def test_get_descendants_include_self_true(self):
-        """Test get_descendants including self."""
-        descendants = list(self.action_root.get_descendants(include_self=True))
-        self.assertEqual(len(descendants), 4)
-        self.assertIn(self.action_root, descendants)
-
-    def test_get_descendants_leaf_node(self):
-        """Test get_descendants on a leaf node."""
-        descendants = list(self.fps.get_descendants(include_self=False))
-        self.assertEqual(len(descendants), 0)
-
     def test_get_descendant_ids_include_self(self):
         """Test get_descendant_ids with include_self=True."""
         ids = self.action_root.get_descendant_ids(include_self=True)
@@ -554,25 +534,6 @@ class WikipediaGenreHierarchyTest(TestCase):
         first = self.action_root.get_descendant_ids(include_self=False)
         second = self.action_root.get_descendant_ids(include_self=False)
         self.assertEqual(second, first)
-
-    def test_get_ancestors_include_self_false(self):
-        """Test get_ancestors without including self."""
-        ancestors = list(self.fps.get_ancestors(include_self=False))
-        self.assertEqual(len(ancestors), 2)  # shooter, action_root
-        self.assertIn(self.action_root, ancestors)
-        self.assertIn(self.shooter, ancestors)
-        self.assertNotIn(self.fps, ancestors)
-
-    def test_get_ancestors_include_self_true(self):
-        """Test get_ancestors including self."""
-        ancestors = list(self.fps.get_ancestors(include_self=True))
-        self.assertEqual(len(ancestors), 3)
-        self.assertIn(self.fps, ancestors)
-
-    def test_get_ancestors_root_node(self):
-        """Test get_ancestors on root node."""
-        ancestors = list(self.action_root.get_ancestors(include_self=False))
-        self.assertEqual(len(ancestors), 0)
 
 
 class HierarchicalGenreFilterTest(TestCase):

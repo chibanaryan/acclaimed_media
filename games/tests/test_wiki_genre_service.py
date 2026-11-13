@@ -1050,18 +1050,6 @@ class GenreResultTests(SimpleTestCase):
         )
         self.assertEqual(result.all_genres_str, "")
 
-    def test_genre_result_backwards_compatibility(self):
-        """Test backwards compatibility properties."""
-        result = GenreResult(
-            game_name="Test Game",
-            source=GenreSource.WIKIPEDIA,
-            primary_genre="Action",
-        )
-        # genre property should alias primary_genre
-        self.assertEqual(result.genre, "Action")
-        # wikidata_id should return None (deprecated)
-        self.assertIsNone(result.wikidata_id)
-
     def test_genre_result_with_error(self):
         """Test GenreResult with error message."""
         result = GenreResult(

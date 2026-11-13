@@ -298,14 +298,6 @@
                 });
             },
 
-            findGenreParent: function (genreId) {
-                var genre = genreById(genreId);
-                if (!genre || !genre.parent_id) {
-                    return null;
-                }
-                return genreById(genre.parent_id);
-            },
-
             toggleGenre: function (genreId) {
                 var id = String(genreId);
                 var genre = genreById(id);
@@ -365,10 +357,6 @@
                     return filters.genres.includes(String(g.id));
                 });
                 this.$dispatch("filter-changed", { type: "genres", items: selectedItems });
-            },
-
-            getSelectedCount: function () {
-                return filters.genres.length;
             },
 
             getCategoryIcon: function (name) {
@@ -641,13 +629,6 @@
                         }),
                     };
                 });
-            },
-
-            isYearAvailable: function (year) {
-                var yearData = this.yearCounts.find(function (yc) {
-                    return yc.year === year;
-                });
-                return yearData && yearData.count > 0;
             },
 
             getOpacity: function (count) {
@@ -1057,16 +1038,6 @@
 
             isDecadeSelected: function (decade) {
                 return Number(filters.start) === decade.start && Number(filters.end) === decade.end;
-            },
-
-            toggleDecade: function (decade) {
-                if (this.isDecadeSelected(decade)) {
-                    filters.start = minYear;
-                    filters.end = maxYear;
-                } else {
-                    filters.start = decade.start;
-                    filters.end = decade.end;
-                }
             },
 
             selectDecade: function (decade) {

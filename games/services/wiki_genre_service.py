@@ -48,17 +48,6 @@ class GenreResult:
         """Return all genres as comma-separated string."""
         return ", ".join(self.all_genres) if self.all_genres else ""
 
-    # Backwards compatibility
-    @property
-    def genre(self) -> Optional[str]:
-        """Alias for primary_genre (backwards compatibility)."""
-        return self.primary_genre
-
-    @property
-    def wikidata_id(self) -> Optional[str]:
-        """Backwards compatibility - no longer used."""
-        return None
-
 
 class WikiGenreService:
     """

@@ -183,18 +183,6 @@ class BookGenre(models.Model):
 
         super().save(*args, **kwargs)
 
-    def get_descendants(self, include_self=False):
-        """Get all descendant genres recursively."""
-        descendants = []
-        if include_self:
-            descendants.append(self)
-
-        for child in self.children.all():
-            descendants.append(child)
-            descendants.extend(child.get_descendants(include_self=False))
-
-        return descendants
-
     def get_descendant_ids(self, include_self=False):
         """Get IDs of all descendant genres (optimized for filtering)."""
         ids = []

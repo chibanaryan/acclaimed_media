@@ -455,26 +455,6 @@ class WikipediaGenre(models.Model):
 
         super().save(*args, **kwargs)
 
-    def get_descendants(self, include_self=False):
-        """
-        Get all descendant genres recursively.
-
-        Args:
-            include_self: If True, include this genre in results
-
-        Returns:
-            List of WikipediaGenre objects (descendants)
-        """
-        descendants = []
-        if include_self:
-            descendants.append(self)
-
-        for child in self.children.all():
-            descendants.append(child)
-            descendants.extend(child.get_descendants(include_self=False))
-
-        return descendants
-
     def get_descendant_ids(self, include_self=False):
         """
         Get IDs of all descendant genres (optimized for filtering).
@@ -494,28 +474,6 @@ class WikipediaGenre(models.Model):
         ids = [self.id] if include_self else []
         ids.extend(genre_descendant_map().get(self.id, ()))
         return ids
-
-    def get_ancestors(self, include_self=False):
-        """
-        Get all ancestor genres up to root.
-
-        Args:
-            include_self: If True, include this genre in results
-
-        Returns:
-            List of WikipediaGenre objects (ancestors, root first)
-        """
-        ancestors = []
-        current = self.parent
-
-        while current:
-            ancestors.insert(0, current)
-            current = current.parent
-
-        if include_self:
-            ancestors.append(self)
-
-        return ancestors
 
     @property
     def is_root(self):

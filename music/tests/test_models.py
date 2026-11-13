@@ -91,12 +91,10 @@ class MusicGenreTests(TestCase):
         self.assertFalse(punk.is_root)
         self.assertTrue(punk.is_leaf)
 
-    def test_get_descendants_and_ids(self):
+    def test_get_descendant_ids(self):
         rock = models.MusicGenre.objects.create(name="Rock")
         punk = models.MusicGenre.objects.create(name="Punk Rock", parent=rock)
         post = models.MusicGenre.objects.create(name="Post-Punk", parent=punk)
-        self.assertEqual(rock.get_descendants(), [punk, post])
-        self.assertEqual(rock.get_descendants(include_self=True), [rock, punk, post])
         self.assertEqual(rock.get_descendant_ids(), [punk.id, post.id])
         self.assertEqual(
             rock.get_descendant_ids(include_self=True), [rock.id, punk.id, post.id]

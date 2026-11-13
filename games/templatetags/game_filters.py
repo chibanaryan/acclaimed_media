@@ -40,7 +40,7 @@ def get_list_type_label(type_code):
 
 
 @register.simple_tag
-def game_rank_url(rank, game_id=None, start=None, end=None):
+def game_rank_url(game_id=None, start=None, end=None):
     """
     Generate URL for game rank with highlight for smooth scrolling.
 
@@ -49,7 +49,6 @@ def game_rank_url(rank, game_id=None, start=None, end=None):
     the highlighted one, then smooth scrolls to it.
 
     Args:
-        rank: The rank number (unused, kept for backward compatibility)
         game_id: Optional game ID for highlighting
         start: Optional start year for filtering
         end: Optional end year for filtering

@@ -632,10 +632,6 @@
                 }
             },
 
-            getSelectedCount: function () {
-                return filters.platforms.length;
-            },
-
             handleReset: function () {
                 this.expandedManufacturers = {};
                 this.expandedFormFactors = {};
@@ -928,15 +924,6 @@
                 var mode = filters.hltb_mode === "completionist" ? "completionist" : "main";
                 var counts = this.presetCounts[mode] || this.presetCounts;
                 return counts[preset] || 0;
-            },
-
-            getRangeText: function () {
-                var min = filters.hltb_min !== null && filters.hltb_min !== undefined ? filters.hltb_min : 0;
-                var max = filters.hltb_max !== null && filters.hltb_max !== undefined ? filters.hltb_max : 100;
-                if (max >= 100) {
-                    return min + "+ hours";
-                }
-                return min + "-" + max + " hours";
             },
         };
     }
