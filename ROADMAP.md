@@ -27,15 +27,25 @@ full text is in `git show 55f0be4e:ROADMAP.md`.
    (1230, 2.4 h; 1244, which is Bomberman II, 2.0 h). The last is a wrong
    match by name. Giving each its HLTB id on Wikidata (P2816) settles it
    for good, since an id is looked up before any name.
+2. **Tailwind 4.3.5 drops two of DaisyUI's rules** (Dependabot #30, left
+   open). Its build warns "Invalid empty selector" twice and leaves out
+   `.join > :where(:focus, :has(:focus)) { z-index: 2 }` and the hover
+   rule beside it, which put a focused or hovered button above the
+   neighbours it overlaps by a pixel: the status filter's buttons and the
+   playtime mode's. The bump brings lightningcss 1.33.0 for 1.32.0, and
+   4.3.5 was the newest release on 2026-11-13. The rest of the rebuilt
+   stylesheet reads as equivalent. Merge the release whose build has no
+   warning; or merge this one with the two rules written out in
+   `styles.css`, outside any `@scope`.
 
 ## For the owner
 
-2. **New brand artwork.** The favicons still read "Acclaimed Video Games"
+3. **New brand artwork.** The favicons still read "Acclaimed Video Games"
    (`games/static/games/brand/`), and a page without artwork of its own has
    no `og:image`. A new default goes in `base.html`'s `og_image` block, and
    the five templates overriding that block need a `{{ block.super }}`
    branch for items with no art.
-3. **Look once, when the occasion comes.**
+4. **Look once, when the occasion comes.**
    - A sign-up, end to end: the confirmation link logs in only the browser
      that signed up. Open it there (logged in) and in another browser
      (verified, with a Log In button).
@@ -48,7 +58,7 @@ full text is in `git show 55f0be4e:ROADMAP.md`.
 
 ## After Sunday 2026-11-15's jobs
 
-4. **Read both weekly jobs once.** It is the first Sunday since five of
+5. **Read both weekly jobs once.** It is the first Sunday since five of
    the passes shipped. All of it can be read from Sentry and a one-off
    dyno:
    - `refresh-all-metadata` checked in green. It now fails when a phase
@@ -69,7 +79,7 @@ full text is in `git show 55f0be4e:ROADMAP.md`.
 
 ## After the next deploy
 
-5. **Drop two columns.** IGDB's first video and the Wikiquote title were
+6. **Drop two columns.** IGDB's first video and the Wikiquote title were
    fetched and shown nowhere; the code and the models stopped naming them
    on 2026-11-13 (`games.0126`, in Django's state only, so that the release
    before it and a rollback to it keep working). Once that release is
@@ -109,9 +119,9 @@ in ten; its counts are scaled.
   allauth address row is for its account's own email
   (`repair_email_rows` found nothing to repair).
 - **Migrations.** `games.0124`, `music.0015` and `games.0125` are applied.
-  `games.0126` goes with the next deploy and changes no table (entry 5).
-- **The shared venv** matches the locks again (Django 6.1.3, allauth
-  65.21.0, soupsieve 4.1).
+  `games.0126` goes with the next deploy and changes no table (entry 6).
+- **The shared venv** matches the locks (Django 6.1.3, allauth 65.21.1,
+  soupsieve 4.1; Dependabot #31 merged 2026-11-13).
 
 ## Known, not planned
 
