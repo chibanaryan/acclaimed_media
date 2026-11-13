@@ -7,6 +7,7 @@ database and in what order, not about HTTP.
 from datetime import date, datetime
 from unittest import mock
 
+from django.db import DEFAULT_DB_ALIAS, connections
 from django.test import SimpleTestCase, TestCase
 
 from music import models
@@ -1652,3 +1653,240 @@ class OneAlbumsErrorTests(ServiceTestCase):
                 )
                 artist.refresh_from_db()
                 self.assertEqual(artist.musicbrainz_id, good)
+
+
+class RequestsRunOutsideTheSavepointTests(ServiceTestCase):
+    """Each album's requests are made before its savepoint opens.
+
+    Made inside it until 2026-11-12, a cover pass that walked a release
+    group's releases at MusicBrainz's 1 req/s held its connection in a
+    transaction, and the rows it had written locked, for tens of seconds.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.album.musicbrainz_release_group_id = RG_MBID
+        self.album.discogs_master_id = 24047
+        self.album.save()
+        # This thread's connection, by name: two sizes of a cover download
+        # on worker threads, where `connection` is another one
+        self.database = connections[DEFAULT_DB_ALIAS]
+        # The test's own transaction; an album's savepoint would add one
+        self.depth = len(self.database.savepoint_ids)
+        self.requests = []
+
+    def outside(self, name, answer):
+        """A client method that fails the test if a savepoint is open."""
+
+        def request(*args, **kwargs):
+            self.requests.append(name)
+            self.assertEqual(
+                len(self.database.savepoint_ids),
+                self.depth,
+                f"{name} was asked for inside the album's savepoint",
+            )
+            return answer
+
+        return request
+
+    def stub(self, **methods):
+        client = mock.MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        for name, answer in methods.items():
+            getattr(client, name).side_effect = self.outside(name, answer)
+        return client
+
+    def test_the_musicbrainz_pass(self):
+        group = ReleaseGroup(
+            mbid=RG_MBID,
+            title="Abbey Road",
+            primary_type="Album",
+            secondary_types=[],
+            first_release_date="1969-09-26",
+            rating=None,
+            rating_votes=0,
+            genres=[],
+        )
+        client = self.stub(fetch_release_group=group)
+        with mock.patch(
+            "music.services.metadata_service.MusicBrainzClient", return_value=client
+        ):
+            result = self.service.run_musicbrainz([self.album])
+        self.assertEqual((result.processed, result.errors), (1, []))
+        self.assertEqual(self.requests, ["fetch_release_group"])
+
+    def test_the_discogs_pass_and_its_musicbrainz_fallback(self):
+        """A dead master costs a 404 and a MusicBrainz request, both outside."""
+        master = DiscogsMaster(
+            master_id=777, title="Abbey Road", year=1969, genres=["Rock"], styles=[]
+        )
+        client = mock.MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        client.last_status = 404
+        answers = {24047: None, 777: master}
+
+        def fetch_master(master_id):
+            return self.outside("fetch_master", answers[master_id])()
+
+        client.fetch_master.side_effect = fetch_master
+        musicbrainz = self.stub(fetch_discogs_master_id=777)
+        with (
+            mock.patch(
+                "music.services.metadata_service.DiscogsClient", return_value=client
+            ),
+            mock.patch(
+                "music.services.metadata_service.MusicBrainzClient",
+                return_value=musicbrainz,
+            ),
+        ):
+            result = self.service.run_discogs([self.album])
+        self.assertEqual((result.processed, result.errors), (1, []))
+        self.assertEqual(
+            self.requests, ["fetch_master", "fetch_discogs_master_id", "fetch_master"]
+        )
+        self.album.refresh_from_db()
+        self.assertEqual(self.album.discogs_master_id, 777)
+
+    def test_the_cover_pass_through_a_groups_releases(self):
+        """The slow path: the group's own art fails, so its releases are
+        walked, one MusicBrainz and one archive request each."""
+        art = CoverArt(release_mbid=RELEASE_MBID, image_id="123")
+        client = self.stub(
+            fetch_front_cover=None,
+            fetch_release_front_cover=art,
+            get_bytes=(b"img", "image/jpeg"),
+        )
+        musicbrainz = self.stub(browse_release_mbids=[RELEASE_MBID])
+        with (
+            mock.patch(
+                "music.services.metadata_service.CoverArtArchiveClient",
+                return_value=client,
+            ),
+            mock.patch(
+                "music.services.metadata_service.MusicBrainzClient",
+                return_value=musicbrainz,
+            ),
+        ):
+            result = self.service.run_covers([self.album])
+        self.assertEqual((result.processed, result.errors), (1, []))
+        self.assertEqual(models.AlbumCover.objects.count(), 2)
+        self.assertEqual(
+            self.requests,
+            [
+                "fetch_front_cover",
+                "browse_release_mbids",
+                "fetch_release_front_cover",
+                "get_bytes",
+                "get_bytes",
+            ],
+        )
+
+    def test_the_cover_pass_downloading_a_cover_it_already_knows(self):
+        """The ids are stored and the bytes are not: no listing request,
+        and both sizes fetched before the savepoint."""
+        models.MusicBrainzAlbumData.objects.create(
+            album=self.album,
+            release_group_mbid=RG_MBID,
+            cover_art_release_mbid=RELEASE_MBID,
+            cover_art_image_id="123",
+            cover_art_stored=False,
+        )
+        client = self.stub(get_bytes=(b"img", "image/jpeg"))
+        with mock.patch(
+            "music.services.metadata_service.CoverArtArchiveClient",
+            return_value=client,
+        ):
+            result = self.service.run_covers([self.album])
+        self.assertEqual((result.processed, result.errors), (1, []))
+        self.assertEqual(models.AlbumCover.objects.count(), 2)
+        self.assertEqual(self.requests, ["get_bytes", "get_bytes"])
+        client.fetch_front_cover.assert_not_called()
+
+    def test_a_size_that_would_not_download_is_asked_for_once(self):
+        """The fetch's failure is the answer; the savepoint does not ask
+        the archive again for what it has just refused."""
+        art = CoverArt(release_mbid=RELEASE_MBID, image_id="123")
+        row_url = AlbumMetadataService._cover_url(art, models.AlbumCover.ROW_SIZE)
+        client = mock.MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        client.fetch_front_cover.return_value = art
+        client.get_bytes.side_effect = lambda url: (
+            (b"img", "image/jpeg") if url == row_url else None
+        )
+        with (
+            mock.patch(
+                "music.services.metadata_service.CoverArtArchiveClient",
+                return_value=client,
+            ),
+            self.assertLogs("music.services.metadata_service", level="WARNING"),
+        ):
+            result = self.service.run_covers([self.album])
+        self.assertEqual(result.errors, ["Abbey Road: cover art would not download"])
+        self.assertEqual(client.get_bytes.call_count, len(models.AlbumCover.SIZES))
+
+    def test_a_known_cover_that_will_not_download_is_searched_for_again(self):
+        """The one search left inside the savepoint: the fetch read the
+        row as naming a cover, and only storing it shows it is gone."""
+        models.MusicBrainzAlbumData.objects.create(
+            album=self.album,
+            release_group_mbid=RG_MBID,
+            cover_art_release_mbid=RELEASE_MBID,
+            cover_art_image_id="gone",
+            cover_art_stored=False,
+        )
+        found = CoverArt(release_mbid=RELEASE_MBID, image_id="123")
+        client = mock.MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        client.fetch_front_cover.return_value = found
+        client.get_bytes.side_effect = lambda url: (
+            None if "gone" in url else (b"img", "image/jpeg")
+        )
+        with (
+            mock.patch(
+                "music.services.metadata_service.CoverArtArchiveClient",
+                return_value=client,
+            ),
+            self.assertLogs("music.services.metadata_service", level="WARNING"),
+        ):
+            result = self.service.run_covers([self.album])
+        self.assertEqual((result.processed, result.errors), (1, []))
+        record = self.album.musicbrainz_album_data_set.get()
+        self.assertEqual(record.cover_art_image_id, "123")
+        self.assertTrue(record.cover_art_stored)
+
+    def test_a_fetch_that_raises_is_the_albums_error(self):
+        """Outside the savepoint, and still kept to its album."""
+        other = models.Album.objects.create(
+            name="Revolver",
+            rank=3,
+            year_released=1966,
+            wikidata_id="Q215359",
+            musicbrainz_release_group_id="22222222-2222-2222-2222-222222222222",
+        )
+        group = ReleaseGroup(
+            mbid=other.musicbrainz_release_group_id,
+            title="Revolver",
+            primary_type="Album",
+            secondary_types=[],
+            first_release_date="1966-08-05",
+            rating=None,
+            rating_votes=0,
+            genres=[],
+        )
+        client = mock.MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        client.fetch_release_group.side_effect = [RuntimeError("timed out"), group]
+        with (
+            mock.patch(
+                "music.services.metadata_service.MusicBrainzClient", return_value=client
+            ),
+            self.assertLogs("music.services.metadata_service", level="ERROR"),
+        ):
+            result = self.service.run_musicbrainz([self.album, other])
+        self.assertEqual(result.errors, ["Abbey Road: timed out"])
+        self.assertEqual(result.processed, 1)

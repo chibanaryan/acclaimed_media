@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from django.db import transaction
+from django.db.models import Q
 
 from core import loaded_values
 
@@ -102,6 +103,10 @@ def fit(model, field_name: str, value):
 #: have ninety, and the original pressings sort first, so there is nothing to
 #: gain from walking all of them.
 MAX_RELEASE_CANDIDATES = 12
+
+# What a pass's fetch answers for an album it need not ask the network about:
+# what it wants is in a row already
+STORED = object()
 
 
 @dataclass
@@ -182,20 +187,28 @@ class AlbumMetadataService:
         except Exception:  # an album deleted meanwhile is the next pass's
             logger.exception("Could not re-read %s", album.name)
 
-    def _for_one_album(self, pass_key, album, result, step, *args) -> None:
+    def _for_one_album(self, pass_key, album, result, step, *args, fetch=None):
         """Run ``step(album, *args)``, keeping its failure to the album.
 
         In a savepoint, so a database error leaves the connection usable,
         and the album is read back afterwards, so the object the next pass
         is handed matches what the rollback left. Logged and counted as that
-        album's error. The savepoint spans the album's network requests too:
-        a cover pass that walks a group's releases at MusicBrainz's 1 req/s
-        holds its connection in a transaction for tens of seconds (ROADMAP).
-        One bad row used to end the cover, Discogs and MusicBrainz passes, and
-        escape the command before its genre rebuild, release dates, slugs
-        and cache drop. The Wikidata pass has always worked this way.
+        album's error. One bad row used to end the cover, Discogs and
+        MusicBrainz passes, and escape the command before its genre rebuild,
+        release dates, slugs and cache drop. The Wikidata pass has always
+        worked this way.
+
+        ``fetch(album, *args)`` is the album's network requests. It runs
+        first, outside the savepoint, reads and requests and never writes,
+        and what it answers is handed to ``step`` after the album. Until
+        2026-11-12 the requests ran inside: a cover pass that walks a
+        group's releases at MusicBrainz's 1 req/s held its connection in a
+        transaction, and the rows it had written locked, for tens of
+        seconds.
         """
         try:
+            if fetch is not None:
+                args = (fetch(album, *args), *args)
             with transaction.atomic():
                 step(album, *args)
         except Exception as exc:  # one album must not stop the run
@@ -421,6 +434,7 @@ class AlbumMetadataService:
                     result,
                     index,
                     total,
+                    fetch=self._cover_fetch,
                 )
 
         self._close_musicbrainz()
@@ -428,9 +442,53 @@ class AlbumMetadataService:
         self._notify("complete", {"pass": "covers", "processed": result.processed})
         return result
 
-    def _cover_one(self, album, client, result, index, total) -> None:
-        """The cover pass for one album."""
+    def _cover_fetch(self, album, client, result, index, total):
+        """The cover a search finds for the album, before its savepoint.
+
+        ``STORED`` when no search is due: the album's row, or an orphan it
+        will adopt, already names a cover. Then only the bytes still missing
+        are downloaded. This reads what ``_cover_one`` is about to do from
+        the rows as they stand; it is not a promise. A known cover whose
+        bytes will not download sends ``_cover_one`` on to search for
+        another, and it does that search itself, inside its savepoint.
+
+        Whatever is downloaded here waits in ``_checked_covers`` for
+        ``_store_cover_bytes``, so the savepoint finds it already fetched.
+        """
         self._checked_covers.clear()
+        row, _orphaned = self._musicbrainz_candidate(album)
+        known = row is not None and bool(row.cover_art_image_id)
+        if known and not self.force:
+            if not row.cover_art_stored:
+                self._warm_cover(
+                    CoverArt(
+                        release_mbid=row.cover_art_release_mbid,
+                        image_id=row.cover_art_image_id,
+                    ),
+                    client,
+                )
+            return STORED
+        if not known and self._cover_orphan(album) is not None:
+            return STORED
+        art = self._find_downloadable_cover(album, client)
+        if art is not None:
+            self._warm_cover(art, client)
+        return art
+
+    def _warm_cover(self, art, client) -> None:
+        """Download the sizes of ``art`` that are not stored yet."""
+        wanted = [
+            size
+            for size in models.AlbumCover.SIZES
+            if not models.AlbumCover.objects.filter(
+                release_mbid=art.release_mbid, image_id=art.image_id, size=size
+            ).exists()
+        ]
+        for size, downloaded in self._download_sizes(art, wanted, client).items():
+            self._checked_covers[self._cover_url(art, size)] = downloaded
+
+    def _cover_one(self, album, searched, client, result, index, total) -> None:
+        """The cover pass for one album; ``searched`` is ``_cover_fetch``'s."""
         record, adopted = self._musicbrainz_record(album)
 
         if not self.force and record.cover_art_image_id:
@@ -455,7 +513,10 @@ class AlbumMetadataService:
             result.adopted += 1
             return
 
-        art = self._find_downloadable_cover(album, client)
+        art = searched
+        if art is STORED:
+            # The cover the row named would not download: look for another
+            art = self._find_downloadable_cover(album, client)
         if art is None:
             result.errors.append(f"{album.name}: no front cover")
             self._notify(
@@ -684,9 +745,10 @@ class AlbumMetadataService:
         """
         downloads = {}
         for size in sizes:
-            checked = self._checked_covers.pop(self._cover_url(art, size), None)
-            if checked is not None:
-                downloads[size] = checked
+            url = self._cover_url(art, size)
+            if url in self._checked_covers:
+                # Already asked for, and None if it would not download
+                downloads[size] = self._checked_covers.pop(url)
         sizes = [size for size in sizes if size not in downloads]
         if len(sizes) == 1:
             size = sizes[0]
@@ -702,11 +764,10 @@ class AlbumMetadataService:
                 )
         return downloads
 
-    def _adopt_cover_orphan(self, album, record) -> bool:
-        """Copy cover ids off an orphaned row for the same release group."""
-        if record.cover_art_image_id:
-            return False
-        orphan = (
+    @staticmethod
+    def _cover_orphan(album):
+        """An orphaned row for the album's release group that names a cover."""
+        return (
             models.MusicBrainzAlbumData.objects.filter(
                 release_group_mbid=album.musicbrainz_release_group_id,
                 album__isnull=True,
@@ -714,6 +775,12 @@ class AlbumMetadataService:
             .exclude(cover_art_image_id="")
             .first()
         )
+
+    def _adopt_cover_orphan(self, album, record) -> bool:
+        """Copy cover ids off an orphaned row for the same release group."""
+        if record.cover_art_image_id:
+            return False
+        orphan = self._cover_orphan(album)
         if orphan is None:
             return False
 
@@ -749,15 +816,13 @@ class AlbumMetadataService:
             album.cover_image_url = url
             album.save(update_fields=["cover_image_url"])
 
-    def _musicbrainz_record(self, album):
-        """This album's MusicBrainz row, and whether it was just adopted.
+    @staticmethod
+    def _musicbrainz_candidate(album):
+        """The MusicBrainz row the album has, or the orphan it would adopt.
 
-        An orphan for the same release group is adopted whole before a new
-        row is made - title, dates, genres and cover ids together. Making a
-        fresh row instead, and letting the cover pass copy only the cover ids
-        off the orphan, is what used to send the MusicBrainz pass back to the
-        network for every album after an import: the row it then found had
-        no title.
+        ``(row, orphaned)``, or ``(None, False)`` when it has neither. Reads
+        only, so a pass can ask before its savepoint whether it will need
+        the network.
         """
         record = models.MusicBrainzAlbumData.objects.filter(
             album=album, release_group_mbid=album.musicbrainz_release_group_id
@@ -772,17 +837,40 @@ class AlbumMetadataService:
             )
         )
         if not orphans:
+            return None, False
+        # Usually one; if there are more, keep the one with the most in it.
+        return (
+            max(
+                orphans,
+                key=lambda row: (
+                    bool(row.title),
+                    bool(row.cover_art_image_id),
+                    row.pk,
+                ),
+            ),
+            True,
+        )
+
+    def _musicbrainz_record(self, album):
+        """This album's MusicBrainz row, and whether it was just adopted.
+
+        An orphan for the same release group is adopted whole before a new
+        row is made - title, dates, genres and cover ids together. Making a
+        fresh row instead, and letting the cover pass copy only the cover ids
+        off the orphan, is what used to send the MusicBrainz pass back to the
+        network for every album after an import: the row it then found had
+        no title.
+        """
+        orphan, orphaned = self._musicbrainz_candidate(album)
+        if orphan is None:
             record = models.MusicBrainzAlbumData.objects.create(
                 album=album,
                 release_group_mbid=album.musicbrainz_release_group_id,
             )
             return record, False
+        if not orphaned:
+            return orphan, False
 
-        # Usually one; if there are more, keep the one with the most in it.
-        orphan = max(
-            orphans,
-            key=lambda row: (bool(row.title), bool(row.cover_art_image_id), row.pk),
-        )
         orphan.album = album
         # Not primary until _set_primary has demoted any row the album
         # already has, or the partial unique constraint rejects the save.
@@ -828,6 +916,7 @@ class AlbumMetadataService:
                         result,
                         index,
                         total,
+                        fetch=self._discogs_fetch,
                     )
         finally:
             self._close_musicbrainz()
@@ -835,10 +924,44 @@ class AlbumMetadataService:
         self._notify("complete", {"pass": "discogs", "processed": result.processed})
         return result
 
-    def _discogs_one(self, album, client, result, index, total) -> None:
-        """The Discogs pass for one album."""
-        had_stored_master = bool(album.discogs_master_id)
+    def _discogs_fetch(self, album, client, result, index, total):
+        """The master to store for the album, and Discogs' record of it.
+
+        ``(master_id, master)``: every request the album needs, before its
+        savepoint. ``master`` is ``STORED`` when a row for it is here already
+        and the run is not forced, and None when Discogs has no such master.
+        ``master_id`` is None when no source names one.
+        """
         master_id = album.discogs_master_id or self._musicbrainz_master(album)
+        if not master_id:
+            return None, None
+
+        master = self._discogs_master(album, master_id, client)
+        # Only a 404 means the master is gone: a throttle or a 5xx
+        # keeps it, to be tried again next run. Wikidata puts a
+        # dead id back every week, so one costs a 404 and a
+        # MusicBrainz request per run until Wikidata is corrected,
+        # and then it mends itself.
+        if master is None and album.discogs_master_id and client.last_status == 404:
+            replacement = self._musicbrainz_master(album)
+            if replacement and replacement != master_id:
+                replaced = self._discogs_master(album, replacement, client)
+                if replaced is not None:
+                    return replacement, replaced
+        return master_id, master
+
+    def _discogs_master(self, album, master_id, client):
+        """Discogs' master ``master_id``, or ``STORED`` if a row holds it."""
+        stored = models.DiscogsAlbumData.objects.filter(
+            Q(album=album) | Q(album__isnull=True), master_id=master_id
+        ).exists()
+        if stored and not self.force:
+            return STORED
+        return client.fetch_master(master_id)
+
+    def _discogs_one(self, album, fetched, client, result, index, total) -> None:
+        """The Discogs pass for one album; ``fetched`` is ``_discogs_fetch``'s."""
+        master_id, master = fetched
         if not master_id:
             # The release gives 'Old Nobody' no QID, so no source
             # knows it; reporting it would fail every run.
@@ -848,17 +971,7 @@ class AlbumMetadataService:
                 result.skipped += 1
             return
 
-        outcome = self._store_discogs(album, master_id, client)
-        # Only a 404 means the master is gone: a throttle or a 5xx
-        # keeps it, to be tried again next run. Wikidata puts a
-        # dead id back every week, so one costs a 404 and a
-        # MusicBrainz request per run until Wikidata is corrected,
-        # and then it mends itself.
-        if outcome is None and had_stored_master and client.last_status == 404:
-            replacement = self._musicbrainz_master(album)
-            if replacement and replacement != master_id:
-                outcome = self._store_discogs(album, replacement, client)
-        if outcome is None:
+        if master is None:
             result.errors.append(f"{album.name}: Discogs master {master_id} not found")
             self._notify(
                 "error",
@@ -870,6 +983,7 @@ class AlbumMetadataService:
             )
             return
 
+        outcome = self._store_discogs(album, master_id, master)
         setattr(result, outcome, getattr(result, outcome) + 1)
         if outcome == "processed":
             self._notify(
@@ -882,33 +996,29 @@ class AlbumMetadataService:
                 },
             )
 
-    def _store_discogs(self, album, master_id, client) -> Optional[str]:
-        """Link, adopt or fetch master ``master_id`` for this album.
+    def _store_discogs(self, album, master_id, master) -> str:
+        """Link, adopt or store master ``master_id`` for this album.
 
-        Returns the ``PassResult`` counter it earned, or None when Discogs
-        has no such master. The album's ``discogs_master_id`` follows the
-        master its data came from, so the "Data provided by Discogs" link
-        goes where the data is.
+        ``master`` is what ``_discogs_fetch`` got: Discogs' record, or
+        ``STORED`` for a row already here, which is the album's own or an
+        orphan to adopt. Returns the ``PassResult`` counter it earned. The
+        album's ``discogs_master_id`` follows the master its data came from,
+        so the "Data provided by Discogs" link goes where the data is.
         """
         existing = models.DiscogsAlbumData.objects.filter(
             album=album, master_id=master_id
         ).first()
-        orphan = None
-        if existing is None:
+
+        if master is STORED and existing is not None:
+            record, outcome = existing, "skipped"
+        elif master is STORED:
             orphan = models.DiscogsAlbumData.objects.filter(
                 master_id=master_id, album__isnull=True
             ).first()
-
-        if existing is not None and not self.force:
-            record, outcome = existing, "skipped"
-        elif orphan is not None and not self.force:
             orphan.album = album
             orphan.save()
             record, outcome = orphan, "adopted"
         else:
-            master = client.fetch_master(master_id)
-            if master is None:
-                return None
             record = existing or models.DiscogsAlbumData(
                 album=album, master_id=master.master_id
             )
@@ -968,23 +1078,37 @@ class AlbumMetadataService:
                     stale,
                     index,
                     total,
+                    fetch=self._musicbrainz_fetch,
                 )
         self._notify("complete", {"pass": "musicbrainz", "processed": result.processed})
         return result
 
-    def _musicbrainz_one(self, album, client, result, stale, index, total) -> None:
-        """The MusicBrainz pass for one album."""
+    def _musicbrainz_fetch(self, album, client, result, stale, index, total):
+        """MusicBrainz's release group for the album, before its savepoint.
+
+        ``STORED`` when the row the album has, or the orphan it will adopt,
+        already holds one and this run is neither forced nor refreshing it.
+        """
+        row, _orphaned = self._musicbrainz_candidate(album)
+        stored = row is not None and bool(row.title)
+        if stored and not self.force and album.pk not in stale:
+            return STORED
+        return client.fetch_release_group(album.musicbrainz_release_group_id)
+
+    def _musicbrainz_one(
+        self, album, group, client, result, stale, index, total
+    ) -> None:
+        """The MusicBrainz pass for one album; ``group`` is the fetch's."""
         record, adopted = self._musicbrainz_record(album)
         refreshing = album.pk in stale
 
-        if not self.force and record.title and not refreshing:
+        if group is STORED:
             if adopted:
                 result.adopted += 1
             else:
                 result.skipped += 1
             return
 
-        group = client.fetch_release_group(album.musicbrainz_release_group_id)
         if group is None:
             result.errors.append(f"{album.name}: release group not found")
             return
