@@ -35,40 +35,26 @@ full text is in `git show 55f0be4e:ROADMAP.md`.
 
 ## For the owner
 
-3. **Run the assistive-tech checklist** (`docs/ASSISTIVE_TECH_CHECKLIST.md`)
-   with VoiceOver, NVDA and a real iPhone: nothing here has been heard,
-   only checked by keyboard and against Chrome's accessibility tree. Record
-   the results there and file what fails here. Three things wait on it:
-   - The search boxes are comboboxes (rows 1.11-1.17, 2.10 and 3.6; run
-     them on the deployed site). One that reads wrongly is worse than the
-     field and links it replaced: take the pattern back out of
-     `core/includes/_search_combobox.html` rather than patch it unheard.
-   - Music's listen menu took menu roles and keys on 2026-11-12 and has no
-     rows in the checklist yet.
-   - A year cell reads "10" and is named "2010, 12 albums", which does not
-     hold its label word for word (WCAG 2.5.3). "10: 2010, 12 albums"
-     would, and lengthens about seventy announcements a page: decide it by
-     ear.
-4. **Sentry's cron monitor for the music job is disabled** and has never
+3. **Sentry's cron monitor for the music job is disabled** and has never
    had a check-in (`fetch-album-metadata`; read 2026-11-13). The job runs:
    its error of 2026-11-02 reached Sentry. But a Sunday it does not run at
    all, or fails, alerts nobody, which is what the monitor was for. The
    games job's monitor is on and was green on 2026-11-08. Sentry's free
    plan includes one cron monitor, which may be why: enable it (and pay
    for it), or accept that the music job is watched by its errors alone.
-5. **Merge the Dependabot queue.** #31 (five Python minor and patch bumps)
+4. **Merge the Dependabot queue.** #31 (five Python minor and patch bumps)
    is green. #30 (npm) fails two checks: it needs its CSS rebuilt and
    read.
-6. **New brand artwork.** The favicons still read "Acclaimed Video Games"
+5. **New brand artwork.** The favicons still read "Acclaimed Video Games"
    (`games/static/games/brand/`), and a page without artwork of its own has
    no `og:image`. A new default goes in `base.html`'s `og_image` block, and
    the five templates overriding that block need a `{{ block.super }}`
    branch for items with no art.
-7. **Two things are fetched and shown nowhere**: IGDB's first video
+6. **Two things are fetched and shown nowhere**: IGDB's first video
    (`IGDBGameData.youtube_video_id`) and the Wikiquote title
    (`WikipediaGameData.wikiquote_page_title`). Show them or stop fetching
    them.
-8. **Look once, when the occasion comes.**
+7. **Look once, when the occasion comes.**
    - A sign-up, end to end: the confirmation link logs in only the browser
      that signed up. Open it there (logged in) and in another browser
      (verified, with a Log In button).
@@ -81,7 +67,7 @@ full text is in `git show 55f0be4e:ROADMAP.md`.
 
 ## After Sunday 2026-11-15's jobs
 
-9. **Read both weekly jobs once.** It is the first Sunday since five of
+8. **Read both weekly jobs once.** It is the first Sunday since five of
    the passes shipped. All of it can be read from Sentry and a one-off
    dyno:
    - `refresh-all-metadata` checked in green. It now fails when a phase
@@ -140,6 +126,15 @@ Found by one pass or another and left on purpose. A line each, so the next
 pass that finds one knows it is known; do not file these again without a
 new reason.
 
+- **Nothing has been heard through a screen reader or run on a real
+  iPhone**, and the owner will not be doing it (2026-11-13). The pages
+  were checked by keyboard, with axe-core and against Chrome's
+  accessibility tree, which is what there is.
+  `docs/ASSISTIVE_TECH_CHECKLIST.md` is the script if anyone ever does.
+  Two things were waiting on it and stay as they are: the search boxes are
+  comboboxes, and a year cell reads "10" while its name is "2010, 12
+  albums" (WCAG 2.5.3 would have "10: 2010, 12 albums", about seventy
+  longer announcements a page).
 - **Books**, all of it: parked by the owner. Its client engine was removed
   on 2026-11-12 and the server renders its list. The sort dropdown, the
   direction flip, the jump box and an author's Load More are inert; the

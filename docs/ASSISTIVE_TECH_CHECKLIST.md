@@ -1,11 +1,13 @@
 # Assistive technology and iPhone checklist
 
-The open bug "Never tested on real assistive tech or a real iPhone" in
-`ROADMAP.md`. The year grid and the mobile filter sheet were checked in
-Chrome, WebKit and Firefox, plus Chrome's accessibility tree, but never with a
-screen reader or on a real iPhone. None of this can run in CI, so it is a
-person's job. Note what you hear or see next to each step, then file anything
-that fails as an open bug in `ROADMAP.md`.
+Not planned: the owner said on 2026-11-13 that this run will not be done,
+and `ROADMAP.md` lists it under "Known, not planned". The script stays for
+anyone who does pick it up. The year grid, the mobile filter sheet, the
+search comboboxes and music's listen menu were checked by keyboard, with
+axe-core and against Chrome's accessibility tree, but never with a screen
+reader or on a real iPhone. None of this can run in CI, so it is a person's
+job. Note what you hear or see next to each step, then file anything that
+fails as an open bug in `ROADMAP.md`.
 
 Each section runs on both sites: `games.acclaimedmedia.org/` and
 `music.acclaimedmedia.org/`. Production works fine for this, since nothing
@@ -109,4 +111,5 @@ you reach the grid.
 ## Afterwards
 
 Write the date, devices and versions here, move what failed into
-`ROADMAP.md`, and remove the open bug there once every row has a result.
+`ROADMAP.md`, and take its line out of "Known, not planned" there once
+every row has a result.
