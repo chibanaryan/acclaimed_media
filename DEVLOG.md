@@ -1,5 +1,51 @@
 # Developer Log
 
+## 2026-11-12 (sixth improvement pass)
+
+- **The coverage gate leaves nothing out.** Six files sat outside it by
+  name, 4,550 lines at 62% to 81% or untested. All are under it. The tests
+  ran code nothing had run: the staff page's Wikipedia stream (which sent a
+  game's exception text to the page), the two "clear metadata" actions, an
+  import giving a game its playtime row back. Found on the way: a save that
+  raised was counted as found and as failed, and a command's CSV of outside
+  names was a formula waiting to be opened
+- **Each game page describes its game** (ROADMAP 9 as was). IGDB's summary
+  was asked for at every fetch and dropped. It is stored
+  (`games.0125`), and the page's description leads with the rank and goes
+  on in IGDB's words
+- **Styles that named colours the theme does not define.** DaisyUI 5
+  renamed its variables and thirty-six declarations still read the old
+  ones, each dropped without a word: the staff import page's progress bar
+  had no fill, the rank chart's tooltip no arrow
+- **A filtered rankings list needs no `DISTINCT`** (ROADMAP 5): the genre,
+  platform and series filters are an `EXISTS` each. On Postgres 15 the list
+  query with two platforms went from 7.4 ms to 2.2 ms, about the unfiltered
+  one's cost. Music's metadata passes make an album's requests before its
+  savepoint opens, not inside it
+- **Keyboard, screen readers and the dark theme.** Music's listen button
+  promised a menu and opened a list: it is a menu, walked with the arrow
+  keys. The dark year grid's labels were 2.0:1 on its busiest years; its
+  tiles are a darker amber of their own. Two controls are named by what
+  they show
+- **One of each.** The four search boxes are one include (950 lines to
+  503); games' saved filters are the shared partials music uses; the three
+  import streams share one queue and loop, so the IGDB one sends keepalives
+  at last; games' four copies of the Wikidata claim reader are music's one;
+  `games/utils.py` re-exports nothing
+- **Books' client engine is gone**: 1,900 lines of script the page loaded
+  and nothing started. `/books/?genres=` with a 20-digit id was a 500
+- Smaller: sign-up with an email over 150 characters; `repair_email_rows`
+  for the accounts the admin left with an old address; the admin's markdown
+  renderer vendored, not fetched unpinned from a CDN; `localhost` out of
+  production's hosts; CI's Node pinned; `setup_worktree.sh` under `set -eu`;
+  six tests that slept, four that asserted nothing
+- Surveys: 30,063 requests with malformed parameters over every route, no
+  5xx; `html-validate` over sixteen pages, nothing a reader meets. Firefox
+  would not start headless here, so the smoke test is still Chrome's alone
+- Review, two rounds: an arrow key on a listen button in quick-mark mode
+  marked the album (this pass's own bug, fixed). What the new tests found
+  and left is ROADMAP 11
+
 ## 2026-11-12 (fifth improvement pass)
 
 - **Changing an account's email in the admin no longer leaves the old

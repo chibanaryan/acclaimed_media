@@ -101,6 +101,13 @@ python3 manage.py makemigrations
 python3 manage.py createsuperuser
 ```
 
+**Other commands worth knowing** (each has `--help`): `repair_email_rows`
+lists accounts whose allauth address rows disagree with their email, and
+`--sync <username>` repairs one (see "Domain"); `populate_platform_years`
+re-applies `games/platform_years.py` to the platforms after editing it;
+`clear_music_caches` and `mark_albums_listened` are under "Music Data
+Import" and "Album tracking".
+
 **Sync production database to local SQLite:**
 ```bash
 python3 manage.py sync_from_prod
@@ -275,7 +282,9 @@ Core Django models include:
   second collection of a name takes its IGDB id in both
 - **IGDBGameData / WikipediaGameData / HLTBGameData** - Fetched metadata, each
   with a `primary_...` pointer on `Game`. They outlive an import, which
-  recreates every `Game` and reattaches them
+  recreates every `Game` and reattaches them. `IGDBGameData.summary` is
+  IGDB's summary of the game, for the page's description (2026-11-12, see
+  "IGDB Integration"): on the record and not on `Game`, for that reason
 - **Publication** - Magazines/websites that publish game lists
 - **List/ListMembership** - Published rankings and game positions within them
 - **PlayedGame / WantToPlayGame** - Per-user tracking, keyed on the IGDB id so
@@ -343,7 +352,9 @@ Django REST Framework powers the API at `/api/` with endpoints:
 - `/api/games/search/` - Game search for navbar
 - `/api/games/<slug>/` - Game details with lists appearances
 - `/api/games/all/` - Every game in one payload, for client-side filtering
-  (cached under the data version; see "Caching")
+  (cached under the data version; see "Caching"). Built by
+  `games/services/all_data_payload.py`, for the view and for the weekly
+  refresh's fingerprint alike
 - `/api/developers/` - List of all developers with games, their studios'
   counted, as the developers page counts them. It counted direct games
   until 2026-11-12, and left out 42 parents (Microsoft, CD Projekt)
@@ -371,7 +382,9 @@ Books API endpoints (behind `BOOKS_ENABLED` feature flag):
 - `/api/books/` - List and search books
 - `/api/books/search/` - Book search
 - `/api/books/<slug>/` - Book details with lists appearances
-- `/api/books/all/` - Bulk endpoint with gzip compression
+- `/api/books/all/` - Bulk endpoint with gzip compression. Nothing calls
+  it or `version/` since the books page's client engine was removed
+  (2026-11-12)
 - `/api/books/version/` - The data version the bulk payload is kept under
 - `/api/books/authors/` - List authors
 - `/api/books/authors/<slug>/` - Author details with book list
@@ -450,9 +463,10 @@ the hover.
 | `core/includes/_list_type_group.html` | one group of list appearances on a detail page |
 | `core/includes/_rank_distribution.html` | where the filtered items sit across the ranking |
 | `core/includes/_search_box.html` | the standard search input, with its clear button |
+| `core/includes/_search_combobox.html` | a section's search box (the sidebar's and the mobile bar's): the combobox field, hints and listbox, with each site's option rows in its own `_search_options.html` |
 | `core/includes/_tracking_button.html` | the three-state tracking dropdown, and `_tracking_button_template.html`, its clone twin |
 | `core/includes/_status_filter.html`, `_mobile_filter_status.html` | the tracking status filter, games and music alike since 2026-10-29: each option shows its button's mark in its colours (`GAME_STATUS_OPTIONS`, `LISTEN_STATUS_OPTIONS`) |
-| `core/includes/_saved_filters_dropdown.html`, `_saved_filter_modals.html`, `_mobile_saved_filters.html` | saved filter combinations, in the sidebar and the sheet |
+| `core/includes/_saved_filters_dropdown.html`, `_saved_filter_modals.html`, `_mobile_saved_filters.html` | saved filter combinations, in the sidebar and the sheet, on both sites |
 | `core/services/titles.py` | the heading's wording: `join_names`, `build_time_window` |
 | `core/services/ranking.py` | `rank_distribution`, the chart's binning |
 | `core/js/filter-subcomponents.js` | `yearGridComponent`, `genreFilterComponent` and their mobile forms |
@@ -669,13 +683,23 @@ saw. Add a query there when adding a filter or a sort.
 `ListenedAlbum` / `WantToListenAlbum` mirror games' `PlayedGame` /
 `WantToPlayGame`, with four deliberate differences:
 
-- **The button is one shared partial.** Games and books each carry their own
-  near-identical copy; `core/includes/_tracking_button.html` takes the verbs,
+- **The button is one shared partial.** Games and books each carry their
+  own; `core/includes/_tracking_button.html` takes the verbs,
   icons and route as parameters and `music/includes/_listen_button.html` is a
-  thin wrapper supplying music's. It resolves the route **positionally**
+  thin wrapper supplying music's. Its dropdown is a menu (`role="menu"`,
+  rows `menuitem`, on the clone twin too), walked by one stateless key
+  listener in `media-tracking.js`: Enter opens it on its first item, the
+  arrows wrap, Home and End, and Escape or Tab close it back to the button
+  (2026-11-12; until then the button said `aria-haspopup` over a list with
+  no role and no keys; smoke: "music listen menu by keyboard"). An arrow on
+  a closed button opens it by clicking the button, so not in quick-mark
+  mode, where that click marks (`_marks`), and not with Cmd, Ctrl or Alt
+  held, which is the browser's chord. It resolves the route **positionally**
   (`{% url toggle_url_name item.id %}`) because `{% url %}` cannot take a
   dynamic kwarg name - so a section's toggle route must take the item's pk as
-  its one positional argument. Games and books are unchanged and can migrate.
+  its one positional argument. Games has since gone its own way, to one
+  menu a page (`played-menu.js`, "Rankings page weight"), which this
+  partial would have to learn before games could use it (ROADMAP).
 - **No inline sync script.** Both other sections ship a `<script>` *inside*
   every swapped partial, which mutates the global Sets and then deletes its
   own earlier copies so they do not pile up. `core/js/media-tracking.js` is
@@ -840,8 +864,9 @@ albums and 178 want-to-listen rows produced 146k intermediate rows before
 A reader who has built up a genre + decade + listen-status combination keeps
 it by name. Games has had this since `SavedFilterSet`; music's was built as
 **shared `core/` components with music wired to them**, the way album
-tracking was - games is untouched and can migrate by swapping three
-includes.
+tracking was, lifted from games' markup. Games took the three includes in
+place of its own copies on 2026-11-12, so both sites render one set
+(smoke: "games saved filters").
 
 | Piece | Where |
 |---|---|
@@ -858,9 +883,10 @@ The partials bind to a **method contract**, not to a page:
 `submitSaveFilter`, `renameSavedFilter`, `submitRenameFilter`,
 `deleteSavedFilter`, `confirmDeleteFilter`, plus `hasActiveFilters` and
 `savedFilters*`. Both `mediaListControls` and games' `filterComponent`
-expose exactly those names, which is what makes the migration a template
-change. The whole feature is inert unless the page passes a
-`savedFiltersUrl`, so a section that has not opted in renders no button.
+expose exactly those names, which is what made games' migration a template
+change. On `mediaListControls` the whole feature is inert unless the page
+passes a `savedFiltersUrl`, so a section that has not opted in renders no
+button; games' component names its own endpoint.
 
 Both sites' write views parse the body with
 `core.services.request_body.SavedFilterJSONParser`, which refuses one over
@@ -949,7 +975,9 @@ The application uses Django templates with HTMX for dynamic interactions and Alp
 - Custom components defined in `theme/static_src/src/styles.css` using Tailwind's `@layer components`
 - Text a reader needs is at least `text-base-content/65`: `/50` was 3.2:1 on the light theme's `base-300`, and `/65` is 4.99:1 there, the worst case of both themes
 - **In the dark theme, text is the accent, never the primary.** The dark theme's primary is a background colour, nearly as dark as its pages: as text it is 1.5:1 to 2.0:1. Its accent is the colour of text (links, each row's rank), at 65% lightness, 4.9:1 at worst; it was 50% and 2.7:1 to 3.6:1 until 2026-11-12. `styles.css` gives the accent to `text-primary`, `link-primary`, `hover:text-primary`, an outlined `badge-primary` and the mobile bar's active item under `[data-theme="forest"]`; a component that `@apply`s `text-primary` needs its selector added there, and `core/tests/test_theme_contrast.py` fails on one that is not. That test computes the ratios from the themes' OKLCH values, so change a colour there and run it
-- **A control's spoken name holds its visible text** (WCAG 2.5.3): someone driving the page by voice says what they see. A platform's code on a row is `aria-label="SNES: filter by Super NES"`, not "Filter by Super NES"
+- **A control's spoken name holds its visible text** (WCAG 2.5.3): someone driving the page by voice says what they see. A platform's code on a row is `aria-label="SNES: filter by Super NES"`, not "Filter by Super NES". A parenthesis in a name is not matched: the mobile bar's Music link, which shows "Beta", is "Music, Beta"
+- **A colour in a style is one of DaisyUI 5's `--color-*` variables** (`var(--color-base-content)`, mixed with `color-mix(in oklab, ... N%, transparent)` for an alpha). DaisyUI 4's names (`--bc`, `--b1`, `--p`, written `oklch(var(--bc) / 0.2)`) are defined nowhere, and a declaration that reads one is dropped silently: until 2026-11-12 thirty-six were, among them the staff import page's whole progress bar. `core/tests/test_theme_variables.py` fails on one
+- **The year grid's tiles have their own heat colour**, `--color-heatmap-tile`: the label on a tile is the text colour, and on the dark theme's chart amber (`--color-heatmap`, which the rank chart keeps) it was 2.0:1 on the busiest year. `test_theme_contrast.py::YearGridLabelTests` says how light the tiles may go
 
 **Template Filters:**
 - `from_now` - Converts datetime to relative time (e.g., "2 hours ago")
@@ -985,7 +1013,10 @@ The application uses Django templates with HTMX for dynamic interactions and Alp
   exception's text goes to the log, never the page (an `ImportFileError`
   is written to be read, and is shown). They were two copies until
   2026-11-10 and had drifted three times. Each caller starts the metadata
-  fetch itself. The two that
+  fetch itself. The three streams (IGDB, Wikipedia, the batch) share their
+  queue and their loop, `games/services/progress_stream.py`, since
+  2026-11-12: every one polls every 15 seconds and sends a keepalive, which
+  the IGDB stream did not. "Load Test Data" is refused outside `DEBUG`. The two that
   `EventSource` opens start their work on a GET, so they answer only a
   request whose `Sec-Fetch-Site` is `same-origin` (or absent, for a browser
   too old to send it): a link followed from another site carries the
@@ -1235,6 +1266,15 @@ The `games/igdb.py` module handles IGDB API integration with multiple optimizati
 **Thread-Safe**: All caching and rate limiting is thread-safe for concurrent processing.
 
 IGDB provides cover art, descriptions, developer information, and genres.
+
+**A game page's description is IGDB's summary** (2026-11-12). Every fetch
+asked for it and dropped it, so each page had one stock sentence. It is
+`IGDBGameData.summary`, written by both branches of the fetch, and the
+page's meta description and share card lead with the rank and go on in its
+words, cut at a whole word within 160 characters (`seo.meta_description`);
+the JSON-LD carries all of it. A description staff wrote on the `Game`
+comes first. `needing_igdb()` does not count a missing summary: IGDB has
+none for some games.
 
 A single game's lookup (`IgbdApi.get_game_info_by_id`, `Game.get_igdb_data`)
 answers `None` for a failure of ours or IGDB's (a timeout, an error status,
@@ -1643,6 +1683,11 @@ Each pass keeps an album's failure to that album, in a savepoint
 (`AlbumMetadataService._for_one_album`): until 2026-11-11 only the Wikidata
 pass did, and one database error ended the cover, Discogs or MusicBrainz
 pass and skipped the command's genre rebuild, dates, slugs and cache drop.
+**An album's requests are made before its savepoint opens** (2026-11-12):
+`_for_one_album` takes a `fetch`, which reads and requests and never
+writes, and hands its answer to the step that saves. Inside, a cover pass
+walking a group's releases held a connection in a transaction for tens of
+seconds. A new pass does the same: network in `fetch`, writes in the step.
 
 Four passes, selectable, because their costs differ by two orders of magnitude:
 Wikidata is ~25 batched requests (seconds), cover art ~1000 downloads (~18 min),
@@ -1858,12 +1903,19 @@ search row is pinned by growth, in `music/tests/test_api.py`:
   membership, grouped over every column of every game, and `_order_games`
   put a `DISTINCT` on every sort, all before the page's hundred rows were
   taken. That one query was 109 ms of games' 120 ms of SQL. The filters
-  that join many-to-many (genres, platforms, series) add their own
-  `distinct()`, and an unfiltered list has no row twice. On the local copy
+  that join many-to-many (genres, platforms, series) added their own
+  `distinct()` then, and are an `EXISTS` each now (below); an unfiltered
+  list has no row twice. On the local copy
   of production's data the first hundred rows with their prefetches went
   from 124 ms to 17.5 ms on SQLite and 54 ms to 20 ms on Postgres 15 (the
   list query itself, 35 ms to 1.1 ms). Pinned by
   `games/tests/test_game_filters.py::RankingsListQueryTests`.
+- **A many-to-many filter is an `EXISTS`, not a join** (2026-11-12):
+  `query_filters._related_to_any`, for genres, platforms and series. A
+  join lists a game once per id it matches, so each filter ended in
+  `.distinct()` over every column. On Postgres 15 the list query with two
+  platforms went from 7.4 ms to 2.2 ms, about what the unfiltered one
+  costs. Write a new filter on a many-to-many the same way.
 - **The rest are pinned by growth, not by count**
   (`games/tests/test_query_budgets.py`). Each test renders a page, adds more
   of what it lists, and requires the same query count, so an N+1 fails it
@@ -2021,7 +2073,9 @@ URL whatever the request is uses `sites.site_reverse()` (music's
   stays, since allauth's flows reverse it, and its login page links to it),
   a name that breaks the rules
   gives way to the email, and an email someone already holds as a username
-  gets allauth's generated name where it was an `IntegrityError`.
+  gets allauth's generated name where it was an `IntegrityError`, as does
+  one longer than the column's 150 characters, which was a `DataError` on
+  Postgres until 2026-11-12.
 - **A verification belongs to the account that asked for it** (2026-11-11).
   The modal remembers the account it showed "verification sent" or "Email
   Not Verified" for, in the session (`auth.PENDING_ACCOUNT_KEY`), where
@@ -2048,8 +2102,10 @@ URL whatever the request is uses `sites.site_reverse()` (music's
   what went, and no email is sent (the reader confirms it from the login
   screen's Resend). Only a changed email is checked or synced: a
   secondary address a reader added themselves is kept, and an account
-  changed before this keeps its old rows until its email is next changed
-  (ROADMAP).
+  changed before this keeps its old rows until its email is next changed,
+  or until `python manage.py repair_email_rows --sync <username>` is run
+  for it: without `--sync` the command lists such accounts and changes
+  nothing (ROADMAP).
 - **The old apex paths redirect.** Everything the apex served before is in
   links and search indexes, so `urls_root`'s catch-all
   (`core.views.redirect_to_site`) sends `/music/<rest>` to
@@ -2078,7 +2134,9 @@ landing page and shares its cache.
   on 127.0.0.1 stays").
 - **Development** uses the same names under localhost: `localhost:8000`,
   `games.localhost:8000`, `music.localhost:8000` (Chrome resolves
-  `*.localhost` itself; `ALLOWED_HOSTS` takes `.localhost` under `DEBUG`).
+  `*.localhost` itself; `ALLOWED_HOSTS` takes `.localhost`, `localhost` and
+  `127.0.0.1` under `DEBUG` alone since 2026-11-12, and production's list
+  is its three hosts).
   The cookies are host-only there, so signing in on one does not sign you
   in on the others.
 
@@ -2382,6 +2440,11 @@ It reports and blocks nothing; enforcing it means moving the dict to
   and `style=""` attributes are everywhere.
 - `img-src` also takes `http://*.localhost:*` under `DEBUG`, where the sites
   are separate plain-http origins and the landing page's covers cross them.
+- No script comes from another origin but Google's tag and Cloudinary's
+  upload widget (the admin's). The admin's markdown preview fetched
+  `marked` from a CDN, unpinned, until 2026-11-12; it is vendored
+  (`games/static/games/js/vendor/`, whose README lists every vendored
+  library and its version).
 - Reports go to Sentry's security endpoint, built from the DSN
   (`core.csp.sentry_report_uri`). Under test and on a developer's machine
   there is none (`SENTRY_ENABLED`).
@@ -2759,6 +2822,10 @@ not "test" anywhere in the arguments: `get_igdb --game test` ran against an
 empty in-memory database with blank credentials, on a dyno too, until
 2026-11-10.
 
+**A test that needs two timestamps in order sets them** (a day apart, with
+`.update()`), and does not sleep between two saves: six did until
+2026-11-12, which was slow and at the mercy of the clock's resolution.
+
 **Tests pick a site the way a request does.** The test client's
 `testserver` host gets `ROOT_URLCONF`, the games site, so games tests need
 nothing. A module of music tests imports the module fixtures
@@ -2897,7 +2964,7 @@ Four layers, from automatic to manual:
   | `audit` | `pip-audit` on both locks, `npm audit` (any severity). The one job a Monday's scheduled run does |
   | `css` | rebuilds the CSS and fails if it differs from the committed file |
   | `js` | `scripts/minify_js.sh --check`: the same for the minified JS and bundles, and `node --check` on the two scripts terser never parses |
-  | `browser` | `scripts/browser_smoke.js`: Chrome over the main pages, failing on a JS, Alpine or CSP error, plus Back and Load More across the engine load, music's takeover leaving a row's POST alone, a year range outside the corpus and leaving it, a games highlight landing, a mobile row opened by keyboard, the CSV button, a failed filter request rolled back on both sites, a failed Back followed by the engine, each site's search box by keyboard, a reversed year range on both sites, a server Load More keeping focus, a theme chosen on `127.0.0.1` staying, and, signed in as the reader `smoke_seed.py` makes, a status chosen on the artist page reaching the row's other half |
+  | `browser` | `scripts/browser_smoke.js`: Chrome over the main pages, failing on a JS, Alpine or CSP error, plus Back and Load More across the engine load, music's takeover leaving a row's POST alone, a year range outside the corpus and leaving it, a games highlight landing, a mobile row opened by keyboard, the CSV button, a failed filter request rolled back on both sites, a failed Back followed by the engine, each site's search box by keyboard, a reversed year range on both sites, a server Load More keeping focus, a theme chosen on `127.0.0.1` staying, and, signed in as the reader `smoke_seed.py` makes, a status chosen on the artist page reaching the row's other half, music's listen menu by keyboard, and games' saved filters saved, applied and deleted |
 
   `css` exists because Heroku runs only the Python buildpack, so the
   committed `theme/static/css/dist/styles.css` is what ships. An npm bump
@@ -2905,6 +2972,10 @@ Four layers, from automatic to manual:
   Tailwind 4.1 -> 4.3 was such a bump: it grew the file from 208 KB to
   253 KB (32 KB to 36 KB gzipped), and moved nothing on screen but the music
   Filters header's buttons, by ~3px.
+
+  Node is pinned (`NODE_VERSION: "26"`, one variable for every job): it
+  was `lts/*`, which moves each October under a job that compares terser's
+  output byte for byte. Nothing bumps it; `/upgrade-deps` has a row.
 
   A run's concurrency group is its commit on `main` and its ref on a pull
   request. Keyed on the ref alone, GitHub cancelled the run *waiting* in the
@@ -3134,7 +3205,9 @@ Alpine and the bundles), each because the bare form failed for someone
   in was a region inserted with its text, which the readers that do read
   those then heard again from the announcer.
 - **A search box is a combobox** (`searchComboboxState`, spread into both
-  search components; 2026-11-10): the arrow keys move an active option the
+  search components; 2026-11-10; its markup is one include since
+  2026-11-12, `core/includes/_search_combobox.html`, where the sidebar and
+  the mobile bar each carried two copies): the arrow keys move an active option the
   field names with `aria-activedescendant`, Enter follows it, and Enter
   with none is the full search, as it was. The results are `role="option"`
   links in a `role="group"` per kind inside a `role="listbox"`; the hints
