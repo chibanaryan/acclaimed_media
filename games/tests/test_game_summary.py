@@ -34,7 +34,6 @@ def answer(**fields):
         "slug": "alpha-quest",
         "cover": "co1",
         "url": "https://igdb.example/alpha",
-        "youtube_video_id": None,
         "developers": [],
         "series": [],
     }

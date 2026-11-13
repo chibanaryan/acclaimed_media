@@ -446,12 +446,7 @@ class Command(BaseCommand):
             wikidata_result = page_service._lookup_via_wikidata(wikidata_id)
 
             if wikidata_result:
-                (
-                    page_title,
-                    hltb_id,
-                    steam_app_id,
-                    wikiquote_title,
-                ) = wikidata_result
+                page_title, hltb_id, steam_app_id = wikidata_result
 
                 # Create or update WikipediaGameData record for this alternate ID
                 wiki_data, created = WikipediaGameData.objects.get_or_create(
@@ -462,7 +457,6 @@ class Command(BaseCommand):
                         "is_primary": False,
                         "hltb_id": hltb_id,
                         "steam_app_id": steam_app_id,
-                        "wikiquote_page_title": wikiquote_title,
                     },
                 )
 
@@ -505,13 +499,6 @@ class Command(BaseCommand):
                             wikidata_id,
                             steam_app_id,
                         )
-
-                    if (
-                        wikiquote_title
-                        and wikiquote_title != wiki_data.wikiquote_page_title
-                    ):
-                        wiki_data.wikiquote_page_title = wikiquote_title
-                        update_fields.append("wikiquote_page_title")
 
                     if update_fields:
                         wiki_data.save(update_fields=update_fields)

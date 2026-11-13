@@ -18,7 +18,7 @@ from bs4 import BeautifulSoup
 from core.models import User
 from games import config as games_config
 from core import sites
-from core.tests.utils import get_on_site
+from core.tests.utils import get_on_site, select_all
 from games import models as game_models
 from music import config as music_config
 from music import models as music_models
@@ -79,21 +79,19 @@ class ControlsPartialTests(TestCase):
 
     def test_the_view_toggle_can_be_turned_off(self):
         self.assertTrue(render_controls().select('[aria-label="Grid view"]'))
-        self.assertFalse(
-            render_controls(show_view_toggle=False).select('[aria-label="Grid view"]')
-        )
+        without = render_controls(show_view_toggle=False)
+        self.assertFalse(select_all(without, '[aria-label="Grid view"]'))
 
     def test_the_jump_box_can_be_turned_off(self):
-        self.assertFalse(
-            render_controls(show_jump_to_rank=False).select(".jump-to-rank-input")
-        )
+        without = render_controls(show_jump_to_rank=False)
+        self.assertFalse(select_all(without, ".jump-to-rank-input"))
 
     def test_the_jump_box_can_wait_for_an_engine(self):
         # Music's jump box is answered by its client engine alone, so it is
         # rendered off and the engine switches it on. Games' works without
         # its engine and is left alone.
         controls = ".jump-to-rank-input, .jump-to-rank-btn"
-        waiting = render_controls(jump_awaits_engine=True).select(controls)
+        waiting = select_all(render_controls(jump_awaits_engine=True), controls)
         self.assertEqual(len(waiting), 4)
         for control in waiting:
             with self.subTest(control=control.name):
@@ -151,7 +149,7 @@ class BothRankingPagesRenderTheControlsTests(TestCase):
         # album page offers the three shared sorts and nothing more.
         music = self._controls("music:home")
         self.assertTrue(music.select("[\\@click=\"updateSort('rank')\"]"))
-        self.assertFalse(music.select("[\\@click=\"updateSort('playtime')\"]"))
+        self.assertFalse(select_all(music, "[\\@click=\"updateSort('playtime')\"]"))
         self.assertTrue(
             self._controls("home").select("[\\@click=\"updateSort('playtime')\"]")
         )
@@ -200,13 +198,18 @@ class SavedFilterPartialTests(TestCase):
         self.assertIn("cursor-not-allowed", button.get("class", []))
         self.assertEqual(button["aria-label"], "Saved. Sign in to save filters")
         # Nothing to drive, so none of the component's methods are bound.
-        self.assertFalse(soup.select('[\\@click="loadSavedFilters()"]'))
+        self.assertFalse(select_all(soup, '[\\@click="loadSavedFilters()"]'))
 
     def test_the_row_actions_cover_apply_rename_and_delete(self):
+        # One row, in an x-for's template
         soup = render_saved_dropdown(user=self.user)
-        self.assertTrue(soup.select('[\\@click="applySavedFilter(filter)"]'))
-        self.assertTrue(soup.select('[\\@click\\.stop="renameSavedFilter(filter)"]'))
-        self.assertTrue(soup.select('[\\@click\\.stop="deleteSavedFilter(filter)"]'))
+        for action in (
+            '[\\@click="applySavedFilter(filter)"]',
+            '[\\@click\\.stop="renameSavedFilter(filter)"]',
+            '[\\@click\\.stop="deleteSavedFilter(filter)"]',
+        ):
+            with self.subTest(action=action):
+                self.assertTrue(select_all(soup, action))
 
     def test_saving_is_offered_only_when_there_is_something_to_save(self):
         rendered = render_to_string(

@@ -475,7 +475,6 @@ class GameGetIgdbDataTests(TestCase):
             "slug": "test-game",
             "cover": "cover_hash",
             "url": "https://example.com/test",
-            "youtube_video_id": "vid",
             "developers": [],
             "series": [{"id": 2000, "name": "Test Series", "slug": ""}],
         }
@@ -520,7 +519,6 @@ class GameGetIgdbDataTests(TestCase):
             "slug": "test-game",
             "cover": "new_cover",
             "url": "https://example.com/new",
-            "youtube_video_id": "vid",
             "developers": [],
             "series": [],
         }
@@ -1302,28 +1300,6 @@ class IGDBGameDataEdgeCaseTests(TestCase):
         )
         self.assertIsNone(igdb_data.image_og)
 
-    def test_youtube_url_returns_url_when_video_id_exists(self):
-        """Test youtube_url returns full URL when video_id exists."""
-        game = models.Game.objects.create(name="YouTube Game", rank=1, igdb_id=2)
-        igdb_data = models.IGDBGameData.objects.create(
-            igdb_id=2,
-            game=game,
-            youtube_video_id="dQw4w9WgXcQ",
-        )
-        self.assertEqual(
-            igdb_data.youtube_url, "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-        )
-
-    def test_youtube_url_returns_none_when_no_video_id(self):
-        """Test youtube_url returns None when no video_id."""
-        game = models.Game.objects.create(name="No Video Game", rank=1, igdb_id=3)
-        igdb_data = models.IGDBGameData.objects.create(
-            igdb_id=3,
-            game=game,
-            youtube_video_id=None,
-        )
-        self.assertIsNone(igdb_data.youtube_url)
-
 
 class WikipediaGameDataEdgeCaseTests(TestCase):
     """Tests for WikipediaGameData edge cases."""
@@ -1342,27 +1318,6 @@ class WikipediaGameDataEdgeCaseTests(TestCase):
             game=None,  # orphaned
         )
         self.assertEqual(str(wiki_data), "Orphaned Wikipedia data (Wikidata: unknown)")
-
-    def test_wikiquote_url_returns_url_when_exists(self):
-        """Test wikiquote_url returns formatted URL when page title exists."""
-        game = models.Game.objects.create(name="Quotable Game", rank=1, igdb_id=4)
-        wiki_data = models.WikipediaGameData.objects.create(
-            game=game,
-            wikiquote_page_title="The Legend of Zelda",
-        )
-        self.assertEqual(
-            wiki_data.wikiquote_url,
-            "https://en.wikiquote.org/wiki/The_Legend_of_Zelda",
-        )
-
-    def test_wikiquote_url_returns_none_when_no_title(self):
-        """Test wikiquote_url returns None when no page title."""
-        game = models.Game.objects.create(name="No Quote Game", rank=1, igdb_id=5)
-        wiki_data = models.WikipediaGameData.objects.create(
-            game=game,
-            wikiquote_page_title=None,
-        )
-        self.assertIsNone(wiki_data.wikiquote_url)
 
 
 class GameThumbnailPropertiesTests(TestCase):

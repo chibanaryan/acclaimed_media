@@ -1084,7 +1084,7 @@ class IgbdApiTests(SimpleTestCase):
         self.assertIn(5, self.api.company_cache)
 
     def test_get_games_info_by_ids_handles_publishers_and_series(self):
-        """Test batch game info handles publishers, series, videos, and caching."""
+        """Test batch game info handles publishers, series, and caching."""
         game_payload = [
             {
                 "id": 1,
@@ -1107,7 +1107,6 @@ class IgbdApiTests(SimpleTestCase):
                 "collections": [
                     {"id": 55, "name": "Series Name", "slug": "series-name"}
                 ],
-                "videos": [{"video_id": "vid123"}],
             }
         ]
         response = DummyResponse(200, game_payload)
@@ -1121,7 +1120,7 @@ class IgbdApiTests(SimpleTestCase):
 
         with mock.patch.object(
             self.api, "_make_request_with_retry", return_value=response
-        ):
+        ) as request:
             with mock.patch.object(
                 self.api,
                 "get_companies_by_ids",
@@ -1131,7 +1130,10 @@ class IgbdApiTests(SimpleTestCase):
 
         game_data = result[1]
         self.assertEqual(game_data["cover"], "cover.jpg")
-        self.assertEqual(game_data["youtube_video_id"], "vid123")
+        # The game's videos were asked for and kept until 2026-11-13, and
+        # shown nowhere
+        self.assertNotIn("video", request.call_args.kwargs["data"])
+        self.assertNotIn("youtube_video_id", game_data)
         self.assertEqual(game_data["series"][0]["id"], 55)
         self.assertIn(1, self.api.game_cache)
 
@@ -1157,7 +1159,6 @@ class IgbdApiTests(SimpleTestCase):
                     }
                 ],
                 "collections": [{"id": 77, "name": "Series Two", "slug": "series-two"}],
-                "videos": [{"video_id": "vid999"}],
             }
         ]
         response = DummyResponse(200, game_payload)
@@ -1171,7 +1172,7 @@ class IgbdApiTests(SimpleTestCase):
 
         with mock.patch.object(
             self.api, "_make_request_with_retry", return_value=response
-        ):
+        ) as request:
             with mock.patch.object(
                 self.api,
                 "get_companies_by_ids",
@@ -1179,5 +1180,6 @@ class IgbdApiTests(SimpleTestCase):
             ):
                 result = self.api.get_game_info_by_id(2, cache_results=True)
 
-        self.assertEqual(result["youtube_video_id"], "vid999")
+        self.assertNotIn("video", request.call_args.kwargs["data"])
+        self.assertNotIn("youtube_video_id", result)
         self.assertEqual(result["series"][0]["id"], 77)

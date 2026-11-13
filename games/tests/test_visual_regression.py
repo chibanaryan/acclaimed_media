@@ -28,7 +28,7 @@ from django.test import Client, SimpleTestCase, TestCase
 from django.urls import reverse
 
 from core.tests.node import require_node
-from core.tests.utils import clear_all_caches
+from core.tests.utils import clear_all_caches, select_all
 from games import models
 from games.platform_years import PLATFORM_YEAR_RANGES
 from games.templatetags.game_filters import FAMILY_INFO, PLATFORM_FAMILIES
@@ -71,10 +71,21 @@ class TemplateStructureTests(TestCase):
         self.game.wikipedia_genres.add(self.genre)
         self.game.platforms.add(self.platform)
 
+    def assert_both_rows_carry(self, soup, selector, required_slots):
+        """The row the server rendered and the one the renderer clones, which
+        is in a ``<template>``, each hold every slot."""
+        rows = select_all(soup, selector)
+        kinds = ["clone" if row.find_parent("template") else "rendered" for row in rows]
+        self.assertEqual(sorted(kinds), ["clone", "rendered"])
+        for kind, row in zip(kinds, rows):
+            for slot in required_slots:
+                with self.subTest(row=kind, slot=slot):
+                    # On the row itself, or on something in it
+                    on_row = row.get("data-slot") == slot
+                    self.assertTrue(on_row or row.find(attrs={"data-slot": slot}))
+
     def test_desktop_template_has_required_slots(self):
-        """
-        Verify desktop row includes all required data-slot attributes.
-        """
+        """Both desktop rows carry every slot the renderer fills."""
         response = self.client.get(reverse("home"))
         soup = BeautifulSoup(response.content, "html.parser")
 
@@ -93,24 +104,7 @@ class TemplateStructureTests(TestCase):
             "meta-row",
         ]
 
-        # Find server-rendered game rows
-        game_rows = soup.select(".game-row-wrapper")
-        self.assertTrue(
-            len(game_rows) > 0, "Should have at least one server-rendered game row"
-        )
-        first_row = game_rows[0]
-
-        # Check that server-rendered rows have all required slots
-        for slot in required_slots:
-            # Check if slot is on the element itself or in children
-            if first_row.get("data-slot") == slot:
-                slot_element = first_row
-            else:
-                slot_element = first_row.find(attrs={"data-slot": slot})
-            self.assertIsNotNone(
-                slot_element,
-                f"Desktop row should have data-slot='{slot}' for JS compatibility",
-            )
+        self.assert_both_rows_carry(soup, ".game-row-wrapper", required_slots)
 
     def test_a_mobile_row_names_its_game_in_a_link(self):
         """The card went to its game on a click anywhere (`data-href`) and
@@ -161,9 +155,7 @@ class TemplateStructureTests(TestCase):
         )
 
     def test_mobile_template_has_required_slots(self):
-        """
-        Verify mobile row includes all required data-slot attributes.
-        """
+        """Both mobile rows carry every slot the renderer fills."""
         response = self.client.get(reverse("home"))
         soup = BeautifulSoup(response.content, "html.parser")
 
@@ -176,24 +168,7 @@ class TemplateStructureTests(TestCase):
             "meta",  # Contains developer, platforms, genres, playtime, list count
         ]
 
-        # Find server-rendered mobile rows
-        mobile_rows = soup.select(".game-card-mobile")
-        self.assertTrue(
-            len(mobile_rows) > 0, "Should have at least one server-rendered mobile row"
-        )
-        first_row = mobile_rows[0]
-
-        # Check that server-rendered mobile rows have all required slots
-        for slot in required_slots:
-            # Check if slot is on the element itself or in children
-            if first_row.get("data-slot") == slot:
-                slot_element = first_row
-            else:
-                slot_element = first_row.find(attrs={"data-slot": slot})
-            self.assertIsNotNone(
-                slot_element,
-                f"Mobile row should have data-slot='{slot}' for JS compatibility",
-            )
+        self.assert_both_rows_carry(soup, ".game-card-mobile", required_slots)
 
     def test_desktop_and_mobile_rows_both_rendered(self):
         """Verify both desktop and mobile rows are rendered for responsive design."""
@@ -643,7 +618,8 @@ class HTMXAttributeTests(TestCase):
         response = self.client.get(reverse("home"))
         soup = BeautifulSoup(response.content, "html.parser")
 
-        menus = soup.select("#played-menu")
+        # One on the page, and none in a template a row is cloned from
+        menus = select_all(soup, "#played-menu")
         self.assertEqual(len(menus), 1)
         self.assertEqual(
             menus[0]["data-url"],
@@ -730,7 +706,7 @@ class ServerRendersNoGridTests(TestCase):
         soup = BeautifulSoup(self.client.get(reverse("home")).content, "html.parser")
         container = soup.select_one("#game-list-container")
         self.assertIsNotNone(container.select_one(f"#game-{self.game.pk}"))
-        self.assertIsNone(container.select_one(".game-grid"))
+        self.assertFalse(select_all(container, ".game-grid"))
         self.assertIsNone(soup.find(id=f"game-{self.game.pk}-grid"))
 
     def test_the_grid_template_is_still_there_with_every_slot(self):

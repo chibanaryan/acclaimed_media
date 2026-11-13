@@ -715,6 +715,10 @@ when a change touches caching, sessions or other process-wide state:
   test that crosses sites uses `core.tests.utils.get_on_site`.
 - A test that needs two timestamps in order sets them, a day apart; it does
   not sleep.
+- **`soup.select()` does not look inside a `<template>`** (soupsieve 4, as a
+  browser's `querySelectorAll`): a test of an Alpine `x-for` or `x-if` body
+  or of a clone row uses `core.tests.utils.select_all`, or its
+  `assertFalse` passes whatever the template holds.
 - Import threads escape the test transaction on Postgres: tests that reach
   one run it inline (`InlineImportThreadMixin`). Do not assume a primary
   key of 1.

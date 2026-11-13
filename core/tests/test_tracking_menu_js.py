@@ -95,6 +95,68 @@ class TrackingMenuKeysTests(SimpleTestCase):
         )
         self.assertEqual(self.out["upOnAClosedButton"]["clicks"], 2)
 
+    def test_the_arrow_that_opens_a_menu_picks_its_end(self):
+        """Down opens on the first item and Up on the last, as the menu
+        button pattern has it. Until 2026-11-13 both opened on the first:
+        the arrow clicked the button, and the click started the wait."""
+        self.assertEqual(self.out["downOpensOn"], {"focus": "item0", "waits": 1})
+        self.assertEqual(self.out["upOpensOn"], {"focus": "item2", "waits": 1})
+
+    def test_the_arrows_own_click_starts_no_second_wait(self):
+        """Two waits would race for the focus: a click a script made is
+        not the reader's Enter."""
+        self.assertEqual(self.out["framesWaitedForAScriptsClick"], 0)
+
+    def test_an_arrow_on_the_button_of_a_fading_menu_reopens_it(self):
+        """A closed menu's items are laid out for the 75 ms it fades. An
+        arrow then was read as if it were open and put focus on an item
+        about to vanish, and focus went with it to the top of the page."""
+        self.assertEqual(
+            self.out["downOnTheButtonOfAFadingMenu"],
+            {
+                "focus": "trigger",
+                "prevented": True,
+                "dispatched": [],
+                "clicks": 1,
+                "waits": 1,
+            },
+        )
+        self.assertEqual(self.out["aFadingMenuReopensOn"], "item0")
+
+    def test_an_arrow_on_the_button_of_an_opening_menu_does_not_close_it(self):
+        """The button says the menu is open a frame before Alpine lays its
+        list out. An arrow in that frame found no items and clicked the
+        button, which closed the menu it was opening."""
+        self.assertEqual(
+            self.out["upOnTheButtonOfAnOpeningMenu"],
+            {
+                "focus": "trigger",
+                "prevented": True,
+                "dispatched": [],
+                "clicks": 0,
+                "waits": 1,
+            },
+        )
+        self.assertEqual(self.out["anOpeningMenuIsEnteredOn"], "item2")
+
+    def test_a_key_on_an_item_of_a_fading_menu_goes_back_to_the_button(self):
+        self.assert_moved("downOnAnItemOfAFadingMenu", "trigger")
+        self.assert_moved("endOnAnItemOfAFadingMenu", "trigger")
+
+    def test_escape_and_tab_leave_a_fading_menu_for_its_button(self):
+        """Alpine has closed the menu by the time the key reaches the
+        document, so "in the menu" is the target being one of its items,
+        not one of its open items."""
+        self.assert_left_alone("escapeInAFadingMenu", "trigger")
+        self.assertEqual(
+            self.out["tabInAFadingMenu"],
+            {
+                "focus": "trigger",
+                "prevented": True,
+                "dispatched": ["close-tracking-dropdowns"],
+            },
+        )
+
     def test_an_arrow_never_marks_in_quick_mark_mode(self):
         """With a quick-mark mode on, a click on the button applies the
         picked status and opens nothing. An arrow that opened the menu by
@@ -181,6 +243,17 @@ class TrackingMenuMarkupTests(SimpleTestCase):
                     4,
                 )
 
+    def test_a_reopened_menu_keeps_its_place_above_the_page(self):
+        """A closed menu drops below the page 100 ms on, once it has faded.
+        Reopened inside that time (an arrow during the fade does it), the
+        timer fired on an open menu and left it under the rows below."""
+        for path in TEMPLATES:
+            with self.subTest(path=path):
+                self.assertIn(
+                    "setTimeout(() => { if (!open) zHigh = false }, 100)",
+                    (BASE / path).read_text(),
+                )
+
     def test_the_minified_script_has_the_keys(self):
         """The pages load only the minified copy."""
         minified = (BASE / "core/static/core/js/media-tracking.min.js").read_text()
@@ -191,5 +264,8 @@ class TrackingMenuMarkupTests(SimpleTestCase):
             # An arrow in quick-mark mode, and a chord
             "QuickMark.active",
             "metaKey",
+            # The arrow picks its end, and its own click waits for nothing
+            "_focusItem",
+            "isTrusted",
         ):
             self.assertIn(needle, minified)

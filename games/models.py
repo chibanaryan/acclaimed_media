@@ -573,12 +573,6 @@ class IGDBGameData(models.Model):
         max_length=100, db_index=True, help_text="IGDB cover art hash (e.g., 'co1234')"
     )
     url = models.URLField(help_text="IGDB game detail page URL")
-    youtube_video_id = models.CharField(
-        max_length=50,
-        null=True,
-        blank=True,
-        help_text="YouTube video ID from IGDB (first video)",
-    )
     summary = models.TextField(
         blank=True,
         default="",
@@ -697,13 +691,6 @@ class IGDBGameData(models.Model):
             return f"{base}/t_thumb/{self.artwork_id}"
         return None
 
-    @property
-    def youtube_url(self) -> Optional[str]:
-        """Get full YouTube URL from video ID."""
-        if self.youtube_video_id:
-            return f"https://www.youtube.com/watch?v={self.youtube_video_id}"
-        return None
-
 
 class WikipediaGameData(models.Model):
     """
@@ -742,12 +729,6 @@ class WikipediaGameData(models.Model):
         blank=True,
         db_index=True,
         help_text="Steam AppID from Wikidata property P1733",
-    )
-    wikiquote_page_title = models.CharField(
-        max_length=300,
-        null=True,
-        blank=True,
-        help_text="Wikiquote page title from enwikiquote sitelink",
     )
     page_title = models.CharField(
         max_length=300, db_index=True, help_text="Wikipedia page title"
@@ -791,14 +772,6 @@ class WikipediaGameData(models.Model):
             return f"https://en.wikipedia.org/wiki/{self.page_title.replace(' ', '_')}"
         return None
 
-    @property
-    def wikiquote_url(self) -> Optional[str]:
-        """Generate Wikiquote article URL from page title."""
-        if self.wikiquote_page_title:
-            title = self.wikiquote_page_title.replace(" ", "_")
-            return f"https://en.wikiquote.org/wiki/{title}"
-        return None
-
     @classmethod
     def upsert_for_game(cls, game, page_title, defaults):
         """update_or_create on (game, page_title), collapsing duplicate rows.
@@ -834,8 +807,8 @@ class WikipediaGameData(models.Model):
         ``page`` is a ``PageLookupResult``. A record of that page left
         orphaned by an import is taken back, keeping its genres; otherwise
         the game's own record of the page is updated, or one is made. What
-        the lookup did not find (an HLTB id, a Steam AppID, a Wikiquote
-        title) is left as the record has it.
+        the lookup did not find (an HLTB id, a Steam AppID) is left as the
+        record has it.
 
         The staff page's stream and ``fetch_wikipedia_metadata`` each had a
         copy of this until 2026-11-12.
@@ -843,7 +816,7 @@ class WikipediaGameData(models.Model):
         found = {"lookup_source": page.lookup_source}
         if wikidata_id:
             found["wikidata_id"] = wikidata_id
-        for field in ("hltb_id", "steam_app_id", "wikiquote_page_title"):
+        for field in ("hltb_id", "steam_app_id"):
             value = getattr(page, field)
             if value:
                 found[field] = value
@@ -1331,7 +1304,6 @@ class Game(RemembersLoaded, MediaItemBase):
                 orphaned_record.game = self
                 orphaned_record.artwork_id = game_data.get("cover", "")
                 orphaned_record.url = game_data.get("url", "")
-                orphaned_record.youtube_video_id = game_data.get("youtube_video_id")
                 orphaned_record.summary = game_data.get("summary") or ""
                 orphaned_record.is_primary = idx == 0  # First record is primary
                 orphaned_record.save(
@@ -1339,7 +1311,6 @@ class Game(RemembersLoaded, MediaItemBase):
                         "game",
                         "artwork_id",
                         "url",
-                        "youtube_video_id",
                         "summary",
                         "is_primary",
                     ]
@@ -1354,7 +1325,6 @@ class Game(RemembersLoaded, MediaItemBase):
                     defaults={
                         "artwork_id": game_data.get("cover", ""),
                         "url": game_data.get("url", ""),
-                        "youtube_video_id": game_data.get("youtube_video_id"),
                         "summary": game_data.get("summary") or "",
                         "is_primary": (idx == 0),  # First record is primary
                     },

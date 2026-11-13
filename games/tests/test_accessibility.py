@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 from django.conf import settings
 from django.test import Client, TestCase
 
-from core.tests.utils import clear_all_caches
+from core.tests.utils import clear_all_caches, select_all
 from games.models import Game, Platform, Series, WikipediaGenre
 
 
@@ -60,7 +60,8 @@ class RankingsPageAccessibilityTests(TestCase):
             ".platform-item",
             ".series-item",
         ):
-            rows = self.soup.select(selector)
+            # The lists' rows are x-for bodies: inside templates
+            rows = select_all(self.soup, selector)
             with self.subTest(selector=selector):
                 self.assertTrue(rows)
                 for row in rows:
@@ -70,7 +71,7 @@ class RankingsPageAccessibilityTests(TestCase):
                     self.assertIn("@keydown.enter.prevent", row.attrs)
 
     def test_section_headers_are_buttons_that_say_whether_they_are_open(self):
-        toggles = self.soup.select("button[\\:aria-expanded]")
+        toggles = select_all(self.soup, "button[\\:aria-expanded]")
         labels = {" ".join(b.get_text().split()) for b in toggles}
         for section in ("Release Year", "Platform", "Genre", "Series"):
             self.assertIn(section, labels)
@@ -79,7 +80,7 @@ class RankingsPageAccessibilityTests(TestCase):
         grid = self.soup.select_one(".year-grid")
         self.assertEqual(grid.get("role"), "group")
         self.assertIn("@keydown", grid.attrs)
-        decade = self.soup.select_one(".year-grid-decade")
+        (decade,) = select_all(grid, ".year-grid-decade")  # one, in an x-for
         self.assertEqual(decade.get("role"), "button")
         self.assertIn(":tabindex", decade.attrs)
 
@@ -87,18 +88,18 @@ class RankingsPageAccessibilityTests(TestCase):
         """Made a live region by script once it is on the page
         (markResultCountsLive), which finds it by this attribute: a role in
         the markup had a count the server swaps in read out twice."""
-        counts = self.soup.select(".result-count")
+        counts = select_all(self.soup, ".result-count")
         self.assertTrue(counts)
         self.assertTrue(all(c.has_attr("data-result-count") for c in counts))
         self.assertFalse(any(c.has_attr("role") for c in counts))
 
     def test_platform_links_in_rows_are_labelled_buttons(self):
-        buttons = self.soup.select("button[data-add-platforms]")
+        buttons = select_all(self.soup, "button[data-add-platforms]")
         self.assertTrue(buttons)
         self.assertTrue(
             all(b.get("aria-label", "").startswith("Filter by") for b in buttons)
         )
-        self.assertFalse(self.soup.select("span[data-add-platforms]"))
+        self.assertFalse(select_all(self.soup, "span[data-add-platforms]"))
 
     def test_the_mobile_sheet_is_a_modal_dialog(self):
         sheet = self.soup.select_one('[aria-labelledby="mobile-filters-title"]')
@@ -115,7 +116,7 @@ class RankingsPageAccessibilityTests(TestCase):
         self.assertNotIn("'modal-open':", str(self.soup))
 
     def test_icon_glyphs_are_hidden_from_screen_readers(self):
-        icons = self.soup.select('span[class^="mdi"], span[class*=" mdi"]')
+        icons = select_all(self.soup, 'span[class^="mdi"], span[class*=" mdi"]')
         self.assertTrue(icons)
         self.assertEqual([i for i in icons if i.get("aria-hidden") != "true"], [])
 

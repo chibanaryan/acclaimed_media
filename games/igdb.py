@@ -489,11 +489,6 @@ class IgbdApi:
             if isinstance(collection, dict) and "id" in collection
         ]
 
-        videos = data.get("videos", [])
-        youtube_video_id = None
-        if videos and isinstance(videos[0], dict):
-            youtube_video_id = videos[0].get("video_id")
-
         return {
             "cover": cover_filename,
             "developers": developers,
@@ -503,7 +498,6 @@ class IgbdApi:
             "summary": data.get("summary"),
             "url": data.get("url"),
             "slug": data.get("slug"),
-            "youtube_video_id": youtube_video_id,
         }
 
     def get_games_info_by_ids(
@@ -559,7 +553,7 @@ class IgbdApi:
                     f"where id = ({ids_str}); "
                     "fields slug,cover.*,genres.*,first_release_date,"
                     "summary,storyline,url,themes,involved_companies.*,"
-                    "collections.*,videos.*; "
+                    "collections.*; "
                     "limit 500;"
                 ),
             )
@@ -632,7 +626,7 @@ class IgbdApi:
                 "where id="
                 f"{game_id}; fields slug,cover.*,genres.*,first_release_date,"
                 "summary,storyline,url,themes,involved_companies.*,"
-                "collections.*,videos.*;"
+                "collections.*;"
             ),
         )
 

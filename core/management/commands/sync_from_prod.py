@@ -218,7 +218,20 @@ class Command(BaseCommand):
 
                 stage = "load"
                 self.stdout.write("\n4. Loading data into local database...")
-                call_command("loaddata", fixture_path, music_fixture_path, verbosity=1)
+                self.stdout.write(
+                    "   (a field production has and this checkout does not"
+                    " is skipped)"
+                )
+                # A field production still has and this checkout has dropped
+                # is skipped: between such a commit and its deploy the dump
+                # carries it, and the load stopped at the first row
+                call_command(
+                    "loaddata",
+                    fixture_path,
+                    music_fixture_path,
+                    verbosity=1,
+                    ignorenonexistent=True,
+                )
                 # Inside a transaction SQLite cannot switch foreign keys off,
                 # so loaddata skips its own check and a bad key would only
                 # fail at COMMIT, unnamed. This names the table and row.

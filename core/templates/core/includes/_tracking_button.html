@@ -35,7 +35,7 @@
 {% if user.is_authenticated and external_id %}
 <div class="tracking-button-wrapper relative"
     x-data="{ open: false, zHigh: false }"
-    x-effect="if (open) { zHigh = true } else { setTimeout(() => zHigh = false, 100) }"
+    x-effect="if (open) { zHigh = true } else { setTimeout(() => { if (!open) zHigh = false }, 100) }"
     :class="{ 'z-[9999]': zHigh, 'z-10': !zHigh }"
     @click.away="open = false"
     @keydown.escape="open = false"

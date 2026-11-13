@@ -23,7 +23,7 @@ class AttachPageTests(TestCase):
     def test_a_new_page_becomes_the_games_primary_record(self):
         record = WikipediaGameData.attach_page(
             self.game,
-            found(hltb_id="123", steam_app_id="620", wikiquote_page_title="Alpha"),
+            found(hltb_id="123", steam_app_id="620"),
             "Q1",
         )
         self.game.refresh_from_db()
@@ -36,9 +36,8 @@ class AttachPageTests(TestCase):
                 record.wikidata_id,
                 record.hltb_id,
                 record.steam_app_id,
-                record.wikiquote_page_title,
             ),
-            ("Alpha Quest (video game)", "wikidata", "Q1", "123", "620", "Alpha"),
+            ("Alpha Quest (video game)", "wikidata", "Q1", "123", "620"),
         )
 
     def test_the_games_own_record_of_the_page_is_updated_not_doubled(self):

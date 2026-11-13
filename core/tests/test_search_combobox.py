@@ -5,8 +5,8 @@ Until 2026-11-10 each was a field followed by a list of links, with no way
 from the field to a result but Tab. The behaviour is `searchComboboxState`
 in utils-base.js, spread into both search components and run here under
 Node on the real files; the markup is the WAI-ARIA combobox pattern with a
-grouped listbox. Not yet heard on a real screen reader:
-docs/ASSISTIVE_TECH_CHECKLIST.md has the steps.
+grouped listbox. Never heard on a real screen reader, and not planned to
+be (ROADMAP, "Known, not planned").
 """
 
 import re
@@ -18,7 +18,7 @@ from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from core.tests.node import require_node, run_node
-from core.tests.utils import clear_all_caches, get_on_site
+from core.tests.utils import clear_all_caches, get_on_site, select_all
 from core import sites
 
 BASE = Path(settings.BASE_DIR)
@@ -180,15 +180,16 @@ class SearchComboboxMarkupTests(SimpleTestCase):
 
     def test_the_listbox_holds_one_group_looped_over(self):
         soup = BeautifulSoup(self.include, "html.parser")
-        listboxes = soup.select('[role="listbox"]')
+        listboxes = select_all(soup, '[role="listbox"]')
         self.assertEqual(len(listboxes), 1)
-        groups = listboxes[0].select('ul[role="group"]')
+        # The group is an x-for's body, and the hints are in x-ifs
+        groups = select_all(listboxes[0], 'ul[role="group"]')
         self.assertEqual(len(groups), 1)
         self.assertTrue(groups[0].has_attr(":aria-label"))
         self.assertIn("{% include options_template %}", str(groups[0]))
         # The hints ("Enter 2+ characters") are a list of their own
-        self.assertFalse(listboxes[0].select(".disabled"))
-        self.assertEqual(len(soup.select(".disabled")), 3)
+        self.assertFalse(select_all(listboxes[0], ".disabled"))
+        self.assertEqual(len(select_all(soup, ".disabled")), 3)
 
     def test_a_sites_options_are_options_and_nothing_else(self):
         """Nothing in a listbox is a bare list item, which it may not own:
@@ -209,7 +210,8 @@ class SearchComboboxMarkupTests(SimpleTestCase):
                     {item.get("role") for item in soup.find_all("li")},
                     {"none", "presentation"},
                 )
-                self.assertFalse(soup.select(".disabled"))
+                # Every row here is in an x-if or an x-for
+                self.assertFalse(select_all(soup, ".disabled"))
 
     def test_an_item_with_no_year_shows_none_and_no_separator(self):
         """A game's rows read "null • #12" and "Name (null)" for one; an
@@ -240,7 +242,7 @@ class SearchComboboxPageTests(TestCase):
 
     def check(self, html):
         soup = BeautifulSoup(html, "html.parser")
-        fields = soup.select('input[role="combobox"]')
+        fields = select_all(soup, 'input[role="combobox"]')
         # The sidebar's and the mobile bar's
         self.assertEqual(len(fields), 2)
         ids = [field["aria-controls"] for field in fields]

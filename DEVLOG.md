@@ -1,5 +1,23 @@
 # Developer Log
 
+## 2026-11-13 (roadmap pass)
+
+- **The listen menu's keys, its edges** (ROADMAP bug 2). A menu is open
+  while its button says so, not while its items are laid out, which they
+  still are for the 75 ms it fades: an arrow in that time put focus on an
+  item about to vanish, and reopens the menu now. ArrowUp on a closed
+  button opens it on its last item. Found on the way: an arrow in the
+  frame a menu was opening closed it, and a menu reopened as it faded was
+  left under the rows below it
+- **Two things were fetched and shown nowhere** (ROADMAP 6): IGDB's first
+  video and the Wikiquote title. Neither is asked for or stored. The
+  models forget them in `games.0126`, which changes no table, so the
+  release before it and a rollback to it keep working; the columns go
+  after the deploy
+- **`sync_from_prod` skips a field production has and this checkout has
+  dropped**, where it stopped at the first such row after minutes of
+  download
+
 ## 2026-11-12 (sixth improvement pass)
 
 - **The coverage gate leaves nothing out.** Six files sat outside it by

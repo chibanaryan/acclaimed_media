@@ -1483,7 +1483,8 @@ async function checkArtistPageMirrorsAStatus(page) {
     const both = `${wrapper}[data-item-id="${itemId}"]`;
     const twins = await page.$$eval(both, found => found.length);
     if (twins !== 2) return `the artist page has ${twins} buttons for one album`;
-    // The visible half's own menu, by keyboard: Enter opens it and picks
+    // The visible half's own menu: a script's click opens it and another
+    // picks (the keys are "music listen menu by keyboard")
     const pressed = await page.evaluate(selector => {
         const visible = [...document.querySelectorAll(selector)]
             .find(element => element.offsetParent !== null);
@@ -1621,6 +1622,8 @@ async function checkGamesSavedFilters(page) {
 /**
  * The listen button's dropdown is a menu: Enter opens it on its first item,
  * the arrows walk it and wrap, and Tab closes it and returns to the button.
+ * ArrowUp on the closed button opens it on its last item, and an arrow in
+ * the 75 ms a closed menu fades reopens it.
  * Its button said `aria-haspopup` and the list behind it had no role and
  * took no key (`media-tracking.js`). Real key presses, since the wiring is
  * Alpine's show, a capture-phase click and a document keydown together.
@@ -1671,10 +1674,32 @@ async function checkTrackingMenuByKeyboard(page) {
     await page.keyboard.press('Escape');
     await sleep(250);
     steps.push(`Escape: ${await where()}`);
+    // ArrowUp opens it on its last item, as the menu button pattern has it
+    await page.keyboard.press('ArrowUp');
+    await sleep(250);
+    steps.push(`ArrowUp: ${await where()}`);
+    // A key in the 75 ms a closed menu takes to fade. Its items are still
+    // laid out, so the arrow was read as if it were open: focus went to an
+    // item, the item vanished, and focus fell out of the menu altogether.
+    // The menu is closed from Escape on, and the arrow reopens it.
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('ArrowDown');
+    await sleep(250);
+    steps.push(`Escape, ArrowDown: ${await where()}`);
+    // And it is above the page: the closed menu's timer, which drops it back
+    // among the rows 100 ms on, must not fire on the reopened one
+    const raised = await page.evaluate(() => {
+        const wrapper = document.activeElement.closest('.tracking-button-wrapper');
+        return Boolean(wrapper) && wrapper.classList.contains('z-[9999]');
+    });
+    if (!raised) return 'a menu reopened as it faded was left under the page';
+    await page.keyboard.press('Escape');
+    await sleep(250);
     const expected = [
         'Enter: item 1 of 3', 'ArrowDown: item 2 of 3', 'ArrowUp: item 1 of 3',
         'ArrowUp: item 3 of 3', 'End: item 3 of 3', 'Home: item 1 of 3',
         'Tab: button, closed', 'ArrowDown: item 1 of 3', 'Escape: button, closed',
+        'ArrowUp: item 3 of 3', 'Escape, ArrowDown: item 1 of 3',
     ];
     if (steps.join('; ') !== expected.join('; ')) {
         return `the listen menu by keyboard went ${steps.join('; ')}`;
