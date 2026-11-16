@@ -139,7 +139,7 @@ frozenlist==1.8.0
     #   -c requirements.txt
     #   aiohttp
     #   aiosignal
-gunicorn==26.2.0
+gunicorn==27.0.1
     # via
     #   -c requirements.txt
     #   -r requirements.in

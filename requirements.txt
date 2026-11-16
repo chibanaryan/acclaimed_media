@@ -64,7 +64,7 @@ frozenlist==1.8.0
     # via
     #   aiohttp
     #   aiosignal
-gunicorn==26.2.0
+gunicorn==27.0.1
     # via -r requirements.in
 howlongtobeatpy==1.0.24
     # via -r requirements.in
