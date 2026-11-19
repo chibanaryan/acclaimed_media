@@ -108,15 +108,22 @@ in ten; its counts are scaled.
   (IGDB's first video, the Wikiquote title). Once it has run, a rollback
   to v924 or earlier fails on every game page; v925 and later do not read
   them. Backup `b018` was taken before v925.
-- **The shared venv** matches the locks (Django 6.1.3, allauth 65.21.1,
-  soupsieve 4.1; Dependabot #31 merged 2026-11-13).
-- **The stylesheet** is built by Tailwind 4.3.5 (Dependabot #30's bump,
-  landed by hand on 2026-11-13) with DaisyUI 5.7.50. Its build still warns
-  "Invalid empty selector" twice, for the two `.join` rules `styles.css`
-  now writes out. DaisyUI 5.8.0, a day old then, builds without the
-  warning and makes the stylesheet 20 KB smaller, which nobody has looked
-  at; `JoinedButtonsRiseOnFocusTests` fails on it until the written-out
-  copy is deleted.
+- **The shared venv** matches the locks (Django 6.1.3, allauth 65.22.1,
+  gunicorn 27.0.1, sentry-sdk 2.75.0; Dependabot #34 and #35 merged
+  2026-11-18). Gunicorn 27 reaches production with the next deploy: it was
+  run locally with the `Procfile`'s flags, serving both sites, a staff
+  POST's event stream and a chunked body, and answers 400 only to a
+  `Transfer-Encoding` that does not end in `chunked`, its one breaking
+  change.
+- **The stylesheet** is built by Tailwind 4.3.5 with DaisyUI 5.8.0
+  (Dependabot #33, 2026-11-18), without warnings, and `styles.css` no
+  longer carries a copy of the two `.join` rules. It went from 239 KB to
+  219 KB: DaisyUI 5.8 writes its components more compactly. Over eleven
+  pages, both themes, desktop and mobile, with every dropdown, modal,
+  tooltip and toggle open or flipped, the only computed style that changed
+  is the beta notice's `grid-template-columns`, which a `flex` notice does
+  not use; a focused and a hovered joined button still compute z-index 2
+  and 1.
 
 ## Known, not planned
 

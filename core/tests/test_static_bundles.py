@@ -2170,21 +2170,23 @@ class JoinedButtonsRiseOnFocusTests(SimpleTestCase):
     focus or the pointer is raised, or the next button draws over its ring:
     the status filter's buttons and the playtime mode's.
 
-    DaisyUI writes both rules inside ``@scope (.join)`` with a leading
-    combinator, and lightningcss 1.33.0 (Tailwind 4.3.5) leaves them out
-    with "Invalid empty selector", so ``styles.css`` writes them out. Read
-    from the built stylesheet, the one the pages load, and wanted exactly
-    once: a build that keeps DaisyUI's own again has each twice, and the
-    copy in ``styles.css`` goes then.
+    Both rules are DaisyUI's, inside ``@scope (.join)``. DaisyUI 5.7 wrote
+    them with a leading combinator, which lightningcss 1.33.0 (Tailwind
+    4.3.5) left out with "Invalid empty selector", so from 2026-11-13
+    ``styles.css`` carried a copy; DaisyUI 5.8.0 writes them so they build,
+    and the copy went on 2026-11-18. Read from the built stylesheet, the
+    one the pages load, and wanted exactly once: if a build drops them
+    again, write them out in ``styles.css`` as commit 09c592aa did.
     """
 
-    # However the child is spelt: `.join > :where(...)` here, `:scope >
-    # :where(...)` in DaisyUI 5.7, `:where(:scope > ..., ...)` in 5.8
+    # However the child is spelt: `:where(:scope > ..., ...)` in DaisyUI
+    # 5.8, `:scope > :where(...)` in 5.7, `.join > :where(...)` in a copy
     FOCUSED = r"[^{}]*:has\(:focus\)\)\{z-index:2\}"
     HOVERED = r"[^{}]*:has\(\.btn:hover\)\)\{z-index:1\}"
     ONCE = (
-        "Missing: the build dropped the rule. Twice: DaisyUI's own is back, "
-        "so delete the copy in theme/static_src/src/styles.css."
+        "Missing: the build dropped DaisyUI's rule, so write it out in "
+        "theme/static_src/src/styles.css (see commit 09c592aa). Twice: a "
+        "copy there duplicates DaisyUI's own, so delete it."
     )
 
     @classmethod
