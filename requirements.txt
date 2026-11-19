@@ -46,7 +46,7 @@ django==6.1.3
     #   django-tailwind
     #   djangorestframework
     #   sentry-sdk
-django-allauth==65.21.1
+django-allauth==65.22.1
     # via -r requirements.in
 django-cors-headers==4.9.0
     # via -r requirements.in
@@ -97,7 +97,7 @@ requests==2.34.2
     #   -r requirements.in
     #   django-allauth
     #   howlongtobeatpy
-sentry-sdk==2.74.0
+sentry-sdk==2.75.0
     # via -r requirements.in
 soupsieve==4.1
     # via beautifulsoup4
