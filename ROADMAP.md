@@ -21,7 +21,8 @@ full text is in `git show 55f0be4e:ROADMAP.md`.
 ## Open bugs
 
 None. The two that were here on 2026-11-13 closed that day: Tailwind 4.3.5
-is merged with the two rules its build drops written out; and of the three
+was merged with the two rules its build dropped written out (DaisyUI 5.8.0
+builds them, and the copy went on 2026-11-18); and of the three
 HLTB entries, Sunday's job corrects one (Modern Warfare 2), either entry
 is right for another (Puyo Puyo), and the third is under "Known, not
 planned".

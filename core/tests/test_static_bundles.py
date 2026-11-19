@@ -2194,15 +2194,33 @@ class JoinedButtonsRiseOnFocusTests(SimpleTestCase):
         super().setUpClass()
         cls.built = read_source(BUILT_STYLESHEET)
 
-    def _selectors(self, rule):
-        return re.findall(rule, self.built)
+    def _assert_once_on_joined_children(self, rule, built=None):
+        built = self.built if built is None else built
+        matches = list(re.finditer(rule, built))
+        self.assertEqual(len(matches), 1, self.ONCE)
+        match = matches[0]
+        self.assertRegex(match.group(), r"\.join>|:scope>")
+        if ":scope>" in match.group():
+            # Outside its block, `:scope` is the root: the rule would match
+            # only <html>'s children, and no joined button would rise
+            opened = built.rfind("@scope(", 0, match.start())
+            self.assertTrue(built.startswith("@scope(.join)", opened))
+            depth = built.count("{", opened, match.start()) - built.count(
+                "}", opened, match.start()
+            )
+            self.assertGreater(depth, 0, "The rule is not inside @scope(.join).")
 
     def test_a_focused_button_is_above_its_neighbours(self):
-        selectors = self._selectors(self.FOCUSED)
-        self.assertEqual(len(selectors), 1, self.ONCE)
-        self.assertRegex(selectors[0], r"\.join>|:scope>")
+        self._assert_once_on_joined_children(self.FOCUSED)
 
     def test_a_hovered_button_is_above_its_neighbours(self):
-        selectors = self._selectors(self.HOVERED)
-        self.assertEqual(len(selectors), 1, self.ONCE)
-        self.assertRegex(selectors[0], r"\.join>|:scope>")
+        self._assert_once_on_joined_children(self.HOVERED)
+
+    def test_a_scope_rule_outside_its_block_is_caught(self):
+        rule = ":where(:scope>:focus,:scope>:has(:focus)){z-index:2}"
+        for built in (
+            "@scope(.join){a{b:c}}" + rule,
+            "@scope(.menu){" + rule + "}",
+        ):
+            with self.subTest(built=built), self.assertRaises(AssertionError):
+                self._assert_once_on_joined_children(self.FOCUSED, built)
