@@ -116,3 +116,74 @@ class PostNotificationTests(TestCase):
         self.assertEqual(self.client.post(path).status_code, 200)
         subscriber.refresh_from_db()
         self.assertFalse(subscriber.email_subscribed)
+
+
+class EmailsNameTheSiteTests(TestCase):
+    """Since music joined games, an email names the site it came from and
+    speaks to both sections."""
+
+    def test_the_contact_email_names_the_site_it_was_sent_from(self):
+        from django.conf import settings
+
+        for site in ("root", "games", "music"):
+            with self.subTest(site=site):
+                mail.outbox.clear()
+                self.assertTrue(
+                    utils.send_contact_email(
+                        "Ada", "ada@example.com", "general", "Hello", site=site
+                    )
+                )
+                self.assertIn(
+                    f"contact form at {settings.SITE_ORIGINS[site]}\n",
+                    mail.outbox[0].body,
+                )
+
+    def test_a_contact_from_the_dev_server_names_the_dev_server(self):
+        """The view passes the address the form was on, as a page's links
+        name it: a local test message says localhost, not production."""
+        from django.test import override_settings
+
+        from core import sites
+
+        with override_settings(ALLOWED_HOSTS=["music.localhost"]):
+            self.client.post(
+                sites.site_reverse("music", "contact"),
+                {
+                    "name": "Ada",
+                    "email": "ada@fastmail.com",
+                    "category": "general",
+                    "message": "Hello from the dev server",
+                },
+                HTTP_HOST="music.localhost:8000",
+            )
+
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn(
+            "contact form at http://music.localhost:8000\n", mail.outbox[0].body
+        )
+
+    def test_a_music_signup_is_sent_a_link_back_to_music(self):
+        from core import sites
+        from core.tests.utils import site_host
+
+        self.client.post(
+            sites.site_reverse("music", "auth-modal-signup"),
+            {
+                "email": "listener@example.com",
+                "password1": "correct-horse-battery",
+                "password2": "correct-horse-battery",
+            },
+            HTTP_HOST=site_host("music"),
+            secure=True,
+        )
+
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        html = message.alternatives[0][0]
+        confirm_prefix = f"https://{site_host('music')}/accounts/confirm-email/"
+        for body in (message.body, html):
+            self.assertIn(confirm_prefix, body)
+            # It speaks to both sections, and not of a games-only list
+            self.assertIn("albums you have, have heard or want to hear", body)
+            self.assertIn('"Subscribe to email updates"', body)
+            self.assertNotIn("played/unplayed", body)

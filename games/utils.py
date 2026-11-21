@@ -23,7 +23,12 @@ CONTACT_SITE_LABELS = {"root": "Landing page", "games": "Games", "music": "Music
 
 
 def send_contact_email(
-    name: str, email: str, category: str, message: str, site: str = "games"
+    name: str,
+    email: str,
+    category: str,
+    message: str,
+    site: str = "games",
+    origin: str | None = None,
 ) -> bool:
     """
     Send a contact form email to the site administrators.
@@ -36,12 +41,17 @@ def send_contact_email(
         site: The site the form was sent from (core/sites.py): "root",
             "games" or "music". One form serves all three, so the subject
             says which.
+        origin: The address the form was sent from
+            (``sites.site_origin``), for the footer; the site's public
+            origin without one.
 
     Returns:
         True if the email was sent successfully, False otherwise
     """
     from django.conf import settings
     from django.core.mail import send_mail
+
+    from core import sites
 
     category_label = constants.get_contact_category_label(category)
     site_label = CONTACT_SITE_LABELS.get(site, site)
@@ -59,7 +69,8 @@ def send_contact_email(
     else:
         recipient_email = base_email
 
-    site_url = settings.SITE_URL
+    # The site the form was sent from, as the subject names it
+    site_url = origin or sites.canonical_origin(site)
 
     email_body = f"""
 New contact form submission:

@@ -358,7 +358,6 @@ class SendContactEmailTests(TestCase):
         # Use override_settings to test with CONTACT_EMAIL without @ symbol
         with override_settings(
             CONTACT_EMAIL="contact",  # No @ symbol
-            SITE_URL="https://test.com",
             DEFAULT_FROM_EMAIL="from@example.com",
         ):
             result = utils.send_contact_email(

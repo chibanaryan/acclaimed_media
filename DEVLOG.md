@@ -1,5 +1,15 @@
 # Developer Log
 
+## 2026-11-21
+
+- **The sign-up confirmation email speaks to music too.** It told every new
+  account it could mark the games it had played, and named a
+  "Subscribe to email updates" option the sign-up form calls something
+  else; it now names games and albums, and where the toggle is. Its links
+  were already right: back to the host signed up on
+- **The contact email's footer names the site the form was sent from**
+  (`sites.site_origin`), where it named the apex for all three
+
 ## 2026-11-13 (roadmap pass)
 
 - **The listen menu's keys, its edges** (ROADMAP bug 2). A menu is open

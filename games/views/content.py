@@ -64,8 +64,14 @@ class ContactFormView(ApexCanonicalMixin, FormView):
             return redirect(self.success_url)
 
         # Send the email
+        site = sites.request_site(self.request)
         email_sent = utils.send_contact_email(
-            name, email, category, message, site=sites.request_site(self.request)
+            name,
+            email,
+            category,
+            message,
+            site=site,
+            origin=sites.site_origin(site, self.request),
         )
 
         if not email_sent:
